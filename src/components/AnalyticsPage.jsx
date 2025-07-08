@@ -284,6 +284,50 @@ const AnalyticsPage = () => {
       >
         Análisis
       </motion.h2>
+
+      {/* Tarjetas de selección de vista */}
+      <div style={{
+        display: 'flex',
+        gap: '18px',
+        marginBottom: '28px',
+        flexWrap: 'wrap',
+      }}>
+        {views.map(view => {
+          const isActive = selectedView === view.id;
+          return (
+            <motion.div
+              key={view.id}
+              whileHover={{ scale: 1.04, boxShadow: isActive ? `0 4px 16px 0 ${colors.primary}33` : `0 2px 8px 0 ${colors.primary}22` }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => setSelectedView(view.id)}
+              style={{
+                minWidth: 180,
+                flex: '1 1 180px',
+                background: colors.card,
+                borderRadius: 12,
+                boxShadow: isActive ? `0 4px 16px 0 ${colors.primary}33` : `0 2px 8px 0 rgba(0,0,0,0.04)`,
+                border: isActive ? `2.5px solid ${colors.primary}` : `1.5px solid ${colors.border}`,
+                color: isActive ? colors.primary : colors.text,
+                cursor: 'pointer',
+                padding: '22px 18px',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'flex-start',
+                justifyContent: 'center',
+                transition: 'all 0.18s',
+                fontWeight: isActive ? 600 : 400,
+                fontSize: 16,
+                outline: isActive ? `2px solid ${colors.primary}` : 'none',
+                position: 'relative',
+              }}
+            >
+              <span style={{ fontSize: 17, fontWeight: 600, marginBottom: 6 }}>{view.name}</span>
+              <span style={{ fontSize: 13, color: isActive ? colors.primary : colors.textSecondary, marginTop: 2 }}>{view.description}</span>
+            </motion.div>
+          );
+        })}
+      </div>
+
       {excelHeaders.length === 0 ? (
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -300,33 +344,9 @@ const AnalyticsPage = () => {
           transition={{ duration: 0.4, delay: 0.2 }}
           style={{ display: 'flex', flexDirection: 'column', height: 'calc(100% - 80px)', gap: '24px' }}
         >
-          {/* Selector de vista */}
-          <div style={{ background: colors.card, borderRadius: 8, boxShadow: '0 2px 8px rgba(0,0,0,0.04)', padding: '20px' }}>
-            <h3 style={{ margin: '0 0 16px 0', color: colors.text, fontSize: 16, fontWeight: 600, lineHeight: 1.2 }}>Seleccionar Vista</h3>
-            <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-              {views.map(view => (
-                <button
-                  key={view.id}
-                  onClick={() => setSelectedView(view.id)}
-                  style={{
-                    padding: '12px 20px',
-                    borderRadius: '6px',
-                    border: selectedView === view.id ? 'none' : `1px solid ${colors.border}`,
-                    background: selectedView === view.id ? colors.primary : colors.surface,
-                    color: selectedView === view.id ? 'white' : colors.text,
-                    cursor: 'pointer',
-                    fontSize: '14px',
-                    fontWeight: selectedView === view.id ? '600' : '400',
-                    transition: 'all 0.2s'
-                  }}
-                >
-                  {view.name}
-                </button>
-              ))}
-            </div>
-            <div style={{ marginTop: '8px', color: colors.textSecondary, fontSize: '14px' }}>
-              {views.find(v => v.id === selectedView)?.description}
-            </div>
+          {/* Descripción de la vista seleccionada */}
+          <div style={{ marginBottom: 0, color: colors.textSecondary, fontSize: 15, minHeight: 22 }}>
+            {views.find(v => v.id === selectedView)?.description}
           </div>
 
           {/* Controles específicos por vista */}
