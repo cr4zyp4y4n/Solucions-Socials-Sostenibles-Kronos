@@ -10,6 +10,36 @@ const ProvidersPage = () => {
   const [selectedProvider, setSelectedProvider] = useState('');
   const { colors } = useTheme();
 
+  // Función para convertir número de serie Excel a fecha dd/MM/yyyy
+  function excelDateToString(excelDate) {
+    if (typeof excelDate === 'number' && !isNaN(excelDate)) {
+      const utc_days = Math.floor(excelDate - 25569);
+      const utc_value = utc_days * 86400;
+      const date_info = new Date(utc_value * 1000);
+      // Ajuste por decimales (hora)
+      if (excelDate % 1 !== 0) {
+        const totalSeconds = Math.round(86400 * (excelDate % 1));
+        date_info.setSeconds(date_info.getSeconds() + totalSeconds);
+      }
+      const day = String(date_info.getDate()).padStart(2, '0');
+      const month = String(date_info.getMonth() + 1).padStart(2, '0');
+      const year = date_info.getFullYear();
+      return `${day}/${month}/${year}`;
+    }
+    // Si es string numérico
+    if (typeof excelDate === 'string' && /^\d+(\.\d+)?$/.test(excelDate)) {
+      return excelDateToString(Number(excelDate));
+    }
+    // Si ya es string tipo fecha
+    return excelDate;
+  }
+
+  // Función para verificar si una columna es de fecha
+  function isDateColumn(header) {
+    const headerLower = header.toLowerCase();
+    return headerLower.includes('data') || headerLower.includes('date') || headerLower.includes('emissió') || headerLower.includes('comptable') || headerLower.includes('venciment');
+  }
+
   // Encontrar el índice de la columna "Proveïdor"
   const providerColumnIndex = useMemo(() => {
     return excelHeaders.findIndex(header => 
@@ -227,13 +257,13 @@ const ProvidersPage = () => {
                     <tbody>
                       {selectedProviderData.map((row, i) => (
                         <tr key={i} style={{ background: i % 2 === 0 ? colors.card : colors.surface }}>
-                          {excelHeaders.map((_, j) => (
+                          {excelHeaders.map((header, j) => (
                             <td key={j} style={{ 
                               borderBottom: `1px solid ${colors.border}`,
                               padding: '12px 8px', 
                               color: colors.text 
                             }}>
-                              {row[j]}
+                              {isDateColumn(header) ? excelDateToString(row[j]) : row[j]}
                             </td>
                           ))}
                         </tr>

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, Fragment } from 'react';
 import { useDataContext } from './DataContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTheme } from './ThemeContext';
@@ -11,8 +11,39 @@ const AnalyticsPage = () => {
   const [selectedColumns, setSelectedColumns] = useState([]);
   const [selectedProvider, setSelectedProvider] = useState('');
   const [selectedChannel, setSelectedChannel] = useState('');
+  const [expandedProvider, setExpandedProvider] = useState('');
+  const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
+  const [sergiSortConfig, setSergiSortConfig] = useState({ key: null, direction: 'asc' });
+  const [channelSortConfig, setChannelSortConfig] = useState({ key: null, direction: 'asc' });
   const tableRef = useRef(null);
   const { colors } = useTheme();
+
+  // Función para manejar el ordenamiento
+  const handleSort = (key) => {
+    let direction = 'asc';
+    if (sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
+
+  // Función para manejar el ordenamiento de la vista Sergi
+  const handleSergiSort = (key) => {
+    let direction = 'asc';
+    if (sergiSortConfig.key === key && sergiSortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSergiSortConfig({ key, direction });
+  };
+
+  // Función para manejar el ordenamiento de las tablas de facturas por canal
+  const handleChannelSort = (key) => {
+    let direction = 'asc';
+    if (channelSortConfig.key === key && channelSortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setChannelSortConfig({ key, direction });
+  };
 
   // Encontrar índices de columnas importantes
   const columnIndices = useMemo(() => {
@@ -25,7 +56,7 @@ const AnalyticsPage = () => {
       if (headerLower.includes('data') && headerLower.includes('emissió')) {
         indices.date = index;
       }
-      if (headerLower.includes('núm') || headerLower.includes('num')) {
+      if ((headerLower.includes('núm') || headerLower.includes('num')) && !headerLower.includes('intern')) {
         indices.invoiceNumber = index;
       }
       if (headerLower.includes('compte') || headerLower.includes('account')) {
@@ -52,6 +83,163 @@ const AnalyticsPage = () => {
     });
     return indices;
   }, [excelHeaders]);
+
+  // Función para ordenar datos de la vista General
+  const sortData = (data, key, direction) => {
+    if (!key) return data;
+    
+    return [...data].sort((a, b) => {
+      let aValue, bValue;
+      
+      // Obtener valores según la clave de ordenamiento
+      switch (key) {
+        case 'date':
+          aValue = a[columnIndices.date];
+          bValue = b[columnIndices.date];
+          // Convertir fechas de Excel
+          if (aValue && bValue) {
+            aValue = new Date(excelDateToString(aValue));
+            bValue = new Date(excelDateToString(bValue));
+          }
+          break;
+        case 'invoiceNumber':
+          aValue = a[columnIndices.invoiceNumber];
+          bValue = b[columnIndices.invoiceNumber];
+          break;
+        case 'provider':
+          aValue = a[columnIndices.provider];
+          bValue = b[columnIndices.provider];
+          break;
+        case 'account':
+          aValue = a[columnIndices.account];
+          bValue = b[columnIndices.account];
+          break;
+        case 'description':
+          aValue = a[columnIndices.description];
+          bValue = b[columnIndices.description];
+          break;
+        case 'subtotal':
+          aValue = parseFloat(a[columnIndices.subtotal]) || 0;
+          bValue = parseFloat(b[columnIndices.subtotal]) || 0;
+          break;
+        case 'total':
+          aValue = parseFloat(a[columnIndices.total]) || 0;
+          bValue = parseFloat(b[columnIndices.total]) || 0;
+          break;
+        case 'pending':
+          aValue = parseFloat(a[columnIndices.pending]) || 0;
+          bValue = parseFloat(b[columnIndices.pending]) || 0;
+          break;
+        default:
+          aValue = a[key];
+          bValue = b[key];
+      }
+      
+      // Manejar valores nulos o undefined
+      if (!aValue && aValue !== 0) aValue = '';
+      if (!bValue && bValue !== 0) bValue = '';
+      
+      // Comparación
+      if (aValue < bValue) return direction === 'asc' ? -1 : 1;
+      if (aValue > bValue) return direction === 'asc' ? 1 : -1;
+      return 0;
+    });
+  };
+
+  // Función para ordenar datos de la vista Sergi (tabla de descripción)
+  const sortSergiData = (data, key, direction) => {
+    if (!key) return data;
+    
+    return [...data].sort((a, b) => {
+      let aValue, bValue;
+      
+      // Obtener valores según la clave de ordenamiento
+      switch (key) {
+        case 'description':
+          aValue = a[0]; // La clave es la descripción
+          bValue = b[0];
+          break;
+        case 'channel':
+          aValue = a[1].channel;
+          bValue = b[1].channel;
+          break;
+        case 'total':
+          aValue = a[1].total;
+          bValue = b[1].total;
+          break;
+        case 'count':
+          aValue = a[1].count;
+          bValue = b[1].count;
+          break;
+        default:
+          aValue = a[key];
+          bValue = b[key];
+      }
+      
+      // Manejar valores nulos o undefined
+      if (!aValue && aValue !== 0) aValue = '';
+      if (!bValue && bValue !== 0) bValue = '';
+      
+      // Comparación
+      if (aValue < bValue) return direction === 'asc' ? -1 : 1;
+      if (aValue > bValue) return direction === 'asc' ? 1 : -1;
+      return 0;
+    });
+  };
+
+  // Función para ordenar datos de facturas por canal (tabla de facturas individuales)
+  const sortChannelData = (data, key, direction) => {
+    if (!key) return data;
+    
+    return [...data].sort((a, b) => {
+      let aValue, bValue;
+      
+      // Obtener valores según la clave de ordenamiento
+      switch (key) {
+        case 'date':
+          aValue = a[columnIndices.date];
+          bValue = b[columnIndices.date];
+          // Convertir fechas de Excel para comparación
+          if (aValue && bValue) {
+            aValue = new Date(excelDateToString(aValue));
+            bValue = new Date(excelDateToString(bValue));
+          }
+          break;
+        case 'invoiceNumber':
+          aValue = a[columnIndices.invoiceNumber];
+          bValue = b[columnIndices.invoiceNumber];
+          break;
+        case 'provider':
+          aValue = a[columnIndices.provider];
+          bValue = b[columnIndices.provider];
+          break;
+        case 'description':
+          aValue = a[columnIndices.description];
+          bValue = b[columnIndices.description];
+          break;
+        case 'account':
+          aValue = a[columnIndices.account];
+          bValue = b[columnIndices.account];
+          break;
+        case 'total':
+          aValue = parseFloat(a[columnIndices.total]) || 0;
+          bValue = parseFloat(b[columnIndices.total]) || 0;
+          break;
+        default:
+          aValue = a[key];
+          bValue = b[key];
+      }
+      
+      // Manejar valores nulos o undefined
+      if (!aValue && aValue !== 0) aValue = '';
+      if (!bValue && bValue !== 0) bValue = '';
+      
+      // Comparación
+      if (aValue < bValue) return direction === 'asc' ? -1 : 1;
+      if (aValue > bValue) return direction === 'asc' ? 1 : -1;
+      return 0;
+    });
+  };
 
   // Extraer proveedores únicos
   const uniqueProviders = useMemo(() => {
@@ -129,13 +317,20 @@ const AnalyticsPage = () => {
     return channels;
   }, [excelData, columnIndices]);
 
-  // Filtrar datos según vista seleccionada
+  // Filtrar y ordenar datos según vista seleccionada
   const filteredData = useMemo(() => {
+    let data = excelData;
     if (selectedProvider && columnIndices.provider) {
-      return excelData.filter(row => row[columnIndices.provider] === selectedProvider);
+      data = excelData.filter(row => row[columnIndices.provider] === selectedProvider);
     }
-    return excelData;
-  }, [excelData, selectedProvider, columnIndices.provider]);
+    
+    // Aplicar ordenamiento si hay configuración
+    if (sortConfig.key) {
+      data = sortData(data, sortConfig.key, sortConfig.direction);
+    }
+    
+    return data;
+  }, [excelData, selectedProvider, columnIndices.provider, sortConfig]);
 
   // Filtrar datos por canal seleccionado
   const channelFilteredData = useMemo(() => {
@@ -240,6 +435,11 @@ const AnalyticsPage = () => {
     setSelectedChannel(prev => (prev === channel ? '' : channel));
   };
 
+  // Función para manejar la expansión de proveedores
+  const handleProviderExpand = (provider) => {
+    setExpandedProvider(prev => (prev === provider ? '' : provider));
+  };
+
   // Función para saber si una fila está pendiente de pago
   function isPending(row, columnIndices) {
     const estatIdx = columnIndices.estat !== undefined ? columnIndices.estat : -1;
@@ -274,6 +474,49 @@ const AnalyticsPage = () => {
       return index % 2 === 0 ? '#ffffff' : '#f8f9fa';
     }
   }
+
+  // Componente para header ordenable
+  const SortableHeader = ({ label, sortKey, currentSortKey, currentDirection, onSort }) => {
+    const isActive = currentSortKey === sortKey;
+    return (
+      <th 
+        style={{ 
+          borderBottom: `1px solid ${colors.border}`, 
+          padding: '12px 8px', 
+          textAlign: 'left', 
+          color: colors.primary, 
+          fontWeight: 600, 
+          background: colors.surface,
+          cursor: 'pointer',
+          userSelect: 'none',
+          transition: 'all 0.2s ease'
+        }}
+        onClick={() => onSort(sortKey)}
+        onMouseEnter={(e) => {
+          e.target.style.background = colors.hover;
+        }}
+        onMouseLeave={(e) => {
+          e.target.style.background = colors.surface;
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          {label}
+          <span style={{ 
+            fontSize: '12px', 
+            fontWeight: 'bold',
+            opacity: isActive ? 1 : 0.6,
+            color: isActive ? colors.primary : colors.textSecondary,
+            transition: 'all 0.2s ease',
+            display: 'inline-block',
+            minWidth: '12px',
+            textAlign: 'center'
+          }}>
+            {isActive ? (currentDirection === 'asc' ? '↑' : '↓') : '↕'}
+          </span>
+        </div>
+      </th>
+    );
+  };
 
   // Calcular total facturado y total a pagar (solo pendientes o vencidas)
   const totalFacturado = useMemo(() => {
@@ -457,16 +700,14 @@ const AnalyticsPage = () => {
                         {availableColumns
                           .filter(col => selectedColumns.includes(col.key))
                           .map(col => (
-                            <th key={col.key} style={{ 
-                              borderBottom: `1px solid ${colors.border}`,
-                              padding: '12px 8px', 
-                              textAlign: 'left', 
-                              color: colors.primary, 
-                              fontWeight: 600,
-                              background: colors.surface
-                            }}>
-                              {col.label}
-                            </th>
+                            <SortableHeader
+                              key={col.key}
+                              label={col.label}
+                              sortKey={col.key}
+                              currentSortKey={sortConfig.key}
+                              currentDirection={sortConfig.direction}
+                              onSort={handleSort}
+                            />
                           ))}
                       </tr>
                     </thead>
@@ -601,28 +842,58 @@ const AnalyticsPage = () => {
                         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
                           <thead>
                             <tr>
-                              <th style={{ borderBottom: `1px solid ${colors.border}`, padding: '12px 8px', textAlign: 'left', color: colors.primary, fontWeight: 600, background: colors.surface }}>
-                                {excelHeaders[columnIndices.date] || 'Fecha'}
-                              </th>
-                              <th style={{ borderBottom: `1px solid ${colors.border}`, padding: '12px 8px', textAlign: 'left', color: colors.primary, fontWeight: 600, background: colors.surface }}>
-                                {excelHeaders[columnIndices.invoiceNumber] || 'Número'}
-                              </th>
-                              <th style={{ borderBottom: `1px solid ${colors.border}`, padding: '12px 8px', textAlign: 'left', color: colors.primary, fontWeight: 600, background: colors.surface }}>
-                                {excelHeaders[columnIndices.provider] || 'Proveedor'}
-                              </th>
-                              <th style={{ borderBottom: `1px solid ${colors.border}`, padding: '12px 8px', textAlign: 'left', color: colors.primary, fontWeight: 600, background: colors.surface }}>
-                                {excelHeaders[columnIndices.description] || 'Descripción'}
-                              </th>
-                              <th style={{ borderBottom: `1px solid ${colors.border}`, padding: '12px 8px', textAlign: 'left', color: colors.primary, fontWeight: 600, background: colors.surface }}>
-                                {excelHeaders[columnIndices.account] || 'Cuenta'}
-                              </th>
-                              <th style={{ borderBottom: `1px solid ${colors.border}`, padding: '12px 8px', textAlign: 'left', color: colors.primary, fontWeight: 600, background: colors.surface }}>
-                                {excelHeaders[columnIndices.total] || 'Total'}
-                              </th>
+                              <SortableHeader
+                                label={excelHeaders[columnIndices.date] || 'Fecha'}
+                                sortKey="date"
+                                currentSortKey={channelSortConfig.key}
+                                currentDirection={channelSortConfig.direction}
+                                onSort={handleChannelSort}
+                              />
+                              <SortableHeader
+                                label={excelHeaders[columnIndices.invoiceNumber] || 'Número'}
+                                sortKey="invoiceNumber"
+                                currentSortKey={channelSortConfig.key}
+                                currentDirection={channelSortConfig.direction}
+                                onSort={handleChannelSort}
+                              />
+                              <SortableHeader
+                                label={excelHeaders[columnIndices.provider] || 'Proveedor'}
+                                sortKey="provider"
+                                currentSortKey={channelSortConfig.key}
+                                currentDirection={channelSortConfig.direction}
+                                onSort={handleChannelSort}
+                              />
+                              <SortableHeader
+                                label={excelHeaders[columnIndices.description] || 'Descripción'}
+                                sortKey="description"
+                                currentSortKey={channelSortConfig.key}
+                                currentDirection={channelSortConfig.direction}
+                                onSort={handleChannelSort}
+                              />
+                              <SortableHeader
+                                label={excelHeaders[columnIndices.account] || 'Cuenta'}
+                                sortKey="account"
+                                currentSortKey={channelSortConfig.key}
+                                currentDirection={channelSortConfig.direction}
+                                onSort={handleChannelSort}
+                              />
+                              <SortableHeader
+                                label={excelHeaders[columnIndices.total] || 'Total'}
+                                sortKey="total"
+                                currentSortKey={channelSortConfig.key}
+                                currentDirection={channelSortConfig.direction}
+                                onSort={handleChannelSort}
+                              />
                             </tr>
                           </thead>
                           <tbody>
-                            {channelFilteredData.map((row, i) => (
+                            {(() => {
+                              // Aplicar ordenamiento si hay configuración
+                              const sortedData = channelSortConfig.key ? 
+                                sortChannelData(channelFilteredData, channelSortConfig.key, channelSortConfig.direction) : 
+                                channelFilteredData;
+                              
+                              return sortedData.map((row, i) => (
                               <tr key={i} style={{ 
                                 background: getRowBackgroundColor(i),
                                 transition: 'background-color 0.2s ease'
@@ -649,7 +920,8 @@ const AnalyticsPage = () => {
                                   }
                                 </td>
                               </tr>
-                            ))}
+                            ));
+                          })()}
                           </tbody>
                         </table>
                       </div>
@@ -685,15 +957,39 @@ const AnalyticsPage = () => {
                         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
                           <thead>
                             <tr>
-                              <th style={{ borderBottom: `1px solid ${colors.border}`, padding: '12px 8px', textAlign: 'left', color: colors.primary, fontWeight: 600, background: colors.surface }}>Descripción</th>
-                              <th style={{ borderBottom: `1px solid ${colors.border}`, padding: '12px 8px', textAlign: 'left', color: colors.primary, fontWeight: 600, background: colors.surface }}>Canal</th>
-                              <th style={{ borderBottom: `1px solid ${colors.border}`, padding: '12px 8px', textAlign: 'left', color: colors.primary, fontWeight: 600, background: colors.surface }}>Total</th>
-                              <th style={{ borderBottom: `1px solid ${colors.border}`, padding: '12px 8px', textAlign: 'left', color: colors.primary, fontWeight: 600, background: colors.surface }}>Facturas</th>
+                              <SortableHeader
+                                label="Descripción"
+                                sortKey="description"
+                                currentSortKey={sergiSortConfig.key}
+                                currentDirection={sergiSortConfig.direction}
+                                onSort={handleSergiSort}
+                              />
+                              <SortableHeader
+                                label="Canal"
+                                sortKey="channel"
+                                currentSortKey={sergiSortConfig.key}
+                                currentDirection={sergiSortConfig.direction}
+                                onSort={handleSergiSort}
+                              />
+                              <SortableHeader
+                                label="Total"
+                                sortKey="total"
+                                currentSortKey={sergiSortConfig.key}
+                                currentDirection={sergiSortConfig.direction}
+                                onSort={handleSergiSort}
+                              />
+                              <SortableHeader
+                                label="Facturas"
+                                sortKey="count"
+                                currentSortKey={sergiSortConfig.key}
+                                currentDirection={sergiSortConfig.direction}
+                                onSort={handleSergiSort}
+                              />
                             </tr>
                           </thead>
                           <tbody>
-                            {Object.entries(
-                              excelData.reduce((acc, row) => {
+                            {(() => {
+                              const groupedData = excelData.reduce((acc, row) => {
                                 const description = row[columnIndices.description] || 'Sin descripción';
                                 const account = row[columnIndices.account] || 'Sin cuenta';
                                 const total = columnIndices.total ? (parseFloat(row[columnIndices.total]) || 0) : 0;
@@ -712,10 +1008,15 @@ const AnalyticsPage = () => {
                                 acc[displayKey].total += total;
                                 acc[displayKey].count += 1;
                                 return acc;
-                              }, {})
-                            )
-                              .sort((a, b) => b[1].total - a[1].total)
-                              .map(([displayKey, stats], i) => {
+                              }, {});
+                              
+                              const entries = Object.entries(groupedData);
+                              // Aplicar ordenamiento si hay configuración
+                              const sortedEntries = sergiSortConfig.key ? 
+                                sortSergiData(entries, sergiSortConfig.key, sergiSortConfig.direction) : 
+                                entries.sort((a, b) => b[1].total - a[1].total);
+                              
+                              return sortedEntries.map(([displayKey, stats], i) => {
                                 const channelColor = getChannelColor(stats.channel);
                                 return (
                                   <tr key={displayKey} style={{ 
@@ -750,7 +1051,8 @@ const AnalyticsPage = () => {
                                     <td style={{ borderBottom: `1px solid ${colors.border}`, padding: '12px 8px', color: colors.text }}>{stats.count}</td>
                                   </tr>
                                 );
-                              })}
+                              });
+                            })()}
                           </tbody>
                         </table>
                       </div>
@@ -802,26 +1104,209 @@ const AnalyticsPage = () => {
                         </tr>
                       </thead>
                       <tbody>
-                        {providerStats.map((stat, i) => (
-                          <tr key={stat.provider} style={{ 
-                            background: getRowBackgroundColor(i),
-                            transition: 'background-color 0.2s ease'
-                          }}>
-                            <td style={{ borderBottom: `1px solid ${colors.border}`, padding: '12px 8px', color: colors.text, fontWeight: '500' }}>{stat.provider}</td>
-                            <td style={{ borderBottom: `1px solid ${colors.border}`, padding: '12px 8px', color: colors.text }}>
-                              {formatCurrency(stat.totalAmount)}
-                            </td>
-                            <td style={{ 
-                              borderBottom: `1px solid ${colors.border}`, 
-                              padding: '12px 8px', 
-                              color: stat.totalPending > 0 ? colors.error : colors.text,
-                              fontWeight: stat.totalPending > 0 ? '600' : '400'
-                            }}>
-                              {formatCurrency(stat.totalPending)}
-                            </td>
-                            <td style={{ borderBottom: `1px solid ${colors.border}`, padding: '12px 8px', color: colors.text }}>{stat.invoiceCount}</td>
-                          </tr>
-                        ))}
+                        {providerStats.map((stat, i) => {
+                          const isExpanded = expandedProvider === stat.provider;
+                          return (
+                            <Fragment key={stat.provider}>
+                              <tr 
+                                style={{ 
+                                  background: getRowBackgroundColor(i),
+                                  transition: 'background-color 0.2s ease',
+                                  cursor: 'pointer'
+                                }}
+                                onClick={() => handleProviderExpand(stat.provider)}
+                              >
+                                <td style={{ 
+                                  borderBottom: `1px solid ${colors.border}`, 
+                                  padding: '12px 8px', 
+                                  color: colors.text, 
+                                  fontWeight: '500',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '8px'
+                                }}>
+                                  <span style={{ 
+                                    fontSize: '12px', 
+                                    transition: 'transform 0.2s ease',
+                                    transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)'
+                                  }}>
+                                    ▶
+                                  </span>
+                                  {stat.provider}
+                                </td>
+                                <td style={{ borderBottom: `1px solid ${colors.border}`, padding: '12px 8px', color: colors.text }}>
+                                  {formatCurrency(stat.totalAmount)}
+                                </td>
+                                <td style={{ 
+                                  borderBottom: `1px solid ${colors.border}`, 
+                                  padding: '12px 8px', 
+                                  color: stat.totalPending > 0 ? colors.error : colors.text,
+                                  fontWeight: stat.totalPending > 0 ? '600' : '400'
+                                }}>
+                                  {formatCurrency(stat.totalPending)}
+                                </td>
+                                <td style={{ borderBottom: `1px solid ${colors.border}`, padding: '12px 8px', color: colors.text }}>{stat.invoiceCount}</td>
+                              </tr>
+                              
+                              {/* Filas expandidas con facturas individuales */}
+                              <AnimatePresence>
+                                {isExpanded && (
+                                  <tr>
+                                    <td colSpan="4" style={{ padding: 0, border: 'none' }}>
+                                      <motion.div
+                                        initial={{ opacity: 0, height: 0 }}
+                                        animate={{ opacity: 1, height: 'auto' }}
+                                        exit={{ opacity: 0, height: 0 }}
+                                        transition={{ duration: 0.3, ease: 'easeOut' }}
+                                        style={{
+                                          background: colors.surface,
+                                          borderBottom: `1px solid ${colors.border}`,
+                                          overflow: 'hidden'
+                                        }}
+                                      >
+                                      <div style={{ padding: '16px 20px' }}>
+                                        <h5 style={{ 
+                                          margin: '0 0 12px 0', 
+                                          color: colors.text, 
+                                          fontSize: '14px', 
+                                          fontWeight: 600 
+                                        }}>
+                                          Facturas de {stat.provider}
+                                        </h5>
+                                        <div style={{ overflowX: 'auto' }}>
+                                          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                                            <thead>
+                                              <tr>
+                                                <th style={{ 
+                                                  borderBottom: `1px solid ${colors.border}`, 
+                                                  padding: '8px 12px', 
+                                                  textAlign: 'left', 
+                                                  color: colors.primary, 
+                                                  fontWeight: 600, 
+                                                  background: colors.card,
+                                                  fontSize: '12px'
+                                                }}>
+                                                  Número Factura
+                                                </th>
+                                                <th style={{ 
+                                                  borderBottom: `1px solid ${colors.border}`, 
+                                                  padding: '8px 12px', 
+                                                  textAlign: 'left', 
+                                                  color: colors.primary, 
+                                                  fontWeight: 600, 
+                                                  background: colors.card,
+                                                  fontSize: '12px'
+                                                }}>
+                                                  Fecha
+                                                </th>
+                                                <th style={{ 
+                                                  borderBottom: `1px solid ${colors.border}`, 
+                                                  padding: '8px 12px', 
+                                                  textAlign: 'left', 
+                                                  color: colors.primary, 
+                                                  fontWeight: 600, 
+                                                  background: colors.card,
+                                                  fontSize: '12px'
+                                                }}>
+                                                  Descripción
+                                                </th>
+                                                <th style={{ 
+                                                  borderBottom: `1px solid ${colors.border}`, 
+                                                  padding: '8px 12px', 
+                                                  textAlign: 'left', 
+                                                  color: colors.primary, 
+                                                  fontWeight: 600, 
+                                                  background: colors.card,
+                                                  fontSize: '12px'
+                                                }}>
+                                                  Total
+                                                </th>
+                                                <th style={{ 
+                                                  borderBottom: `1px solid ${colors.border}`, 
+                                                  padding: '8px 12px', 
+                                                  textAlign: 'left', 
+                                                  color: colors.primary, 
+                                                  fontWeight: 600, 
+                                                  background: colors.card,
+                                                  fontSize: '12px'
+                                                }}>
+                                                  Estado
+                                                </th>
+                                              </tr>
+                                            </thead>
+                                            <tbody>
+                                              {stat.invoices.map((invoice, j) => (
+                                                <tr key={j} style={{ 
+                                                  background: j % 2 === 0 ? colors.card : colors.surface,
+                                                  transition: 'background-color 0.2s ease'
+                                                }}>
+                                                  <td style={{ 
+                                                    borderBottom: `1px solid ${colors.border}`, 
+                                                    padding: '8px 12px', 
+                                                    color: colors.text,
+                                                    fontSize: '12px',
+                                                    fontWeight: '500'
+                                                  }}>
+                                                    {invoice[columnIndices.invoiceNumber] || '-'}
+                                                  </td>
+                                                  <td style={{ 
+                                                    borderBottom: `1px solid ${colors.border}`, 
+                                                    padding: '8px 12px', 
+                                                    color: colors.text,
+                                                    fontSize: '12px'
+                                                  }}>
+                                                    {invoice[columnIndices.date] ? excelDateToString(invoice[columnIndices.date]) : '-'}
+                                                  </td>
+                                                  <td style={{ 
+                                                    borderBottom: `1px solid ${colors.border}`, 
+                                                    padding: '8px 12px', 
+                                                    color: colors.text,
+                                                    fontSize: '12px'
+                                                  }}>
+                                                    {invoice[columnIndices.description] || '-'}
+                                                  </td>
+                                                  <td style={{ 
+                                                    borderBottom: `1px solid ${colors.border}`, 
+                                                    padding: '8px 12px', 
+                                                    color: colors.text,
+                                                    fontSize: '12px',
+                                                    fontWeight: '600'
+                                                  }}>
+                                                    {invoice[columnIndices.total] ? formatCurrency(invoice[columnIndices.total]) : '-'}
+                                                  </td>
+                                                  <td style={{ 
+                                                    borderBottom: `1px solid ${colors.border}`, 
+                                                    padding: '8px 12px', 
+                                                    color: colors.text,
+                                                    fontSize: '12px'
+                                                  }}>
+                                                    <span style={{
+                                                      padding: '2px 6px',
+                                                      borderRadius: '3px',
+                                                      fontSize: '11px',
+                                                      background: isPending(invoice, columnIndices) ? 
+                                                        colors.error + '22' : colors.success + '22',
+                                                      color: isPending(invoice, columnIndices) ? 
+                                                        colors.error : colors.success,
+                                                      fontWeight: '500'
+                                                    }}>
+                                                      {isPending(invoice, columnIndices) ? 'Pendiente' : 'Pagada'}
+                                                    </span>
+                                                  </td>
+                                                </tr>
+                                              ))}
+                                            </tbody>
+                                          </table>
+                                        </div>
+                                      </div>
+                                    </motion.div>
+                                  </td>
+                                </tr>
+                              )}
+                              </AnimatePresence>
+                            </Fragment>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
