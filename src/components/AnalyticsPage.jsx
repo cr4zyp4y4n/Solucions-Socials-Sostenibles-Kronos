@@ -492,6 +492,9 @@ const AnalyticsPage = () => {
                   {Object.entries(channelStats).map(([channel, stats]) => {
                     const isSelected = selectedChannel === channel;
                     const channelRows = getChannelRows(channel, excelData, columnIndices);
+                    // Fondo especial para modo claro
+                    const isLight = colors.background === '#fafafa' || colors.background === '#fff' || colors.background === '#ffffff';
+                    const cardBg = isLight ? '#F7F7F7' : '#2A2A2A';
                     return (
                       <motion.div
                         key={channel}
@@ -504,7 +507,7 @@ const AnalyticsPage = () => {
                         transition={{ type: 'spring', stiffness: 200, damping: 20 }}
                         onClick={() => handleChannelClick(channel)}
                         style={{
-                          background: isSelected ? colors.hover : colors.surface,
+                          background: isSelected ? colors.hover : cardBg,
                           padding: '20px',
                           borderRadius: '12px',
                           cursor: 'pointer',
