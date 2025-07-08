@@ -32,7 +32,9 @@ import { AnimatePresence } from 'framer-motion';
 import './index.css';
 import SplashScreen from './components/SplashScreen';
 import MainApp from './components/MainApp';
+import { DataProvider } from './components/DataContext';
 import { ThemeProvider } from './components/ThemeContext';
+import { CurrencyProvider } from './components/CurrencyContext';
 
 function App() {
   const [showSplash, setShowSplash] = useState(true);
@@ -42,22 +44,24 @@ function App() {
   };
 
   return (
-    <div>
-      <AnimatePresence mode="wait">
-        {showSplash ? (
-          <SplashScreen key="splash" onComplete={handleSplashComplete} />
-        ) : (
-          <MainApp key="main" />
-        )}
-      </AnimatePresence>
-    </div>
+    <ThemeProvider>
+      <DataProvider>
+        <CurrencyProvider>
+          <div>
+            <AnimatePresence mode="wait">
+              {showSplash ? (
+                <SplashScreen key="splash" onComplete={handleSplashComplete} />
+              ) : (
+                <MainApp key="main" />
+              )}
+            </AnimatePresence>
+          </div>
+        </CurrencyProvider>
+      </DataProvider>
+    </ThemeProvider>
   );
 }
 
 const container = document.getElementById('root');
 const root = createRoot(container);
-root.render(
-  <ThemeProvider>
-    <App />
-  </ThemeProvider>
-);
+root.render(<App />);

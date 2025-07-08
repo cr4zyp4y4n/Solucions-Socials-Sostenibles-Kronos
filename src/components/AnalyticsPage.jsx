@@ -248,6 +248,33 @@ const AnalyticsPage = () => {
     return estat === 'pendents' || estat === 'vençut';
   }
 
+  // Función para obtener el color del canal
+  function getChannelColor(channel) {
+    switch (channel) {
+      case 'Estructura':
+        return { background: 'rgba(255, 152, 0, 0.15)', color: '#E65100' }; // Naranja apastelado (construcción)
+      case 'Catering':
+        return { background: 'rgba(76, 175, 80, 0.15)', color: '#2E7D32' }; // Verde apastelado (catering)
+      case 'IDONI':
+        return { background: 'rgba(233, 30, 99, 0.15)', color: '#C2185B' }; // Rosa IDONI apastelado
+      case 'Otros':
+        return { background: 'rgba(158, 158, 158, 0.15)', color: '#616161' }; // Gris apastelado
+      default:
+        return { background: 'rgba(158, 158, 158, 0.15)', color: '#616161' };
+    }
+  }
+
+  // Función para obtener colores de filas intercaladas
+  function getRowBackgroundColor(index) {
+    if (colors.background === '#1a1a1a') {
+      // Modo oscuro
+      return index % 2 === 0 ? '#333333' : '#2d2d2d';
+    } else {
+      // Modo claro
+      return index % 2 === 0 ? '#ffffff' : '#f8f9fa';
+    }
+  }
+
   // Calcular total facturado y total a pagar (solo pendientes o vencidas)
   const totalFacturado = useMemo(() => {
     if (!columnIndices.total) return 0;
@@ -445,7 +472,10 @@ const AnalyticsPage = () => {
                     </thead>
                     <tbody>
                       {filteredData.map((row, i) => (
-                        <tr key={i} style={{ background: i % 2 === 0 ? colors.card : colors.surface }}>
+                        <tr key={i} style={{ 
+                          background: getRowBackgroundColor(i),
+                          transition: 'background-color 0.2s ease'
+                        }}>
                           {availableColumns
                             .filter(col => selectedColumns.includes(col.key))
                             .map(col => (
@@ -593,7 +623,10 @@ const AnalyticsPage = () => {
                           </thead>
                           <tbody>
                             {channelFilteredData.map((row, i) => (
-                              <tr key={i} style={{ background: i % 2 === 0 ? colors.card : colors.surface }}>
+                              <tr key={i} style={{ 
+                                background: getRowBackgroundColor(i),
+                                transition: 'background-color 0.2s ease'
+                              }}>
                                 <td style={{ borderBottom: `1px solid ${colors.border}`, padding: '12px 8px', color: colors.text }}>
                                   {row[columnIndices.date] ? excelDateToString(row[columnIndices.date]) : '-'}
                                 </td>
@@ -682,35 +715,42 @@ const AnalyticsPage = () => {
                               }, {})
                             )
                               .sort((a, b) => b[1].total - a[1].total)
-                              .map(([displayKey, stats], i) => (
-                                <tr key={displayKey} style={{ background: i % 2 === 0 ? colors.card : colors.surface }}>
-                                  <td style={{ borderBottom: `1px solid ${colors.border}`, padding: '12px 8px', color: colors.text }}>
-                                    <div>
-                                      <div>{displayKey}</div>
-                                      {stats.description !== 'Sin descripción' && stats.account !== 'Sin cuenta' && (
-                                        <div style={{ fontSize: '12px', color: colors.textSecondary, marginTop: '2px' }}>
-                                          Cuenta: {stats.account}
-                                        </div>
-                                      )}
-                                    </div>
-                                  </td>
-                                  <td style={{ borderBottom: `1px solid ${colors.border}`, padding: '12px 8px', color: colors.text }}>
-                                    <span style={{ 
-                                      padding: '4px 8px', 
-                                      borderRadius: '4px', 
-                                      fontSize: '12px',
-                                      background: colors.hover,
-                                      color: colors.text,
-                                    }}>
-                                      {stats.channel}
-                                    </span>
-                                  </td>
-                                  <td style={{ borderBottom: `1px solid ${colors.border}`, padding: '12px 8px', color: colors.text }}>
-                                    {formatCurrency(stats.total)}
-                                  </td>
-                                  <td style={{ borderBottom: `1px solid ${colors.border}`, padding: '12px 8px', color: colors.text }}>{stats.count}</td>
-                                </tr>
-                              ))}
+                              .map(([displayKey, stats], i) => {
+                                const channelColor = getChannelColor(stats.channel);
+                                return (
+                                  <tr key={displayKey} style={{ 
+                                    background: getRowBackgroundColor(i),
+                                    transition: 'background-color 0.2s ease'
+                                  }}>
+                                    <td style={{ borderBottom: `1px solid ${colors.border}`, padding: '12px 8px', color: colors.text }}>
+                                      <div>
+                                        <div>{displayKey}</div>
+                                        {stats.description !== 'Sin descripción' && stats.account !== 'Sin cuenta' && (
+                                          <div style={{ fontSize: '12px', color: colors.textSecondary, marginTop: '2px' }}>
+                                            Cuenta: {stats.account}
+                                          </div>
+                                        )}
+                                      </div>
+                                    </td>
+                                    <td style={{ borderBottom: `1px solid ${colors.border}`, padding: '12px 8px', color: colors.text }}>
+                                      <span style={{ 
+                                        padding: '4px 8px', 
+                                        borderRadius: '4px', 
+                                        fontSize: '12px',
+                                        background: channelColor.background,
+                                        color: channelColor.color,
+                                        fontWeight: '600'
+                                      }}>
+                                        {stats.channel}
+                                      </span>
+                                    </td>
+                                    <td style={{ borderBottom: `1px solid ${colors.border}`, padding: '12px 8px', color: colors.text }}>
+                                      {formatCurrency(stats.total)}
+                                    </td>
+                                    <td style={{ borderBottom: `1px solid ${colors.border}`, padding: '12px 8px', color: colors.text }}>{stats.count}</td>
+                                  </tr>
+                                );
+                              })}
                           </tbody>
                         </table>
                       </div>
@@ -763,7 +803,10 @@ const AnalyticsPage = () => {
                       </thead>
                       <tbody>
                         {providerStats.map((stat, i) => (
-                          <tr key={stat.provider} style={{ background: i % 2 === 0 ? colors.card : colors.surface }}>
+                          <tr key={stat.provider} style={{ 
+                            background: getRowBackgroundColor(i),
+                            transition: 'background-color 0.2s ease'
+                          }}>
                             <td style={{ borderBottom: `1px solid ${colors.border}`, padding: '12px 8px', color: colors.text, fontWeight: '500' }}>{stat.provider}</td>
                             <td style={{ borderBottom: `1px solid ${colors.border}`, padding: '12px 8px', color: colors.text }}>
                               {formatCurrency(stat.totalAmount)}
