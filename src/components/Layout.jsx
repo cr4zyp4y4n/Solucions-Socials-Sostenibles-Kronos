@@ -1,0 +1,225 @@
+import React, { useState } from 'react';
+import { motion } from 'framer-motion';
+import { 
+  Home, 
+  FileText, 
+  Users, 
+  Settings, 
+  BarChart2,
+  Filter,
+  Moon,
+  Sun
+} from 'feather-icons-react';
+import { useTheme } from './ThemeContext';
+import logo from '../assets/Logo Minimalist SSS Highest Opacity.PNG';
+import HomePage from './HomePage';
+import ProvidersPage from './ProvidersPage';
+import AnalyticsPage from './AnalyticsPage';
+import SettingsPage from './SettingsPage';
+
+const Layout = () => {
+  const [activeSection, setActiveSection] = useState('home');
+  const { isDarkMode, toggleTheme, colors } = useTheme();
+
+  const menuItems = [
+    { id: 'home', icon: Home, label: 'Inicio' },
+    { id: 'providers', icon: Users, label: 'Proveedores' },
+    { id: 'analytics', icon: BarChart2, label: 'Análisis' },
+    { id: 'settings', icon: Settings, label: 'Configuración' },
+  ];
+
+  // Renderiza el componente correspondiente
+  const renderSection = () => {
+    switch (activeSection) {
+      case 'home':
+        return <HomePage />;
+      case 'providers':
+        return <ProvidersPage />;
+      case 'analytics':
+        return <AnalyticsPage />;
+      case 'settings':
+        return <SettingsPage />;
+      default:
+        return <HomePage />;
+    }
+  };
+
+  return (
+    <div style={{
+      display: 'flex',
+      height: '100vh',
+      backgroundColor: colors.background,
+    }}>
+      {/* Sidebar */}
+      <motion.div
+        initial={{ x: -250 }}
+        animate={{ x: 0 }}
+        transition={{ duration: 0.3 }}
+        style={{
+          width: '250px',
+          backgroundColor: colors.sidebar,
+          borderRight: `1px solid ${colors.border}`,
+          padding: '0 0 20px 0',
+          display: 'flex',
+          flexDirection: 'column',
+        }}
+      >
+        {/* Logo y título */}
+        <div style={{
+          padding: '32px 20px 20px 20px',
+          borderBottom: `1px solid ${colors.border}`,
+          marginBottom: '20px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '12px',
+        }}>
+          <img src={logo} alt="Logo Solucions Socials" style={{ height: 44, width: 44, borderRadius: 8, objectFit: 'contain', background: colors.surface }} />
+          <h2 style={{
+            color: colors.primary,
+            fontSize: '25px',
+            fontWeight: 700,
+            margin: 0,
+            lineHeight: 1.1,
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+          }}>
+            SSS Kronos
+          </h2>
+        </div>
+
+        {/* Menu Items */}
+        <nav style={{ flex: 1 }}>
+          {menuItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = activeSection === item.id;
+            
+            return (
+              <motion.div
+                key={item.id}
+                whileHover={{ backgroundColor: colors.hover || 'rgba(64,64,64,0.7)' }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => setActiveSection(item.id)}
+                style={{
+                  padding: '12px 20px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '12px',
+                  borderLeft: isActive ? `3px solid ${colors.primary}` : '3px solid transparent',
+                  backgroundColor: isActive ? (colors.hover || 'rgba(64,64,64,0.7)') : colors.sidebar,
+                }}
+              >
+                <Icon 
+                  size={18} 
+                  color={isActive ? colors.primary : colors.textSecondary} 
+                />
+                <span style={{
+                  color: isActive ? colors.primary : colors.textSecondary,
+                  fontSize: '14px',
+                  fontWeight: isActive ? '500' : '400',
+                }}>
+                  {item.label}
+                </span>
+              </motion.div>
+            );
+          })}
+        </nav>
+      </motion.div>
+
+      {/* Main Content */}
+      <div style={{
+        flex: 1,
+        display: 'flex',
+        flexDirection: 'column',
+      }}>
+        {/* Header */}
+        <motion.header
+          initial={{ y: -20, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ duration: 0.3, delay: 0.1 }}
+          style={{
+            height: '60px',
+            backgroundColor: colors.header,
+            borderBottom: `1px solid ${colors.border}`,
+            display: 'flex',
+            alignItems: 'center',
+            padding: '0 30px',
+            justifyContent: 'space-between',
+          }}
+        >
+          <h1 style={{
+            fontSize: '20px',
+            fontWeight: '500',
+            color: colors.text,
+            margin: 0,
+          }}>
+            {menuItems.find(item => item.id === activeSection)?.label}
+          </h1>
+          
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '15px',
+          }}>
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={toggleTheme}
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                padding: '8px',
+                borderRadius: '6px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: colors.idoni,
+                transition: 'all 0.2s ease'
+              }}
+            >
+              {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
+            </motion.button>
+            <motion.button
+              whileHover={{ scale: 1.05, rotate: 60 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => setActiveSection('settings')}
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                padding: '8px',
+                borderRadius: '6px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: colors.textSecondary,
+                transition: 'all 0.2s ease'
+              }}
+            >
+              <Settings size={18} />
+            </motion.button>
+          </div>
+        </motion.header>
+
+        {/* Content Area */}
+        <motion.main
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.3, delay: 0.2 }}
+          style={{
+            flex: 1,
+            padding: '16px 16px 0 16px',
+            overflow: 'auto',
+            background: colors.background,
+          }}
+        >
+          {renderSection()}
+        </motion.main>
+      </div>
+    </div>
+  );
+};
+
+export default Layout; 
