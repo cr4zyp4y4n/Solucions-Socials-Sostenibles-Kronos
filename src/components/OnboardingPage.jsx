@@ -294,12 +294,14 @@ const OnboardingPage = ({ onComplete }) => {
 
   return (
     <div style={{
-      height: '100vh',
+      minHeight: '100vh',
+      width: '100vw',
+      overflow: 'auto',
       backgroundColor: colors.background,
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      padding: '20px',
+      padding: 0,
       position: 'relative'
     }}>
       <motion.div
@@ -309,12 +311,16 @@ const OnboardingPage = ({ onComplete }) => {
         style={{
           width: '100%',
           maxWidth: '500px',
+          maxHeight: 'calc(100vh - 40px)',
           backgroundColor: colors.surface,
           borderRadius: '16px',
           padding: '32px',
           boxShadow: '0 8px 32px rgba(0,0,0,0.1)',
           border: `1px solid ${colors.border}`,
-          position: 'relative'
+          position: 'relative',
+          display: 'flex',
+          flexDirection: 'column',
+          overflowY: 'auto',
         }}
       >
         {/* Header con logo */}
@@ -527,6 +533,18 @@ const OnboardingPage = ({ onComplete }) => {
           </div>
         </div>
       </motion.div>
+      {/* Responsive: reducir padding y maxWidth en móvil */}
+      <style>{`
+        @media (max-width: 600px) {
+          .onboarding-main {
+            max-width: 100vw !important;
+            padding: 10px !important;
+            border-radius: 0 !important;
+            min-height: 100vh !important;
+            max-height: 100vh !important;
+          }
+        }
+      `}</style>
     </div>
   );
 };

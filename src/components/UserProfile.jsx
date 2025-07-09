@@ -5,11 +5,10 @@ import { useTheme } from './ThemeContext';
 import { BarChart2, LogOut, Edit2, Save, X, User, Key, Mail, Calendar, Shield } from 'feather-icons-react';
 import OnboardingPage from './OnboardingPage';
 
-const UserProfile = () => {
+const UserProfile = ({ onShowOnboarding }) => {
   const { user, signOut } = useAuth();
   const { colors } = useTheme();
   const [editMode, setEditMode] = useState(false);
-  const [showOnboarding, setShowOnboarding] = useState(false);
   const [name, setName] = useState(user?.user_metadata?.name || '');
   const [role, setRole] = useState(user?.user_metadata?.role || 'user');
   const [saving, setSaving] = useState(false);
@@ -62,10 +61,6 @@ const UserProfile = () => {
       setPasswordError('Error inesperado.');
     }
   };
-
-  if (showOnboarding) {
-    return <OnboardingPage onComplete={() => setShowOnboarding(false)} />;
-  }
 
   // Avatar con iniciales
   const initials = (name || user?.email || 'U').split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
@@ -500,7 +495,7 @@ const UserProfile = () => {
         <motion.button
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
-          onClick={() => setShowOnboarding(true)}
+          onClick={onShowOnboarding}
           style={{
             flex: 1,
             padding: '12px 0',

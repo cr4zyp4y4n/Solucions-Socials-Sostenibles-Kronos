@@ -51,7 +51,7 @@ const Layout = () => {
       case 'settings':
         return <SettingsPage />;
       case 'profile':
-        return <UserProfile />;
+        return <UserProfile onShowOnboarding={() => setShowOnboarding(true)} />;
       default:
         return <HomePage />;
     }
@@ -198,57 +198,6 @@ const Layout = () => {
               </div>
             </div>
           </div>
-          {/* Botón para ver el tutorial/onboarding */}
-          <motion.button
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            onClick={() => setShowOnboarding(true)}
-            style={{
-              width: '100%',
-              padding: '10px 16px',
-              backgroundColor: colors.primary,
-              border: 'none',
-              borderRadius: '6px',
-              color: 'white',
-              fontSize: '13px',
-              fontWeight: '500',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              marginBottom: '10px',
-              marginTop: '2px',
-              gap: '8px',
-              userSelect: 'none',
-              boxShadow: '0 2px 8px rgba(76,175,80,0.08)'
-            }}
-          >
-            <BarChart2 size={15} style={{ marginRight: 4 }} />
-            Ver tutorial
-          </motion.button>
-          {/* Botón cerrar sesión */}
-          <motion.button
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            onClick={signOut}
-            style={{
-              width: '100%',
-              padding: '10px 16px',
-              backgroundColor: 'transparent',
-              border: `1px solid ${colors.error}`,
-              borderRadius: '6px',
-              color: colors.error,
-              fontSize: '13px',
-              fontWeight: '500',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <LogOut size={15} style={{ marginRight: 4 }} />
-            Cerrar sesión
-          </motion.button>
         </div>
       </motion.div>
 
