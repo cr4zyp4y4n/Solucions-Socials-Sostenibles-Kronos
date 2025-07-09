@@ -5,8 +5,12 @@ import { useTheme } from './ThemeContext';
 import { useCurrency } from './CurrencyContext';
 
 const AnalyticsPage = () => {
-  const { excelHeaders, excelData } = useDataContext();
+  const { 
+    solucionsHeaders, solucionsData, 
+    menjarHeaders, menjarData 
+  } = useDataContext();
   const { formatCurrency } = useCurrency();
+  const [selectedDataset, setSelectedDataset] = useState('solucions');
   const [selectedView, setSelectedView] = useState('general');
   const [selectedColumns, setSelectedColumns] = useState([]);
   const [selectedProvider, setSelectedProvider] = useState('');
@@ -15,8 +19,28 @@ const AnalyticsPage = () => {
   const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
   const [sergiSortConfig, setSergiSortConfig] = useState({ key: null, direction: 'asc' });
   const [channelSortConfig, setChannelSortConfig] = useState({ key: null, direction: 'asc' });
+  const [isChangingDataset, setIsChangingDataset] = useState(false);
   const tableRef = useRef(null);
   const { colors } = useTheme();
+
+  // Función para manejar el cambio de dataset con animación
+  const handleDatasetChange = (newDataset) => {
+    if (newDataset !== selectedDataset) {
+      setIsChangingDataset(true);
+      setTimeout(() => {
+        setSelectedDataset(newDataset);
+        // Limpiar filtros al cambiar de dataset
+        setSelectedProvider('');
+        setSelectedChannel('');
+        setExpandedProvider('');
+        setIsChangingDataset(false);
+      }, 100); // Pausa más corta para una transición más rápida
+    }
+  };
+
+  // Obtener los datos y headers del dataset seleccionado
+  const currentHeaders = selectedDataset === 'solucions' ? solucionsHeaders : menjarHeaders;
+  const currentData = selectedDataset === 'solucions' ? solucionsData : menjarData;
 
   // Función para manejar el ordenamiento
   const handleSort = (key) => {
@@ -48,7 +72,7 @@ const AnalyticsPage = () => {
   // Encontrar índices de columnas importantes
   const columnIndices = useMemo(() => {
     const indices = {};
-    excelHeaders.forEach((header, index) => {
+    currentHeaders.forEach((header, index) => {
       const headerLower = header.toLowerCase();
       if (headerLower.includes('proveïdor') || headerLower.includes('proveedor') || headerLower.includes('provider')) {
         indices.provider = index;
@@ -82,7 +106,7 @@ const AnalyticsPage = () => {
       }
     });
     return indices;
-  }, [excelHeaders]);
+  }, [currentHeaders]);
 
   // Función para ordenar datos de la vista General
   const sortData = (data, key, direction) => {
@@ -243,20 +267,20 @@ const AnalyticsPage = () => {
 
   // Extraer proveedores únicos
   const uniqueProviders = useMemo(() => {
-    if (!columnIndices.provider || excelData.length === 0) return [];
+    if (!columnIndices.provider || currentData.length === 0) return [];
     const providers = new Set();
-    excelData.forEach(row => {
+    currentData.forEach(row => {
       if (row[columnIndices.provider]) providers.add(row[columnIndices.provider]);
     });
     return Array.from(providers).sort();
-  }, [excelData, columnIndices.provider]);
+  }, [currentData, columnIndices.provider]);
 
   // Calcular estadísticas por proveedor
   const providerStats = useMemo(() => {
     if (!columnIndices.provider || !columnIndices.total) return [];
     
     const stats = {};
-    excelData.forEach(row => {
+    currentData.forEach(row => {
       const provider = row[columnIndices.provider];
       const total = parseFloat(row[columnIndices.total]) || 0;
       const pending = columnIndices.pending ? (parseFloat(row[columnIndices.pending]) || 0) : 0;
@@ -281,20 +305,32 @@ const AnalyticsPage = () => {
       provider,
       ...data
     })).sort((a, b) => b.totalAmount - a.totalAmount);
-  }, [excelData, columnIndices]);
+  }, [currentData, columnIndices]);
 
-  // Calcular totales por canal (Estructura, Catering, IDONI)
+  // Calcular totales por canal según el dataset
   const channelStats = useMemo(() => {
     if (!columnIndices.description && !columnIndices.account) return {};
     
-    const channels = {
-      'Estructura': { total: 0, count: 0 },
-      'Catering': { total: 0, count: 0 },
-      'IDONI': { total: 0, count: 0 },
-      'Otros': { total: 0, count: 0 }
-    };
+    let channels;
+    if (selectedDataset === 'solucions') {
+      channels = {
+        'Estructura': { total: 0, count: 0 },
+        'Catering': { total: 0, count: 0 },
+        'IDONI': { total: 0, count: 0 },
+        'Otros': { total: 0, count: 0 }
+      };
+    } else if (selectedDataset === 'menjar') {
+      channels = {
+        'OBRADOR': { total: 0, count: 0 },
+        'ESTRUCTURA': { total: 0, count: 0 },
+        'CATERING': { total: 0, count: 0 },
+        'Otros': { total: 0, count: 0 }
+      };
+    } else {
+      return {};
+    }
     
-    excelData.forEach(row => {
+    currentData.forEach(row => {
       const description = (row[columnIndices.description] || '').toLowerCase();
       const account = (row[columnIndices.account] || '').toLowerCase();
       const total = columnIndices.total ? (parseFloat(row[columnIndices.total]) || 0) : 0;
@@ -302,12 +338,22 @@ const AnalyticsPage = () => {
       // Buscar en descripción primero, si no encuentra nada, buscar en cuenta
       let channel = 'Otros';
       
-      if (description.includes('estructura') || account.includes('estructura')) {
-        channel = 'Estructura';
-      } else if (description.includes('catering') || account.includes('catering')) {
-        channel = 'Catering';
-      } else if (description.includes('idoni') || account.includes('idoni')) {
-        channel = 'IDONI';
+      if (selectedDataset === 'solucions') {
+        if (description.includes('estructura') || account.includes('estructura')) {
+          channel = 'Estructura';
+        } else if (description.includes('catering') || account.includes('catering')) {
+          channel = 'Catering';
+        } else if (description.includes('idoni') || account.includes('idoni')) {
+          channel = 'IDONI';
+        }
+      } else if (selectedDataset === 'menjar') {
+        if (description.includes('obrador') || account.includes('obrador')) {
+          channel = 'OBRADOR';
+        } else if (description.includes('estructura') || account.includes('estructura')) {
+          channel = 'ESTRUCTURA';
+        } else if (description.includes('catering') || account.includes('catering')) {
+          channel = 'CATERING';
+        }
       }
       
       channels[channel].total += total;
@@ -315,13 +361,13 @@ const AnalyticsPage = () => {
     });
     
     return channels;
-  }, [excelData, columnIndices]);
+  }, [currentData, columnIndices, selectedDataset]);
 
   // Filtrar y ordenar datos según vista seleccionada
   const filteredData = useMemo(() => {
-    let data = excelData;
+    let data = currentData;
     if (selectedProvider && columnIndices.provider) {
-      data = excelData.filter(row => row[columnIndices.provider] === selectedProvider);
+      data = currentData.filter(row => row[columnIndices.provider] === selectedProvider);
     }
     
     // Aplicar ordenamiento si hay configuración
@@ -330,32 +376,50 @@ const AnalyticsPage = () => {
     }
     
     return data;
-  }, [excelData, selectedProvider, columnIndices.provider, sortConfig]);
+  }, [currentData, selectedProvider, columnIndices.provider, sortConfig]);
 
   // Filtrar datos por canal seleccionado
   const channelFilteredData = useMemo(() => {
     if (!selectedChannel || !columnIndices.description || !columnIndices.account) return [];
     
-    return excelData.filter(row => {
+    return currentData.filter(row => {
       const description = (row[columnIndices.description] || '').toLowerCase();
       const account = (row[columnIndices.account] || '').toLowerCase();
       
-      switch (selectedChannel) {
-        case 'Estructura':
-          return description.includes('estructura') || account.includes('estructura');
-        case 'Catering':
-          return description.includes('catering') || account.includes('catering');
-        case 'IDONI':
-          return description.includes('idoni') || account.includes('idoni');
-        case 'Otros':
-          return !description.includes('estructura') && !description.includes('catering') && 
-                 !description.includes('idoni') && !account.includes('estructura') && 
-                 !account.includes('catering') && !account.includes('idoni');
-        default:
-          return false;
+      if (selectedDataset === 'solucions') {
+        switch (selectedChannel) {
+          case 'Estructura':
+            return description.includes('estructura') || account.includes('estructura');
+          case 'Catering':
+            return description.includes('catering') || account.includes('catering');
+          case 'IDONI':
+            return description.includes('idoni') || account.includes('idoni');
+          case 'Otros':
+            return !description.includes('estructura') && !description.includes('catering') && 
+                   !description.includes('idoni') && !account.includes('estructura') && 
+                   !account.includes('catering') && !account.includes('idoni');
+          default:
+            return false;
+        }
+      } else if (selectedDataset === 'menjar') {
+        switch (selectedChannel) {
+          case 'OBRADOR':
+            return description.includes('obrador') || account.includes('obrador');
+          case 'ESTRUCTURA':
+            return description.includes('estructura') || account.includes('estructura');
+          case 'CATERING':
+            return description.includes('catering') || account.includes('catering');
+          case 'Otros':
+            return !description.includes('obrador') && !description.includes('estructura') && 
+                   !description.includes('catering') && !account.includes('obrador') &&
+                   !account.includes('estructura') && !account.includes('catering');
+          default:
+            return false;
+        }
       }
+      return false;
     });
-  }, [excelData, selectedChannel, columnIndices]);
+  }, [currentData, selectedChannel, columnIndices, selectedDataset]);
 
   // Columnas disponibles para selección
   const availableColumns = [
@@ -377,9 +441,13 @@ const AnalyticsPage = () => {
     }
   }, [availableColumns, selectedColumns.length]);
 
+  const sergiChannelsText = selectedDataset === 'solucions'
+    ? '(Estructura, Catering, IDONI)'
+    : '(Obrador, Estructura, Catering)';
+
   const views = [
     { id: 'general', name: 'Vista General', description: 'Todas las facturas con columnas personalizables' },
-    { id: 'sergi', name: 'Vista Sergi', description: 'Análisis por canales (Estructura, Catering, IDONI)' },
+    { id: 'sergi', name: 'Vista Sergi', description: `Análisis por canales ${sergiChannelsText}` },
     { id: 'bruno', name: 'Vista Bruno', description: 'Análisis de deudas por proveedor' }
   ];
 
@@ -408,25 +476,45 @@ const AnalyticsPage = () => {
   }
 
   // --- Unificar lógica de filtrado de facturas por canal ---
-  function getChannelRows(channel, excelData, columnIndices) {
+  function getChannelRows(channel, data, columnIndices) {
     if (!channel || !columnIndices.description || !columnIndices.account) return [];
-    return excelData.filter(row => {
+    return data.filter(row => {
       const description = (row[columnIndices.description] || '').toLowerCase();
       const account = (row[columnIndices.account] || '').toLowerCase();
-      switch (channel) {
-        case 'Estructura':
-          return description.includes('estructura') || account.includes('estructura');
-        case 'Catering':
-          return description.includes('catering') || account.includes('catering');
-        case 'IDONI':
-          return description.includes('idoni') || account.includes('idoni');
-        case 'Otros':
-          return !description.includes('estructura') && !description.includes('catering') &&
-                 !description.includes('idoni') && !account.includes('estructura') &&
-                 !account.includes('catering') && !account.includes('idoni');
-        default:
-          return false;
+      
+      // Canales específicos según el dataset
+      if (selectedDataset === 'solucions') {
+        switch (channel) {
+          case 'Estructura':
+            return description.includes('estructura') || account.includes('estructura');
+          case 'Catering':
+            return description.includes('catering') || account.includes('catering');
+          case 'IDONI':
+            return description.includes('idoni') || account.includes('idoni');
+          case 'Otros':
+            return !description.includes('estructura') && !description.includes('catering') &&
+                   !description.includes('idoni') && !account.includes('estructura') &&
+                   !account.includes('catering') && !account.includes('idoni');
+          default:
+            return false;
+        }
+      } else if (selectedDataset === 'menjar') {
+        switch (channel) {
+          case 'OBRADOR':
+            return description.includes('obrador') || account.includes('obrador');
+          case 'ESTRUCTURA':
+            return description.includes('estructura') || account.includes('estructura');
+          case 'CATERING':
+            return description.includes('catering') || account.includes('catering');
+          case 'Otros':
+            return !description.includes('obrador') && !description.includes('estructura') && 
+                   !description.includes('catering') && !account.includes('obrador') &&
+                   !account.includes('estructura') && !account.includes('catering');
+          default:
+            return false;
+        }
       }
+      return false;
     });
   }
 
@@ -457,6 +545,12 @@ const AnalyticsPage = () => {
         return { background: 'rgba(76, 175, 80, 0.15)', color: '#2E7D32' }; // Verde apastelado (catering)
       case 'IDONI':
         return { background: 'rgba(233, 30, 99, 0.15)', color: '#C2185B' }; // Rosa IDONI apastelado
+      case 'OBRADOR':
+        return { background: 'rgba(255, 193, 7, 0.15)', color: '#F57F17' }; // Amarillo apastelado (obrador)
+      case 'ESTRUCTURA':
+        return { background: 'rgba(255, 152, 0, 0.15)', color: '#E65100' }; // Naranja apastelado (estructura)
+      case 'CATERING':
+        return { background: 'rgba(76, 175, 80, 0.15)', color: '#2E7D32' }; // Verde apastelado (catering)
       case 'Otros':
         return { background: 'rgba(158, 158, 158, 0.15)', color: '#616161' }; // Gris apastelado
       default:
@@ -521,22 +615,22 @@ const AnalyticsPage = () => {
   // Calcular total facturado y total a pagar (solo pendientes o vencidas)
   const totalFacturado = useMemo(() => {
     if (!columnIndices.total) return 0;
-    return excelData.reduce((sum, row) => {
+    return currentData.reduce((sum, row) => {
       const total = parseFloat(row[columnIndices.total]) || 0;
       return sum + total;
     }, 0);
-  }, [excelData, columnIndices]);
+  }, [currentData, columnIndices]);
 
   const totalAPagar = useMemo(() => {
     if (!columnIndices.total || columnIndices.estat === undefined) return 0;
-    return excelData.reduce((sum, row) => {
+    return currentData.reduce((sum, row) => {
       if (isPending(row, columnIndices)) {
         const total = parseFloat(row[columnIndices.total]) || 0;
         return sum + total;
       }
       return sum;
     }, 0);
-  }, [excelData, columnIndices]);
+  }, [currentData, columnIndices]);
 
   return (
     <motion.div
@@ -554,6 +648,166 @@ const AnalyticsPage = () => {
       >
         Análisis
       </motion.h2>
+
+      {/* Selector de Dataset */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.15 }}
+        style={{
+          marginBottom: '28px',
+        }}
+      >
+        <h3 style={{ 
+          margin: '0 0 20px 0', 
+          color: colors.text, 
+          fontSize: '20px', 
+          fontWeight: '600' 
+        }}>
+          Seleccionar Dataset
+        </h3>
+        <div style={{
+          display: 'flex',
+          gap: '18px',
+          flexWrap: 'wrap',
+        }}>
+          <motion.div
+            whileHover={{ scale: 1.04, boxShadow: selectedDataset === 'solucions' ? `0 4px 16px 0 ${colors.primary}33` : `0 2px 8px 0 ${colors.primary}22` }}
+            whileTap={{ scale: 0.98 }}
+            onClick={() => handleDatasetChange('solucions')}
+            style={{
+              minWidth: 200,
+              flex: '1 1 200px',
+              background: colors.card,
+              borderRadius: 12,
+              boxShadow: selectedDataset === 'solucions' ? `0 4px 16px 0 ${colors.primary}33` : `0 2px 8px 0 rgba(0,0,0,0.04)`,
+              border: selectedDataset === 'solucions' ? `2.5px solid ${colors.primary}` : `1.5px solid ${colors.border}`,
+              color: selectedDataset === 'solucions' ? colors.primary : colors.text,
+              cursor: isChangingDataset ? 'not-allowed' : 'pointer',
+              padding: '22px 18px',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'flex-start',
+              justifyContent: 'center',
+              transition: 'all 0.18s',
+              fontWeight: selectedDataset === 'solucions' ? 600 : 400,
+              fontSize: 16,
+              outline: selectedDataset === 'solucions' ? `2px solid ${colors.primary}` : 'none',
+              position: 'relative',
+              opacity: isChangingDataset ? 0.6 : 1
+            }}
+          >
+            {/* Indicador de carga para Solucions */}
+            <AnimatePresence>
+              {isChangingDataset && selectedDataset === 'solucions' && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  style={{
+                    position: 'absolute',
+                    top: '50%',
+                    right: '18px',
+                    transform: 'translateY(-50%)',
+                    zIndex: 10
+                  }}
+                >
+                  <motion.div
+                    animate={{ rotate: 360 }}
+                    transition={{ duration: 0.6, repeat: Infinity, ease: 'linear' }}
+                    style={{
+                      width: '16px',
+                      height: '16px',
+                      border: `2px solid ${colors.border}`,
+                      borderTop: `2px solid ${colors.primary}`,
+                      borderRadius: '50%'
+                    }}
+                  />
+                </motion.div>
+              )}
+            </AnimatePresence>
+            
+            <span style={{ fontSize: 17, fontWeight: 600, marginBottom: 6 }}>
+              Solucions Socials
+            </span>
+            <span style={{ 
+              fontSize: 13, 
+              color: selectedDataset === 'solucions' ? colors.primary : colors.textSecondary, 
+              marginTop: 2 
+            }}>
+              {solucionsData.length > 0 ? `${solucionsData.length} facturas cargadas` : 'No hay datos cargados'}
+            </span>
+          </motion.div>
+
+          <motion.div
+            whileHover={{ scale: 1.04, boxShadow: selectedDataset === 'menjar' ? `0 4px 16px 0 ${colors.primary}33` : `0 2px 8px 0 ${colors.primary}22` }}
+            whileTap={{ scale: 0.98 }}
+            onClick={() => handleDatasetChange('menjar')}
+            style={{
+              minWidth: 200,
+              flex: '1 1 200px',
+              background: colors.card,
+              borderRadius: 12,
+              boxShadow: selectedDataset === 'menjar' ? `0 4px 16px 0 ${colors.primary}33` : `0 2px 8px 0 rgba(0,0,0,0.04)`,
+              border: selectedDataset === 'menjar' ? `2.5px solid ${colors.primary}` : `1.5px solid ${colors.border}`,
+              color: selectedDataset === 'menjar' ? colors.primary : colors.text,
+              cursor: isChangingDataset ? 'not-allowed' : 'pointer',
+              padding: '22px 18px',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'flex-start',
+              justifyContent: 'center',
+              transition: 'all 0.18s',
+              fontWeight: selectedDataset === 'menjar' ? 600 : 400,
+              fontSize: 16,
+              outline: selectedDataset === 'menjar' ? `2px solid ${colors.primary}` : 'none',
+              position: 'relative',
+              opacity: isChangingDataset ? 0.6 : 1
+            }}
+          >
+            {/* Indicador de carga para Menjar */}
+            <AnimatePresence>
+              {isChangingDataset && selectedDataset === 'menjar' && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  style={{
+                    position: 'absolute',
+                    top: '50%',
+                    right: '18px',
+                    transform: 'translateY(-50%)',
+                    zIndex: 10
+                  }}
+                >
+                  <motion.div
+                    animate={{ rotate: 360 }}
+                    transition={{ duration: 0.6, repeat: Infinity, ease: 'linear' }}
+                    style={{
+                      width: '16px',
+                      height: '16px',
+                      border: `2px solid ${colors.border}`,
+                      borderTop: `2px solid ${colors.primary}`,
+                      borderRadius: '50%'
+                    }}
+                  />
+                </motion.div>
+              )}
+            </AnimatePresence>
+            
+            <span style={{ fontSize: 17, fontWeight: 600, marginBottom: 6 }}>
+              Menjar d'Hort
+            </span>
+            <span style={{ 
+              fontSize: 13, 
+              color: selectedDataset === 'menjar' ? colors.primary : colors.textSecondary, 
+              marginTop: 2 
+            }}>
+              {menjarData.length > 0 ? `${menjarData.length} facturas cargadas` : 'No hay datos cargados'}
+            </span>
+          </motion.div>
+        </div>
+      </motion.div>
 
       {/* Tarjetas de selección de vista */}
       <div style={{
@@ -598,22 +852,27 @@ const AnalyticsPage = () => {
         })}
       </div>
 
-      {excelHeaders.length === 0 ? (
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, delay: 0.2 }}
-          style={{ color: colors.textSecondary, fontSize: 18, marginTop: 40 }}
-        >
-          No hay datos importados. Por favor, importa un archivo Excel en la sección correspondiente.
-        </motion.div>
-      ) : (
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, delay: 0.2 }}
-          style={{ display: 'flex', flexDirection: 'column', height: 'calc(100% - 80px)', gap: '24px' }}
-        >
+      <AnimatePresence mode="wait">
+        {currentHeaders.length === 0 ? (
+          <motion.div
+            key="no-data"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            transition={{ duration: 0.2, ease: 'easeOut' }}
+            style={{ color: colors.textSecondary, fontSize: 18, marginTop: 40 }}
+          >
+            No hay datos importados para {selectedDataset === 'solucions' ? 'Solucions Socials' : 'Menjar d\'Hort'}. Por favor, importa un archivo Excel en la sección correspondiente.
+          </motion.div>
+        ) : (
+          <motion.div
+            key={`content-${selectedDataset}`}
+            initial={{ opacity: 0, y: 20, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -20, scale: 0.98 }}
+            transition={{ duration: 0.25, ease: 'easeOut' }}
+            style={{ display: 'flex', flexDirection: 'column', height: 'calc(100% - 80px)', gap: '24px' }}
+          >
           {/* Descripción de la vista seleccionada */}
           <div style={{ marginBottom: 0, color: colors.textSecondary, fontSize: 15, minHeight: 22 }}>
             {views.find(v => v.id === selectedView)?.description}
@@ -750,6 +1009,15 @@ const AnalyticsPage = () => {
                   Análisis por Canales
                 </motion.h3>
                 
+                <div style={{
+                  fontSize: '16px',
+                  color: colors.textSecondary,
+                  margin: '32px 0 12px 0',
+                  fontWeight: 500
+                }}>
+                  Análisis por canales <span style={{ color: colors.primary }}>{sergiChannelsText}</span>
+                </div>
+
                 {/* Animación de cajas de canales */}
                 <motion.div
                   initial="hidden"
@@ -762,7 +1030,7 @@ const AnalyticsPage = () => {
                 >
                   {Object.entries(channelStats).map(([channel, stats]) => {
                     const isSelected = selectedChannel === channel;
-                    const channelRows = getChannelRows(channel, excelData, columnIndices);
+                    const channelRows = getChannelRows(channel, currentData, columnIndices);
                     // Fondo especial para modo claro
                     const isLight = colors.background === '#fafafa' || colors.background === '#fff' || colors.background === '#ffffff';
                     const cardBg = isLight ? '#F7F7F7' : '#2A2A2A';
@@ -843,42 +1111,42 @@ const AnalyticsPage = () => {
                           <thead>
                             <tr>
                               <SortableHeader
-                                label={excelHeaders[columnIndices.date] || 'Fecha'}
+                                label={currentHeaders[columnIndices.date] || 'Fecha'}
                                 sortKey="date"
                                 currentSortKey={channelSortConfig.key}
                                 currentDirection={channelSortConfig.direction}
                                 onSort={handleChannelSort}
                               />
                               <SortableHeader
-                                label={excelHeaders[columnIndices.invoiceNumber] || 'Número'}
+                                label={currentHeaders[columnIndices.invoiceNumber] || 'Número'}
                                 sortKey="invoiceNumber"
                                 currentSortKey={channelSortConfig.key}
                                 currentDirection={channelSortConfig.direction}
                                 onSort={handleChannelSort}
                               />
                               <SortableHeader
-                                label={excelHeaders[columnIndices.provider] || 'Proveedor'}
+                                label={currentHeaders[columnIndices.provider] || 'Proveedor'}
                                 sortKey="provider"
                                 currentSortKey={channelSortConfig.key}
                                 currentDirection={channelSortConfig.direction}
                                 onSort={handleChannelSort}
                               />
                               <SortableHeader
-                                label={excelHeaders[columnIndices.description] || 'Descripción'}
+                                label={currentHeaders[columnIndices.description] || 'Descripción'}
                                 sortKey="description"
                                 currentSortKey={channelSortConfig.key}
                                 currentDirection={channelSortConfig.direction}
                                 onSort={handleChannelSort}
                               />
                               <SortableHeader
-                                label={excelHeaders[columnIndices.account] || 'Cuenta'}
+                                label={currentHeaders[columnIndices.account] || 'Cuenta'}
                                 sortKey="account"
                                 currentSortKey={channelSortConfig.key}
                                 currentDirection={channelSortConfig.direction}
                                 onSort={handleChannelSort}
                               />
                               <SortableHeader
-                                label={excelHeaders[columnIndices.total] || 'Total'}
+                                label={currentHeaders[columnIndices.total] || 'Total'}
                                 sortKey="total"
                                 currentSortKey={channelSortConfig.key}
                                 currentDirection={channelSortConfig.direction}
@@ -950,7 +1218,7 @@ const AnalyticsPage = () => {
                           color: colors.success,
                           fontWeight: '500'
                         }}>
-                          {excelData.length} facturas encontradas
+                          {currentData.length} facturas encontradas
                         </span>
                       </div>
                       <div style={{ overflowX: 'auto' }}>
@@ -989,7 +1257,7 @@ const AnalyticsPage = () => {
                           </thead>
                           <tbody>
                             {(() => {
-                              const groupedData = excelData.reduce((acc, row) => {
+                              const groupedData = currentData.reduce((acc, row) => {
                                 const description = row[columnIndices.description] || 'Sin descripción';
                                 const account = row[columnIndices.account] || 'Sin cuenta';
                                 const total = columnIndices.total ? (parseFloat(row[columnIndices.total]) || 0) : 0;
@@ -997,9 +1265,15 @@ const AnalyticsPage = () => {
                                 const accountLower = account.toLowerCase();
                                 
                                 let channel = 'Otros';
-                                if (descLower.includes('estructura') || accountLower.includes('estructura')) channel = 'Estructura';
-                                else if (descLower.includes('catering') || accountLower.includes('catering')) channel = 'Catering';
-                                else if (descLower.includes('idoni') || accountLower.includes('idoni')) channel = 'IDONI';
+                                if (selectedDataset === 'solucions') {
+                                  if (descLower.includes('estructura') || accountLower.includes('estructura')) channel = 'Estructura';
+                                  else if (descLower.includes('catering') || accountLower.includes('catering')) channel = 'Catering';
+                                  else if (descLower.includes('idoni') || accountLower.includes('idoni')) channel = 'IDONI';
+                                } else if (selectedDataset === 'menjar') {
+                                  if (descLower.includes('obrador') || accountLower.includes('obrador')) channel = 'OBRADOR';
+                                  else if (descLower.includes('estructura') || accountLower.includes('estructura')) channel = 'ESTRUCTURA';
+                                  else if (descLower.includes('catering') || accountLower.includes('catering')) channel = 'CATERING';
+                                }
                                 
                                 // Usar descripción como clave, pero mostrar cuenta si la descripción está vacía
                                 const displayKey = description === 'Sin descripción' ? account : description;
@@ -1316,6 +1590,7 @@ const AnalyticsPage = () => {
           </div>
         </motion.div>
       )}
+      </AnimatePresence>
     </motion.div>
   );
 };

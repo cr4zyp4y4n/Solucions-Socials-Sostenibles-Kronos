@@ -17,7 +17,11 @@ import { useCurrency } from './CurrencyContext';
 
 const SettingsPage = () => {
   const { colors } = useTheme();
-  const { excelData, excelHeaders, clearData } = useDataContext();
+  const { 
+    solucionsData, solucionsHeaders, clearSolucionsData,
+    menjarData, menjarHeaders, clearMenjarData,
+    clearAllData
+  } = useDataContext();
   const { currency, setCurrency, currencies, loading, lastUpdate, refreshRates } = useCurrency();
   const [showAlert, setShowAlert] = useState(false);
   const [alertMessage, setAlertMessage] = useState('');
@@ -43,38 +47,80 @@ const SettingsPage = () => {
     showAlertMessage('Tasas de cambio actualizadas', 'success');
   };
 
-  const handleClearData = () => {
-    if (window.confirm('¿Estás seguro de que quieres borrar todos los datos? Esta acción no se puede deshacer.')) {
-      clearData();
-      showAlertMessage('Datos borrados correctamente', 'success');
+  const handleClearSolucionsData = () => {
+    if (window.confirm('¿Estás seguro de que quieres borrar todos los datos de Solucions Socials? Esta acción no se puede deshacer.')) {
+      clearSolucionsData();
+      showAlertMessage('Datos de Solucions Socials borrados correctamente', 'success');
     }
   };
 
-  const handleExportData = () => {
-    if (excelData.length === 0) {
-      showAlertMessage('No hay datos para exportar', 'error');
+  const handleClearMenjarData = () => {
+    if (window.confirm('¿Estás seguro de que quieres borrar todos los datos de Menjar d\'Hort? Esta acción no se puede deshacer.')) {
+      clearMenjarData();
+      showAlertMessage('Datos de Menjar d\'Hort borrados correctamente', 'success');
+    }
+  };
+
+  const handleClearAllData = () => {
+    if (window.confirm('¿Estás seguro de que quieres borrar TODOS los datos (Solucions Socials y Menjar d\'Hort)? Esta acción no se puede deshacer.')) {
+      clearAllData();
+      showAlertMessage('Todos los datos borrados correctamente', 'success');
+    }
+  };
+
+  const handleExportSolucionsData = () => {
+    if (solucionsData.length === 0) {
+      showAlertMessage('No hay datos de Solucions Socials para exportar', 'error');
       return;
     }
 
     try {
       // Crear CSV
-      const headers = excelHeaders.join(',');
-      const csvContent = [headers, ...excelData.map(row => row.join(','))].join('\n');
+      const headers = solucionsHeaders.join(',');
+      const csvContent = [headers, ...solucionsData.map(row => row.join(','))].join('\n');
       
       // Crear y descargar archivo
       const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
       const link = document.createElement('a');
       const url = URL.createObjectURL(blob);
       link.setAttribute('href', url);
-      link.setAttribute('download', `datos_exportados_${new Date().toISOString().split('T')[0]}.csv`);
+      link.setAttribute('download', `solucions_socials_exportados_${new Date().toISOString().split('T')[0]}.csv`);
       link.style.visibility = 'hidden';
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       
-      showAlertMessage('Datos exportados correctamente', 'success');
+      showAlertMessage('Datos de Solucions Socials exportados correctamente', 'success');
     } catch (error) {
-      showAlertMessage('Error al exportar datos', 'error');
+      showAlertMessage('Error al exportar datos de Solucions Socials', 'error');
+    }
+  };
+
+  const handleExportMenjarData = () => {
+    if (menjarData.length === 0) {
+      showAlertMessage('No hay datos de Menjar d\'Hort para exportar', 'error');
+      return;
+    }
+
+    try {
+      // Crear CSV
+      const headers = menjarHeaders.join(',');
+      const csvContent = [headers, ...menjarData.map(row => row.join(','))].join('\n');
+      
+      // Crear y descargar archivo
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      const url = URL.createObjectURL(blob);
+      link.setAttribute('href', url);
+      link.setAttribute('download', `menjar_dhort_exportados_${new Date().toISOString().split('T')[0]}.csv`);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      showAlertMessage('Datos de Menjar d\'Hort exportados correctamente', 'success');
+    } catch (error) {
+      showAlertMessage('Error al exportar datos de Menjar d\'Hort', 'error');
     }
   };
 
@@ -152,23 +198,57 @@ const SettingsPage = () => {
       ]
     },
     {
-      title: 'Gestión de Datos',
+      title: 'Gestión de Datos - Solucions Socials',
       items: [
         {
           icon: Trash2,
-          title: 'Borrar todos los datos',
-          description: 'Elimina todos los datos importados de la aplicación',
-          action: handleClearData,
+          title: 'Borrar datos de Solucions Socials',
+          description: 'Elimina todos los datos de Solucions Socials',
+          action: handleClearSolucionsData,
           color: colors.error,
-          disabled: excelData.length === 0
+          disabled: solucionsData.length === 0
         },
         {
           icon: Download,
-          title: 'Exportar datos',
-          description: 'Descarga los datos actuales en formato CSV',
-          action: handleExportData,
+          title: 'Exportar datos de Solucions Socials',
+          description: 'Descarga los datos de Solucions Socials en formato CSV',
+          action: handleExportSolucionsData,
           color: colors.primary,
-          disabled: excelData.length === 0
+          disabled: solucionsData.length === 0
+        }
+      ]
+    },
+    {
+      title: 'Gestión de Datos - Menjar d\'Hort',
+      items: [
+        {
+          icon: Trash2,
+          title: 'Borrar datos de Menjar d\'Hort',
+          description: 'Elimina todos los datos de Menjar d\'Hort',
+          action: handleClearMenjarData,
+          color: colors.error,
+          disabled: menjarData.length === 0
+        },
+        {
+          icon: Download,
+          title: 'Exportar datos de Menjar d\'Hort',
+          description: 'Descarga los datos de Menjar d\'Hort en formato CSV',
+          action: handleExportMenjarData,
+          color: colors.primary,
+          disabled: menjarData.length === 0
+        }
+      ]
+    },
+    {
+      title: 'Gestión de Datos - General',
+      items: [
+        {
+          icon: Trash2,
+          title: 'Borrar TODOS los datos',
+          description: 'Elimina todos los datos de Solucions Socials y Menjar d\'Hort',
+          action: handleClearAllData,
+          color: colors.error,
+          disabled: solucionsData.length === 0 && menjarData.length === 0
         }
       ]
     },

@@ -47,15 +47,15 @@ function App() {
     <ThemeProvider>
       <DataProvider>
         <CurrencyProvider>
-          <div>
-            <AnimatePresence mode="wait">
-              {showSplash ? (
-                <SplashScreen key="splash" onComplete={handleSplashComplete} />
-              ) : (
-                <MainApp key="main" />
-              )}
-            </AnimatePresence>
-          </div>
+    <div>
+      <AnimatePresence mode="wait">
+        {showSplash ? (
+          <SplashScreen key="splash" onComplete={handleSplashComplete} />
+        ) : (
+          <MainApp key="main" />
+        )}
+      </AnimatePresence>
+    </div>
         </CurrencyProvider>
       </DataProvider>
     </ThemeProvider>

@@ -119,7 +119,11 @@ const HomePage = () => {
   const [alertMessage, setAlertMessage] = useState('');
   const [alertType, setAlertType] = useState('success');
   const fileInputRef = useRef();
-  const { excelHeaders, setExcelHeaders, excelData, setExcelData } = useDataContext();
+  const menjarFileInputRef = useRef();
+  const { 
+    solucionsHeaders, setSolucionsHeaders, solucionsData, setSolucionsData,
+    menjarHeaders, setMenjarHeaders, menjarData, setMenjarData
+  } = useDataContext();
   const { colors } = useTheme();
   const { formatCurrency } = useCurrency();
 
@@ -168,8 +172,8 @@ const HomePage = () => {
     return true;
   }
 
-  // Función para manejar la importación de archivos
-  const handleFileImport = (file) => {
+  // Función para manejar la importación de archivos de Solucions Socials
+  const handleSolucionsFileImport = (file) => {
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
@@ -183,33 +187,81 @@ const HomePage = () => {
         // Filtrar filas válidas
         const rawRows = json.slice(bestHeaderIdx + 1);
         const filteredRows = rawRows.filter(row => isValidRow(row, headers));
-        setExcelHeaders(headers);
-        setExcelData(filteredRows);
+        setSolucionsHeaders(headers);
+        setSolucionsData(filteredRows);
         const rowCount = filteredRows.length;
-        showAlert(`Excel cargado correctamente. Se importaron ${rowCount} filas de datos.`, 'success');
+        showAlert(`Excel de Solucions Socials cargado correctamente. Se importaron ${rowCount} filas de datos.`, 'success');
       } catch (error) {
-        showAlert('Error al procesar el archivo Excel. Asegúrate de que el formato sea correcto.', 'error');
+        showAlert('Error al procesar el archivo Excel de Solucions Socials. Asegúrate de que el formato sea correcto.', 'error');
       }
     };
     reader.onerror = () => {
-      showAlert('Error al leer el archivo. Inténtalo de nuevo.', 'error');
+      showAlert('Error al leer el archivo de Solucions Socials. Inténtalo de nuevo.', 'error');
     };
     reader.readAsArrayBuffer(file);
   };
 
-  // Función para manejar la selección de archivo
-  const handleFileSelect = () => {
+  // Función para manejar la importación de archivos de Menjar d'Hort
+  const handleMenjarFileImport = (file) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = new Uint8Array(e.target.result);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        const json = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+        const bestHeaderIdx = findBestHeaderRow(json);
+        const headers = json[bestHeaderIdx] || [];
+        // Filtrar filas válidas
+        const rawRows = json.slice(bestHeaderIdx + 1);
+        const filteredRows = rawRows.filter(row => isValidRow(row, headers));
+        setMenjarHeaders(headers);
+        setMenjarData(filteredRows);
+        const rowCount = filteredRows.length;
+        showAlert(`Excel de Menjar d'Hort cargado correctamente. Se importaron ${rowCount} filas de datos.`, 'success');
+      } catch (error) {
+        showAlert('Error al procesar el archivo Excel de Menjar d\'Hort. Asegúrate de que el formato sea correcto.', 'error');
+      }
+    };
+    reader.onerror = () => {
+      showAlert('Error al leer el archivo de Menjar d\'Hort. Inténtalo de nuevo.', 'error');
+    };
+    reader.readAsArrayBuffer(file);
+  };
+
+  // Función para manejar la selección de archivo de Solucions Socials
+  const handleSolucionsFileSelect = () => {
     fileInputRef.current.click();
   };
 
-  // Función para manejar el cambio de archivo
-  const handleFileChange = (e) => {
+  // Función para manejar la selección de archivo de Menjar d'Hort
+  const handleMenjarFileSelect = () => {
+    menjarFileInputRef.current.click();
+  };
+
+  // Función para manejar el cambio de archivo de Solucions Socials
+  const handleSolucionsFileChange = (e) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
       if (file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' || 
           file.type === 'application/vnd.ms-excel' ||
           file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
-        handleFileImport(file);
+        handleSolucionsFileImport(file);
+      } else {
+        showAlert('Por favor selecciona un archivo Excel válido (.xlsx o .xls)', 'error');
+      }
+    }
+  };
+
+  // Función para manejar el cambio de archivo de Menjar d'Hort
+  const handleMenjarFileChange = (e) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      if (file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' || 
+          file.type === 'application/vnd.ms-excel' ||
+          file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+        handleMenjarFileImport(file);
       } else {
         showAlert('Por favor selecciona un archivo Excel válido (.xlsx o .xls)', 'error');
       }
@@ -217,18 +269,9 @@ const HomePage = () => {
   };
 
   // Funciones para los otros botones
-  const handleViewProviders = () => {
-    if (excelData.length === 0) {
-      showAlert('Primero debes importar un archivo Excel para ver los proveedores.', 'error');
-      return;
-    }
-    // Aquí podrías navegar a la página de proveedores o mostrar un modal
-    showAlert('Redirigiendo a la sección de proveedores...', 'success');
-  };
-
   const handleViewAnalytics = () => {
-    if (excelData.length === 0) {
-      showAlert('Primero debes importar un archivo Excel para ver los análisis.', 'error');
+    if (solucionsData.length === 0 && menjarData.length === 0) {
+      showAlert('Primero debes importar al menos un archivo Excel para ver los análisis.', 'error');
       return;
     }
     // Aquí podrías navegar a la página de análisis o mostrar un modal
@@ -237,7 +280,9 @@ const HomePage = () => {
 
   // Calcular estadísticas reales
   const calculateStats = () => {
-    if (excelData.length === 0) {
+    const totalData = [...solucionsData, ...menjarData];
+    
+    if (totalData.length === 0) {
       return [
         { icon: Users, label: 'Total Proveedores', value: '0', color: colors.primary },
         { icon: FileText, label: 'Facturas Procesadas', value: '0', color: '#2196F3' },
@@ -246,14 +291,16 @@ const HomePage = () => {
       ];
     }
 
-    const providerIndex = excelHeaders.findIndex(h => h === 'Proveïdor');
-    const totalIndex = excelHeaders.findIndex(h => h === 'Total');
+    // Combinar headers de ambos datasets
+    const allHeaders = [...solucionsHeaders, ...menjarHeaders];
+    const providerIndex = allHeaders.findIndex(h => h === 'Proveïdor');
+    const totalIndex = allHeaders.findIndex(h => h === 'Total');
     
     const providers = new Set();
     let totalAmount = 0;
     let validRows = 0;
 
-    excelData.forEach(row => {
+    totalData.forEach(row => {
       if (row[providerIndex]) {
         providers.add(row[providerIndex]);
       }
@@ -275,7 +322,7 @@ const HomePage = () => {
       { 
         icon: FileText, 
         label: 'Facturas Procesadas', 
-        value: excelData.length.toString(), 
+        value: totalData.length.toString(), 
         color: '#2196F3' 
       },
       { 
@@ -298,17 +345,17 @@ const HomePage = () => {
   const quickActions = [
     {
       icon: Upload,
-      title: 'Importar Excel',
-      description: 'Cargar archivo de proveedores desde Holded',
+      title: 'Importar Excel Solucions',
+      description: 'Cargar archivo de proveedores de Solucions Socials',
       color: '#4CAF50',
-      onClick: handleFileSelect
+      onClick: handleSolucionsFileSelect
     },
     {
-      icon: Users,
-      title: 'Ver Proveedores',
-      description: 'Explorar y gestionar proveedores',
-      color: '#2196F3',
-      onClick: handleViewProviders
+      icon: Upload,
+      title: 'Importar Excel Menjar',
+      description: 'Cargar archivo de proveedores de Menjar d\'Hort',
+      color: '#FF6B35',
+      onClick: handleMenjarFileSelect
     },
     {
       icon: BarChart2,
@@ -321,13 +368,22 @@ const HomePage = () => {
 
   return (
     <div style={{ width: '100%' }}>
-      {/* Input oculto para archivos */}
+      {/* Input oculto para archivos de Solucions Socials */}
       <input
         ref={fileInputRef}
         type="file"
         accept=".xlsx,.xls"
         style={{ display: 'none' }}
-        onChange={handleFileChange}
+        onChange={handleSolucionsFileChange}
+      />
+
+      {/* Input oculto para archivos de Menjar d'Hort */}
+      <input
+        ref={menjarFileInputRef}
+        type="file"
+        accept=".xlsx,.xls"
+        style={{ display: 'none' }}
+        onChange={handleMenjarFileChange}
       />
 
       {/* Alerta personalizada */}
