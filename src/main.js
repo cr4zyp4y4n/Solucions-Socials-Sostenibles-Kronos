@@ -40,11 +40,27 @@ const createWindow = () => {
     },
   });
 
+  // Configurar Content Security Policy
+  mainWindow.webContents.session.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Content-Security-Policy': [
+          "default-src 'self' 'unsafe-inline' data:; " +
+          "script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +
+          "style-src 'self' 'unsafe-inline'; " +
+          "connect-src 'self' https://v6.exchangerate-api.com https://api.exchangerate-api.com https://zalnsacawwekmibhoiba.supabase.co https://*.supabase.co; " +
+          "img-src 'self' data:;"
+        ]
+      }
+    });
+  });
+
   // and load the index.html of the app.
   mainWindow.loadURL(MAIN_WINDOW_WEBPACK_ENTRY);
 
-  // Comentado para producción - solo descomenta para desarrollo
-  // mainWindow.webContents.openDevTools();
+  // Abrir herramientas de desarrollador automáticamente
+  mainWindow.webContents.openDevTools();
 };
 
 // This method will be called when Electron has finished

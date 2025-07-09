@@ -14,6 +14,42 @@ import {
 import { useTheme } from './ThemeContext';
 import { useDataContext } from './DataContext';
 import { useCurrency } from './CurrencyContext';
+import ConnectionTest from './ConnectionTest';
+
+// Nuevo: Hook para obtener el estado de conexión de Supabase de forma compacta
+import { useState as useReactState, useEffect as useReactEffect } from 'react';
+function useSupabaseConnectionStatus() {
+  const [status, setStatus] = useReactState('testing');
+  const [error, setError] = useReactState(null);
+  const { colors } = useTheme();
+
+  React.useEffect(() => {
+    let isMounted = true;
+    async function testConnection() {
+      try {
+        const { data, error } = await require('../config/supabase').supabase
+          .from('user_profiles')
+          .select('id')
+          .limit(1);
+        if (!isMounted) return;
+        if (error) {
+          setStatus('error');
+          setError(error.message);
+        } else {
+          setStatus('success');
+          setError(null);
+        }
+      } catch (err) {
+        if (!isMounted) return;
+        setStatus('error');
+        setError(err.message);
+      }
+    }
+    testConnection();
+    return () => { isMounted = false; };
+  }, []);
+  return { status, error };
+}
 
 const SettingsPage = () => {
   const { colors } = useTheme();
@@ -26,6 +62,49 @@ const SettingsPage = () => {
   const [showAlert, setShowAlert] = useState(false);
   const [alertMessage, setAlertMessage] = useState('');
   const [alertType, setAlertType] = useState('success');
+
+  // Estado de conexión Supabase (badge)
+  const { status: supabaseStatus, error: supabaseError } = useSupabaseConnectionStatus();
+
+  // Badge de estado de Supabase
+  const supabaseBadge = (
+    <span style={{
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: 6,
+      fontSize: 13,
+      fontWeight: 500,
+      marginLeft: 16,
+      padding: '2px 10px',
+      borderRadius: 12,
+      background:
+        supabaseStatus === 'success' ? colors.success + '22' :
+        supabaseStatus === 'error' ? colors.error + '22' :
+        colors.warning + '22',
+      color:
+        supabaseStatus === 'success' ? colors.success :
+        supabaseStatus === 'error' ? colors.error :
+        colors.warning,
+      border: `1px solid ${
+        supabaseStatus === 'success' ? colors.success :
+        supabaseStatus === 'error' ? colors.error :
+        colors.warning
+      }`,
+      userSelect: 'none',
+      minWidth: 0,
+      minHeight: 0,
+      lineHeight: 1.2
+    }}>
+      {supabaseStatus === 'success' && <span style={{fontSize: 15}}>●</span>}
+      {supabaseStatus === 'error' && <span style={{fontSize: 15}}>●</span>}
+      {supabaseStatus === 'testing' && <span style={{fontSize: 15}}>●</span>}
+      <span style={{fontWeight: 500}}>
+        {supabaseStatus === 'success' && 'Conectado a Supabase'}
+        {supabaseStatus === 'error' && 'Error de conexión'}
+        {supabaseStatus === 'testing' && 'Comprobando...'}
+      </span>
+    </span>
+  );
 
   const appVersion = '1.0.0';
   const contactEmail = 'comunicacio@solucionssocials.org';
@@ -276,32 +355,81 @@ const SettingsPage = () => {
   ];
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 30 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: 30 }}
-      transition={{ duration: 0.5, ease: 'easeOut' }}
-      style={{ padding: '24px', height: '100%', display: 'flex', flexDirection: 'column' }}
-    >
-      <style>
-        {`
-          @keyframes spin {
-            from { transform: rotate(0deg); }
-            to { transform: rotate(360deg); }
-          }
-        `}
-      </style>
-      <h2 style={{ 
-        margin: '0 0 24px 0', 
-        color: colors.text, 
-        fontWeight: 700, 
-        fontSize: 28, 
-        lineHeight: 1.2 
+    <div style={{ padding: '32px 0 32px 0', maxWidth: 900, margin: '0 auto' }}>
+      {/* Título y badge de estado */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: 32,
+        padding: '0 32px'
       }}>
-        Configuración
-      </h2>
+        <h1 style={{
+          color: colors.text,
+          fontSize: 32,
+          fontWeight: 700,
+          margin: 0,
+          lineHeight: 1.1,
+          userSelect: 'none',
+          letterSpacing: 0.1
+        }}>
+          Configuración
+        </h1>
+        {supabaseBadge}
+      </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', flex: 1 }}>
+      {/* Alertas */}
+      <AnimatePresence>
+        {showAlert && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            style={{
+              position: 'fixed',
+              top: '20px',
+              right: '20px',
+              zIndex: 1000,
+              backgroundColor: alertType === 'success' ? colors.success + '22' : colors.error + '22',
+              border: `1px solid ${alertType === 'success' ? colors.success : colors.error}`,
+              borderRadius: '8px',
+              padding: '12px 16px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              maxWidth: '300px'
+            }}
+          >
+            {alertType === 'success' ? (
+              <CheckCircle size={16} color={colors.success} />
+            ) : (
+              <AlertTriangle size={16} color={colors.error} />
+            )}
+            <span style={{
+              color: colors.text,
+              fontSize: '14px',
+              fontWeight: '500'
+            }}>
+              {alertMessage}
+            </span>
+            <button
+              onClick={() => setShowAlert(false)}
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                padding: '4px',
+                marginLeft: 'auto'
+              }}
+            >
+              <X size={14} color={colors.textSecondary} />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Resto del contenido de configuración */}
+      <div style={{ margin: '0 32px', display: 'flex', flexDirection: 'column', gap: 32 }}>
         {settingsSections.map((section, sectionIndex) => (
           <motion.div
             key={section.title}
@@ -389,56 +517,7 @@ const SettingsPage = () => {
           </motion.div>
         ))}
       </div>
-
-      {/* Alert */}
-      <AnimatePresence>
-        {showAlert && (
-          <motion.div
-            initial={{ opacity: 0, y: 50, scale: 0.9 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 50, scale: 0.9 }}
-            transition={{ duration: 0.3, ease: 'easeOut' }}
-            style={{
-              position: 'fixed',
-              bottom: '24px',
-              right: '24px',
-              background: alertType === 'success' ? colors.success : colors.error,
-              color: 'white',
-              padding: '16px 20px',
-              borderRadius: '8px',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '12px',
-              zIndex: 1000,
-              maxWidth: '400px'
-            }}
-          >
-            {alertType === 'success' ? (
-              <CheckCircle size={20} />
-            ) : (
-              <AlertTriangle size={20} />
-            )}
-            <span style={{ fontSize: '14px', fontWeight: '500' }}>
-              {alertMessage}
-            </span>
-            <button
-              onClick={() => setShowAlert(false)}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: 'white',
-                cursor: 'pointer',
-                padding: '4px',
-                marginLeft: 'auto'
-              }}
-            >
-              <X size={16} />
-            </button>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </motion.div>
+    </div>
   );
 };
 

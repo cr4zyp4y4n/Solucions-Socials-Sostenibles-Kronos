@@ -8,18 +8,25 @@ import {
   BarChart2,
   Filter,
   Moon,
-  Sun
+  Sun,
+  LogOut,
+  User
 } from 'feather-icons-react';
 import { useTheme } from './ThemeContext';
+import { useAuth } from './AuthContext';
 import logo from '../assets/Logo Minimalist SSS Highest Opacity.PNG';
 import HomePage from './HomePage';
 import ProvidersPage from './ProvidersPage';
 import AnalyticsPage from './AnalyticsPage';
 import SettingsPage from './SettingsPage';
+import OnboardingPage from './OnboardingPage';
+import UserProfile from './UserProfile';
 
 const Layout = () => {
   const [activeSection, setActiveSection] = useState('home');
+  const [showOnboarding, setShowOnboarding] = useState(false);
   const { isDarkMode, toggleTheme, colors } = useTheme();
+  const { user, signOut } = useAuth();
 
   const menuItems = [
     { id: 'home', icon: Home, label: 'Inicio' },
@@ -27,6 +34,10 @@ const Layout = () => {
     { id: 'analytics', icon: BarChart2, label: 'Análisis' },
     { id: 'settings', icon: Settings, label: 'Configuración' },
   ];
+
+  const handleSignOut = async () => {
+    await signOut();
+  };
 
   // Renderiza el componente correspondiente
   const renderSection = () => {
@@ -39,10 +50,16 @@ const Layout = () => {
         return <AnalyticsPage />;
       case 'settings':
         return <SettingsPage />;
+      case 'profile':
+        return <UserProfile />;
       default:
         return <HomePage />;
     }
   };
+
+  if (showOnboarding) {
+    return <OnboardingPage onComplete={() => setShowOnboarding(false)} />;
+  }
 
   return (
     <div style={{
@@ -125,6 +142,114 @@ const Layout = () => {
             );
           })}
         </nav>
+
+        {/* User Info y Logout */}
+        <div style={{
+          padding: '20px',
+          borderTop: `1px solid ${colors.border}`,
+        }}>
+          {/* Bloque de usuario clickable */}
+          <div
+            onClick={() => setActiveSection('profile')}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '12px',
+              marginBottom: '12px',
+              padding: '12px',
+              backgroundColor: colors.surface,
+              borderRadius: '8px',
+              cursor: 'pointer',
+              transition: 'background 0.2s',
+              boxShadow: '0 1px 4px rgba(76,175,80,0.04)',
+              border: `1px solid ${colors.primary}22`,
+            }}
+            title="Ver perfil"
+          >
+            <div style={{
+              width: '32px',
+              height: '32px',
+              borderRadius: '50%',
+              backgroundColor: colors.primary,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}>
+              <User size={16} color="white" />
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{
+                color: colors.text,
+                fontSize: '14px',
+                fontWeight: '500',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                userSelect: 'none'
+              }}>
+                {user?.user_metadata?.name || user?.email || 'Usuario'}
+              </div>
+              <div style={{
+                color: colors.textSecondary,
+                fontSize: '12px',
+                userSelect: 'none'
+              }}>
+                {user?.user_metadata?.role || 'Usuario'}
+              </div>
+            </div>
+          </div>
+          {/* Botón para ver el tutorial/onboarding */}
+          <motion.button
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={() => setShowOnboarding(true)}
+            style={{
+              width: '100%',
+              padding: '10px 16px',
+              backgroundColor: colors.primary,
+              border: 'none',
+              borderRadius: '6px',
+              color: 'white',
+              fontSize: '13px',
+              fontWeight: '500',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginBottom: '10px',
+              marginTop: '2px',
+              gap: '8px',
+              userSelect: 'none',
+              boxShadow: '0 2px 8px rgba(76,175,80,0.08)'
+            }}
+          >
+            <BarChart2 size={15} style={{ marginRight: 4 }} />
+            Ver tutorial
+          </motion.button>
+          {/* Botón cerrar sesión */}
+          <motion.button
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={signOut}
+            style={{
+              width: '100%',
+              padding: '10px 16px',
+              backgroundColor: 'transparent',
+              border: `1px solid ${colors.error}`,
+              borderRadius: '6px',
+              color: colors.error,
+              fontSize: '13px',
+              fontWeight: '500',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <LogOut size={15} style={{ marginRight: 4 }} />
+            Cerrar sesión
+          </motion.button>
+        </div>
       </motion.div>
 
       {/* Main Content */}

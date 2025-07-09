@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import logo from '../assets/Logo Minimalist SSS Highest Opacity.PNG';
 import { useTheme } from './ThemeContext';
 
-const SplashScreen = ({ onComplete }) => {
+const SplashScreen = ({ onComplete, name }) => {
   const [progress, setProgress] = useState(0);
   const { colors } = useTheme();
 
@@ -109,22 +109,39 @@ const SplashScreen = ({ onComplete }) => {
           />
         </motion.div>
 
-        {/* Mensaje fijo */}
-        <motion.p
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.6 }}
-          style={{
-            color: colors.textSecondary,
-            marginTop: '10px',
-            fontSize: '16px',
-            fontFamily: 'Arial, sans-serif',
-            textAlign: 'center',
-          }}
-        >
-          Cargando sistema...
-        </motion.p>
-
+        {/* Mensaje personalizado de bienvenida */}
+        {name ? (
+          <motion.p
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.6 }}
+            style={{
+              color: colors.primary,
+              marginTop: '10px',
+              fontSize: '22px',
+              fontWeight: 700,
+              fontFamily: 'Arial, sans-serif',
+              textAlign: 'center',
+            }}
+          >
+            {`¡Bienvenido, ${name}!`}
+          </motion.p>
+        ) : (
+          <motion.p
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.6 }}
+            style={{
+              color: colors.textSecondary,
+              marginTop: '10px',
+              fontSize: '16px',
+              fontFamily: 'Arial, sans-serif',
+              textAlign: 'center',
+            }}
+          >
+            Cargando sistema...
+          </motion.p>
+        )}
         {/* Porcentaje de carga */}
         <motion.p
           initial={{ opacity: 0 }}
