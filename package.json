@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "description": "My Electron application description",
   "main": ".webpack/main",
+
   "scripts": {
     "start": "electron-forge start",
     "package": "electron-forge package",
@@ -50,8 +51,8 @@
     {
       "name": "@electron-forge/maker-squirrel",
       "config": {
-        "iconUrl": "file:///${PWD}/src/assets/Logo Minimalist SSS Highest Opacity.ico",
-        "setupIcon": "./src/assets/Logo Minimalist SSS Highest Opacity.ico"
+        "iconUrl": "./src/assets/LogoMinimalistSSSHighestOpacity.ico",
+        "setupIcon": "./src/assets/LogoMinimalistSSSHighestOpacity.ico"
       }
     },
     {
