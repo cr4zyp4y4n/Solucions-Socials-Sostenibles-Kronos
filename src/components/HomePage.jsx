@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import * as XLSX from 'xlsx';
 import { 
@@ -133,6 +133,155 @@ const HomePage = () => {
   const { formatCurrency } = useCurrency();
   const { user } = useAuth();
 
+  // Estado para datos cargados desde Supabase
+  const [supabaseData, setSupabaseData] = useState({
+    solucions: { headers: [], data: [] },
+    menjar: { headers: [], data: [] }
+  });
+  const [loadingData, setLoadingData] = useState(true);
+
+  // Cargar datos desde Supabase al montar el componente
+  useEffect(() => {
+    loadDataFromSupabase();
+  }, []);
+
+  // Función para cargar datos desde Supabase
+  const loadDataFromSupabase = async () => {
+    setLoadingData(true);
+    try {
+      // Obtener todos los uploads de Excel
+      const { data: uploads, error: uploadsError } = await supabase
+        .from('excel_uploads')
+        .select('*')
+        .order('uploaded_at', { ascending: false });
+
+      if (uploadsError) {
+        return;
+      }
+
+      // Separar uploads por tipo
+      const solucionsUploads = uploads.filter(upload => upload.upload_type === 'solucions');
+      const menjarUploads = uploads.filter(upload => upload.upload_type === 'menjar');
+
+      // Obtener datos de facturas para cada tipo
+      const [solucionsData, menjarData] = await Promise.all([
+        getInvoicesData(solucionsUploads.map(u => u.id)),
+        getInvoicesData(menjarUploads.map(u => u.id))
+      ]);
+
+      // Procesar datos de Solucions
+      const processedSolucions = processInvoicesData(solucionsData, solucionsUploads);
+      
+      // Procesar datos de Menjar
+      const processedMenjar = processInvoicesData(menjarData, menjarUploads);
+
+      setSupabaseData({
+        solucions: {
+          headers: processedSolucions.headers,
+          data: processedSolucions.data
+        },
+        menjar: {
+          headers: processedMenjar.headers,
+          data: processedMenjar.data
+        }
+      });
+
+    } catch (error) {
+      // Error loading data from Supabase
+    } finally {
+      setLoadingData(false);
+    }
+  };
+
+  // Función para obtener datos de facturas por upload IDs
+  const getInvoicesData = async (uploadIds) => {
+    if (uploadIds.length === 0) return [];
+
+    const { data, error } = await supabase
+      .from('invoices')
+      .select('*')
+      .in('upload_id', uploadIds)
+      .order('processed_at', { ascending: false });
+
+    if (error) {
+      return [];
+    }
+
+    return data || [];
+  };
+
+  // Función para procesar datos de facturas
+  const processInvoicesData = (invoicesData, uploads) => {
+    if (invoicesData.length === 0) {
+      return { headers: [], data: [] };
+    }
+
+    // Definir las columnas esperadas en el orden correcto
+    const expectedHeaders = [
+      "Data d'emissió",
+      'Núm',
+      'Núm. Intern',
+      'Data comptable',
+      'Venciment',
+      'Proveïdor',
+      'Descripció',
+      'Tags',
+      'Compte',
+      'Projecte',
+      'Subtotal',
+      'IVA',
+      'Retención',
+      'Empleados',
+      'Rec. de eq.',
+      'Total',
+      'Pagat',
+      'Pendents',
+      'Estat',
+      'Data de pagament'
+    ];
+
+    // Mapeo inverso de columnas de la base de datos a las columnas del Excel
+    const dbToExcelMapping = {
+      'issue_date': "Data d'emissió",
+      'invoice_number': 'Núm',
+      'internal_number': 'Núm. Intern',
+      'accounting_date': 'Data comptable',
+      'due_date': 'Venciment',
+      'provider': 'Proveïdor',
+      'description': 'Descripció',
+      'tags': 'Tags',
+      'account': 'Compte',
+      'project': 'Projecte',
+      'subtotal': 'Subtotal',
+      'vat': 'IVA',
+      'retention': 'Retención',
+      'employees': 'Empleados',
+      'equipment_recovery': 'Rec. de eq.',
+      'total': 'Total',
+      'paid': 'Pagat',
+      'pending': 'Pendents',
+      'status': 'Estat',
+      'payment_date': 'Data de pagament'
+    };
+
+    // Convertir datos de facturas a formato de array
+    const processedData = invoicesData.map(invoice => {
+      const row = [];
+      expectedHeaders.forEach(header => {
+        // Encontrar la columna correspondiente en la base de datos
+        const dbColumn = Object.keys(dbToExcelMapping).find(key => dbToExcelMapping[key] === header);
+        if (dbColumn && invoice[dbColumn] !== undefined && invoice[dbColumn] !== null) {
+          row.push(invoice[dbColumn]);
+        } else {
+          row.push(null);
+        }
+      });
+      return row;
+    });
+
+    return { headers: expectedHeaders, data: processedData };
+  };
+
   // Función para mostrar alerta
   const showAlert = (message, type = 'success') => {
     setAlertMessage(message);
@@ -156,7 +305,6 @@ const HomePage = () => {
         });
 
       if (error) {
-        console.error('Error uploading file to storage:', error);
         throw new Error(`Error al subir archivo: ${error.message}`);
       }
 
@@ -166,7 +314,6 @@ const HomePage = () => {
         size: file.size // Incluir el tamaño del archivo
       };
     } catch (error) {
-      console.error('Error in uploadFileToStorage:', error);
       throw error;
     }
   };
@@ -193,20 +340,61 @@ const HomePage = () => {
         .single();
 
       if (error) {
-        console.error('Error saving upload metadata:', error);
         throw new Error(`Error al guardar metadatos: ${error.message}`);
       }
 
       return data;
     } catch (error) {
-      console.error('Error in saveUploadMetadata:', error);
       throw error;
     }
   };
 
   // Función para guardar datos procesados en la tabla invoices
-  const saveProcessedData = async (data, uploadId) => {
+  const saveProcessedData = async (data, uploadId, uploadType) => {
     try {
+      // PASO 1: Eliminar datos anteriores del mismo tipo
+      
+      // Obtener todos los uploads del mismo tipo
+      const { data: existingUploads, error: uploadsError } = await supabase
+        .from('excel_uploads')
+        .select('id')
+        .eq('upload_type', uploadType)
+        .order('uploaded_at', { ascending: false });
+
+      if (uploadsError) {
+        throw new Error(`Error al obtener uploads existentes: ${uploadsError.message}`);
+      }
+
+      // Si hay uploads anteriores del mismo tipo, eliminar sus datos
+      if (existingUploads && existingUploads.length > 0) {
+        const uploadIds = existingUploads.map(upload => upload.id);
+        
+        // Eliminar facturas asociadas a uploads anteriores
+        const { error: deleteInvoicesError } = await supabase
+          .from('invoices')
+          .delete()
+          .in('upload_id', uploadIds);
+
+        if (deleteInvoicesError) {
+          throw new Error(`Error al eliminar facturas anteriores: ${deleteInvoicesError.message}`);
+        }
+
+        // Eliminar los uploads anteriores (excepto el actual)
+        const uploadsToDelete = existingUploads.filter(upload => upload.id !== uploadId);
+        if (uploadsToDelete.length > 0) {
+          const { error: deleteUploadsError } = await supabase
+            .from('excel_uploads')
+            .delete()
+            .in('id', uploadsToDelete.map(u => u.id));
+
+          if (deleteUploadsError) {
+            throw new Error(`Error al eliminar uploads anteriores: ${deleteUploadsError.message}`);
+          }
+        }
+      }
+
+      // PASO 2: Insertar los nuevos datos
+
       // Mapeo de columnas del Excel a las columnas de la tabla invoices
       const columnMapping = {
         "Data d'emissió": 'issue_date',
@@ -329,13 +517,11 @@ const HomePage = () => {
         .insert(processedData);
 
       if (error) {
-        console.error('Error saving processed data:', error);
         throw new Error(`Error al guardar datos procesados: ${error.message}`);
       }
 
       return processedData.length;
     } catch (error) {
-      console.error('Error in saveProcessedData:', error);
       throw error;
     }
   };
@@ -351,7 +537,6 @@ const HomePage = () => {
         .neq('id', user.id); // No notificar al creador
 
       if (managersError) {
-        console.error('Error fetching managers:', managersError);
         return;
       }
 
@@ -375,12 +560,10 @@ const HomePage = () => {
           .insert(notifications);
 
         if (error) {
-          console.error('Error creating notifications:', error);
           // No lanzar error aquí, es opcional
         }
       }
     } catch (error) {
-      console.error('Error in createNotificationForManagers:', error);
       // No lanzar error aquí, es opcional
     }
   };
@@ -431,7 +614,7 @@ const HomePage = () => {
       setUploadProgress(80);
 
       // Paso 4: Guardar datos procesados
-      await saveProcessedData(processedData.data, uploadMetadata.id);
+      await saveProcessedData(processedData.data, uploadMetadata.id, type);
       setUploadProgress(90);
 
       // Paso 5: Crear notificación para Jefes (si el usuario es de Gestión)
@@ -440,6 +623,9 @@ const HomePage = () => {
       }
 
       setUploadProgress(100);
+
+      // Recargar datos desde Supabase después de subir
+      await loadDataFromSupabase();
 
       // Actualizar estado local para mantener compatibilidad
       if (type === 'solucions') {
@@ -454,7 +640,6 @@ const HomePage = () => {
       showAlert(`Excel de ${typeName} subido correctamente. Se importaron ${processedData.data.length} filas de datos.`, 'success');
 
     } catch (error) {
-      console.error('Error in processAndUploadExcel:', error);
       showAlert(`Error al procesar y subir el archivo: ${error.message}`, 'error');
     } finally {
       setUploading(false);
@@ -565,9 +750,10 @@ const HomePage = () => {
     showAlert('Redirigiendo a la sección de análisis...', 'success');
   };
 
-  // Calcular estadísticas reales
+  // Calcular estadísticas reales desde Supabase
   const calculateStats = () => {
-    const totalData = [...solucionsData, ...menjarData];
+    // Usar datos de Supabase en lugar de datos del contexto local
+    const totalData = [...supabaseData.solucions.data, ...supabaseData.menjar.data];
     
     if (totalData.length === 0) {
       return [
@@ -579,7 +765,7 @@ const HomePage = () => {
     }
 
     // Combinar headers de ambos datasets
-    const allHeaders = [...solucionsHeaders, ...menjarHeaders];
+    const allHeaders = [...supabaseData.solucions.headers, ...supabaseData.menjar.headers];
     const providerIndex = allHeaders.findIndex(h => h === 'Proveïdor');
     const totalIndex = allHeaders.findIndex(h => h === 'Total');
     
@@ -766,59 +952,115 @@ const HomePage = () => {
         transition={{ duration: 0.5, delay: 0.1 }}
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
-          gap: '25px',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+          gap: '24px',
           marginBottom: '50px',
         }}
       >
-        {stats.map((stat, index) => {
-          const Icon = stat.icon;
-          return (
+        {loadingData ? (
+          // Mostrar skeleton loading mientras se cargan los datos
+          Array.from({ length: 4 }).map((_, index) => (
             <motion.div
-              key={stat.label}
-              whileHover={{ y: -3, scale: 1.02 }}
+              key={index}
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.3, delay: index * 0.1 }}
               style={{
-                backgroundColor: colors.card,
-                padding: '32px',
-                borderRadius: '12px',
+                background: colors.surface,
+                borderRadius: '16px',
+                padding: '24px',
                 border: `1px solid ${colors.border}`,
                 display: 'flex',
                 alignItems: 'center',
-                gap: '20px',
-                boxShadow: isDarkMode => isDarkMode ? '0 2px 8px rgba(0,0,0,0.25)' : '0 2px 8px rgba(0,0,0,0.05)',
+                gap: '16px',
+                minHeight: '100px',
+                position: 'relative',
+                overflow: 'hidden'
               }}
             >
+              {/* Skeleton icon */}
               <div style={{
-                width: '60px',
-                height: '60px',
+                width: '48px',
+                height: '48px',
                 borderRadius: '12px',
-                backgroundColor: stat.color + '15',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}>
-                <Icon size={28} color={stat.color} />
-              </div>
-              <div>
+                background: colors.border,
+                animation: 'pulse 1.5s ease-in-out infinite'
+              }} />
+              
+              {/* Skeleton content */}
+              <div style={{ flex: 1 }}>
                 <div style={{
-                  fontSize: '32px',
-                  fontWeight: '700',
-                  color: colors.text,
-                  marginBottom: '6px',
-                }}>
-                  {stat.value}
-                </div>
+                  height: '16px',
+                  background: colors.border,
+                  borderRadius: '4px',
+                  marginBottom: '8px',
+                  width: '60%',
+                  animation: 'pulse 1.5s ease-in-out infinite'
+                }} />
                 <div style={{
-                  fontSize: '16px',
-                  color: colors.textSecondary,
-                  fontWeight: '500',
-                }}>
-                  {stat.label}
-                </div>
+                  height: '24px',
+                  background: colors.border,
+                  borderRadius: '4px',
+                  width: '40%',
+                  animation: 'pulse 1.5s ease-in-out infinite'
+                }} />
               </div>
             </motion.div>
-          );
-        })}
+          ))
+        ) : (
+          // Mostrar estadísticas reales
+          stats.map((stat, index) => {
+            const Icon = stat.icon;
+            return (
+              <motion.div
+                key={stat.label}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4, delay: index * 0.1 }}
+                whileHover={{ y: -3, scale: 1.02 }}
+                style={{
+                  backgroundColor: colors.surface,
+                  padding: '24px',
+                  borderRadius: '16px',
+                  border: `1px solid ${colors.border}`,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '16px',
+                  boxShadow: '0 2px 12px rgba(0,0,0,0.06)',
+                }}
+              >
+                <div style={{
+                  width: '48px',
+                  height: '48px',
+                  borderRadius: '12px',
+                  backgroundColor: stat.color + '15',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}>
+                  <Icon size={24} color={stat.color} />
+                </div>
+                <div>
+                  <div style={{
+                    fontSize: '28px',
+                    fontWeight: '700',
+                    color: colors.text,
+                    marginBottom: '4px',
+                  }}>
+                    {stat.value}
+                  </div>
+                  <div style={{
+                    fontSize: '14px',
+                    color: colors.textSecondary,
+                    fontWeight: '500',
+                  }}>
+                    {stat.label}
+                  </div>
+                </div>
+              </motion.div>
+            );
+          })
+        )}
       </motion.div>
 
       {/* Quick Actions */}
@@ -899,6 +1141,18 @@ const HomePage = () => {
           })}
         </div>
       </motion.div>
+
+      {/* CSS para animaciones */}
+      <style>{`
+        @keyframes pulse {
+          0%, 100% {
+            opacity: 1;
+          }
+          50% {
+            opacity: 0.5;
+          }
+        }
+      `}</style>
     </div>
   );
 };

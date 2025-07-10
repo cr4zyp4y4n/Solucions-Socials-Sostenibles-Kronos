@@ -41,7 +41,6 @@ const ProvidersPage = () => {
         .order('uploaded_at', { ascending: false });
 
       if (uploadsError) {
-        console.error('Error loading uploads:', uploadsError);
         setError('Error al cargar los datos de Excel');
         return;
       }
@@ -60,7 +59,6 @@ const ProvidersPage = () => {
         .order('processed_at', { ascending: false });
 
       if (invoicesError) {
-        console.error('Error loading invoices:', invoicesError);
         setError('Error al cargar los datos de facturas');
         return;
       }
@@ -75,7 +73,6 @@ const ProvidersPage = () => {
       });
 
     } catch (error) {
-      console.error('Error loading data from Supabase:', error);
       setError('Error al cargar los datos desde la base de datos');
     } finally {
       setLoading(false);

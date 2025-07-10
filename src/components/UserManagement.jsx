@@ -37,14 +37,9 @@ const UserManagement = () => {
   
 
 
-  // Verificar si el usuario es administrador
-  const [isAdminVerified, setIsAdminVerified] = useState(false);
-  const [dbRole, setDbRole] = useState(null);
-  const isAdmin = dbRole === 'admin';
-
-  // Verificar que el usuario es realmente administrador en la base de datos
+  // Verificar si el usuario actual es administrador
   const verifyAdminStatus = async () => {
-    if (!user?.id) return;
+    if (!user?.id) return false;
     
     try {
       const { data, error } = await supabase
@@ -54,80 +49,54 @@ const UserManagement = () => {
         .single();
 
       if (error) {
-        console.error('Error verifying admin status:', error);
-        setIsAdminVerified(false);
-        setDbRole(null);
-      } else {
-        const isActuallyAdmin = data?.role === 'admin';
-        setIsAdminVerified(isActuallyAdmin);
-        setDbRole(data?.role || null);
-        console.log('Admin verification:', { 
-          metadataRole: user?.user_metadata?.role, 
-          dbRole: data?.role, 
-          isActuallyAdmin 
-        });
+        // Error verifying admin status
+        return false;
       }
+
+      const isAdminUser = data?.role === 'admin' || user?.user_metadata?.role === 'admin';
+      return isAdminUser;
     } catch (e) {
-      console.error('Error verifying admin status:', e);
-      setIsAdminVerified(false);
-      setDbRole(null);
+      // Error verifying admin status
+      return false;
     }
   };
 
-  // Debug: Mostrar información del usuario actual
   useEffect(() => {
-    if (user) {
-      console.log('Current user in UserManagement:', {
-        id: user.id,
-        email: user.email,
-        role: user?.user_metadata?.role,
-        isAdmin: isAdmin,
-        isAdminVerified: isAdminVerified
-      });
-      verifyAdminStatus();
-    }
-  }, [user, isAdmin]);
+    const checkAdminAndLoadUsers = async () => {
+      if (!user?.id) return;
 
-  useEffect(() => {
-    if (isAdmin && isAdminVerified) {
-      loadUsers();
-    }
-  }, [isAdmin, isAdminVerified]);
+      const adminStatus = await verifyAdminStatus();
+      setIsAdmin(adminStatus);
 
+      if (adminStatus) {
+        // Loading users as admin
+        // Current user
+        try {
+          const { data, error } = await supabase
+            .from('user_profiles')
+            .select('*')
+            .order('created_at', { ascending: false });
 
+          if (error) {
+            // Error loading users
+            setError('Error al cargar usuarios');
+            return;
+          }
 
-  // Cargar todos los usuarios (solo administradores)
-  const loadUsers = async () => {
-    if (!isAdmin || !isAdminVerified) return;
-    
-    setLoading(true);
-    setError('');
-    
-    try {
-      console.log('Loading users as admin...');
-      console.log('Current user:', user?.id, user?.user_metadata?.role);
-      
-      // Cargar todos los usuarios desde user_profiles
-      const { data, error } = await supabase
-        .from('user_profiles')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        console.error('Error loading users:', error);
-        setError(`Error al cargar usuarios: ${error.message}`);
-      } else {
-        console.log('Users loaded successfully:', data);
-        console.log('Number of users found:', data?.length || 0);
-        setUsers(data || []);
+          // Users loaded successfully
+          // Number of users found
+          setUsers(data || []);
+        } catch (e) {
+          // Unexpected error
+          setError('Error inesperado al cargar usuarios');
+        }
       }
-    } catch (e) {
-      console.error('Unexpected error:', e);
-      setError('Error inesperado al cargar usuarios');
-    } finally {
-      setLoading(false);
-    }
-  };
+    };
+
+    checkAdminAndLoadUsers();
+  }, [user?.id]);
+
+
 
   // Actualizar usuario
   const handleUpdateUser = async (userId, updates) => {
@@ -144,7 +113,6 @@ const UserManagement = () => {
       const userRow = users.find(u => u.id === userId);
       const email = userRow?.email || null;
 
-      console.log('Updating user:', userId, 'with updates:', updates);
       
       // 1. Actualizar user_profiles
       const { data, error } = await supabase
@@ -154,7 +122,7 @@ const UserManagement = () => {
         .select();
 
       if (error) {
-        console.error('Error updating user profile:', error);
+        // Error updating user profile
         setError(`Error al actualizar usuario: ${error.message}`);
         return;
       }
@@ -167,28 +135,27 @@ const UserManagement = () => {
           });
           
           if (authError) {
-            console.error('Error updating user auth metadata:', authError);
-            // No fallar si solo falla la actualización de metadata
+            // Error updating user auth metadata
           } else {
-            console.log('User auth metadata updated successfully');
+            // User auth metadata updated successfully
           }
         } catch (e) {
-          console.error('Error updating auth metadata:', e);
+          // Error updating auth metadata
         }
       }
 
       if (error) {
-        console.error('Error updating user:', error);
+        // Error updating user
         setError(`Error al actualizar usuario: ${error.message}`);
       } else {
-        console.log('User updated successfully:', data);
+        // User updated successfully
         setEditingUser(null);
         setSuccess('Usuario actualizado correctamente');
         setTimeout(() => setSuccess(''), 3000);
         loadUsers(); // Recargar lista
       }
     } catch (e) {
-      console.error('Unexpected error:', e);
+      // Unexpected error
       setError('Error inesperado al actualizar usuario');
     }
   };
@@ -208,7 +175,6 @@ const UserManagement = () => {
     }
 
     try {
-      console.log('Deleting user:', userId);
       
       const { data, error } = await supabase
         .from('user_profiles')
@@ -217,16 +183,16 @@ const UserManagement = () => {
         .select();
 
       if (error) {
-        console.error('Error deleting user:', error);
+        // Error deleting user
         setError(`Error al eliminar usuario: ${error.message}`);
       } else {
-        console.log('User deleted successfully:', data);
+        // User deleted successfully
         setSuccess('Usuario eliminado correctamente');
         setTimeout(() => setSuccess(''), 3000);
         loadUsers(); // Recargar lista
       }
     } catch (e) {
-      console.error('Unexpected error:', e);
+      // Unexpected error
       setError('Error inesperado al eliminar usuario');
     }
   };

@@ -1,8 +1,8 @@
 {
   "name": "sss-kronos",
   "productName": "SSS Kronos",
-  "version": "1.0.1",
-  "description": "My Electron application description",
+  "version": "1.0.2",
+  "description": "Sistema moderno de gestión de proveedores y análisis de facturas para Solucions Socials. Automatiza el procesamiento de archivos Excel, proporciona análisis en tiempo real y dashboard ejecutivo con sistema de roles avanzado.",
   "main": ".webpack/main",
 
   "scripts": {
@@ -13,7 +13,7 @@
     "lint": "echo \"No linting configured\"",
     "build": "electron-forge make"
   },
-  "keywords": [],
+  "keywords": ["electron", "react", "supabase", "gestión-proveedores", "análisis-facturas", "excel", "dashboard", "erp", "crm", "solucions-socials", "español"],
   "author": {
     "name": "Brian Bautista",
     "email": "brianbauma10@gmail.com"

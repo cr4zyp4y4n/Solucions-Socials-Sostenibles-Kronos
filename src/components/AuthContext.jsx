@@ -41,11 +41,11 @@ export const AuthProvider = ({ children }) => {
     try {
       const { user, error } = await authService.getCurrentUser();
       if (error) {
-        console.error('Error al verificar usuario:', error);
+        // Error al verificar usuario
       }
       setUser(user);
     } catch (err) {
-      console.error('Error al verificar sesión:', err);
+      // Error al verificar sesión
     } finally {
       setLoading(false);
     }

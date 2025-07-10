@@ -40,19 +40,19 @@ const UserProfile = ({ onShowOnboarding }) => {
         .single();
 
       if (error) {
-        console.log('No se encontró perfil en DB, creando uno nuevo:', error.message);
+        // No se encontró perfil en DB, creando uno nuevo
         // Crear perfil si no existe
         await createUserProfile();
         // Usar metadata como fallback mientras se crea
         setName(user?.user_metadata?.name || '');
         setRole(user?.user_metadata?.role || 'user');
       } else if (data) {
-        console.log('Perfil cargado desde DB:', data);
+        // Perfil cargado desde DB
         setName(data.name || '');
         setRole(data.role || 'user');
       }
     } catch (e) {
-      console.error('Error loading user profile:', e);
+      // Error loading user profile
       // Usar metadata como fallback
       setName(user?.user_metadata?.name || '');
       setRole(user?.user_metadata?.role || 'user');
@@ -79,12 +79,10 @@ const UserProfile = ({ onShowOnboarding }) => {
         });
 
       if (error) {
-        console.error('Error creating user profile:', error);
-      } else {
-        console.log('Perfil de usuario creado exitosamente');
+        // Error creating user profile
       }
     } catch (e) {
-      console.error('Error creating user profile:', e);
+      // Error creating user profile
     }
   };
 
@@ -106,7 +104,7 @@ const UserProfile = ({ onShowOnboarding }) => {
     setSuccess('');
     
     try {
-      console.log('Actualizando usuario con datos:', { name, role, canEditRole });
+
       
       // 1. Actualizar metadatos del usuario en Auth
       const { data: authData, error: updateError } = await supabase.auth.updateUser({
@@ -114,7 +112,6 @@ const UserProfile = ({ onShowOnboarding }) => {
       });
       
       if (updateError) {
-        console.error('Error updating user auth:', updateError);
         setError(`Error al guardar los cambios: ${updateError.message}`);
         return;
       }
@@ -133,17 +130,13 @@ const UserProfile = ({ onShowOnboarding }) => {
         });
 
       if (profileError) {
-        console.error('Error updating user profile:', profileError);
         setError(`Error al actualizar el perfil: ${profileError.message}`);
         return;
       }
-
-      console.log('Usuario actualizado correctamente en Auth y DB:', authData);
       setSuccess('Datos actualizados correctamente.');
       setEditMode(false);
       
     } catch (e) {
-      console.error('Unexpected error:', e);
       setError('Error inesperado al actualizar los datos. Verifica tu conexión.');
     } finally {
       setSaving(false);
@@ -163,7 +156,6 @@ const UserProfile = ({ onShowOnboarding }) => {
         password: newPassword 
       });
       if (passError) {
-        console.error('Error changing password:', passError);
         setPasswordError(`Error al cambiar la contraseña: ${passError.message}`);
       } else {
         setPasswordSuccess('Contraseña cambiada correctamente.');
@@ -171,7 +163,6 @@ const UserProfile = ({ onShowOnboarding }) => {
         setShowPassword(false);
       }
     } catch (e) {
-      console.error('Unexpected error changing password:', e);
       setPasswordError('Error inesperado al cambiar la contraseña.');
     }
   };

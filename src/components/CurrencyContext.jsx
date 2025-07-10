@@ -42,7 +42,7 @@ export const CurrencyProvider = ({ children }) => {
         }));
       }
     } catch (error) {
-      console.error('Error fetching exchange rates:', error);
+      // Error fetching exchange rates
       // Intentar cargar desde localStorage si hay error
       const cached = localStorage.getItem('exchangeRates');
       if (cached) {

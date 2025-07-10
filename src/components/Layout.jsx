@@ -73,11 +73,10 @@ const Layout = () => {
         try {
           const { data: { user: refreshedUser }, error } = await supabase.auth.getUser();
           if (!error && refreshedUser) {
-            // Los metadatos se actualizarán automáticamente en el contexto
-            console.log('User data refreshed:', refreshedUser.user_metadata);
+            // User data refreshed
           }
         } catch (e) {
-          console.error('Error refreshing user data:', e);
+          // Error refreshing user data
         }
       }
     };
@@ -101,27 +100,26 @@ const Layout = () => {
             filter: `recipient_id=eq.${user.id}`
           }, 
           (payload) => {
-            console.log('Nueva notificación recibida:', payload);
             setNotifications(prev => [payload.new, ...prev]);
             setUnreadCount(prev => prev + 1);
           }
         )
         .on('error', (error) => {
-          console.error('Error en suscripción de notificaciones:', error);
+          // Error en suscripción de notificaciones
         })
         .subscribe((status) => {
-          console.log('Estado de suscripción de notificaciones:', status);
+          // Estado de suscripción de notificaciones
         });
 
       return () => {
         try {
           supabase.removeChannel(channel);
         } catch (error) {
-          console.error('Error al remover canal de notificaciones:', error);
+          // Error al remover canal de notificaciones
         }
       };
     } catch (error) {
-      console.error('Error al configurar notificaciones en tiempo real:', error);
+      // Error al configurar notificaciones en tiempo real
       return () => {};
     }
   };
@@ -136,13 +134,13 @@ const Layout = () => {
         .limit(20);
 
       if (error) {
-        console.error('Error loading notifications:', error);
+        // Error loading notifications
       } else {
         setNotifications(data || []);
         setUnreadCount(data?.filter(n => !n.read_at).length || 0);
       }
     } catch (e) {
-      console.error('Error loading notifications:', e);
+      // Error loading notifications
     }
   };
 
@@ -162,7 +160,7 @@ const Layout = () => {
       );
       setUnreadCount(prev => Math.max(0, prev - 1));
     } catch (e) {
-      console.error('Error marking notification as read:', e);
+      // Error marking notification as read
     }
   };
 

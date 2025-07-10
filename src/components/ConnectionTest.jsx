@@ -22,15 +22,12 @@ const ConnectionTest = ({ compact = false }) => {
         .limit(1);
       
       if (error) {
-        console.error('Error de conexión:', error);
         setConnectionStatus('error');
         setError(error.message);
       } else {
-        console.log('Conexión exitosa:', data);
         setConnectionStatus('success');
       }
     } catch (err) {
-      console.error('Error inesperado:', err);
       setConnectionStatus('error');
       setError(err.message);
     }

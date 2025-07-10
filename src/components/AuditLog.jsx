@@ -63,13 +63,11 @@ const AuditLog = () => {
         .limit(100);
 
       if (error) {
-        console.error('Error loading audit logs:', error);
         setError(`Error al cargar el historial: ${error.message}`);
       } else {
         setAuditLogs(data || []);
       }
     } catch (e) {
-      console.error('Unexpected error:', e);
       setError('Error inesperado al cargar el historial');
     } finally {
       setLoading(false);
