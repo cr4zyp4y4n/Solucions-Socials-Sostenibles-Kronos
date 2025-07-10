@@ -12,6 +12,7 @@ SELECT
   cmd, 
   qual 
 FROM pg_policies 
+
 WHERE tablename IN ('excel_uploads', 'invoices') 
 AND schemaname = 'public'
 ORDER BY tablename, policyname;

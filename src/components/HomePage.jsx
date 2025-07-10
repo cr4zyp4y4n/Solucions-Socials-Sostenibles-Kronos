@@ -290,11 +290,50 @@ const HomePage = () => {
     setTimeout(() => setAlertVisible(false), 4000);
   };
 
+  // Función para sanitizar nombres de archivo
+  const sanitizeFileName = (fileName) => {
+    // Remover extensión temporalmente
+    const lastDotIndex = fileName.lastIndexOf('.');
+    const name = lastDotIndex !== -1 ? fileName.substring(0, lastDotIndex) : fileName;
+    const extension = lastDotIndex !== -1 ? fileName.substring(lastDotIndex) : '';
+    
+    // Sanitizar el nombre del archivo
+    let sanitizedName = name
+      // Reemplazar caracteres especiales problemáticos
+      .replace(/[''""]/g, '') // Remover comillas simples y dobles
+      .replace(/[àáâãäå]/g, 'a') // Normalizar vocales con acentos
+      .replace(/[èéêë]/g, 'e')
+      .replace(/[ìíîï]/g, 'i')
+      .replace(/[òóôõö]/g, 'o')
+      .replace(/[ùúûü]/g, 'u')
+      .replace(/[ñ]/g, 'n')
+      .replace(/[ç]/g, 'c')
+      // Reemplazar espacios y caracteres especiales con guiones bajos
+      .replace(/[\s\-_\/\\|]/g, '_')
+      // Remover caracteres no alfanuméricos excepto guiones bajos
+      .replace(/[^a-zA-Z0-9_]/g, '')
+      // Remover múltiples guiones bajos consecutivos
+      .replace(/_+/g, '_')
+      // Remover guiones bajos al inicio y final
+      .replace(/^_+|_+$/g, '')
+      // Limitar longitud a 50 caracteres
+      .substring(0, 50);
+    
+    // Si el nombre quedó vacío, usar un nombre por defecto
+    if (!sanitizedName) {
+      sanitizedName = 'archivo_excel';
+    }
+    
+    // Reconstruir el nombre con la extensión
+    return sanitizedName + extension;
+  };
+
   // Función para subir archivo a Supabase Storage
   const uploadFileToStorage = async (file, type) => {
     try {
       const timestamp = new Date().getTime();
-      const fileName = `${type}_${timestamp}_${file.name}`;
+      const sanitizedFileName = sanitizeFileName(file.name);
+      const fileName = `${type}_${timestamp}_${sanitizedFileName}`;
       const filePath = `excels/${fileName}`;
 
       const { data, error } = await supabase.storage
@@ -463,15 +502,16 @@ const HomePage = () => {
               case 'accounting_date':
               case 'due_date':
               case 'payment_date':
-                // Convertir fecha de Excel a formato ISO
+                // Usar las funciones mejoradas para convertir fechas
                 if (typeof value === 'number') {
-                  const excelDate = new Date((value - 25569) * 86400 * 1000);
-                  invoiceData[dbColumn] = excelDate.toISOString().split('T')[0];
+                  const convertedDate = convertExcelDate(value);
+                  if (convertedDate) {
+                    invoiceData[dbColumn] = convertedDate;
+                  }
                 } else if (typeof value === 'string' && value.trim()) {
-                  // Intentar parsear fecha en formato string
-                  const parsedDate = new Date(value);
-                  if (!isNaN(parsedDate.getTime())) {
-                    invoiceData[dbColumn] = parsedDate.toISOString().split('T')[0];
+                  const parsedDate = parseDateString(value);
+                  if (parsedDate) {
+                    invoiceData[dbColumn] = parsedDate;
                   }
                 }
                 break;
@@ -529,11 +569,11 @@ const HomePage = () => {
   // Función para crear notificación para los Jefes
   const createNotificationForManagers = async (uploadInfo, type) => {
     try {
-      // Obtener usuarios con roles de manager y admin
+      // Obtener usuarios con roles de manager, admin y management
       const { data: managers, error: managersError } = await supabase
         .from('user_profiles')
         .select('id')
-        .in('role', ['manager', 'admin'])
+        .in('role', ['manager', 'admin', 'management'])
         .neq('id', user.id); // No notificar al creador
 
       if (managersError) {
@@ -541,7 +581,7 @@ const HomePage = () => {
       }
 
       if (managers && managers.length > 0) {
-        // Crear notificaciones para cada manager/admin
+        // Crear notificaciones para cada manager/admin/management
         const notifications = managers.map(manager => ({
           recipient_id: manager.id,
           sender_id: user.id,
@@ -683,6 +723,83 @@ const HomePage = () => {
     if (desc.includes('informe generat automàticament per holded') || desc.includes('informe generado automáticamente por holded')) return false;
     return true;
   }
+
+  // Función mejorada para convertir fechas de Excel
+  const convertExcelDate = (excelDate) => {
+    if (typeof excelDate === 'number' && !isNaN(excelDate)) {
+      // Validar que el valor sea razonable
+      if (excelDate < 1 || excelDate > 999999) {
+        return null;
+      }
+      
+      // Convertir fecha de Excel (días desde 1900-01-01)
+      // Excel usa 1900 como año base, pero tiene un bug: considera 1900 como año bisiesto
+      // Por eso restamos 2 días en lugar de 1
+      const utcDays = Math.floor(excelDate - 2);
+      const utcValue = utcDays * 86400;
+      const dateInfo = new Date(utcValue * 1000);
+      
+      // Validar que la fecha resultante sea razonable
+      if (dateInfo.getFullYear() < 1900 || dateInfo.getFullYear() > 2100) {
+        return null;
+      }
+      
+      return dateInfo.toISOString().split('T')[0];
+    }
+    
+    if (typeof excelDate === 'string' && /^\d+(\.\d+)?$/.test(excelDate)) {
+      return convertExcelDate(Number(excelDate));
+    }
+    
+    return null;
+  };
+
+  // Función mejorada para parsear fechas en formato string
+  const parseDateString = (dateString) => {
+    if (!dateString || typeof dateString !== 'string') {
+      return null;
+    }
+    
+    const trimmedDate = dateString.trim();
+    if (!trimmedDate) {
+      return null;
+    }
+    
+    try {
+      // Intentar diferentes formatos de fecha
+      let parsedDate = null;
+      
+      // Formato ISO (YYYY-MM-DD)
+      if (/^\d{4}-\d{2}-\d{2}$/.test(trimmedDate)) {
+        parsedDate = new Date(trimmedDate);
+      }
+      // Formato español (DD/MM/YYYY)
+      else if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(trimmedDate)) {
+        const [day, month, year] = trimmedDate.split('/');
+        parsedDate = new Date(year, month - 1, day);
+      }
+      // Formato catalán (DD-MM-YYYY)
+      else if (/^\d{1,2}-\d{1,2}-\d{4}$/.test(trimmedDate)) {
+        const [day, month, year] = trimmedDate.split('-');
+        parsedDate = new Date(year, month - 1, day);
+      }
+      // Otros formatos comunes
+      else {
+        parsedDate = new Date(trimmedDate);
+      }
+      
+      // Validar que la fecha sea válida y razonable
+      if (isNaN(parsedDate.getTime()) || 
+          parsedDate.getFullYear() < 1900 || 
+          parsedDate.getFullYear() > 2100) {
+        return null;
+      }
+      
+      return parsedDate.toISOString().split('T')[0];
+    } catch (error) {
+      return null;
+    }
+  };
 
   // Función para manejar la importación de archivos de Solucions Socials (actualizada)
   const handleSolucionsFileImport = (file) => {

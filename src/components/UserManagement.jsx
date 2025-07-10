@@ -31,11 +31,13 @@ const UserManagement = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterRole, setFilterRole] = useState('all');
   
+  // Estados para verificación de admin
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [isAdminVerified, setIsAdminVerified] = useState(false);
+  
   // Paginación
   const [currentPage, setCurrentPage] = useState(1);
   const [usersPerPage] = useState(5);
-  
-
 
   // Verificar si el usuario actual es administrador
   const verifyAdminStatus = async () => {
@@ -49,15 +51,36 @@ const UserManagement = () => {
         .single();
 
       if (error) {
-        // Error verifying admin status
+        console.error('Error verifying admin status:', error);
         return false;
       }
 
       const isAdminUser = data?.role === 'admin' || user?.user_metadata?.role === 'admin';
       return isAdminUser;
     } catch (e) {
-      // Error verifying admin status
+      console.error('Error verifying admin status:', e);
       return false;
+    }
+  };
+
+  // Función para cargar usuarios
+  const loadUsers = async () => {
+    if (!isAdmin) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from('user_profiles')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        setError('Error al cargar usuarios');
+        return;
+      }
+
+      setUsers(data || []);
+    } catch (e) {
+      setError('Error inesperado al cargar usuarios');
     }
   };
 
@@ -67,29 +90,10 @@ const UserManagement = () => {
 
       const adminStatus = await verifyAdminStatus();
       setIsAdmin(adminStatus);
+      setIsAdminVerified(true);
 
       if (adminStatus) {
-        // Loading users as admin
-        // Current user
-        try {
-          const { data, error } = await supabase
-            .from('user_profiles')
-            .select('*')
-            .order('created_at', { ascending: false });
-
-          if (error) {
-            // Error loading users
-            setError('Error al cargar usuarios');
-            return;
-          }
-
-          // Users loaded successfully
-          // Number of users found
-          setUsers(data || []);
-        } catch (e) {
-          // Unexpected error
-          setError('Error inesperado al cargar usuarios');
-        }
+        await loadUsers();
       }
     };
 
@@ -250,49 +254,6 @@ const UserManagement = () => {
   useEffect(() => {
     setCurrentPage(1);
   }, [searchTerm, filterRole]);
-
-  // Si no es administrador, mostrar mensaje de acceso denegado
-  if (!isAdmin || !isAdminVerified) {
-    return (
-      <motion.div
-        initial={{ opacity: 0, y: 24 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, ease: 'easeOut' }}
-        style={{
-          width: '100%',
-          minHeight: '100%',
-          backgroundColor: colors.background,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '40px',
-        }}
-      >
-        <div style={{
-          textAlign: 'center',
-          maxWidth: 400,
-        }}>
-          <Shield size={64} color={colors.error} style={{ marginBottom: 24 }} />
-          <h2 style={{
-            color: colors.text,
-            fontSize: 24,
-            fontWeight: 700,
-            margin: '0 0 16px 0',
-          }}>
-            Acceso Denegado
-          </h2>
-          <p style={{
-            color: colors.textSecondary,
-            fontSize: 16,
-            lineHeight: 1.5,
-            margin: 0,
-          }}>
-            Solo los administradores pueden acceder a la gestión de usuarios.
-          </p>
-        </div>
-      </motion.div>
-    );
-  }
 
   return (
     <motion.div
