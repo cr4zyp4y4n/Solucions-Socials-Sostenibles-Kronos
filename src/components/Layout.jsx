@@ -10,7 +10,8 @@ import {
   Moon,
   Sun,
   LogOut,
-  User
+  User,
+  Shield
 } from 'feather-icons-react';
 import { useTheme } from './ThemeContext';
 import { useAuth } from './AuthContext';
@@ -21,6 +22,7 @@ import AnalyticsPage from './AnalyticsPage';
 import SettingsPage from './SettingsPage';
 import OnboardingPage from './OnboardingPage';
 import UserProfile from './UserProfile';
+import UserManagement from './UserManagement';
 
 const Layout = () => {
   const [activeSection, setActiveSection] = useState('home');
@@ -28,11 +30,27 @@ const Layout = () => {
   const { isDarkMode, toggleTheme, colors } = useTheme();
   const { user, signOut } = useAuth();
 
+  // Verificar si el usuario es administrador
+  const isAdmin = user?.user_metadata?.role === 'admin';
+
+  // Función para obtener el nombre del rol
+  const getRoleName = (role) => {
+    switch (role) {
+      case 'admin': return 'Administrador';
+      case 'management': return 'Gestión';
+      case 'manager': return 'Jefe';
+      case 'user': return 'Usuario';
+      default: return 'Usuario';
+    }
+  };
+
   const menuItems = [
     { id: 'home', icon: Home, label: 'Inicio' },
     { id: 'providers', icon: Users, label: 'Proveedores' },
     { id: 'analytics', icon: BarChart2, label: 'Análisis' },
     { id: 'settings', icon: Settings, label: 'Configuración' },
+    // Solo mostrar gestión de usuarios a administradores
+    ...(isAdmin ? [{ id: 'users', icon: Shield, label: 'Usuarios' }] : []),
   ];
 
   const handleSignOut = async () => {
@@ -50,6 +68,8 @@ const Layout = () => {
         return <AnalyticsPage />;
       case 'settings':
         return <SettingsPage />;
+      case 'users':
+        return <UserManagement />;
       case 'profile':
         return <UserProfile onShowOnboarding={() => setShowOnboarding(true)} />;
       default:
@@ -194,7 +214,7 @@ const Layout = () => {
                 fontSize: '12px',
                 userSelect: 'none'
               }}>
-                {user?.user_metadata?.role || 'Usuario'}
+                {getRoleName(user?.user_metadata?.role) || 'Usuario'}
               </div>
             </div>
           </div>

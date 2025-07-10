@@ -33,6 +33,7 @@ export const DB_CONFIG = {
   // Roles de usuario
   ROLES: {
     ADMIN: 'admin',
+    MANAGEMENT: 'management',
     MANAGER: 'manager',
     USER: 'user'
   }

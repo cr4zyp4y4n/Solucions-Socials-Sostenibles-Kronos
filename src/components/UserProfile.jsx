@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from './AuthContext';
 import { useTheme } from './ThemeContext';
 import { BarChart2, LogOut, Edit2, Save, X, User, Key, Mail, Calendar, Shield } from 'feather-icons-react';
 import OnboardingPage from './OnboardingPage';
+import { supabase } from '../config/supabase';
 
 const UserProfile = ({ onShowOnboarding }) => {
   const { user, signOut } = useAuth();
@@ -19,23 +20,131 @@ const UserProfile = ({ onShowOnboarding }) => {
   const [passwordSuccess, setPasswordSuccess] = useState('');
   const [passwordError, setPasswordError] = useState('');
 
+  // Sincronizar datos del usuario cuando cambie
+  useEffect(() => {
+    if (user) {
+      // Cargar datos desde user_profiles primero, luego desde metadata como fallback
+      loadUserProfile();
+    }
+  }, [user]);
+
+  // Cargar perfil del usuario desde la base de datos
+  const loadUserProfile = async () => {
+    if (!user?.id) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from('user_profiles')
+        .select('name, role')
+        .eq('id', user.id)
+        .single();
+
+      if (error) {
+        console.log('No se encontró perfil en DB, creando uno nuevo:', error.message);
+        // Crear perfil si no existe
+        await createUserProfile();
+        // Usar metadata como fallback mientras se crea
+        setName(user?.user_metadata?.name || '');
+        setRole(user?.user_metadata?.role || 'user');
+      } else if (data) {
+        console.log('Perfil cargado desde DB:', data);
+        setName(data.name || '');
+        setRole(data.role || 'user');
+      }
+    } catch (e) {
+      console.error('Error loading user profile:', e);
+      // Usar metadata como fallback
+      setName(user?.user_metadata?.name || '');
+      setRole(user?.user_metadata?.role || 'user');
+    }
+  };
+
+  // Función para obtener el rol original del usuario (para no administradores)
+  const getOriginalRole = () => {
+    return user?.user_metadata?.role || 'user';
+  };
+
+  // Crear perfil de usuario si no existe
+  const createUserProfile = async () => {
+    if (!user?.id) return;
+    
+    try {
+      const { error } = await supabase
+        .from('user_profiles')
+        .insert({
+          id: user.id,
+          name: user?.user_metadata?.name || user?.email || 'Usuario',
+          role: user?.user_metadata?.role || 'user',
+          email: user?.email || null
+        });
+
+      if (error) {
+        console.error('Error creating user profile:', error);
+      } else {
+        console.log('Perfil de usuario creado exitosamente');
+      }
+    } catch (e) {
+      console.error('Error creating user profile:', e);
+    }
+  };
+
   // Cambiar datos de usuario en Supabase
   const handleSave = async () => {
+    if (!name.trim()) {
+      setError('El nombre no puede estar vacío.');
+      return;
+    }
+
+    // Verificar permisos para cambiar rol
+    if (!canEditRole && role !== user?.user_metadata?.role) {
+      setError('No tienes permisos para cambiar tu rol. Solo los administradores pueden modificar roles.');
+      return;
+    }
+
     setSaving(true);
     setError('');
     setSuccess('');
+    
     try {
-      const { error: updateError } = await window.supabase.auth.updateUser({
-        data: { name, role }
+      console.log('Actualizando usuario con datos:', { name, role, canEditRole });
+      
+      // 1. Actualizar metadatos del usuario en Auth
+      const { data: authData, error: updateError } = await supabase.auth.updateUser({
+        data: { name: name.trim(), role }
       });
+      
       if (updateError) {
-        setError('Error al guardar los cambios.');
-      } else {
-        setSuccess('Datos actualizados correctamente.');
-        setEditMode(false);
+        console.error('Error updating user auth:', updateError);
+        setError(`Error al guardar los cambios: ${updateError.message}`);
+        return;
       }
+
+      // 2. Actualizar tabla user_profiles
+      const { error: profileError } = await supabase
+        .from('user_profiles')
+        .upsert({
+          id: user.id,
+          name: name.trim(),
+          role: role,
+          email: user?.email || null,
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'id'
+        });
+
+      if (profileError) {
+        console.error('Error updating user profile:', profileError);
+        setError(`Error al actualizar el perfil: ${profileError.message}`);
+        return;
+      }
+
+      console.log('Usuario actualizado correctamente en Auth y DB:', authData);
+      setSuccess('Datos actualizados correctamente.');
+      setEditMode(false);
+      
     } catch (e) {
-      setError('Error inesperado.');
+      console.error('Unexpected error:', e);
+      setError('Error inesperado al actualizar los datos. Verifica tu conexión.');
     } finally {
       setSaving(false);
     }
@@ -50,15 +159,20 @@ const UserProfile = ({ onShowOnboarding }) => {
       return;
     }
     try {
-      const { error: passError } = await window.supabase.auth.updateUser({ password: newPassword });
+      const { data, error: passError } = await supabase.auth.updateUser({ 
+        password: newPassword 
+      });
       if (passError) {
-        setPasswordError('Error al cambiar la contraseña.');
+        console.error('Error changing password:', passError);
+        setPasswordError(`Error al cambiar la contraseña: ${passError.message}`);
       } else {
         setPasswordSuccess('Contraseña cambiada correctamente.');
         setNewPassword('');
+        setShowPassword(false);
       }
     } catch (e) {
-      setPasswordError('Error inesperado.');
+      console.error('Unexpected error changing password:', e);
+      setPasswordError('Error inesperado al cambiar la contraseña.');
     }
   };
 
@@ -69,6 +183,7 @@ const UserProfile = ({ onShowOnboarding }) => {
   const getRoleName = (role) => {
     switch (role) {
       case 'admin': return 'Administrador';
+      case 'management': return 'Gestión';
       case 'manager': return 'Jefe';
       case 'user': return 'Usuario';
       default: return 'Usuario';
@@ -78,11 +193,18 @@ const UserProfile = ({ onShowOnboarding }) => {
   const getRoleColor = (role) => {
     switch (role) {
       case 'admin': return colors.error;
+      case 'management': return '#8B5CF6'; // Violeta para Gestión
       case 'manager': return colors.warning;
       case 'user': return colors.primary;
       default: return colors.primary;
     }
   };
+
+  // Verificar si el usuario es administrador
+  const isAdmin = user?.user_metadata?.role === 'admin' || role === 'admin';
+
+  // Verificar si puede editar el rol (solo administradores)
+  const canEditRole = isAdmin;
 
   return (
     <motion.div
@@ -197,10 +319,27 @@ const UserProfile = ({ onShowOnboarding }) => {
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: 6,
-                marginLeft: 2
+                marginLeft: 2,
+                position: 'relative'
               }}>
                 <Shield size={14} style={{ marginRight: 3 }} />
                 {getRoleName(role)}
+                {/* Indicador de administrador */}
+                {isAdmin && (
+                  <span style={{
+                    position: 'absolute',
+                    top: -2,
+                    right: -2,
+                    width: 8,
+                    height: 8,
+                    borderRadius: '50%',
+                    background: colors.success,
+                    border: `2px solid ${colors.surface}`,
+                    fontSize: 0
+                  }}>
+                    ★
+                  </span>
+                )}
               </span>
             </div>
             {/* Botón editar arriba derecha */}
@@ -228,9 +367,24 @@ const UserProfile = ({ onShowOnboarding }) => {
               </motion.button>
             )}
           </div>
-          {/* Selector de rol en edición */}
-          {editMode && (
+          {/* Selector de rol en edición - Solo para administradores */}
+          {editMode && canEditRole && (
             <div style={{ margin: '8px 0 0 0' }}>
+              <div style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: 8, 
+                marginBottom: 4 
+              }}>
+                <Shield size={14} color={colors.textSecondary} />
+                <span style={{ 
+                  fontSize: 13, 
+                  color: colors.textSecondary, 
+                  fontWeight: 500 
+                }}>
+                  Rol de usuario
+                </span>
+              </div>
               <select
                 value={role}
                 onChange={e => setRole(e.target.value)}
@@ -248,8 +402,31 @@ const UserProfile = ({ onShowOnboarding }) => {
               >
                 <option value="user">Usuario</option>
                 <option value="manager">Jefe</option>
+                <option value="management">Gestión</option>
                 <option value="admin">Administrador</option>
               </select>
+            </div>
+          )}
+          {/* Mensaje para usuarios no administradores */}
+          {editMode && !canEditRole && (
+            <div style={{ 
+              margin: '8px 0 0 0',
+              padding: '8px 12px',
+              background: colors.warning + '11',
+              border: `1px solid ${colors.warning}33`,
+              borderRadius: 8,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8
+            }}>
+              <Shield size={14} color={colors.warning} />
+              <span style={{ 
+                fontSize: 13, 
+                color: colors.warning, 
+                fontWeight: 500 
+              }}>
+                Solo los administradores pueden cambiar roles. Los usuarios de Gestión pueden editar su perfil pero no su rol.
+              </span>
             </div>
           )}
           {/* Correo y fecha */}
@@ -297,7 +474,12 @@ const UserProfile = ({ onShowOnboarding }) => {
               <motion.button
                 whileHover={{ scale: 1.03 }}
                 whileTap={{ scale: 0.97 }}
-                onClick={() => { setEditMode(false); setName(user?.user_metadata?.name || ''); setRole(user?.user_metadata?.role || 'user'); }}
+                onClick={() => { 
+                  setEditMode(false); 
+                  setName(user?.user_metadata?.name || ''); 
+                  // Restaurar rol original si no es administrador
+                  setRole(canEditRole ? (user?.user_metadata?.role || 'user') : getOriginalRole()); 
+                }}
                 style={{
                   background: colors.error + '11',
                   color: colors.error,

@@ -226,8 +226,23 @@ const LoginPage = () => {
                   >
                     <option value="user">Usuario</option>
                     <option value="manager">Jefe</option>
+                    <option value="management">Gestión</option>
                     <option value="admin">Administrador</option>
                   </select>
+                  {/* Descripción de roles */}
+                  <div style={{
+                    marginTop: '6px',
+                    fontSize: '12px',
+                    color: colors.textSecondary,
+                    lineHeight: '1.4',
+                    userSelect: 'none'
+                  }}>
+                    <strong>Roles disponibles:</strong><br />
+                    • <strong>Usuario:</strong> Acceso básico a la aplicación<br />
+                    • <strong>Jefe:</strong> Gestión de equipo y reportes<br />
+                    • <strong>Gestión:</strong> Subida de archivos y análisis completo<br />
+                    • <strong>Administrador:</strong> Control total del sistema
+                  </div>
                 </div>
               </motion.div>
             )}
