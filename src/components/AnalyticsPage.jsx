@@ -1,8 +1,10 @@
-import React, { useState, useMemo, useRef, Fragment } from 'react';
+import React, { useState, useMemo, useRef, Fragment, useEffect } from 'react';
 import { useDataContext } from './DataContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTheme } from './ThemeContext';
 import { useCurrency } from './CurrencyContext';
+import { useAuth } from './AuthContext';
+import { supabase } from '../config/supabase';
 
 const AnalyticsPage = () => {
   const { 
@@ -10,6 +12,17 @@ const AnalyticsPage = () => {
     menjarHeaders, menjarData 
   } = useDataContext();
   const { formatCurrency } = useCurrency();
+  const { user } = useAuth();
+  const { colors } = useTheme();
+  
+  // Estados para datos desde Supabase
+  const [supabaseData, setSupabaseData] = useState({
+    solucions: { headers: [], data: [], loading: false },
+    menjar: { headers: [], data: [], loading: false }
+  });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
   const [selectedDataset, setSelectedDataset] = useState('solucions');
   const [selectedView, setSelectedView] = useState('general');
   const [selectedColumns, setSelectedColumns] = useState([]);
@@ -21,7 +34,156 @@ const AnalyticsPage = () => {
   const [channelSortConfig, setChannelSortConfig] = useState({ key: null, direction: 'asc' });
   const [isChangingDataset, setIsChangingDataset] = useState(false);
   const tableRef = useRef(null);
-  const { colors } = useTheme();
+
+  // Cargar datos desde Supabase al montar el componente
+  useEffect(() => {
+    loadDataFromSupabase();
+  }, []);
+
+  // Función para cargar datos desde Supabase
+  const loadDataFromSupabase = async () => {
+    setLoading(true);
+    setError('');
+
+    try {
+      // Obtener todos los uploads de Excel
+      const { data: uploads, error: uploadsError } = await supabase
+        .from('excel_uploads')
+        .select('*')
+        .order('uploaded_at', { ascending: false });
+
+      if (uploadsError) {
+        console.error('Error loading uploads:', uploadsError);
+        setError('Error al cargar los datos de Excel');
+        return;
+      }
+
+      // Separar uploads por tipo
+      const solucionsUploads = uploads.filter(upload => upload.upload_type === 'solucions');
+      const menjarUploads = uploads.filter(upload => upload.upload_type === 'menjar');
+
+      // Obtener datos de facturas para cada tipo
+      const [solucionsData, menjarData] = await Promise.all([
+        getInvoicesData(solucionsUploads.map(u => u.id)),
+        getInvoicesData(menjarUploads.map(u => u.id))
+      ]);
+
+      // Procesar datos de Solucions
+      const processedSolucions = processInvoicesData(solucionsData, solucionsUploads);
+      
+      // Procesar datos de Menjar
+      const processedMenjar = processInvoicesData(menjarData, menjarUploads);
+
+      setSupabaseData({
+        solucions: {
+          headers: processedSolucions.headers,
+          data: processedSolucions.data,
+          loading: false
+        },
+        menjar: {
+          headers: processedMenjar.headers,
+          data: processedMenjar.data,
+          loading: false
+        }
+      });
+
+    } catch (error) {
+      console.error('Error loading data from Supabase:', error);
+      setError('Error al cargar los datos desde la base de datos');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Función para obtener datos de facturas por upload IDs
+  const getInvoicesData = async (uploadIds) => {
+    if (uploadIds.length === 0) return [];
+
+    const { data, error } = await supabase
+      .from('invoices')
+      .select('*')
+      .in('upload_id', uploadIds)
+      .order('processed_at', { ascending: false });
+
+    if (error) {
+      console.error('Error loading invoices:', error);
+      return [];
+    }
+
+    return data || [];
+  };
+
+  // Función para procesar datos de facturas
+  const processInvoicesData = (invoicesData, uploads) => {
+    if (invoicesData.length === 0) {
+      return { headers: [], data: [] };
+    }
+
+    // Definir las columnas esperadas en el orden correcto
+    const expectedHeaders = [
+      "Data d'emissió",
+      'Núm',
+      'Núm. Intern',
+      'Data comptable',
+      'Venciment',
+      'Proveïdor',
+      'Descripció',
+      'Tags',
+      'Compte',
+      'Projecte',
+      'Subtotal',
+      'IVA',
+      'Retención',
+      'Empleados',
+      'Rec. de eq.',
+      'Total',
+      'Pagat',
+      'Pendents',
+      'Estat',
+      'Data de pagament'
+    ];
+
+    // Mapeo inverso de columnas de la base de datos a las columnas del Excel
+    const dbToExcelMapping = {
+      'issue_date': "Data d'emissió",
+      'invoice_number': 'Núm',
+      'internal_number': 'Núm. Intern',
+      'accounting_date': 'Data comptable',
+      'due_date': 'Venciment',
+      'provider': 'Proveïdor',
+      'description': 'Descripció',
+      'tags': 'Tags',
+      'account': 'Compte',
+      'project': 'Projecte',
+      'subtotal': 'Subtotal',
+      'vat': 'IVA',
+      'retention': 'Retención',
+      'employees': 'Empleados',
+      'equipment_recovery': 'Rec. de eq.',
+      'total': 'Total',
+      'paid': 'Pagat',
+      'pending': 'Pendents',
+      'status': 'Estat',
+      'payment_date': 'Data de pagament'
+    };
+
+    // Convertir datos de facturas a formato de array
+    const processedData = invoicesData.map(invoice => {
+      const row = [];
+      expectedHeaders.forEach(header => {
+        // Encontrar la columna correspondiente en la base de datos
+        const dbColumn = Object.keys(dbToExcelMapping).find(key => dbToExcelMapping[key] === header);
+        if (dbColumn && invoice[dbColumn] !== undefined && invoice[dbColumn] !== null) {
+          row.push(invoice[dbColumn]);
+        } else {
+          row.push(null);
+        }
+      });
+      return row;
+    });
+
+    return { headers: expectedHeaders, data: processedData };
+  };
 
   // Función para manejar el cambio de dataset con animación
   const handleDatasetChange = (newDataset) => {
@@ -38,9 +200,13 @@ const AnalyticsPage = () => {
     }
   };
 
-  // Obtener los datos y headers del dataset seleccionado
-  const currentHeaders = selectedDataset === 'solucions' ? solucionsHeaders : menjarHeaders;
-  const currentData = selectedDataset === 'solucions' ? solucionsData : menjarData;
+  // Obtener los datos y headers del dataset seleccionado (desde Supabase)
+  const currentHeaders = selectedDataset === 'solucions' 
+    ? supabaseData.solucions.headers 
+    : supabaseData.menjar.headers;
+  const currentData = selectedDataset === 'solucions' 
+    ? supabaseData.solucions.data 
+    : supabaseData.menjar.data;
 
   // Función para manejar el ordenamiento
   const handleSort = (key) => {
@@ -211,7 +377,7 @@ const AnalyticsPage = () => {
     });
   };
 
-  // Función para ordenar datos de facturas por canal (tabla de facturas individuales)
+  // Función para ordenar datos de las tablas de facturas por canal
   const sortChannelData = (data, key, direction) => {
     if (!key) return data;
     
@@ -223,7 +389,7 @@ const AnalyticsPage = () => {
         case 'date':
           aValue = a[columnIndices.date];
           bValue = b[columnIndices.date];
-          // Convertir fechas de Excel para comparación
+          // Convertir fechas de Excel
           if (aValue && bValue) {
             aValue = new Date(excelDateToString(aValue));
             bValue = new Date(excelDateToString(bValue));
@@ -237,17 +403,25 @@ const AnalyticsPage = () => {
           aValue = a[columnIndices.provider];
           bValue = b[columnIndices.provider];
           break;
-        case 'description':
-          aValue = a[columnIndices.description];
-          bValue = b[columnIndices.description];
-          break;
         case 'account':
           aValue = a[columnIndices.account];
           bValue = b[columnIndices.account];
           break;
+        case 'description':
+          aValue = a[columnIndices.description];
+          bValue = b[columnIndices.description];
+          break;
+        case 'subtotal':
+          aValue = parseFloat(a[columnIndices.subtotal]) || 0;
+          bValue = parseFloat(b[columnIndices.subtotal]) || 0;
+          break;
         case 'total':
           aValue = parseFloat(a[columnIndices.total]) || 0;
           bValue = parseFloat(b[columnIndices.total]) || 0;
+          break;
+        case 'pending':
+          aValue = parseFloat(a[columnIndices.pending]) || 0;
+          bValue = parseFloat(b[columnIndices.pending]) || 0;
           break;
         default:
           aValue = a[key];
@@ -457,116 +631,65 @@ const AnalyticsPage = () => {
       const utc_days = Math.floor(excelDate - 25569);
       const utc_value = utc_days * 86400;
       const date_info = new Date(utc_value * 1000);
-      // Ajuste por decimales (hora)
+      
       if (excelDate % 1 !== 0) {
         const totalSeconds = Math.round(86400 * (excelDate % 1));
-        date_info.setSeconds(date_info.getSeconds() + totalSeconds);
+        const hours = Math.floor(totalSeconds / 3600);
+        const minutes = Math.floor((totalSeconds % 3600) / 60);
+        const seconds = totalSeconds % 60;
+        date_info.setHours(hours, minutes, seconds);
       }
-      const day = String(date_info.getDate()).padStart(2, '0');
-      const month = String(date_info.getMonth() + 1).padStart(2, '0');
-      const year = date_info.getFullYear();
-      return `${day}/${month}/${year}`;
+      
+      return date_info.toLocaleDateString('es-ES');
     }
-    // Si es string numérico
+    
     if (typeof excelDate === 'string' && /^\d+(\.\d+)?$/.test(excelDate)) {
       return excelDateToString(Number(excelDate));
     }
-    // Si ya es string tipo fecha
+    
     return excelDate;
   }
 
   // --- Unificar lógica de filtrado de facturas por canal ---
   function getChannelRows(channel, data, columnIndices) {
-    if (!channel || !columnIndices.description || !columnIndices.account) return [];
     return data.filter(row => {
-      const description = (row[columnIndices.description] || '').toLowerCase();
-      const account = (row[columnIndices.account] || '').toLowerCase();
+      const account = row[columnIndices.account];
+      if (!account) return false;
       
-      // Canales específicos según el dataset
-      if (selectedDataset === 'solucions') {
-        switch (channel) {
-          case 'Estructura':
-            return description.includes('estructura') || account.includes('estructura');
-          case 'Catering':
-            return description.includes('catering') || account.includes('catering');
-          case 'IDONI':
-            return description.includes('idoni') || account.includes('idoni');
-          case 'Otros':
-            return !description.includes('estructura') && !description.includes('catering') &&
-                   !description.includes('idoni') && !account.includes('estructura') &&
-                   !account.includes('catering') && !account.includes('idoni');
-          default:
-            return false;
-        }
-      } else if (selectedDataset === 'menjar') {
-        switch (channel) {
-          case 'OBRADOR':
-            return description.includes('obrador') || account.includes('obrador');
-          case 'ESTRUCTURA':
-            return description.includes('estructura') || account.includes('estructura');
-          case 'CATERING':
-            return description.includes('catering') || account.includes('catering');
-          case 'Otros':
-            return !description.includes('obrador') && !description.includes('estructura') && 
-                   !description.includes('catering') && !account.includes('obrador') &&
-                   !account.includes('estructura') && !account.includes('catering');
-          default:
-            return false;
-        }
-      }
-      return false;
+      const accountLower = account.toString().toLowerCase();
+      return accountLower.includes(channel.toLowerCase());
     });
   }
 
   // Función para manejar el click en una tarjeta de canal
   const handleChannelClick = (channel) => {
-    setSelectedChannel(prev => (prev === channel ? '' : channel));
+    setSelectedChannel(selectedChannel === channel ? '' : channel);
   };
 
   // Función para manejar la expansión de proveedores
   const handleProviderExpand = (provider) => {
-    setExpandedProvider(prev => (prev === provider ? '' : provider));
+    setExpandedProvider(expandedProvider === provider ? '' : provider);
   };
 
   // Función para saber si una fila está pendiente de pago
   function isPending(row, columnIndices) {
-    const estatIdx = columnIndices.estat !== undefined ? columnIndices.estat : -1;
-    if (estatIdx === -1) return false;
-    const estat = (row[estatIdx] || '').toLowerCase();
-    return estat === 'pendents' || estat === 'vençut';
+    const pending = row[columnIndices.pending];
+    return pending && parseFloat(pending) > 0;
   }
 
   // Función para obtener el color del canal
   function getChannelColor(channel) {
-    switch (channel) {
-      case 'Estructura':
-        return { background: 'rgba(255, 152, 0, 0.15)', color: '#E65100' }; // Naranja apastelado (construcción)
-      case 'Catering':
-        return { background: 'rgba(76, 175, 80, 0.15)', color: '#2E7D32' }; // Verde apastelado (catering)
-      case 'IDONI':
-        return { background: 'rgba(233, 30, 99, 0.15)', color: '#C2185B' }; // Rosa IDONI apastelado
-      case 'OBRADOR':
-        return { background: 'rgba(255, 193, 7, 0.15)', color: '#F57F17' }; // Amarillo apastelado (obrador)
-      case 'ESTRUCTURA':
-        return { background: 'rgba(255, 152, 0, 0.15)', color: '#E65100' }; // Naranja apastelado (estructura)
-      case 'CATERING':
-        return { background: 'rgba(76, 175, 80, 0.15)', color: '#2E7D32' }; // Verde apastelado (catering)
-      case 'Otros':
-        return { background: 'rgba(158, 158, 158, 0.15)', color: '#616161' }; // Gris apastelado
-      default:
-        return { background: 'rgba(158, 158, 158, 0.15)', color: '#616161' };
-    }
+    const colors = {
+      'solucions': '#4CAF50',
+      'menjar': '#FF6B35',
+      'default': '#2196F3'
+    };
+    return colors[channel.toLowerCase()] || colors.default;
   }
 
   // Función para obtener colores de filas intercaladas
   function getRowBackgroundColor(index) {
-    if (colors.background === '#1a1a1a') {
-      // Modo oscuro
-      return index % 2 === 0 ? '#333333' : '#2d2d2d';
-    } else {
-      // Modo claro
-      return index % 2 === 0 ? '#ffffff' : '#f8f9fa';
-    }
+    return index % 2 === 0 ? colors.surface : colors.card;
   }
 
   // Componente para header ordenable
@@ -735,7 +858,7 @@ const AnalyticsPage = () => {
               color: selectedDataset === 'solucions' ? colors.primary : colors.textSecondary, 
               marginTop: 2 
             }}>
-              {solucionsData.length > 0 ? `${solucionsData.length} facturas cargadas` : 'No hay datos cargados'}
+              {supabaseData.solucions.data.length > 0 ? `${supabaseData.solucions.data.length} facturas cargadas` : 'No hay datos cargados'}
             </span>
           </motion.div>
 
@@ -803,7 +926,7 @@ const AnalyticsPage = () => {
               color: selectedDataset === 'menjar' ? colors.primary : colors.textSecondary, 
               marginTop: 2 
             }}>
-              {menjarData.length > 0 ? `${menjarData.length} facturas cargadas` : 'No hay datos cargados'}
+              {supabaseData.menjar.data.length > 0 ? `${supabaseData.menjar.data.length} facturas cargadas` : 'No hay datos cargados'}
             </span>
           </motion.div>
         </div>
@@ -853,7 +976,80 @@ const AnalyticsPage = () => {
       </div>
 
       <AnimatePresence mode="wait">
-        {currentHeaders.length === 0 ? (
+        {loading ? (
+          <motion.div
+            key="loading"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            transition={{ duration: 0.2, ease: 'easeOut' }}
+            style={{ 
+              display: 'flex', 
+              flexDirection: 'column', 
+              alignItems: 'center', 
+              justifyContent: 'center', 
+              padding: '60px 20px',
+              color: colors.textSecondary 
+            }}
+          >
+            <motion.div
+              animate={{ rotate: 360 }}
+              transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+              style={{
+                width: '40px',
+                height: '40px',
+                border: `3px solid ${colors.border}`,
+                borderTop: `3px solid ${colors.primary}`,
+                borderRadius: '50%',
+                marginBottom: '20px'
+              }}
+            />
+            <div style={{ fontSize: 16, fontWeight: 500, marginBottom: 8 }}>
+              Cargando datos desde la base de datos...
+            </div>
+            <div style={{ fontSize: 14, color: colors.textSecondary }}>
+              Esto puede tomar unos segundos
+            </div>
+          </motion.div>
+        ) : error ? (
+          <motion.div
+            key="error"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            transition={{ duration: 0.2, ease: 'easeOut' }}
+            style={{ 
+              display: 'flex', 
+              flexDirection: 'column', 
+              alignItems: 'center', 
+              justifyContent: 'center', 
+              padding: '60px 20px',
+              color: colors.error 
+            }}
+          >
+            <div style={{ fontSize: 16, fontWeight: 500, marginBottom: 8 }}>
+              Error al cargar los datos
+            </div>
+            <div style={{ fontSize: 14, color: colors.textSecondary, textAlign: 'center', marginBottom: 20 }}>
+              {error}
+            </div>
+            <button
+              onClick={loadDataFromSupabase}
+              style={{
+                background: colors.primary,
+                color: 'white',
+                border: 'none',
+                borderRadius: 8,
+                padding: '10px 20px',
+                fontSize: 14,
+                fontWeight: 600,
+                cursor: 'pointer'
+              }}
+            >
+              Reintentar
+            </button>
+          </motion.div>
+        ) : currentHeaders.length === 0 ? (
           <motion.div
             key="no-data"
             initial={{ opacity: 0, y: 20 }}

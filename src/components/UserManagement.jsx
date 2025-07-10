@@ -14,7 +14,9 @@ import {
   Calendar,
   Search,
   Filter,
-  User
+  User,
+  ChevronLeft,
+  ChevronRight
 } from 'feather-icons-react';
 import { supabase } from '../config/supabase';
 
@@ -28,10 +30,17 @@ const UserManagement = () => {
   const [editingUser, setEditingUser] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterRole, setFilterRole] = useState('all');
+  
+  // Paginación
+  const [currentPage, setCurrentPage] = useState(1);
+  const [usersPerPage] = useState(5);
+  
+
 
   // Verificar si el usuario es administrador
   const [isAdminVerified, setIsAdminVerified] = useState(false);
-  const isAdmin = user?.user_metadata?.role === 'admin';
+  const [dbRole, setDbRole] = useState(null);
+  const isAdmin = dbRole === 'admin';
 
   // Verificar que el usuario es realmente administrador en la base de datos
   const verifyAdminStatus = async () => {
@@ -47,9 +56,11 @@ const UserManagement = () => {
       if (error) {
         console.error('Error verifying admin status:', error);
         setIsAdminVerified(false);
+        setDbRole(null);
       } else {
         const isActuallyAdmin = data?.role === 'admin';
         setIsAdminVerified(isActuallyAdmin);
+        setDbRole(data?.role || null);
         console.log('Admin verification:', { 
           metadataRole: user?.user_metadata?.role, 
           dbRole: data?.role, 
@@ -59,6 +70,7 @@ const UserManagement = () => {
     } catch (e) {
       console.error('Error verifying admin status:', e);
       setIsAdminVerified(false);
+      setDbRole(null);
     }
   };
 
@@ -81,6 +93,8 @@ const UserManagement = () => {
       loadUsers();
     }
   }, [isAdmin, isAdminVerified]);
+
+
 
   // Cargar todos los usuarios (solo administradores)
   const loadUsers = async () => {
@@ -132,11 +146,36 @@ const UserManagement = () => {
 
       console.log('Updating user:', userId, 'with updates:', updates);
       
+      // 1. Actualizar user_profiles
       const { data, error } = await supabase
         .from('user_profiles')
         .update({ ...updates, email })
         .eq('id', userId)
         .select();
+
+      if (error) {
+        console.error('Error updating user profile:', error);
+        setError(`Error al actualizar usuario: ${error.message}`);
+        return;
+      }
+
+      // 2. Si se está actualizando el rol, también actualizar los metadatos del usuario
+      if (updates.role) {
+        try {
+          const { error: authError } = await supabase.auth.updateUser({
+            data: { role: updates.role }
+          });
+          
+          if (authError) {
+            console.error('Error updating user auth metadata:', authError);
+            // No fallar si solo falla la actualización de metadata
+          } else {
+            console.log('User auth metadata updated successfully');
+          }
+        } catch (e) {
+          console.error('Error updating auth metadata:', e);
+        }
+      }
 
       if (error) {
         console.error('Error updating user:', error);
@@ -214,13 +253,37 @@ const UserManagement = () => {
     }
   };
 
-  // Filtrar usuarios
+  // Filtrado y paginación
   const filteredUsers = users.filter(user => {
     const matchesSearch = user.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         user.id?.toLowerCase().includes(searchTerm.toLowerCase());
+                         user.email?.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesRole = filterRole === 'all' || user.role === filterRole;
     return matchesSearch && matchesRole;
   });
+
+  const totalPages = Math.ceil(filteredUsers.length / usersPerPage);
+  const startIndex = (currentPage - 1) * usersPerPage;
+  const endIndex = startIndex + usersPerPage;
+  const currentUsers = filteredUsers.slice(startIndex, endIndex);
+
+  const handlePageChange = (page) => {
+    setCurrentPage(page);
+  };
+
+  const formatDate = (dateString) => {
+    return new Date(dateString).toLocaleDateString('es-ES', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  // Resetear página cuando cambien los filtros
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, filterRole]);
 
   // Si no es administrador, mostrar mensaje de acceso denegado
   if (!isAdmin || !isAdminVerified) {
@@ -401,6 +464,8 @@ const UserManagement = () => {
           </select>
         </div>
 
+
+
         {/* Contador */}
         <div style={{
           color: colors.textSecondary,
@@ -441,7 +506,7 @@ const UserManagement = () => {
           }}>
             {error}
           </div>
-        ) : filteredUsers.length === 0 ? (
+        ) : currentUsers.length === 0 ? (
           <div style={{
             padding: '60px 32px',
             textAlign: 'center',
@@ -451,7 +516,7 @@ const UserManagement = () => {
           </div>
         ) : (
           <div style={{ overflow: 'auto' }}>
-            {filteredUsers.map((userItem, index) => {
+            {currentUsers.map((userItem, index) => {
               const isSelf = userItem.id === user.id;
               return (
                 <motion.div
@@ -583,6 +648,96 @@ const UserManagement = () => {
           </div>
         )}
       </motion.div>
+
+      {/* Paginación */}
+      {totalPages > 1 && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.3 }}
+          style={{
+            maxWidth: 1200,
+            margin: '24px 0 0 0',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 8,
+          }}
+        >
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => handlePageChange(currentPage - 1)}
+            disabled={currentPage === 1}
+            style={{
+              background: currentPage === 1 ? colors.border : colors.surface,
+              border: `1px solid ${colors.border}`,
+              borderRadius: 8,
+              padding: '8px 12px',
+              color: currentPage === 1 ? colors.textSecondary : colors.text,
+              cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              opacity: currentPage === 1 ? 0.5 : 1,
+            }}
+          >
+            <ChevronLeft size={16} />
+            Anterior
+          </motion.button>
+
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+          }}>
+            {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+              <motion.button
+                key={page}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => handlePageChange(page)}
+                style={{
+                  background: page === currentPage ? colors.primary : colors.surface,
+                  border: `1px solid ${page === currentPage ? colors.primary : colors.border}`,
+                  borderRadius: 6,
+                  padding: '6px 10px',
+                  color: page === currentPage ? 'white' : colors.text,
+                  cursor: 'pointer',
+                  fontSize: 14,
+                  fontWeight: page === currentPage ? 600 : 500,
+                  minWidth: 32,
+                  userSelect: 'none',
+                }}
+              >
+                {page}
+              </motion.button>
+            ))}
+          </div>
+
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => handlePageChange(currentPage + 1)}
+            disabled={currentPage === totalPages}
+            style={{
+              background: currentPage === totalPages ? colors.border : colors.surface,
+              border: `1px solid ${colors.border}`,
+              borderRadius: 8,
+              padding: '8px 12px',
+              color: currentPage === totalPages ? colors.textSecondary : colors.text,
+              cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              opacity: currentPage === totalPages ? 0.5 : 1,
+            }}
+          >
+            Siguiente
+            <ChevronRight size={16} />
+          </motion.button>
+        </motion.div>
+      )}
 
       {/* Modal de edición */}
       <AnimatePresence>

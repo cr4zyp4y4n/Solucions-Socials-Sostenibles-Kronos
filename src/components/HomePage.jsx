@@ -9,11 +9,14 @@ import {
   TrendingUp,
   DollarSign,
   Check,
-  X
+  X,
+  Loader
 } from 'feather-icons-react';
 import { useDataContext } from './DataContext';
 import { useTheme } from './ThemeContext';
 import { useCurrency } from './CurrencyContext';
+import { useAuth } from './AuthContext';
+import { supabase } from '../config/supabase';
 
 const EXPECTED_HEADERS = [
   "Data d'emissió", 'Núm', 'Núm. Intern', 'Data comptable', 'Venciment', 'Proveïdor',
@@ -118,6 +121,8 @@ const HomePage = () => {
   const [alertVisible, setAlertVisible] = useState(false);
   const [alertMessage, setAlertMessage] = useState('');
   const [alertType, setAlertType] = useState('success');
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const fileInputRef = useRef();
   const menjarFileInputRef = useRef();
   const { 
@@ -126,6 +131,7 @@ const HomePage = () => {
   } = useDataContext();
   const { colors } = useTheme();
   const { formatCurrency } = useCurrency();
+  const { user } = useAuth();
 
   // Función para mostrar alerta
   const showAlert = (message, type = 'success') => {
@@ -133,6 +139,327 @@ const HomePage = () => {
     setAlertType(type);
     setAlertVisible(true);
     setTimeout(() => setAlertVisible(false), 4000);
+  };
+
+  // Función para subir archivo a Supabase Storage
+  const uploadFileToStorage = async (file, type) => {
+    try {
+      const timestamp = new Date().getTime();
+      const fileName = `${type}_${timestamp}_${file.name}`;
+      const filePath = `excels/${fileName}`;
+
+      const { data, error } = await supabase.storage
+        .from('excels')
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: false
+        });
+
+      if (error) {
+        console.error('Error uploading file to storage:', error);
+        throw new Error(`Error al subir archivo: ${error.message}`);
+      }
+
+      return { 
+        filePath, 
+        fileName,
+        size: file.size // Incluir el tamaño del archivo
+      };
+    } catch (error) {
+      console.error('Error in uploadFileToStorage:', error);
+      throw error;
+    }
+  };
+
+  // Función para guardar metadatos del upload en la base de datos
+  const saveUploadMetadata = async (fileInfo, type, headers, dataCount) => {
+    try {
+      const { data, error } = await supabase
+        .from('excel_uploads')
+        .insert({
+          filename: fileInfo.fileName,
+          size: fileInfo.size || 0, // Tamaño del archivo en bytes
+          type: type, // 'solucions' o 'menjar'
+          file_path: fileInfo.filePath,
+          upload_type: type, // Mantener compatibilidad
+          data_count: dataCount,
+          metadata: {
+            headers: headers
+          },
+          uploaded_by: user.id,
+          uploaded_at: new Date().toISOString()
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Error saving upload metadata:', error);
+        throw new Error(`Error al guardar metadatos: ${error.message}`);
+      }
+
+      return data;
+    } catch (error) {
+      console.error('Error in saveUploadMetadata:', error);
+      throw error;
+    }
+  };
+
+  // Función para guardar datos procesados en la tabla invoices
+  const saveProcessedData = async (data, uploadId) => {
+    try {
+      // Mapeo de columnas del Excel a las columnas de la tabla invoices
+      const columnMapping = {
+        "Data d'emissió": 'issue_date',
+        'Núm': 'invoice_number',
+        'Núm. Intern': 'internal_number',
+        'Data comptable': 'accounting_date',
+        'Venciment': 'due_date',
+        'Proveïdor': 'provider',
+        'Descripció': 'description',
+        'Tags': 'tags',
+        'Compte': 'account',
+        'Projecte': 'project',
+        'Subtotal': 'subtotal',
+        'IVA': 'vat',
+        'Retención': 'retention',
+        'Empleados': 'employees',
+        'Rec. de eq.': 'equipment_recovery',
+        'Total': 'total',
+        'Pagat': 'paid',
+        'Pendents': 'pending',
+        'Estat': 'status',
+        'Data de pagament': 'payment_date'
+      };
+
+      // Headers fijos en el orden correcto
+      const headers = [
+        "Data d'emissió",
+        'Núm',
+        'Núm. Intern',
+        'Data comptable',
+        'Venciment',
+        'Proveïdor',
+        'Descripció',
+        'Tags',
+        'Compte',
+        'Projecte',
+        'Subtotal',
+        'IVA',
+        'Retención',
+        'Empleados',
+        'Rec. de eq.',
+        'Total',
+        'Pagat',
+        'Pendents',
+        'Estat',
+        'Data de pagament'
+      ];
+
+      // Preparar los datos para insertar
+      const processedData = data.map(row => {
+        const invoiceData = {
+          upload_id: uploadId,
+          created_by: user.id,
+          processed_at: new Date().toISOString()
+        };
+
+        // Mapear cada columna del Excel a la columna correspondiente en la base de datos
+        headers.forEach((header, index) => {
+          const dbColumn = columnMapping[header];
+          if (dbColumn && row[index] !== undefined && row[index] !== null && row[index] !== '') {
+            const value = row[index];
+            
+            // Convertir tipos de datos según la columna
+            switch (dbColumn) {
+              case 'issue_date':
+              case 'accounting_date':
+              case 'due_date':
+              case 'payment_date':
+                // Convertir fecha de Excel a formato ISO
+                if (typeof value === 'number') {
+                  const excelDate = new Date((value - 25569) * 86400 * 1000);
+                  invoiceData[dbColumn] = excelDate.toISOString().split('T')[0];
+                } else if (typeof value === 'string' && value.trim()) {
+                  // Intentar parsear fecha en formato string
+                  const parsedDate = new Date(value);
+                  if (!isNaN(parsedDate.getTime())) {
+                    invoiceData[dbColumn] = parsedDate.toISOString().split('T')[0];
+                  }
+                }
+                break;
+              
+              case 'subtotal':
+              case 'vat':
+              case 'retention':
+              case 'employees':
+              case 'equipment_recovery':
+              case 'total':
+              case 'pending':
+                // Convertir a número
+                const numValue = parseFloat(value);
+                if (!isNaN(numValue)) {
+                  invoiceData[dbColumn] = numValue;
+                }
+                break;
+              
+              case 'paid':
+                // Convertir a boolean
+                if (typeof value === 'string') {
+                  const lowerValue = value.toLowerCase();
+                  invoiceData[dbColumn] = lowerValue === 'true' || lowerValue === 'sí' || lowerValue === 'si' || lowerValue === '1';
+                } else if (typeof value === 'number') {
+                  invoiceData[dbColumn] = value === 1;
+                } else if (typeof value === 'boolean') {
+                  invoiceData[dbColumn] = value;
+                }
+                break;
+              
+              default:
+                // Para campos de texto, mantener el valor tal como está
+                invoiceData[dbColumn] = value.toString().trim();
+            }
+          }
+        });
+
+        return invoiceData;
+      });
+
+      const { error } = await supabase
+        .from('invoices')
+        .insert(processedData);
+
+      if (error) {
+        console.error('Error saving processed data:', error);
+        throw new Error(`Error al guardar datos procesados: ${error.message}`);
+      }
+
+      return processedData.length;
+    } catch (error) {
+      console.error('Error in saveProcessedData:', error);
+      throw error;
+    }
+  };
+
+  // Función para crear notificación para los Jefes
+  const createNotificationForManagers = async (uploadInfo, type) => {
+    try {
+      // Obtener usuarios con roles de manager y admin
+      const { data: managers, error: managersError } = await supabase
+        .from('user_profiles')
+        .select('id')
+        .in('role', ['manager', 'admin'])
+        .neq('id', user.id); // No notificar al creador
+
+      if (managersError) {
+        console.error('Error fetching managers:', managersError);
+        return;
+      }
+
+      if (managers && managers.length > 0) {
+        // Crear notificaciones para cada manager/admin
+        const notifications = managers.map(manager => ({
+          recipient_id: manager.id,
+          sender_id: user.id,
+          type: 'system', // Usar 'system' que está permitido en el check constraint
+          title: `Nuevo archivo Excel subido`,
+          message: `Se ha subido un archivo Excel de ${type === 'solucions' ? 'Solucions Socials' : 'Menjar d\'Hort'} con ${uploadInfo.data_count} registros.`,
+          data: {
+            upload_type: type,
+            upload_id: uploadInfo.id,
+            data_count: uploadInfo.data_count
+          }
+        }));
+
+        const { error } = await supabase
+          .from('notifications')
+          .insert(notifications);
+
+        if (error) {
+          console.error('Error creating notifications:', error);
+          // No lanzar error aquí, es opcional
+        }
+      }
+    } catch (error) {
+      console.error('Error in createNotificationForManagers:', error);
+      // No lanzar error aquí, es opcional
+    }
+  };
+
+  // Función completa para procesar y subir archivo Excel
+  const processAndUploadExcel = async (file, type) => {
+    setUploading(true);
+    setUploadProgress(0);
+
+    try {
+      // Paso 1: Procesar el archivo Excel
+      setUploadProgress(20);
+      const processedData = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          try {
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+            const sheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[sheetName];
+            const json = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+            const bestHeaderIdx = findBestHeaderRow(json);
+            const headers = json[bestHeaderIdx] || [];
+            const rawRows = json.slice(bestHeaderIdx + 1);
+            const filteredRows = rawRows.filter(row => isValidRow(row, headers));
+            resolve({ headers, data: filteredRows });
+          } catch (error) {
+            reject(error);
+          }
+        };
+        reader.onerror = () => reject(new Error('Error al leer el archivo'));
+        reader.readAsArrayBuffer(file);
+      });
+
+      setUploadProgress(40);
+
+      // Paso 2: Subir archivo a Storage
+      const fileInfo = await uploadFileToStorage(file, type);
+      setUploadProgress(60);
+
+      // Paso 3: Guardar metadatos del upload
+      const uploadMetadata = await saveUploadMetadata(
+        fileInfo, 
+        type, 
+        processedData.headers,
+        processedData.data.length
+      );
+      setUploadProgress(80);
+
+      // Paso 4: Guardar datos procesados
+      await saveProcessedData(processedData.data, uploadMetadata.id);
+      setUploadProgress(90);
+
+      // Paso 5: Crear notificación para Jefes (si el usuario es de Gestión)
+      if (user?.user_metadata?.role === 'management') {
+        await createNotificationForManagers(uploadMetadata, type);
+      }
+
+      setUploadProgress(100);
+
+      // Actualizar estado local para mantener compatibilidad
+      if (type === 'solucions') {
+        setSolucionsHeaders(processedData.headers);
+        setSolucionsData(processedData.data);
+      } else {
+        setMenjarHeaders(processedData.headers);
+        setMenjarData(processedData.data);
+      }
+
+      const typeName = type === 'solucions' ? 'Solucions Socials' : 'Menjar d\'Hort';
+      showAlert(`Excel de ${typeName} subido correctamente. Se importaron ${processedData.data.length} filas de datos.`, 'success');
+
+    } catch (error) {
+      console.error('Error in processAndUploadExcel:', error);
+      showAlert(`Error al procesar y subir el archivo: ${error.message}`, 'error');
+    } finally {
+      setUploading(false);
+      setUploadProgress(0);
+    }
   };
 
   // Encuentra la fila que más se parece a las cabeceras esperadas
@@ -172,71 +499,31 @@ const HomePage = () => {
     return true;
   }
 
-  // Función para manejar la importación de archivos de Solucions Socials
+  // Función para manejar la importación de archivos de Solucions Socials (actualizada)
   const handleSolucionsFileImport = (file) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const data = new Uint8Array(e.target.result);
-        const workbook = XLSX.read(data, { type: 'array' });
-        const sheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[sheetName];
-        const json = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
-        const bestHeaderIdx = findBestHeaderRow(json);
-        const headers = json[bestHeaderIdx] || [];
-        // Filtrar filas válidas
-        const rawRows = json.slice(bestHeaderIdx + 1);
-        const filteredRows = rawRows.filter(row => isValidRow(row, headers));
-        setSolucionsHeaders(headers);
-        setSolucionsData(filteredRows);
-        const rowCount = filteredRows.length;
-        showAlert(`Excel de Solucions Socials cargado correctamente. Se importaron ${rowCount} filas de datos.`, 'success');
-      } catch (error) {
-        showAlert('Error al procesar el archivo Excel de Solucions Socials. Asegúrate de que el formato sea correcto.', 'error');
-      }
-    };
-    reader.onerror = () => {
-      showAlert('Error al leer el archivo de Solucions Socials. Inténtalo de nuevo.', 'error');
-    };
-    reader.readAsArrayBuffer(file);
+    processAndUploadExcel(file, 'solucions');
   };
 
-  // Función para manejar la importación de archivos de Menjar d'Hort
+  // Función para manejar la importación de archivos de Menjar d'Hort (actualizada)
   const handleMenjarFileImport = (file) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const data = new Uint8Array(e.target.result);
-        const workbook = XLSX.read(data, { type: 'array' });
-        const sheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[sheetName];
-        const json = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
-        const bestHeaderIdx = findBestHeaderRow(json);
-        const headers = json[bestHeaderIdx] || [];
-        // Filtrar filas válidas
-        const rawRows = json.slice(bestHeaderIdx + 1);
-        const filteredRows = rawRows.filter(row => isValidRow(row, headers));
-        setMenjarHeaders(headers);
-        setMenjarData(filteredRows);
-        const rowCount = filteredRows.length;
-        showAlert(`Excel de Menjar d'Hort cargado correctamente. Se importaron ${rowCount} filas de datos.`, 'success');
-      } catch (error) {
-        showAlert('Error al procesar el archivo Excel de Menjar d\'Hort. Asegúrate de que el formato sea correcto.', 'error');
-      }
-    };
-    reader.onerror = () => {
-      showAlert('Error al leer el archivo de Menjar d\'Hort. Inténtalo de nuevo.', 'error');
-    };
-    reader.readAsArrayBuffer(file);
+    processAndUploadExcel(file, 'menjar');
   };
 
   // Función para manejar la selección de archivo de Solucions Socials
   const handleSolucionsFileSelect = () => {
+    if (uploading) {
+      showAlert('Espera a que termine la subida actual.', 'error');
+      return;
+    }
     fileInputRef.current.click();
   };
 
   // Función para manejar la selección de archivo de Menjar d'Hort
   const handleMenjarFileSelect = () => {
+    if (uploading) {
+      showAlert('Espera a que termine la subida actual.', 'error');
+      return;
+    }
     menjarFileInputRef.current.click();
   };
 
@@ -394,6 +681,57 @@ const HomePage = () => {
         onClose={() => setAlertVisible(false)}
       />
 
+      {/* Indicador de progreso de subida */}
+      {uploading && (
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -20 }}
+          style={{
+            position: 'fixed',
+            top: '20px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 1001,
+            backgroundColor: colors.surface,
+            border: `1px solid ${colors.border}`,
+            borderRadius: '12px',
+            padding: '16px 24px',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            minWidth: '300px'
+          }}
+        >
+          <Loader size={20} className="animate-spin" color={colors.primary} />
+          <div style={{ flex: 1 }}>
+            <div style={{
+              fontSize: '15px',
+              fontWeight: '600',
+              color: colors.text,
+              marginBottom: '4px'
+            }}>
+              Subiendo archivo Excel...
+            </div>
+            <div style={{
+              width: '100%',
+              height: '4px',
+              backgroundColor: colors.border,
+              borderRadius: '2px',
+              overflow: 'hidden'
+            }}>
+              <div style={{
+                width: `${uploadProgress}%`,
+                height: '100%',
+                backgroundColor: colors.primary,
+                transition: 'width 0.3s ease'
+              }} />
+            </div>
+          </div>
+        </motion.div>
+      )}
+
       {/* Welcome Section */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
@@ -515,11 +853,12 @@ const HomePage = () => {
                   padding: '32px',
                   borderRadius: '12px',
                   border: `1px solid ${colors.border}`,
-                  cursor: 'pointer',
+                  cursor: uploading ? 'not-allowed' : 'pointer',
+                  opacity: uploading ? 0.6 : 1,
                   transition: 'all 0.2s ease',
                   boxShadow: isDarkMode => isDarkMode ? '0 2px 8px rgba(0,0,0,0.25)' : '0 2px 8px rgba(0,0,0,0.05)',
                 }}
-                onClick={action.onClick}
+                onClick={uploading ? undefined : action.onClick}
               >
                 <div style={{
                   display: 'flex',
