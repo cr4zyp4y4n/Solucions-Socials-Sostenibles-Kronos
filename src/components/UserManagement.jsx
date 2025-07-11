@@ -183,59 +183,13 @@ const UserManagement = () => {
 
     try {
       
-      // 1. Primero obtener el email del usuario antes de eliminarlo
-      const { data: userData, error: fetchError } = await supabase
-        .from('user_profiles')
-        .select('email')
-        .eq('id', userId)
-        .single();
-
-      if (fetchError) {
-        setError(`Error al obtener datos del usuario: ${fetchError.message}`);
+      // Solo llamada a la función de cascada
+      const { data: cascadeResult, error: cascadeError } = await supabase
+        .rpc('complete_delete_user_cascade', { target_user_id: userId });
+      if (cascadeError) {
+        setError(`Error al eliminar usuario: ${cascadeError.message}`);
         return;
       }
-
-      const userEmail = userData?.email;
-
-      // 2. Eliminar de user_profiles
-      const { error: deleteProfileError } = await supabase
-        .from('user_profiles')
-        .delete()
-        .eq('id', userId);
-
-      if (deleteProfileError) {
-        setError(`Error al eliminar usuario: ${deleteProfileError.message}`);
-        return;
-      }
-
-      // 3. Usar la función de eliminación en cascada de la base de datos
-      try {
-        const { data: cascadeResult, error: cascadeError } = await supabase
-          .rpc('delete_user_cascade', { user_id: userId });
-        
-        if (cascadeError) {
-          console.warn('⚠️ [DEBUG] Error en eliminación en cascada:', cascadeError);
-          console.warn('⚠️ [DEBUG] Intentando eliminación manual...');
-          
-          // Fallback: intentar eliminación manual
-          try {
-            const { error: authDeleteError } = await supabase.auth.admin.deleteUser(userId);
-            if (authDeleteError) {
-              console.warn('⚠️ [DEBUG] No se pudo eliminar de auth.users:', authDeleteError);
-            } else {
-              console.log('✅ [DEBUG] Usuario eliminado de auth.users (manual)');
-            }
-          } catch (authError) {
-            console.warn('⚠️ [DEBUG] Error eliminando de auth.users:', authError);
-          }
-        } else {
-          console.log('✅ [DEBUG] Eliminación en cascada completada exitosamente');
-        }
-      } catch (cascadeError) {
-        console.warn('⚠️ [DEBUG] Error en función de cascada:', cascadeError);
-        console.warn('⚠️ [DEBUG] El usuario puede permanecer en auth.users');
-      }
-
       setSuccess('Usuario eliminado correctamente');
       setTimeout(() => setSuccess(''), 3000);
       loadUsers(); // Recargar lista
