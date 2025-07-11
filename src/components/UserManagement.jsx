@@ -26,10 +26,7 @@ const UserManagement = () => {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   
-  // Log cuando cambia el estado de loading
-  useEffect(() => {
-    console.log('🔍 [DEBUG] Estado de loading cambiado a:', loading);
-  }, [loading]);
+  // Eliminar el useEffect de logs de loading
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [editingUser, setEditingUser] = useState(null);
@@ -46,122 +43,63 @@ const UserManagement = () => {
 
   // Verificar si el usuario actual es administrador
   const verifyAdminStatus = async () => {
-    console.log('🔍 [DEBUG] Iniciando verificación de admin status...');
-    console.log('🔍 [DEBUG] User ID:', user?.id);
-    
     if (!user?.id) {
-      console.log('❌ [DEBUG] No hay user ID, retornando false');
       return false;
     }
-    
     try {
-      console.log('🔍 [DEBUG] Haciendo consulta a user_profiles...');
-      const startTime = performance.now();
-      
       const { data, error } = await supabase
         .from('user_profiles')
         .select('role')
         .eq('id', user.id)
         .single();
-
-      const endTime = performance.now();
-      console.log(`⏱️ [DEBUG] Consulta user_profiles completada en ${(endTime - startTime).toFixed(2)}ms`);
-
       if (error) {
-        console.error('❌ [DEBUG] Error verifying admin status:', error);
         return false;
       }
-
-      console.log('🔍 [DEBUG] Datos obtenidos:', data);
-      console.log('🔍 [DEBUG] User metadata role:', user?.user_metadata?.role);
-      
       const isAdminUser = data?.role === 'admin' || user?.user_metadata?.role === 'admin';
-      console.log(`✅ [DEBUG] Es admin: ${isAdminUser}`);
-      
       return isAdminUser;
     } catch (e) {
-      console.error('❌ [DEBUG] Error verifying admin status:', e);
       return false;
     }
   };
 
   // Función para cargar usuarios
   const loadUsers = async (forceAdminCheck = null) => {
-    console.log('🔍 [DEBUG] Iniciando carga de usuarios...');
-    console.log('🔍 [DEBUG] isAdmin:', isAdmin);
-    console.log('🔍 [DEBUG] forceAdminCheck:', forceAdminCheck);
-    
     // Usar forceAdminCheck si se proporciona, sino usar isAdmin
     const shouldLoad = forceAdminCheck !== null ? forceAdminCheck : isAdmin;
-    
     if (!shouldLoad) {
-      console.log('❌ [DEBUG] No es admin, no cargando usuarios');
       return;
     }
-    
     try {
-      console.log('🔍 [DEBUG] Haciendo consulta para cargar todos los usuarios...');
-      const startTime = performance.now();
-      
       const { data, error } = await supabase
         .from('user_profiles')
         .select('*')
         .order('created_at', { ascending: false });
-
-      const endTime = performance.now();
-      console.log(`⏱️ [DEBUG] Consulta de usuarios completada en ${(endTime - startTime).toFixed(2)}ms`);
-
       if (error) {
-        console.error('❌ [DEBUG] Error al cargar usuarios:', error);
         setError('Error al cargar usuarios');
         return;
       }
-
-      console.log(`✅ [DEBUG] Usuarios cargados exitosamente: ${data?.length || 0} usuarios`);
-      console.log('🔍 [DEBUG] Primeros 3 usuarios:', data?.slice(0, 3));
-      
       setUsers(data || []);
       setLoading(false);
-      console.log('✅ [DEBUG] Estado de loading establecido en false');
     } catch (e) {
-      console.error('❌ [DEBUG] Error inesperado al cargar usuarios:', e);
       setError('Error inesperado al cargar usuarios');
     }
   };
 
   useEffect(() => {
     const checkAdminAndLoadUsers = async () => {
-      console.log('🔍 [DEBUG] useEffect ejecutándose...');
-      console.log('🔍 [DEBUG] User ID en useEffect:', user?.id);
-      
       if (!user?.id) {
-        console.log('❌ [DEBUG] No hay user ID en useEffect, saliendo');
         return;
       }
-
-      console.log('🔍 [DEBUG] Iniciando verificación de admin...');
-      const startTime = performance.now();
-      
       const adminStatus = await verifyAdminStatus();
-      
-      const endTime = performance.now();
-      console.log(`⏱️ [DEBUG] Verificación de admin completada en ${(endTime - startTime).toFixed(2)}ms`);
-      
-      console.log('🔍 [DEBUG] Admin status:', adminStatus);
       setIsAdmin(adminStatus);
       setIsAdminVerified(true);
-
       if (adminStatus) {
-        console.log('🔍 [DEBUG] Es admin, cargando usuarios...');
         setLoading(true);
-        console.log('🔍 [DEBUG] Estado de loading establecido en true');
         await loadUsers(adminStatus); // Pasar el adminStatus directamente
       } else {
-        console.log('❌ [DEBUG] No es admin, no cargando usuarios');
         setLoading(false);
       }
     };
-
     checkAdminAndLoadUsers();
   }, [user?.id]);
 
@@ -244,7 +182,6 @@ const UserManagement = () => {
     }
 
     try {
-      console.log('🔍 [DEBUG] Iniciando eliminación de usuario:', userId);
       
       // 1. Primero obtener el email del usuario antes de eliminarlo
       const { data: userData, error: fetchError } = await supabase
@@ -254,31 +191,24 @@ const UserManagement = () => {
         .single();
 
       if (fetchError) {
-        console.error('❌ [DEBUG] Error obteniendo datos del usuario:', fetchError);
         setError(`Error al obtener datos del usuario: ${fetchError.message}`);
         return;
       }
 
       const userEmail = userData?.email;
-      console.log('🔍 [DEBUG] Email del usuario a eliminar:', userEmail);
 
       // 2. Eliminar de user_profiles
-      console.log('🔍 [DEBUG] Eliminando de user_profiles...');
       const { error: deleteProfileError } = await supabase
         .from('user_profiles')
         .delete()
         .eq('id', userId);
 
       if (deleteProfileError) {
-        console.error('❌ [DEBUG] Error eliminando de user_profiles:', deleteProfileError);
         setError(`Error al eliminar usuario: ${deleteProfileError.message}`);
         return;
       }
 
-      console.log('✅ [DEBUG] Usuario eliminado de user_profiles');
-
       // 3. Usar la función de eliminación en cascada de la base de datos
-      console.log('🔍 [DEBUG] Usando eliminación en cascada...');
       try {
         const { data: cascadeResult, error: cascadeError } = await supabase
           .rpc('delete_user_cascade', { user_id: userId });
@@ -311,7 +241,6 @@ const UserManagement = () => {
       loadUsers(); // Recargar lista
       
     } catch (e) {
-      console.error('❌ [DEBUG] Error inesperado al eliminar usuario:', e);
       setError('Error inesperado al eliminar usuario');
     }
   };
