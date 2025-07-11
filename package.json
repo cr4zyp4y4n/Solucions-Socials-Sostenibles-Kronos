@@ -1,7 +1,7 @@
 {
   "name": "sss-kronos",
   "productName": "SSS Kronos",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Sistema moderno de gestión de proveedores y análisis de facturas para Solucions Socials. Automatiza el procesamiento de archivos Excel, proporciona análisis en tiempo real y dashboard ejecutivo con sistema de roles avanzado.",
   "main": ".webpack/main",
 
