@@ -118,7 +118,7 @@ const ConnectionTest = ({ compact = false }) => {
       }}>
         Prueba de Conexión - Supabase
       </h3>
-
+      
       <div style={{
         display: 'flex',
         alignItems: 'center',

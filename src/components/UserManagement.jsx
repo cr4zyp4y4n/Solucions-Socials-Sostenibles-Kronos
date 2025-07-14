@@ -69,21 +69,21 @@ const UserManagement = () => {
     if (!shouldLoad) {
       return;
     }
-    try {
-      const { data, error } = await supabase
-        .from('user_profiles')
-        .select('*')
-        .order('created_at', { ascending: false });
-      if (error) {
-        setError('Error al cargar usuarios');
-        return;
-      }
-      setUsers(data || []);
+        try {
+          const { data, error } = await supabase
+            .from('user_profiles')
+            .select('*')
+            .order('created_at', { ascending: false });
+          if (error) {
+            setError('Error al cargar usuarios');
+            return;
+          }
+          setUsers(data || []);
       setLoading(false);
-    } catch (e) {
-      setError('Error inesperado al cargar usuarios');
-    }
-  };
+        } catch (e) {
+          setError('Error inesperado al cargar usuarios');
+        }
+    };
 
   useEffect(() => {
     const checkAdminAndLoadUsers = async () => {
@@ -190,9 +190,9 @@ const UserManagement = () => {
         setError(`Error al eliminar usuario: ${cascadeError.message}`);
         return;
       }
-      setSuccess('Usuario eliminado correctamente');
-      setTimeout(() => setSuccess(''), 3000);
-      loadUsers(); // Recargar lista
+        setSuccess('Usuario eliminado correctamente');
+        setTimeout(() => setSuccess(''), 3000);
+        loadUsers(); // Recargar lista
       
     } catch (e) {
       setError('Error inesperado al eliminar usuario');
