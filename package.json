@@ -4,7 +4,6 @@
   "version": "1.0.3",
   "description": "Sistema moderno de gestión de proveedores y análisis de facturas para Solucions Socials. Automatiza el procesamiento de archivos Excel, proporciona análisis en tiempo real y dashboard ejecutivo con sistema de roles avanzado.",
   "main": ".webpack/main",
-
   "scripts": {
     "start": "electron-forge start",
     "package": "electron-forge package",
@@ -13,7 +12,19 @@
     "lint": "echo \"No linting configured\"",
     "build": "electron-forge make"
   },
-  "keywords": ["electron", "react", "supabase", "gestión-proveedores", "análisis-facturas", "excel", "dashboard", "erp", "crm", "solucions-socials", "español"],
+  "keywords": [
+    "electron",
+    "react",
+    "supabase",
+    "gestión-proveedores",
+    "análisis-facturas",
+    "excel",
+    "dashboard",
+    "erp",
+    "crm",
+    "solucions-socials",
+    "español"
+  ],
   "author": {
     "name": "Brian Bautista",
     "email": "brianbauma10@gmail.com"
@@ -44,6 +55,7 @@
     "feather-icons-react": "^0.9.0",
     "file-loader": "^6.2.0",
     "framer-motion": "^12.23.0",
+    "lucide-react": "^0.525.0",
     "node-fetch": "^3.3.2",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",

@@ -15,6 +15,7 @@ import { useTheme } from './ThemeContext';
 import { useDataContext } from './DataContext';
 import { useCurrency } from './CurrencyContext';
 import ConnectionTest from './ConnectionTest';
+import HoldedTest from './HoldedTest';
 
 // Nuevo: Hook para obtener el estado de conexión de Supabase de forma compacta
 import { useState as useReactState, useEffect as useReactEffect } from 'react';
@@ -516,6 +517,15 @@ const SettingsPage = () => {
             </div>
           </motion.div>
         ))}
+
+        {/* Componente de prueba de Holded */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 0.4 }}
+        >
+          <HoldedTest />
+        </motion.div>
       </div>
     </div>
   );

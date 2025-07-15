@@ -10,13 +10,16 @@ import {
   DollarSign,
   Check,
   X,
-  Loader
+  Loader,
+  RefreshCw,
+  Download
 } from 'feather-icons-react';
 import { useDataContext } from './DataContext';
 import { useTheme } from './ThemeContext';
 import { useCurrency } from './CurrencyContext';
 import { useAuth } from './AuthContext';
 import { supabase } from '../config/supabase';
+import holdedApi from '../services/holdedApi';
 
 const EXPECTED_HEADERS = [
   "Data d'emissió", 'Núm', 'Núm. Intern', 'Data comptable', 'Venciment', 'Proveïdor',
@@ -127,7 +130,8 @@ const HomePage = () => {
   const menjarFileInputRef = useRef();
   const { 
     solucionsHeaders, setSolucionsHeaders, solucionsData, setSolucionsData,
-    menjarHeaders, setMenjarHeaders, menjarData, setMenjarData
+    menjarHeaders, setMenjarHeaders, menjarData, setMenjarData,
+    setShouldReloadHolded
   } = useDataContext();
   const { colors } = useTheme();
   const { formatCurrency } = useCurrency();
@@ -140,79 +144,47 @@ const HomePage = () => {
   });
   const [loadingData, setLoadingData] = useState(true);
 
-  // Cargar datos desde Supabase al montar el componente
+  // Cargar datos desde Holded al montar el componente
   useEffect(() => {
-    loadDataFromSupabase();
+    loadDataFromHolded();
   }, []);
 
-  // Función para cargar datos desde Supabase
-  const loadDataFromSupabase = async () => {
+  // Función para cargar datos desde Holded
+  const loadDataFromHolded = async () => {
     setLoadingData(true);
     try {
-      // Obtener todos los uploads de Excel
-      const { data: uploads, error: uploadsError } = await supabase
-        .from('excel_uploads')
-        .select('*')
-        .order('uploaded_at', { ascending: false });
-
-      if (uploadsError) {
-        return;
+      // Obtener compras de Holded
+      let holdedPurchases = [];
+      try {
+        holdedPurchases = await holdedApi.getAllPendingAndOverduePurchases();
+      } catch (error) {
+        console.log('No se pudieron cargar las compras de Holded:', error.message);
       }
 
-      // Separar uploads por tipo
-      const solucionsUploads = uploads.filter(upload => upload.upload_type === 'solucions');
-      const menjarUploads = uploads.filter(upload => upload.upload_type === 'menjar');
+      // Procesar compras de Holded
+      const processedHolded = processHoldedPurchases(holdedPurchases);
 
-      // Obtener datos de facturas para cada tipo
-      const [solucionsData, menjarData] = await Promise.all([
-        getInvoicesData(solucionsUploads.map(u => u.id)),
-        getInvoicesData(menjarUploads.map(u => u.id))
-      ]);
-
-      // Procesar datos de Solucions
-      const processedSolucions = processInvoicesData(solucionsData, solucionsUploads);
-      
-      // Procesar datos de Menjar
-      const processedMenjar = processInvoicesData(menjarData, menjarUploads);
+      // Usar los mismos datos para ambas vistas
+      const holdedData = {
+        headers: processedHolded.headers,
+        data: processedHolded.data
+      };
 
       setSupabaseData({
-        solucions: {
-          headers: processedSolucions.headers,
-          data: processedSolucions.data
-        },
-        menjar: {
-          headers: processedMenjar.headers,
-          data: processedMenjar.data
-        }
+        solucions: holdedData,
+        menjar: holdedData
       });
 
     } catch (error) {
-      // Error loading data from Supabase
+      console.error('Error cargando datos de Holded:', error);
     } finally {
       setLoadingData(false);
     }
   };
 
-  // Función para obtener datos de facturas por upload IDs
-  const getInvoicesData = async (uploadIds) => {
-    if (uploadIds.length === 0) return [];
-
-    const { data, error } = await supabase
-      .from('invoices')
-      .select('*')
-      .in('upload_id', uploadIds)
-      .order('processed_at', { ascending: false });
-
-    if (error) {
-      return [];
-    }
-
-    return data || [];
-  };
-
-  // Función para procesar datos de facturas
-  const processInvoicesData = (invoicesData, uploads) => {
-    if (invoicesData.length === 0) {
+  // Función para procesar compras de Holded
+  const processHoldedPurchases = (holdedPurchases) => {
+    if (holdedPurchases.length === 0) {
       return { headers: [], data: [] };
     }
 
@@ -240,8 +212,8 @@ const HomePage = () => {
       'Data de pagament'
     ];
 
-    // Mapeo inverso de columnas de la base de datos a las columnas del Excel
-    const dbToExcelMapping = {
+    // Mapeo de campos de Holded a las columnas del Excel
+    const holdedToExcelMapping = {
       'issue_date': "Data d'emissió",
       'invoice_number': 'Núm',
       'internal_number': 'Núm. Intern',
@@ -264,14 +236,14 @@ const HomePage = () => {
       'payment_date': 'Data de pagament'
     };
 
-    // Convertir datos de facturas a formato de array
-    const processedData = invoicesData.map(invoice => {
+    // Convertir datos de Holded a formato de array
+    const processedData = holdedPurchases.map(purchase => {
       const row = [];
       expectedHeaders.forEach(header => {
-        // Encontrar la columna correspondiente en la base de datos
-        const dbColumn = Object.keys(dbToExcelMapping).find(key => dbToExcelMapping[key] === header);
-        if (dbColumn && invoice[dbColumn] !== undefined && invoice[dbColumn] !== null) {
-          row.push(invoice[dbColumn]);
+        // Encontrar la columna correspondiente en los datos de Holded
+        const holdedField = Object.keys(holdedToExcelMapping).find(key => holdedToExcelMapping[key] === header);
+        if (holdedField && purchase[holdedField] !== undefined && purchase[holdedField] !== null) {
+          row.push(purchase[holdedField]);
         } else {
           row.push(null);
         }
@@ -281,6 +253,8 @@ const HomePage = () => {
 
     return { headers: expectedHeaders, data: processedData };
   };
+
+
 
   // Función para mostrar alerta
   const showAlert = (message, type = 'success') => {
@@ -750,24 +724,24 @@ const HomePage = () => {
     showAlert('Redirigiendo a la sección de análisis...', 'success');
   };
 
-  // Calcular estadísticas reales desde Supabase
+  // Calcular estadísticas desde datos de Holded
   const calculateStats = () => {
-    // Usar datos de Supabase en lugar de datos del contexto local
-    const totalData = [...supabaseData.solucions.data, ...supabaseData.menjar.data];
+    // Usar datos de Holded (ambas vistas tienen los mismos datos)
+    const totalData = supabaseData.solucions.data;
     
     if (totalData.length === 0) {
       return [
         { icon: Users, label: 'Total Proveedores', value: '0', color: colors.primary },
-        { icon: FileText, label: 'Facturas Procesadas', value: '0', color: '#2196F3' },
+        { icon: FileText, label: 'Compras Procesadas', value: '0', color: '#2196F3' },
         { icon: DollarSign, label: 'Total a Pagar', value: '€0', color: colors.warning },
-        { icon: TrendingUp, label: 'Promedio por Factura', value: '€0', color: '#9C27B0' },
+        { icon: TrendingUp, label: 'Promedio por Compra', value: '€0', color: '#9C27B0' },
       ];
     }
 
-    // Combinar headers de ambos datasets
-    const allHeaders = [...supabaseData.solucions.headers, ...supabaseData.menjar.headers];
-    const providerIndex = allHeaders.findIndex(h => h === 'Proveïdor');
-    const totalIndex = allHeaders.findIndex(h => h === 'Total');
+    // Usar headers de Holded
+    const headers = supabaseData.solucions.headers;
+    const providerIndex = headers.findIndex(h => h === 'Proveïdor');
+    const totalIndex = headers.findIndex(h => h === 'Total');
     
     const providers = new Set();
     let totalAmount = 0;
@@ -794,7 +768,7 @@ const HomePage = () => {
       },
       { 
         icon: FileText, 
-        label: 'Facturas Procesadas', 
+        label: 'Compras Procesadas', 
         value: totalData.length.toString(), 
         color: '#2196F3' 
       },
@@ -806,7 +780,7 @@ const HomePage = () => {
       },
       { 
         icon: TrendingUp, 
-        label: 'Promedio por Factura', 
+        label: 'Promedio por Compra', 
         value: formatCurrency(averageAmount), 
         color: '#9C27B0' 
       },
@@ -1063,11 +1037,152 @@ const HomePage = () => {
         )}
       </motion.div>
 
+      {/* Holded Actions Section */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.15 }}
+        style={{ marginBottom: '50px' }}
+      >
+                    <h3 style={{
+              fontSize: '24px',
+              fontWeight: '600',
+              color: colors.text,
+              margin: '0 0 30px 0',
+            }}>
+              Datos de Compras Holded
+            </h3>
+        
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+          gap: '25px',
+        }}>
+          {/* Botón de Sincronizar */}
+          <motion.div
+            whileHover={{ y: -3, scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            style={{
+              backgroundColor: colors.card,
+              padding: '32px',
+              borderRadius: '12px',
+              border: `1px solid ${colors.border}`,
+              cursor: 'pointer',
+              transition: 'all 0.2s ease',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.05)',
+            }}
+            onClick={async () => {
+              try {
+                await holdedApi.syncDocumentsWithDatabase(supabase);
+                showAlert('Compras cargadas correctamente', 'success');
+              } catch (error) {
+                showAlert(`Error al sincronizar: ${error.message}`, 'error');
+              }
+            }}
+          >
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '20px',
+              marginBottom: '16px',
+            }}>
+              <div style={{
+                width: '50px',
+                height: '50px',
+                borderRadius: '10px',
+                backgroundColor: '#3B82F6' + '15',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}>
+                <RefreshCw size={24} color="#3B82F6" />
+              </div>
+              <h4 style={{
+                fontSize: '20px',
+                fontWeight: '600',
+                color: colors.text,
+                margin: 0,
+              }}>
+                Cargar Compras
+              </h4>
+            </div>
+            <p style={{
+              fontSize: '16px',
+              color: colors.textSecondary,
+              margin: 0,
+              lineHeight: '1.5',
+            }}>
+              Obtener todas las compras pendientes y vencidas desde Holded
+            </p>
+          </motion.div>
+
+          {/* Botón de Actualizar */}
+          <motion.div
+            whileHover={{ y: -3, scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            style={{
+              backgroundColor: colors.card,
+              padding: '32px',
+              borderRadius: '12px',
+              border: `1px solid ${colors.border}`,
+              cursor: 'pointer',
+              transition: 'all 0.2s ease',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.05)',
+            }}
+            onClick={async () => {
+              try {
+                const purchases = await holdedApi.getAllPendingAndOverduePurchases();
+                showAlert(`Actualizadas ${purchases.length} compras de Holded`, 'success');
+                // Activar recarga en AnalyticsPage
+                setShouldReloadHolded(true);
+              } catch (error) {
+                showAlert(`Error al actualizar: ${error.message}`, 'error');
+              }
+            }}
+          >
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '20px',
+              marginBottom: '16px',
+            }}>
+              <div style={{
+                width: '50px',
+                height: '50px',
+                borderRadius: '10px',
+                backgroundColor: '#10B981' + '15',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}>
+                <Download size={24} color="#10B981" />
+              </div>
+              <h4 style={{
+                fontSize: '20px',
+                fontWeight: '600',
+                color: colors.text,
+                margin: 0,
+              }}>
+                Actualizar Datos
+              </h4>
+            </div>
+            <p style={{
+              fontSize: '16px',
+              color: colors.textSecondary,
+              margin: 0,
+              lineHeight: '1.5',
+            }}>
+              Actualizar la información de compras desde Holded
+            </p>
+          </motion.div>
+        </div>
+      </motion.div>
+
       {/* Quick Actions */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, delay: 0.2 }}
+        transition={{ duration: 0.5, delay: 0.25 }}
       >
         <h3 style={{
           fontSize: '24px',

@@ -11,6 +11,9 @@ export const DataProvider = ({ children }) => {
   const [menjarHeaders, setMenjarHeaders] = useState([]);
   const [menjarData, setMenjarData] = useState([]);
 
+  // Estado para controlar recarga de datos de Holded
+  const [shouldReloadHolded, setShouldReloadHolded] = useState(false);
+
   const clearSolucionsData = () => {
     setSolucionsHeaders([]);
     setSolucionsData([]);
@@ -41,6 +44,10 @@ export const DataProvider = ({ children }) => {
       menjarData,
       setMenjarData,
       clearMenjarData,
+      
+      // Estado para recarga de Holded
+      shouldReloadHolded,
+      setShouldReloadHolded,
       
       // Función para limpiar todos los datos
       clearAllData,

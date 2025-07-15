@@ -5,11 +5,15 @@ import { useTheme } from './ThemeContext';
 import { useCurrency } from './CurrencyContext';
 import { useAuth } from './AuthContext';
 import { supabase } from '../config/supabase';
+import holdedApi from '../services/holdedApi';
+
 
 const AnalyticsPage = () => {
   const { 
     solucionsHeaders, solucionsData, 
-    menjarHeaders, menjarData 
+    menjarHeaders, menjarData,
+    shouldReloadHolded,
+    setShouldReloadHolded
   } = useDataContext();
   const { formatCurrency } = useCurrency();
   const { user } = useAuth();
@@ -35,84 +39,61 @@ const AnalyticsPage = () => {
   const [isChangingDataset, setIsChangingDataset] = useState(false);
   const tableRef = useRef(null);
 
-  // Cargar datos desde Supabase al montar el componente
+  // Cargar datos desde Holded al montar el componente
   useEffect(() => {
-    loadDataFromSupabase();
+    loadDataFromHolded();
   }, []);
 
-  // Función para cargar datos desde Supabase
-  const loadDataFromSupabase = async () => {
+  // Escuchar cambios en shouldReloadHolded para recargar datos
+  useEffect(() => {
+    if (shouldReloadHolded) {
+      loadDataFromHolded();
+      setShouldReloadHolded(false);
+    }
+  }, [shouldReloadHolded]);
+
+  // Función para cargar datos desde Holded
+  const loadDataFromHolded = async () => {
     setLoading(true);
     setError('');
 
     try {
-      // Obtener todos los uploads de Excel
-      const { data: uploads, error: uploadsError } = await supabase
-        .from('excel_uploads')
-        .select('*')
-        .order('uploaded_at', { ascending: false });
-
-      if (uploadsError) {
-        setError('Error al cargar los datos de Excel');
+      // Obtener compras de Holded
+      let holdedPurchases = [];
+      try {
+        holdedPurchases = await holdedApi.getAllPendingAndOverduePurchases();
+      } catch (error) {
+        setError('Error al cargar las compras de Holded: ' + error.message);
         return;
       }
 
-      // Separar uploads por tipo
-      const solucionsUploads = uploads.filter(upload => upload.upload_type === 'solucions');
-      const menjarUploads = uploads.filter(upload => upload.upload_type === 'menjar');
+      // Procesar compras de Holded
+      const processedHolded = processHoldedPurchases(holdedPurchases);
 
-      // Obtener datos de facturas para cada tipo
-      const [solucionsData, menjarData] = await Promise.all([
-        getInvoicesData(solucionsUploads.map(u => u.id)),
-        getInvoicesData(menjarUploads.map(u => u.id))
-      ]);
-
-      // Procesar datos de Solucions
-      const processedSolucions = processInvoicesData(solucionsData, solucionsUploads);
-      
-      // Procesar datos de Menjar
-      const processedMenjar = processInvoicesData(menjarData, menjarUploads);
+      // Usar los mismos datos para ambas vistas (solucions y menjar)
+      const holdedData = {
+        headers: processedHolded.headers,
+        data: processedHolded.data,
+        loading: false
+      };
 
       setSupabaseData({
-        solucions: {
-          headers: processedSolucions.headers,
-          data: processedSolucions.data,
-          loading: false
-        },
-        menjar: {
-          headers: processedMenjar.headers,
-          data: processedMenjar.data,
-          loading: false
-        }
+        solucions: holdedData,
+        menjar: holdedData
       });
 
     } catch (error) {
-      setError('Error al cargar los datos desde la base de datos');
+      setError('Error al cargar los datos de Holded');
     } finally {
       setLoading(false);
     }
   };
 
-  // Función para obtener datos de facturas por upload IDs
-  const getInvoicesData = async (uploadIds) => {
-    if (uploadIds.length === 0) return [];
 
-    const { data, error } = await supabase
-      .from('invoices')
-      .select('*')
-      .in('upload_id', uploadIds)
-      .order('processed_at', { ascending: false });
 
-    if (error) {
-      return [];
-    }
-
-    return data || [];
-  };
-
-  // Función para procesar datos de facturas
-  const processInvoicesData = (invoicesData, uploads) => {
-    if (invoicesData.length === 0) {
+  // Función para procesar compras de Holded
+  const processHoldedPurchases = (holdedPurchases) => {
+    if (holdedPurchases.length === 0) {
       return { headers: [], data: [] };
     }
 
@@ -140,8 +121,8 @@ const AnalyticsPage = () => {
       'Data de pagament'
     ];
 
-    // Mapeo inverso de columnas de la base de datos a las columnas del Excel
-    const dbToExcelMapping = {
+    // Mapeo de campos de Holded a las columnas del Excel
+    const holdedToExcelMapping = {
       'issue_date': "Data d'emissió",
       'invoice_number': 'Núm',
       'internal_number': 'Núm. Intern',
@@ -164,14 +145,14 @@ const AnalyticsPage = () => {
       'payment_date': 'Data de pagament'
     };
 
-    // Convertir datos de facturas a formato de array
-    const processedData = invoicesData.map(invoice => {
+    // Convertir datos de Holded a formato de array
+    const processedData = holdedPurchases.map(purchase => {
       const row = [];
       expectedHeaders.forEach(header => {
-        // Encontrar la columna correspondiente en la base de datos
-        const dbColumn = Object.keys(dbToExcelMapping).find(key => dbToExcelMapping[key] === header);
-        if (dbColumn && invoice[dbColumn] !== undefined && invoice[dbColumn] !== null) {
-          row.push(invoice[dbColumn]);
+        // Encontrar la columna correspondiente en los datos de Holded
+        const holdedField = Object.keys(holdedToExcelMapping).find(key => holdedToExcelMapping[key] === header);
+        if (holdedField && purchase[holdedField] !== undefined && purchase[holdedField] !== null) {
+          row.push(purchase[holdedField]);
         } else {
           row.push(null);
         }
@@ -181,6 +162,8 @@ const AnalyticsPage = () => {
 
     return { headers: expectedHeaders, data: processedData };
   };
+
+
 
   // Función para manejar el cambio de dataset con animación
   const handleDatasetChange = (newDataset) => {
@@ -766,7 +749,7 @@ const AnalyticsPage = () => {
         transition={{ duration: 0.4, delay: 0.1 }}
         style={{ margin: '0 0 24px 0', color: colors.text, fontWeight: 700, fontSize: 28, lineHeight: 1.2 }}
       >
-        Análisis
+        Análisis de Compras
       </motion.h2>
 
       {/* Selector de Dataset */}
@@ -784,7 +767,7 @@ const AnalyticsPage = () => {
           fontSize: '20px', 
           fontWeight: '600' 
         }}>
-          Seleccionar Dataset
+          Seleccionar Vista
         </h3>
         <div style={{
           display: 'flex',
@@ -848,14 +831,14 @@ const AnalyticsPage = () => {
             </AnimatePresence>
             
             <span style={{ fontSize: 17, fontWeight: 600, marginBottom: 6 }}>
-              Solucions Socials
+              Vista Bruno
             </span>
             <span style={{ 
               fontSize: 13, 
               color: selectedDataset === 'solucions' ? colors.primary : colors.textSecondary, 
               marginTop: 2 
             }}>
-              {supabaseData.solucions.data.length > 0 ? `${supabaseData.solucions.data.length} facturas cargadas` : 'No hay datos cargados'}
+              {supabaseData.solucions.data.length > 0 ? `${supabaseData.solucions.data.length} compras de Holded` : 'No hay compras cargadas'}
             </span>
           </motion.div>
 
@@ -916,14 +899,14 @@ const AnalyticsPage = () => {
             </AnimatePresence>
             
             <span style={{ fontSize: 17, fontWeight: 600, marginBottom: 6 }}>
-              Menjar d'Hort
+              Vista Sergi
             </span>
             <span style={{ 
               fontSize: 13, 
               color: selectedDataset === 'menjar' ? colors.primary : colors.textSecondary, 
               marginTop: 2 
             }}>
-              {supabaseData.menjar.data.length > 0 ? `${supabaseData.menjar.data.length} facturas cargadas` : 'No hay datos cargados'}
+              {supabaseData.menjar.data.length > 0 ? `${supabaseData.menjar.data.length} compras de Holded` : 'No hay compras cargadas'}
             </span>
           </motion.div>
         </div>
@@ -1784,6 +1767,8 @@ const AnalyticsPage = () => {
         </motion.div>
       )}
       </AnimatePresence>
+
+
     </motion.div>
   );
 };
