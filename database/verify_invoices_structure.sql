@@ -8,8 +8,8 @@
 SELECT 'Verificando estructura actual de invoices...' as status;
 
 SELECT 
-  column_name,
-  data_type,
+  column_name, 
+  data_type, 
   is_nullable,
   column_default,
   character_maximum_length
@@ -46,8 +46,8 @@ SELECT 'Corrigiendo tipos de datos si es necesario...' as status;
 SELECT 'Verificando tipos actuales de fechas...' as status;
 
 SELECT 
-  column_name,
-  data_type,
+  column_name, 
+  data_type, 
   is_nullable
 FROM information_schema.columns 
 WHERE table_name = 'invoices' 

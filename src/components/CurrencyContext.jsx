@@ -92,7 +92,10 @@ export const CurrencyProvider = ({ children }) => {
     const selectedCurrency = currencies.find(c => c.code === currencyCode) || currencies[0];
     const convertedAmount = convertCurrency(amount, 'EUR', currencyCode);
     
-    return `${selectedCurrency.symbol}${convertedAmount.toLocaleString('es-ES', {
+    // Redondear a 2 decimales para evitar números con muchos decimales
+    const roundedAmount = Math.round(convertedAmount * 100) / 100;
+    
+    return `${selectedCurrency.symbol}${roundedAmount.toLocaleString('es-ES', {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2
     })}`;

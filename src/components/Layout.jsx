@@ -13,10 +13,12 @@ import {
   User,
   Shield,
   Activity,
-  Bell
+  Bell,
+  Zap
 } from 'feather-icons-react';
 import { useTheme } from './ThemeContext';
 import { useAuth } from './AuthContext';
+import { useNavigation } from './NavigationContext';
 import { supabase } from '../config/supabase';
 import logo from '../assets/Logo Minimalist SSS Highest Opacity.PNG';
 import HomePage from './HomePage';
@@ -27,9 +29,10 @@ import OnboardingPage from './OnboardingPage';
 import UserProfile from './UserProfile';
 import UserManagement from './UserManagement';
 import AuditLog from './AuditLog';
+import HoldedTest from './HoldedTest';
 
 const Layout = () => {
-  const [activeSection, setActiveSection] = useState('home');
+  const { activeSection, navigateTo } = useNavigation();
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -195,6 +198,8 @@ const Layout = () => {
       { id: 'users', icon: Shield, label: 'Usuarios' },
       { id: 'audit', icon: Activity, label: 'Auditoría' }
     ] : []),
+    // Pestaña de pruebas al final
+    { id: 'test', icon: Zap, label: 'Pruebas' },
   ];
 
   const handleSignOut = async () => {
@@ -210,6 +215,8 @@ const Layout = () => {
         return <ProvidersPage />;
       case 'analytics':
         return <AnalyticsPage />;
+      case 'test':
+        return <HoldedTest />;
       case 'settings':
         return <SettingsPage />;
       case 'users':
@@ -282,7 +289,7 @@ const Layout = () => {
                 key={item.id}
                 whileHover={{ backgroundColor: colors.hover || 'rgba(64,64,64,0.7)' }}
                 whileTap={{ scale: 0.98 }}
-                onClick={() => setActiveSection(item.id)}
+                onClick={() => navigateTo(item.id)}
                 style={{
                   padding: '12px 20px',
                   cursor: 'pointer',
@@ -316,7 +323,7 @@ const Layout = () => {
         }}>
           {/* Bloque de usuario clickable */}
           <div
-            onClick={() => setActiveSection('profile')}
+            onClick={() => navigateTo('profile')}
             style={{
               display: 'flex',
               alignItems: 'center',

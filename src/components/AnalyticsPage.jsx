@@ -13,7 +13,9 @@ const AnalyticsPage = () => {
     solucionsHeaders, solucionsData, 
     menjarHeaders, menjarData,
     shouldReloadHolded,
-    setShouldReloadHolded
+    setShouldReloadHolded,
+    needsUpdate,
+    markTabUpdated
   } = useDataContext();
   const { formatCurrency } = useCurrency();
   const { user } = useAuth();
@@ -44,6 +46,14 @@ const AnalyticsPage = () => {
     loadDataFromHolded();
   }, []);
 
+  // Verificar si necesita actualización cuando se monta el componente
+  useEffect(() => {
+    if (needsUpdate('analytics')) {
+      loadDataFromHolded();
+      markTabUpdated('analytics');
+    }
+  }, []);
+
   // Escuchar cambios en shouldReloadHolded para recargar datos
   useEffect(() => {
     if (shouldReloadHolded) {
@@ -58,32 +68,41 @@ const AnalyticsPage = () => {
     setError('');
 
     try {
-      // Obtener compras de Holded
-      let holdedPurchases = [];
-      try {
-        holdedPurchases = await holdedApi.getAllPendingAndOverduePurchases();
-      } catch (error) {
-        setError('Error al cargar las compras de Holded: ' + error.message);
-        return;
-      }
+      // Cargar datos para ambas empresas en paralelo
+      const [solucionsPurchases, menjarPurchases] = await Promise.all([
+        // Cargar datos de Solucions Socials
+        holdedApi.getAllPendingAndOverduePurchases('solucions').catch(error => {
+          console.error('Error cargando datos de Solucions:', error);
+          return [];
+        }),
+        // Cargar datos de Menjar D'Hort
+        holdedApi.getAllPendingAndOverduePurchases('menjar').catch(error => {
+          console.error('Error cargando datos de Menjar:', error);
+          return [];
+        })
+      ]);
 
-      // Procesar compras de Holded
-      const processedHolded = processHoldedPurchases(holdedPurchases);
+      // Procesar datos de cada empresa
+      const processedSolucions = processHoldedPurchases(solucionsPurchases);
+      const processedMenjar = processHoldedPurchases(menjarPurchases);
 
-      // Usar los mismos datos para ambas vistas (solucions y menjar)
-      const holdedData = {
-        headers: processedHolded.headers,
-        data: processedHolded.data,
-        loading: false
-      };
-
+      // Actualizar el estado con datos separados
       setSupabaseData({
-        solucions: holdedData,
-        menjar: holdedData
+        solucions: {
+          headers: processedSolucions.headers,
+          data: processedSolucions.data,
+          loading: false
+        },
+        menjar: {
+          headers: processedMenjar.headers,
+          data: processedMenjar.data,
+          loading: false
+        }
       });
 
     } catch (error) {
       setError('Error al cargar los datos de Holded');
+      console.error('Error en loadDataFromHolded:', error);
     } finally {
       setLoading(false);
     }
@@ -118,7 +137,8 @@ const AnalyticsPage = () => {
       'Pagat',
       'Pendents',
       'Estat',
-      'Data de pagament'
+      'Data de pagament',
+      'IBAN'
     ];
 
     // Mapeo de campos de Holded a las columnas del Excel
@@ -142,7 +162,8 @@ const AnalyticsPage = () => {
       'paid': 'Pagat',
       'pending': 'Pendents',
       'status': 'Estat',
-      'payment_date': 'Data de pagament'
+      'payment_date': 'Data de pagament',
+      'iban': 'IBAN'
     };
 
     // Convertir datos de Holded a formato de array
@@ -438,6 +459,7 @@ const AnalyticsPage = () => {
       const provider = row[columnIndices.provider];
       const total = parseFloat(row[columnIndices.total]) || 0;
       const pending = columnIndices.pending ? (parseFloat(row[columnIndices.pending]) || 0) : 0;
+      const iban = columnIndices.iban ? row[columnIndices.iban] : '';
       
       if (provider) {
         if (!stats[provider]) {
@@ -445,13 +467,18 @@ const AnalyticsPage = () => {
             totalAmount: 0,
             totalPending: 0,
             invoiceCount: 0,
-            invoices: []
+            invoices: [],
+            iban: iban || ''
           };
         }
         stats[provider].totalAmount += total;
         stats[provider].totalPending += pending;
         stats[provider].invoiceCount += 1;
         stats[provider].invoices.push(row);
+        // Actualizar IBAN si encontramos uno no vacío
+        if (iban && !stats[provider].iban) {
+          stats[provider].iban = iban;
+        }
       }
     });
     
@@ -633,11 +660,41 @@ const AnalyticsPage = () => {
   // --- Unificar lógica de filtrado de facturas por canal ---
   function getChannelRows(channel, data, columnIndices) {
     return data.filter(row => {
-      const account = row[columnIndices.account];
-      if (!account) return false;
+      const description = (row[columnIndices.description] || '').toLowerCase();
+      const account = (row[columnIndices.account] || '').toLowerCase();
       
-      const accountLower = account.toString().toLowerCase();
-      return accountLower.includes(channel.toLowerCase());
+      if (selectedDataset === 'solucions') {
+        switch (channel) {
+          case 'Estructura':
+            return description.includes('estructura') || account.includes('estructura');
+          case 'Catering':
+            return description.includes('catering') || account.includes('catering');
+          case 'IDONI':
+            return description.includes('idoni') || account.includes('idoni');
+          case 'Otros':
+            return !description.includes('estructura') && !description.includes('catering') && 
+                   !description.includes('idoni') && !account.includes('estructura') && 
+                   !account.includes('catering') && !account.includes('idoni');
+          default:
+            return false;
+        }
+      } else if (selectedDataset === 'menjar') {
+        switch (channel) {
+          case 'OBRADOR':
+            return description.includes('obrador') || account.includes('obrador');
+          case 'ESTRUCTURA':
+            return description.includes('estructura') || account.includes('estructura');
+          case 'CATERING':
+            return description.includes('catering') || account.includes('catering');
+          case 'Otros':
+            return !description.includes('obrador') && !description.includes('estructura') && 
+                   !description.includes('catering') && !account.includes('obrador') &&
+                   !account.includes('estructura') && !account.includes('catering');
+          default:
+            return false;
+        }
+      }
+      return false;
     });
   }
 
@@ -659,12 +716,24 @@ const AnalyticsPage = () => {
 
   // Función para obtener el color del canal
   function getChannelColor(channel) {
-    const colors = {
-      'solucions': '#4CAF50',
-      'menjar': '#FF6B35',
+    const channelColors = {
+      // Canales de Solucions Socials
+      'catering': '#4CAF50',
+      'estructura': '#2196F3',
+      'idoni': '#E91E63',
+      
+      // Canales de Menjar D'Hort
+      'obrador': '#FF9800',
+      'catering': '#4CAF50',
+      'estructura': '#2196F3',
+      'menjar_d_hort': '#FF6B35',
+      
+      // Canales generales
+      'otros': '#9E9E9E',
       'default': '#2196F3'
     };
-    return colors[channel.toLowerCase()] || colors.default;
+    
+    return channelColors[channel.toLowerCase()] || channelColors.default;
   }
 
   // Función para obtener colores de filas intercaladas
@@ -831,7 +900,7 @@ const AnalyticsPage = () => {
             </AnimatePresence>
             
             <span style={{ fontSize: 17, fontWeight: 600, marginBottom: 6 }}>
-              Vista Bruno
+              Solucions Socials
             </span>
             <span style={{ 
               fontSize: 13, 
@@ -899,7 +968,7 @@ const AnalyticsPage = () => {
             </AnimatePresence>
             
             <span style={{ fontSize: 17, fontWeight: 600, marginBottom: 6 }}>
-              Vista Sergi
+              Menjar D'Hort
             </span>
             <span style={{ 
               fontSize: 13, 
@@ -1162,7 +1231,9 @@ const AnalyticsPage = () => {
                               }}>
                                 {col.key === 'date'
                                   ? (col.index !== undefined && row[col.index] ? excelDateToString(row[col.index]) : '')
-                                  : (col.index !== undefined ? row[col.index] : '')}
+                                  : col.key === 'total' || col.key === 'pending' || col.key === 'subtotal'
+                                    ? (col.index !== undefined && row[col.index] ? formatCurrency(row[col.index]) : '-')
+                                    : (col.index !== undefined ? row[col.index] : '')}
                               </td>
                             ))}
                         </tr>
@@ -1548,6 +1619,7 @@ const AnalyticsPage = () => {
                       <thead>
                         <tr>
                           <th style={{ borderBottom: `1px solid ${colors.border}`, padding: '12px 8px', textAlign: 'left', color: colors.primary, fontWeight: 600, background: colors.surface }}>Proveedor</th>
+                          <th style={{ borderBottom: `1px solid ${colors.border}`, padding: '12px 8px', textAlign: 'left', color: colors.primary, fontWeight: 600, background: colors.surface }}>IBAN</th>
                           <th style={{ borderBottom: `1px solid ${colors.border}`, padding: '12px 8px', textAlign: 'left', color: colors.primary, fontWeight: 600, background: colors.surface }}>Total Facturas</th>
                           <th style={{ borderBottom: `1px solid ${colors.border}`, padding: '12px 8px', textAlign: 'left', color: colors.primary, fontWeight: 600, background: colors.surface }}>Total Pendiente</th>
                           <th style={{ borderBottom: `1px solid ${colors.border}`, padding: '12px 8px', textAlign: 'left', color: colors.primary, fontWeight: 600, background: colors.surface }}>Facturas</th>
@@ -1584,6 +1656,9 @@ const AnalyticsPage = () => {
                                   </span>
                                   {stat.provider}
                                 </td>
+                                <td style={{ borderBottom: `1px solid ${colors.border}`, padding: '12px 8px', color: colors.textSecondary, fontSize: '13px', fontFamily: 'monospace' }}>
+                                  {stat.iban || '-'}
+                                </td>
                                 <td style={{ borderBottom: `1px solid ${colors.border}`, padding: '12px 8px', color: colors.text }}>
                                   {formatCurrency(stat.totalAmount)}
                                 </td>
@@ -1602,7 +1677,7 @@ const AnalyticsPage = () => {
                               <AnimatePresence>
                                 {isExpanded && (
                                   <tr>
-                                    <td colSpan="4" style={{ padding: 0, border: 'none' }}>
+                                    <td colSpan="5" style={{ padding: 0, border: 'none' }}>
                                       <motion.div
                                         initial={{ opacity: 0, height: 0 }}
                                         animate={{ opacity: 1, height: 'auto' }}

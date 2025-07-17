@@ -15,9 +15,9 @@ import { useTheme } from './ThemeContext';
 import { useDataContext } from './DataContext';
 import { useCurrency } from './CurrencyContext';
 import ConnectionTest from './ConnectionTest';
-import HoldedTest from './HoldedTest';
+import holdedApi from '../services/holdedApi';
 
-// Nuevo: Hook para obtener el estado de conexión de Supabase de forma compacta
+// Hook para obtener el estado de conexión de Supabase de forma compacta
 import { useState as useReactState, useEffect as useReactEffect } from 'react';
 function useSupabaseConnectionStatus() {
   const [status, setStatus] = useReactState('testing');
@@ -52,6 +52,58 @@ function useSupabaseConnectionStatus() {
   return { status, error };
 }
 
+// Hook para obtener el estado de conexión de Holded Solucions
+function useHoldedSolucionsConnectionStatus() {
+  const [status, setStatus] = useReactState('testing');
+  const [error, setError] = useReactState(null);
+  const { colors } = useTheme();
+
+  React.useEffect(() => {
+    let isMounted = true;
+    async function testConnection() {
+      try {
+        await holdedApi.testConnection('solucions');
+        if (!isMounted) return;
+        setStatus('success');
+        setError(null);
+      } catch (err) {
+        if (!isMounted) return;
+        setStatus('error');
+        setError(err.message);
+      }
+    }
+    testConnection();
+    return () => { isMounted = false; };
+  }, []);
+  return { status, error };
+}
+
+// Hook para obtener el estado de conexión de Holded Menjar
+function useHoldedMenjarConnectionStatus() {
+  const [status, setStatus] = useReactState('testing');
+  const [error, setError] = useReactState(null);
+  const { colors } = useTheme();
+
+  React.useEffect(() => {
+    let isMounted = true;
+    async function testConnection() {
+      try {
+        await holdedApi.testConnection('menjar');
+        if (!isMounted) return;
+        setStatus('success');
+        setError(null);
+      } catch (err) {
+        if (!isMounted) return;
+        setStatus('error');
+        setError(err.message);
+      }
+    }
+    testConnection();
+    return () => { isMounted = false; };
+  }, []);
+  return { status, error };
+}
+
 const SettingsPage = () => {
   const { colors } = useTheme();
   const { 
@@ -66,6 +118,12 @@ const SettingsPage = () => {
 
   // Estado de conexión Supabase (badge)
   const { status: supabaseStatus, error: supabaseError } = useSupabaseConnectionStatus();
+
+  // Estado de conexión Holded Solucions (badge)
+  const { status: holdedSolucionsStatus, error: holdedSolucionsError } = useHoldedSolucionsConnectionStatus();
+
+  // Estado de conexión Holded Menjar (badge)
+  const { status: holdedMenjarStatus, error: holdedMenjarError } = useHoldedMenjarConnectionStatus();
 
   // Badge de estado de Supabase
   const supabaseBadge = (
@@ -100,9 +158,89 @@ const SettingsPage = () => {
       {supabaseStatus === 'error' && <span style={{fontSize: 15}}>●</span>}
       {supabaseStatus === 'testing' && <span style={{fontSize: 15}}>●</span>}
       <span style={{fontWeight: 500}}>
-        {supabaseStatus === 'success' && 'Conectado a Supabase'}
-        {supabaseStatus === 'error' && 'Error de conexión'}
-        {supabaseStatus === 'testing' && 'Comprobando...'}
+        {supabaseStatus === 'success' && 'Supabase'}
+        {supabaseStatus === 'error' && 'Supabase'}
+        {supabaseStatus === 'testing' && 'Supabase'}
+      </span>
+    </span>
+  );
+
+  // Badge de estado de Holded Solucions
+  const holdedSolucionsBadge = (
+    <span style={{
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: 6,
+      fontSize: 13,
+      fontWeight: 500,
+      marginLeft: 16,
+      padding: '2px 10px',
+      borderRadius: 12,
+      background:
+        holdedSolucionsStatus === 'success' ? colors.success + '22' :
+        holdedSolucionsStatus === 'error' ? colors.error + '22' :
+        colors.warning + '22',
+      color:
+        holdedSolucionsStatus === 'success' ? colors.success :
+        holdedSolucionsStatus === 'error' ? colors.error :
+        colors.warning,
+      border: `1px solid ${
+        holdedSolucionsStatus === 'success' ? colors.success :
+        holdedSolucionsStatus === 'error' ? colors.error :
+        colors.warning
+      }`,
+      userSelect: 'none',
+      minWidth: 0,
+      minHeight: 0,
+      lineHeight: 1.2
+    }}>
+      {holdedSolucionsStatus === 'success' && <span style={{fontSize: 15}}>●</span>}
+      {holdedSolucionsStatus === 'error' && <span style={{fontSize: 15}}>●</span>}
+      {holdedSolucionsStatus === 'testing' && <span style={{fontSize: 15}}>●</span>}
+      <span style={{fontWeight: 500}}>
+        {holdedSolucionsStatus === 'success' && 'Holded Solucions'}
+        {holdedSolucionsStatus === 'error' && 'Holded Solucions'}
+        {holdedSolucionsStatus === 'testing' && 'Holded Solucions'}
+      </span>
+    </span>
+  );
+
+  // Badge de estado de Holded Menjar
+  const holdedMenjarBadge = (
+    <span style={{
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: 6,
+      fontSize: 13,
+      fontWeight: 500,
+      marginLeft: 16,
+      padding: '2px 10px',
+      borderRadius: 12,
+      background:
+        holdedMenjarStatus === 'success' ? colors.success + '22' :
+        holdedMenjarStatus === 'error' ? colors.error + '22' :
+        colors.warning + '22',
+      color:
+        holdedMenjarStatus === 'success' ? colors.success :
+        holdedMenjarStatus === 'error' ? colors.error :
+        colors.warning,
+      border: `1px solid ${
+        holdedMenjarStatus === 'success' ? colors.success :
+        holdedMenjarStatus === 'error' ? colors.error :
+        colors.warning
+      }`,
+      userSelect: 'none',
+      minWidth: 0,
+      minHeight: 0,
+      lineHeight: 1.2
+    }}>
+      {holdedMenjarStatus === 'success' && <span style={{fontSize: 15}}>●</span>}
+      {holdedMenjarStatus === 'error' && <span style={{fontSize: 15}}>●</span>}
+      {holdedMenjarStatus === 'testing' && <span style={{fontSize: 15}}>●</span>}
+      <span style={{fontWeight: 500}}>
+        {holdedMenjarStatus === 'success' && 'Holded Menjar'}
+        {holdedMenjarStatus === 'error' && 'Holded Menjar'}
+        {holdedMenjarStatus === 'testing' && 'Holded Menjar'}
       </span>
     </span>
   );
@@ -352,19 +490,70 @@ const SettingsPage = () => {
           disabled: false
         }
       ]
+    },
+    {
+      title: 'Estado de Conexiones',
+      items: [
+        {
+          icon: CheckCircle,
+          title: 'Conexión Supabase',
+          description: supabaseStatus === 'success' ? 'Conectado correctamente' : 
+                      supabaseStatus === 'error' ? `Error: ${supabaseError}` : 
+                      'Comprobando conexión...',
+          action: null,
+          color: supabaseStatus === 'success' ? colors.success : 
+                 supabaseStatus === 'error' ? colors.error : 
+                 colors.warning,
+          disabled: false
+        },
+        {
+          icon: CheckCircle,
+          title: 'Conexión Holded Solucions',
+          description: holdedSolucionsStatus === 'success' ? 'Conectado correctamente' : 
+                      holdedSolucionsStatus === 'error' ? `Error: ${holdedSolucionsError}` : 
+                      'Comprobando conexión...',
+          action: null,
+          color: holdedSolucionsStatus === 'success' ? colors.success : 
+                 holdedSolucionsStatus === 'error' ? colors.error : 
+                 colors.warning,
+          disabled: false
+        },
+        {
+          icon: CheckCircle,
+          title: 'Conexión Holded Menjar',
+          description: holdedMenjarStatus === 'success' ? 'Conectado correctamente' : 
+                      holdedMenjarStatus === 'error' ? `Error: ${holdedMenjarError}` : 
+                      'Comprobando conexión...',
+          action: null,
+          color: holdedMenjarStatus === 'success' ? colors.success : 
+                 holdedMenjarStatus === 'error' ? colors.error : 
+                 colors.warning,
+          disabled: false
+        }
+      ]
     }
   ];
 
   return (
-    <div style={{ padding: '32px 0 32px 0', maxWidth: 900, margin: '0 auto' }}>
-      {/* Título y badge de estado */}
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        marginBottom: 32,
-        padding: '0 32px'
-      }}>
+    <motion.div
+      initial={{ opacity: 0, y: 30 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: 30 }}
+      transition={{ duration: 0.5, ease: 'easeOut' }}
+      style={{ padding: '24px', height: '100%', display: 'flex', flexDirection: 'column' }}
+    >
+      {/* Título y badges de estado */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.1 }}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: 32,
+        }}
+      >
         <h1 style={{
           color: colors.text,
           fontSize: 32,
@@ -376,8 +565,12 @@ const SettingsPage = () => {
         }}>
           Configuración
         </h1>
-        {supabaseBadge}
-      </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          {supabaseBadge}
+          {holdedSolucionsBadge}
+          {holdedMenjarBadge}
+        </div>
+      </motion.div>
 
       {/* Alertas */}
       <AnimatePresence>
@@ -430,13 +623,18 @@ const SettingsPage = () => {
       </AnimatePresence>
 
       {/* Resto del contenido de configuración */}
-      <div style={{ margin: '0 32px', display: 'flex', flexDirection: 'column', gap: 32 }}>
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.15 }}
+        style={{ display: 'flex', flexDirection: 'column', gap: 32, flex: 1 }}
+      >
         {settingsSections.map((section, sectionIndex) => (
           <motion.div
             key={section.title}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3, delay: sectionIndex * 0.1 }}
+            transition={{ duration: 0.4, delay: 0.2 + (sectionIndex * 0.1) }}
             style={{
               background: colors.card,
               borderRadius: 8,
@@ -517,17 +715,8 @@ const SettingsPage = () => {
             </div>
           </motion.div>
         ))}
-
-        {/* Componente de prueba de Holded */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3, delay: 0.4 }}
-        >
-          <HoldedTest />
-        </motion.div>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   );
 };
 

@@ -18,6 +18,7 @@ import { useDataContext } from './DataContext';
 import { useTheme } from './ThemeContext';
 import { useCurrency } from './CurrencyContext';
 import { useAuth } from './AuthContext';
+import { useNavigation } from './NavigationContext';
 import { supabase } from '../config/supabase';
 import holdedApi from '../services/holdedApi';
 
@@ -131,11 +132,21 @@ const HomePage = () => {
   const { 
     solucionsHeaders, setSolucionsHeaders, solucionsData, setSolucionsData,
     menjarHeaders, setMenjarHeaders, menjarData, setMenjarData,
-    setShouldReloadHolded
+    setShouldReloadHolded,
+    holdedCache,
+    isCacheValid,
+    getCachedData,
+    updateCache,
+    setLoading,
+    clearCache,
+    CACHE_DURATION,
+    needsUpdate,
+    markTabUpdated
   } = useDataContext();
   const { colors } = useTheme();
   const { formatCurrency } = useCurrency();
   const { user } = useAuth();
+  const { navigateTo } = useNavigation();
 
   // Estado para datos cargados desde Supabase
   const [supabaseData, setSupabaseData] = useState({
@@ -149,30 +160,84 @@ const HomePage = () => {
     loadDataFromHolded();
   }, []);
 
-  // Función para cargar datos desde Holded
+  // Verificar si necesita actualización cuando se monta el componente
+  useEffect(() => {
+    if (needsUpdate('home')) {
+      loadDataFromHolded();
+      markTabUpdated('home');
+    }
+  }, []);
+
+  // Función para cargar datos desde Holded con caché
   const loadDataFromHolded = async () => {
     setLoadingData(true);
+    
     try {
-      // Obtener compras de Holded
-      let holdedPurchases = [];
-      try {
-        holdedPurchases = await holdedApi.getAllPendingAndOverduePurchases();
-      } catch (error) {
-        console.log('No se pudieron cargar las compras de Holded:', error.message);
+      // Verificar si tenemos datos en caché válidos
+      const cachedSolucions = getCachedData('solucions');
+      const cachedMenjar = getCachedData('menjar');
+      
+      let solucionsPurchases = cachedSolucions;
+      let menjarPurchases = cachedMenjar;
+      
+      // Array de promesas para cargar datos que no están en caché
+      const loadPromises = [];
+      
+      // Cargar datos de Solucions si no están en caché
+      if (!cachedSolucions) {
+        setLoading('solucions', true);
+        loadPromises.push(
+          holdedApi.getAllPendingAndOverduePurchases('solucions')
+            .then(data => {
+              updateCache('solucions', data);
+              return data;
+            })
+            .catch(error => {
+              console.error('Error cargando datos de Solucions:', error);
+              setLoading('solucions', false);
+              return [];
+            })
+        );
       }
+      
+      // Cargar datos de Menjar si no están en caché
+      if (!cachedMenjar) {
+        setLoading('menjar', true);
+        loadPromises.push(
+          holdedApi.getAllPendingAndOverduePurchases('menjar')
+            .then(data => {
+              updateCache('menjar', data);
+              return data;
+            })
+            .catch(error => {
+              console.error('Error cargando datos de Menjar:', error);
+              setLoading('menjar', false);
+              return [];
+            })
+        );
+      }
+      
+      // Si hay datos para cargar, esperar a que se completen
+      if (loadPromises.length > 0) {
+        const [newSolucions, newMenjar] = await Promise.all(loadPromises);
+        if (!cachedSolucions) solucionsPurchases = newSolucions;
+        if (!cachedMenjar) menjarPurchases = newMenjar;
+      }
+      
+      // Procesar datos de cada empresa
+      const processedSolucions = processHoldedPurchases(solucionsPurchases || []);
+      const processedMenjar = processHoldedPurchases(menjarPurchases || []);
 
-      // Procesar compras de Holded
-      const processedHolded = processHoldedPurchases(holdedPurchases);
-
-      // Usar los mismos datos para ambas vistas
-      const holdedData = {
-        headers: processedHolded.headers,
-        data: processedHolded.data
-      };
-
+      // Actualizar el estado con datos separados
       setSupabaseData({
-        solucions: holdedData,
-        menjar: holdedData
+        solucions: {
+          headers: processedSolucions.headers,
+          data: processedSolucions.data
+        },
+        menjar: {
+          headers: processedMenjar.headers,
+          data: processedMenjar.data
+        }
       });
 
     } catch (error) {
@@ -264,7 +329,8 @@ const HomePage = () => {
     setTimeout(() => setAlertVisible(false), 4000);
   };
 
-  // Función para subir archivo a Supabase Storage
+  // FUNCIÓN DE SUBIDA DE ARCHIVOS COMENTADA - FUNCIONALIDAD DE EXCEL DESHABILITADA
+  /*
   const uploadFileToStorage = async (file, type) => {
     try {
       const timestamp = new Date().getTime();
@@ -291,8 +357,10 @@ const HomePage = () => {
       throw error;
     }
   };
+  */
 
-  // Función para guardar metadatos del upload en la base de datos
+  // FUNCIÓN DE METADATOS COMENTADA - FUNCIONALIDAD DE EXCEL DESHABILITADA
+  /*
   const saveUploadMetadata = async (fileInfo, type, headers, dataCount) => {
     try {
       const { data, error } = await supabase
@@ -322,8 +390,10 @@ const HomePage = () => {
       throw error;
     }
   };
+  */
 
-  // Función para guardar datos procesados en la tabla invoices
+  // FUNCIÓN DE PROCESAMIENTO DE DATOS COMENTADA - FUNCIONALIDAD DE EXCEL DESHABILITADA
+  /*
   const saveProcessedData = async (data, uploadId, uploadType) => {
     try {
       // PASO 1: Eliminar datos anteriores del mismo tipo
@@ -499,8 +569,11 @@ const HomePage = () => {
       throw error;
     }
   };
+  */
 
   // Función para crear notificación para los Jefes
+  // FUNCIÓN DE NOTIFICACIONES COMENTADA - FUNCIONALIDAD DE EXCEL DESHABILITADA
+  /*
   const createNotificationForManagers = async (uploadInfo, type) => {
     try {
       // Obtener usuarios con roles de manager y admin
@@ -541,8 +614,10 @@ const HomePage = () => {
       // No lanzar error aquí, es opcional
     }
   };
+  */
 
-  // Función completa para procesar y subir archivo Excel
+  // FUNCIÓN DE PROCESAMIENTO DE EXCEL COMENTADA - FUNCIONALIDAD DESHABILITADA
+  /*
   const processAndUploadExcel = async (file, type) => {
     setUploading(true);
     setUploadProgress(0);
@@ -620,8 +695,10 @@ const HomePage = () => {
       setUploadProgress(0);
     }
   };
+  */
 
-  // Encuentra la fila que más se parece a las cabeceras esperadas
+  // FUNCIONES DE PROCESAMIENTO DE EXCEL COMENTADAS - FUNCIONALIDAD DESHABILITADA
+  /*
   function findBestHeaderRow(rows) {
     let bestIdx = 0;
     let bestScore = 0;
@@ -641,7 +718,6 @@ const HomePage = () => {
     return bestIdx;
   }
 
-  // Función para filtrar filas vacías o irrelevantes
   function isValidRow(row, headers) {
     // Índices de campos clave
     const idxProveedor = headers.findIndex(h => h.toLowerCase().includes('proveïdor') || h.toLowerCase().includes('proveedor'));
@@ -657,18 +733,18 @@ const HomePage = () => {
     if (desc.includes('informe generat automàticament per holded') || desc.includes('informe generado automáticamente por holded')) return false;
     return true;
   }
+  */
 
-  // Función para manejar la importación de archivos de Solucions Socials (actualizada)
+  // FUNCIONES DE MANEJO DE ARCHIVOS EXCEL COMENTADAS - FUNCIONALIDAD DESHABILITADA
+  /*
   const handleSolucionsFileImport = (file) => {
     processAndUploadExcel(file, 'solucions');
   };
 
-  // Función para manejar la importación de archivos de Menjar d'Hort (actualizada)
   const handleMenjarFileImport = (file) => {
     processAndUploadExcel(file, 'menjar');
   };
 
-  // Función para manejar la selección de archivo de Solucions Socials
   const handleSolucionsFileSelect = () => {
     if (uploading) {
       showAlert('Espera a que termine la subida actual.', 'error');
@@ -677,7 +753,6 @@ const HomePage = () => {
     fileInputRef.current.click();
   };
 
-  // Función para manejar la selección de archivo de Menjar d'Hort
   const handleMenjarFileSelect = () => {
     if (uploading) {
       showAlert('Espera a que termine la subida actual.', 'error');
@@ -686,7 +761,6 @@ const HomePage = () => {
     menjarFileInputRef.current.click();
   };
 
-  // Función para manejar el cambio de archivo de Solucions Socials
   const handleSolucionsFileChange = (e) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
@@ -700,7 +774,6 @@ const HomePage = () => {
     }
   };
 
-  // Función para manejar el cambio de archivo de Menjar d'Hort
   const handleMenjarFileChange = (e) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
@@ -713,21 +786,21 @@ const HomePage = () => {
       }
     }
   };
+  */
 
-  // Funciones para los otros botones
+  // Función para ir a la página de análisis
   const handleViewAnalytics = () => {
-    if (solucionsData.length === 0 && menjarData.length === 0) {
-      showAlert('Primero debes importar al menos un archivo Excel para ver los análisis.', 'error');
-      return;
-    }
-    // Aquí podrías navegar a la página de análisis o mostrar un modal
+    // Navegar a la pestaña de análisis usando el contexto
+    navigateTo('analytics');
     showAlert('Redirigiendo a la sección de análisis...', 'success');
   };
 
   // Calcular estadísticas desde datos de Holded
   const calculateStats = () => {
-    // Usar datos de Holded (ambas vistas tienen los mismos datos)
-    const totalData = supabaseData.solucions.data;
+    // Combinar datos de ambas empresas
+    const solucionsData = supabaseData.solucions.data;
+    const menjarData = supabaseData.menjar.data;
+    const totalData = [...solucionsData, ...menjarData];
     
     if (totalData.length === 0) {
       return [
@@ -738,7 +811,7 @@ const HomePage = () => {
       ];
     }
 
-    // Usar headers de Holded
+    // Usar headers de Holded (ambas empresas tienen la misma estructura)
     const headers = supabaseData.solucions.headers;
     const providerIndex = headers.findIndex(h => h === 'Proveïdor');
     const totalIndex = headers.findIndex(h => h === 'Total');
@@ -764,31 +837,72 @@ const HomePage = () => {
         icon: Users, 
         label: 'Total Proveedores', 
         value: providers.size.toString(), 
-        color: colors.primary 
+        color: colors.primary
       },
       { 
         icon: FileText, 
         label: 'Compras Procesadas', 
         value: totalData.length.toString(), 
-        color: '#2196F3' 
+        color: '#2196F3'
       },
       { 
         icon: DollarSign, 
         label: 'Total a Pagar', 
         value: formatCurrency(totalAmount), 
-        color: colors.warning 
+        color: colors.warning
       },
       { 
         icon: TrendingUp, 
         label: 'Promedio por Compra', 
         value: formatCurrency(averageAmount), 
-        color: '#9C27B0' 
+        color: '#9C27B0'
       },
     ];
   };
 
   const stats = calculateStats();
 
+  // Función para obtener información del estado del caché
+  const getCacheInfo = () => {
+    const now = Date.now();
+    const solucionsCache = holdedCache.solucions;
+    const menjarCache = holdedCache.menjar;
+    
+    const getCacheStatus = (cache) => {
+      // Priorizar mostrar estado de carga si está activo
+      if (cache.loading) return 'Actualizando datos...';
+      
+      if (!cache.data) return 'Sin datos';
+      if (!cache.timestamp) return 'Sin timestamp';
+      
+      const age = now - cache.timestamp;
+      const ageMinutes = Math.floor(age / 60000);
+      
+      if (age < CACHE_DURATION) {
+        return `Válido (${ageMinutes} min)`;
+      } else {
+        return `Expirado (${ageMinutes} min)`;
+      }
+    };
+
+    return {
+      solucions: {
+        status: getCacheStatus(solucionsCache),
+        count: solucionsCache.data ? solucionsCache.data.length : 0,
+        loading: solucionsCache.loading
+      },
+      menjar: {
+        status: getCacheStatus(menjarCache),
+        count: menjarCache.data ? menjarCache.data.length : 0,
+        loading: menjarCache.loading
+      }
+    };
+  };
+
+  const cacheInfo = getCacheInfo();
+
+  // ACCIONES RÁPIDAS COMENTADAS - FUNCIONALIDAD DE EXCEL DESHABILITADA
+  /*
   const quickActions = [
     {
       icon: Upload,
@@ -812,10 +926,12 @@ const HomePage = () => {
       onClick: handleViewAnalytics
     }
   ];
+  */
 
   return (
     <div style={{ width: '100%' }}>
-      {/* Input oculto para archivos de Solucions Socials */}
+      {/* INPUTS DE ARCHIVOS COMENTADOS - FUNCIONALIDAD DE EXCEL DESHABILITADA */}
+      {/*
       <input
         ref={fileInputRef}
         type="file"
@@ -824,7 +940,6 @@ const HomePage = () => {
         onChange={handleSolucionsFileChange}
       />
 
-      {/* Input oculto para archivos de Menjar d'Hort */}
       <input
         ref={menjarFileInputRef}
         type="file"
@@ -832,6 +947,7 @@ const HomePage = () => {
         style={{ display: 'none' }}
         onChange={handleMenjarFileChange}
       />
+      */}
 
       {/* Alerta personalizada */}
       <CustomAlert
@@ -1037,21 +1153,144 @@ const HomePage = () => {
         )}
       </motion.div>
 
-      {/* Holded Actions Section */}
+      {/* Estado del Caché Section */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.12 }}
+        style={{ marginBottom: '50px' }}
+      >
+        <h3 style={{
+          fontSize: '24px',
+          fontWeight: '600',
+          color: colors.text,
+          margin: '0 0 30px 0',
+        }}>
+          Estado del Caché
+        </h3>
+        
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+          gap: '24px',
+        }}>
+          {/* Estado de Solucions */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, delay: 0.1 }}
+            style={{
+              backgroundColor: colors.surface,
+              padding: '24px',
+              borderRadius: '16px',
+              border: `1px solid ${colors.border}`,
+              boxShadow: '0 2px 12px rgba(0,0,0,0.06)',
+            }}
+          >
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: '16px'
+            }}>
+              <h4 style={{
+                fontSize: '18px',
+                fontWeight: '600',
+                color: colors.text,
+                margin: 0,
+              }}>
+                Solucions Socials
+              </h4>
+              <div style={{
+                padding: '4px 12px',
+                borderRadius: '20px',
+                fontSize: '12px',
+                fontWeight: '500',
+                backgroundColor: cacheInfo.solucions.loading ? '#FF9800' + '15' : 
+                               cacheInfo.solucions.status.includes('Válido') ? '#4CAF50' + '15' : '#F44336' + '15',
+                color: cacheInfo.solucions.loading ? '#FF9800' : 
+                       cacheInfo.solucions.status.includes('Válido') ? '#4CAF50' : '#F44336',
+              }}>
+                {cacheInfo.solucions.loading ? 'Cargando...' : cacheInfo.solucions.status}
+              </div>
+            </div>
+            <div style={{
+              fontSize: '14px',
+              color: colors.textSecondary,
+              lineHeight: '1.5',
+            }}>
+              <div>Compras en caché: <strong>{cacheInfo.solucions.count}</strong></div>
+              <div>Estado: {cacheInfo.solucions.status}</div>
+            </div>
+          </motion.div>
+
+          {/* Estado de Menjar */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, delay: 0.15 }}
+            style={{
+              backgroundColor: colors.surface,
+              padding: '24px',
+              borderRadius: '16px',
+              border: `1px solid ${colors.border}`,
+              boxShadow: '0 2px 12px rgba(0,0,0,0.06)',
+            }}
+          >
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: '16px'
+            }}>
+              <h4 style={{
+                fontSize: '18px',
+                fontWeight: '600',
+                color: colors.text,
+                margin: 0,
+              }}>
+                Menjar d'Hort
+              </h4>
+              <div style={{
+                padding: '4px 12px',
+                borderRadius: '20px',
+                fontSize: '12px',
+                fontWeight: '500',
+                backgroundColor: cacheInfo.menjar.loading ? '#FF9800' + '15' : 
+                               cacheInfo.menjar.status.includes('Válido') ? '#4CAF50' + '15' : '#F44336' + '15',
+                color: cacheInfo.menjar.loading ? '#FF9800' : 
+                       cacheInfo.menjar.status.includes('Válido') ? '#4CAF50' : '#F44336',
+              }}>
+                {cacheInfo.menjar.loading ? 'Cargando...' : cacheInfo.menjar.status}
+              </div>
+            </div>
+            <div style={{
+              fontSize: '14px',
+              color: colors.textSecondary,
+              lineHeight: '1.5',
+            }}>
+              <div>Compras en caché: <strong>{cacheInfo.menjar.count}</strong></div>
+              <div>Estado: {cacheInfo.menjar.status}</div>
+            </div>
+          </motion.div>
+        </div>
+      </motion.div>
+
+      {/* Acciones Rápidas Section */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, delay: 0.15 }}
         style={{ marginBottom: '50px' }}
       >
-                    <h3 style={{
-              fontSize: '24px',
-              fontWeight: '600',
-              color: colors.text,
-              margin: '0 0 30px 0',
-            }}>
-              Datos de Compras Holded
-            </h3>
+        <h3 style={{
+          fontSize: '24px',
+          fontWeight: '600',
+          color: colors.text,
+          margin: '0 0 30px 0',
+        }}>
+          Acciones Rápidas
+        </h3>
         
         <div style={{
           display: 'grid',
@@ -1073,8 +1312,22 @@ const HomePage = () => {
             }}
             onClick={async () => {
               try {
-                await holdedApi.syncDocumentsWithDatabase(supabase);
-                showAlert('Compras cargadas correctamente', 'success');
+                // Sincronizar ambas empresas
+                const [solucionsResult, menjarResult] = await Promise.all([
+                  holdedApi.syncDocumentsWithDatabase(supabase, 'solucions').catch(error => {
+                    console.error('Error sincronizando Solucions:', error);
+                    return { success: false, error: error.message };
+                  }),
+                  holdedApi.syncDocumentsWithDatabase(supabase, 'menjar').catch(error => {
+                    console.error('Error sincronizando Menjar:', error);
+                    return { success: false, error: error.message };
+                  })
+                ]);
+
+                const totalInserted = (solucionsResult.insertedCount || 0) + (menjarResult.insertedCount || 0);
+                const totalUpdated = (solucionsResult.updatedCount || 0) + (menjarResult.updatedCount || 0);
+
+                showAlert(`Sincronizadas ${totalInserted} compras nuevas y ${totalUpdated} actualizadas de ambas empresas`, 'success');
               } catch (error) {
                 showAlert(`Error al sincronizar: ${error.message}`, 'error');
               }
@@ -1112,7 +1365,7 @@ const HomePage = () => {
               margin: 0,
               lineHeight: '1.5',
             }}>
-              Obtener todas las compras pendientes y vencidas desde Holded
+              Obtener compras pendientes y vencidas de ambas empresas desde Holded
             </p>
           </motion.div>
 
@@ -1131,11 +1384,40 @@ const HomePage = () => {
             }}
             onClick={async () => {
               try {
-                const purchases = await holdedApi.getAllPendingAndOverduePurchases();
-                showAlert(`Actualizadas ${purchases.length} compras de Holded`, 'success');
+                // Marcar ambas empresas como cargando
+                setLoading('solucions', true);
+                setLoading('menjar', true);
+                
+                // Actualizar datos de ambas empresas
+                const [solucionsPurchases, menjarPurchases] = await Promise.all([
+                  holdedApi.getAllPendingAndOverduePurchases('solucions').catch(error => {
+                    console.error('Error actualizando Solucions:', error);
+                    setLoading('solucions', false);
+                    return [];
+                  }),
+                  holdedApi.getAllPendingAndOverduePurchases('menjar').catch(error => {
+                    console.error('Error actualizando Menjar:', error);
+                    setLoading('menjar', false);
+                    return [];
+                  })
+                ]);
+
+                // Actualizar caché con nuevos datos
+                updateCache('solucions', solucionsPurchases);
+                updateCache('menjar', menjarPurchases);
+
+                const totalPurchases = solucionsPurchases.length + menjarPurchases.length;
+                showAlert(`Actualizadas ${totalPurchases} compras (Solucions: ${solucionsPurchases.length}, Menjar: ${menjarPurchases.length})`, 'success');
+                
+                // Recargar datos en la página actual
+                await loadDataFromHolded();
+                
                 // Activar recarga en AnalyticsPage
                 setShouldReloadHolded(true);
               } catch (error) {
+                // Asegurar que se desactiva el estado de carga en caso de error
+                setLoading('solucions', false);
+                setLoading('menjar', false);
                 showAlert(`Error al actualizar: ${error.message}`, 'error');
               }
             }}
@@ -1172,90 +1454,64 @@ const HomePage = () => {
               margin: 0,
               lineHeight: '1.5',
             }}>
-              Actualizar la información de compras desde Holded
+              Actualizar información de compras de ambas empresas desde Holded
+            </p>
+          </motion.div>
+
+          {/* Botón de Análisis */}
+          <motion.div
+            whileHover={{ y: -3, scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            style={{
+              backgroundColor: colors.card,
+              padding: '32px',
+              borderRadius: '12px',
+              border: `1px solid ${colors.border}`,
+              cursor: 'pointer',
+              transition: 'all 0.2s ease',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.05)',
+            }}
+            onClick={handleViewAnalytics}
+          >
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '20px',
+              marginBottom: '16px',
+            }}>
+              <div style={{
+                width: '50px',
+                height: '50px',
+                borderRadius: '10px',
+                backgroundColor: '#FF9800' + '15',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}>
+                <BarChart2 size={24} color="#FF9800" />
+              </div>
+              <h4 style={{
+                fontSize: '20px',
+                fontWeight: '600',
+                color: colors.text,
+                margin: 0,
+              }}>
+                Ver Análisis
+              </h4>
+            </div>
+            <p style={{
+              fontSize: '16px',
+              color: colors.textSecondary,
+              margin: 0,
+              lineHeight: '1.5',
+            }}>
+              Acceder a la pestaña de análisis para ver estadísticas y reportes detallados
             </p>
           </motion.div>
         </div>
       </motion.div>
 
-      {/* Quick Actions */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, delay: 0.25 }}
-      >
-        <h3 style={{
-          fontSize: '24px',
-          fontWeight: '600',
-          color: colors.text,
-          margin: '0 0 30px 0',
-        }}>
-          Acciones Rápidas
-        </h3>
-        
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
-          gap: '25px',
-        }}>
-          {quickActions.map((action, index) => {
-            const Icon = action.icon;
-            return (
-              <motion.div
-                key={action.title}
-                whileHover={{ y: -3, scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                style={{
-                  backgroundColor: colors.card,
-                  padding: '32px',
-                  borderRadius: '12px',
-                  border: `1px solid ${colors.border}`,
-                  cursor: uploading ? 'not-allowed' : 'pointer',
-                  opacity: uploading ? 0.6 : 1,
-                  transition: 'all 0.2s ease',
-                  boxShadow: isDarkMode => isDarkMode ? '0 2px 8px rgba(0,0,0,0.25)' : '0 2px 8px rgba(0,0,0,0.05)',
-                }}
-                onClick={uploading ? undefined : action.onClick}
-              >
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '20px',
-                  marginBottom: '16px',
-                }}>
-                  <div style={{
-                    width: '50px',
-                    height: '50px',
-                    borderRadius: '10px',
-                    backgroundColor: action.color + '15',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}>
-                    <Icon size={24} color={action.color} />
-                  </div>
-                  <h4 style={{
-                    fontSize: '20px',
-                    fontWeight: '600',
-                    color: colors.text,
-                    margin: 0,
-                  }}>
-                    {action.title}
-                  </h4>
-                </div>
-                <p style={{
-                  fontSize: '16px',
-                  color: colors.textSecondary,
-                  margin: 0,
-                  lineHeight: '1.5',
-                }}>
-                  {action.description}
-                </p>
-              </motion.div>
-            );
-          })}
-        </div>
-      </motion.div>
+      {/* SECCIÓN DE ACCIONES RÁPIDAS ELIMINADA - FUNCIONALIDAD DE EXCEL DESHABILITADA */}
 
       {/* CSS para animaciones */}
       <style>{`
