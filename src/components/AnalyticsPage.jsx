@@ -86,16 +86,20 @@ const AnalyticsPage = () => {
       const processedSolucions = processHoldedPurchases(solucionsPurchases);
       const processedMenjar = processHoldedPurchases(menjarPurchases);
 
+      // Enriquecer datos con IBAN de contactos
+      const enrichedSolucionsData = await enrichDataWithContactIban(processedSolucions.data, 'solucions');
+      const enrichedMenjarData = await enrichDataWithContactIban(processedMenjar.data, 'menjar');
+
       // Actualizar el estado con datos separados
       setSupabaseData({
         solucions: {
           headers: processedSolucions.headers,
-          data: processedSolucions.data,
+          data: enrichedSolucionsData,
           loading: false
         },
         menjar: {
           headers: processedMenjar.headers,
-          data: processedMenjar.data,
+          data: enrichedMenjarData,
           loading: false
         }
       });
@@ -182,6 +186,108 @@ const AnalyticsPage = () => {
     });
 
     return { headers: expectedHeaders, data: processedData };
+  };
+
+  // Función para enriquecer datos de facturas con IBAN de contactos
+  const enrichDataWithContactIban = async (processedData, company) => {
+    try {
+      // Obtener todos los contactos de la empresa
+      const allContacts = await holdedApi.getAllContacts(company);
+      
+      // Crear un mapa de contactos por nombre normalizado
+      const contactsMap = new Map();
+      allContacts.forEach(contact => {
+        const contactName = contact.name || contact.company || '';
+        const normalizedName = contactName.toLowerCase().trim();
+        
+        // Buscar IBAN en diferentes campos del contacto
+        let iban = '';
+        if (contact.iban) {
+          iban = contact.iban;
+        } else if (contact.bankAccount) {
+          iban = contact.bankAccount;
+        } else if (contact.bank_account) {
+          iban = contact.bank_account;
+        } else if (contact.accountNumber) {
+          iban = contact.accountNumber;
+        } else if (contact.account_number) {
+          iban = contact.account_number;
+        } else if (contact.bankDetails) {
+          iban = contact.bankDetails;
+        } else if (contact.bank_details) {
+          iban = contact.bank_details;
+        } else if (contact.paymentInfo) {
+          iban = contact.paymentInfo;
+        } else if (contact.payment_info) {
+          iban = contact.payment_info;
+        }
+        
+        if (normalizedName && iban) {
+          contactsMap.set(normalizedName, iban);
+        }
+      });
+      
+      // Función para normalizar nombres de proveedores de manera más flexible
+      const normalizeProviderName = (providerName) => {
+        if (!providerName) return '';
+        
+        return providerName
+          .toLowerCase()
+          .trim()
+          // Remover paréntesis y su contenido
+          .replace(/\s*\([^)]*\)/g, '')
+          // Remover abreviaciones comunes
+          .replace(/\s*s\.a\.u?\.?/gi, ' s.a')
+          .replace(/\s*s\.l\./gi, ' s.l')
+          .replace(/\s*s\.c\.c\.l\./gi, ' s.c.c.l')
+          .replace(/\s*s\.a\./gi, ' s.a')
+          // Remover espacios múltiples
+          .replace(/\s+/g, ' ')
+          .trim();
+      };
+      
+      // Enriquecer los datos de facturas con IBAN de contactos
+      const enrichedData = processedData.map(row => {
+        const providerName = row[5]; // Índice del proveedor en las columnas
+        if (providerName) {
+          const normalizedProviderName = normalizeProviderName(providerName);
+          let contactIban = contactsMap.get(normalizedProviderName);
+          
+          // Si no encontramos coincidencia exacta, buscar coincidencias parciales
+          if (!contactIban) {
+            // Buscar coincidencias que contengan palabras clave del proveedor
+            const providerWords = normalizedProviderName.split(' ').filter(word => word.length > 2);
+            
+            for (const [contactName, iban] of contactsMap.entries()) {
+              const contactWords = contactName.split(' ').filter(word => word.length > 2);
+              
+              // Verificar si al menos 2 palabras coinciden
+              const matchingWords = providerWords.filter(word => 
+                contactWords.some(contactWord => contactWord.includes(word) || word.includes(contactWord))
+              );
+              
+              if (matchingWords.length >= 2) {
+                contactIban = iban;
+                break;
+              }
+            }
+          }
+          
+          // Si encontramos un IBAN del contacto y no hay uno en la factura, usarlo
+          if (contactIban && (!row[20] || row[20] === '' || row[20] === null)) {
+            const newRow = [...row];
+            newRow[20] = contactIban; // Índice del IBAN
+            return newRow;
+          }
+        }
+        return row;
+      });
+      
+      return enrichedData;
+    } catch (error) {
+      console.error('Error enriqueciendo datos con IBAN de contactos:', error);
+      return processedData; // Retornar datos originales si hay error
+    }
   };
 
 
@@ -1057,7 +1163,7 @@ const AnalyticsPage = () => {
               Cargando datos desde la base de datos...
             </div>
             <div style={{ fontSize: 14, color: colors.textSecondary }}>
-              Esto puede tomar unos segundos
+              Esto puede tardar unos segundos
             </div>
           </motion.div>
         ) : error ? (

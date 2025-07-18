@@ -929,7 +929,13 @@ const HomePage = () => {
   */
 
   return (
-    <div style={{ width: '100%' }}>
+    <div style={{ 
+      width: '100%',
+      padding: '24px',
+      backgroundColor: colors.background,
+      minHeight: '100%',
+      boxSizing: 'border-box'
+    }}>
       {/* INPUTS DE ARCHIVOS COMENTADOS - FUNCIONALIDAD DE EXCEL DESHABILITADA */}
       {/*
       <input
@@ -1014,14 +1020,15 @@ const HomePage = () => {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
         style={{
-          marginBottom: '50px',
+          marginBottom: '30px',
         }}
       >
         <h2 style={{
-          fontSize: '32px',
-          fontWeight: '600',
+          fontSize: 28,
+          fontWeight: 700,
           color: colors.text,
           margin: '0 0 15px 0',
+          lineHeight: 1.2
         }}>
           Bienvenido a Selección de Proveedores
         </h2>
@@ -1041,10 +1048,10 @@ const HomePage = () => {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, delay: 0.1 }}
         style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-          gap: '24px',
-          marginBottom: '50px',
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: '18px',
+          marginBottom: '30px',
         }}
       >
         {loadingData ? (
@@ -1110,13 +1117,16 @@ const HomePage = () => {
                 whileHover={{ y: -3, scale: 1.02 }}
                 style={{
                   backgroundColor: colors.surface,
-                  padding: '24px',
+                  padding: '20px 18px',
                   borderRadius: '16px',
                   border: `1px solid ${colors.border}`,
                   display: 'flex',
                   alignItems: 'center',
                   gap: '16px',
                   boxShadow: '0 2px 12px rgba(0,0,0,0.06)',
+                  flex: '1 1 180px',
+                  minWidth: '180px',
+                  maxWidth: '250px',
                 }}
               >
                 <div style={{
@@ -1158,21 +1168,21 @@ const HomePage = () => {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, delay: 0.12 }}
-        style={{ marginBottom: '50px' }}
+        style={{ marginBottom: '30px' }}
       >
         <h3 style={{
           fontSize: '24px',
           fontWeight: '600',
           color: colors.text,
-          margin: '0 0 30px 0',
+          margin: '0 0 20px 0',
         }}>
           Estado del Caché
         </h3>
         
         <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-          gap: '24px',
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: '18px',
         }}>
           {/* Estado de Solucions */}
           <motion.div
@@ -1181,10 +1191,13 @@ const HomePage = () => {
             transition={{ duration: 0.4, delay: 0.1 }}
             style={{
               backgroundColor: colors.surface,
-              padding: '24px',
+              padding: '20px 18px',
               borderRadius: '16px',
               border: `1px solid ${colors.border}`,
               boxShadow: '0 2px 12px rgba(0,0,0,0.06)',
+              flex: '1 1 180px',
+              minWidth: '180px',
+              maxWidth: '250px',
             }}
           >
             <div style={{
@@ -1231,10 +1244,13 @@ const HomePage = () => {
             transition={{ duration: 0.4, delay: 0.15 }}
             style={{
               backgroundColor: colors.surface,
-              padding: '24px',
+              padding: '20px 18px',
               borderRadius: '16px',
               border: `1px solid ${colors.border}`,
               boxShadow: '0 2px 12px rgba(0,0,0,0.06)',
+              flex: '1 1 180px',
+              minWidth: '180px',
+              maxWidth: '250px',
             }}
           >
             <div style={{
@@ -1281,21 +1297,21 @@ const HomePage = () => {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, delay: 0.15 }}
-        style={{ marginBottom: '50px' }}
+        style={{ marginBottom: '30px' }}
       >
         <h3 style={{
           fontSize: '24px',
           fontWeight: '600',
           color: colors.text,
-          margin: '0 0 30px 0',
+          margin: '0 0 20px 0',
         }}>
           Acciones Rápidas
         </h3>
         
         <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
-          gap: '25px',
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: '18px',
         }}>
           {/* Botón de Sincronizar */}
           <motion.div
@@ -1303,12 +1319,15 @@ const HomePage = () => {
             whileTap={{ scale: 0.98 }}
             style={{
               backgroundColor: colors.card,
-              padding: '32px',
+              padding: '24px 20px',
               borderRadius: '12px',
               border: `1px solid ${colors.border}`,
               cursor: 'pointer',
               transition: 'all 0.2s ease',
               boxShadow: '0 2px 8px rgba(0,0,0,0.05)',
+              flex: '1 1 200px',
+              minWidth: '200px',
+              maxWidth: '280px',
             }}
             onClick={async () => {
               try {
@@ -1375,12 +1394,15 @@ const HomePage = () => {
             whileTap={{ scale: 0.98 }}
             style={{
               backgroundColor: colors.card,
-              padding: '32px',
+              padding: '24px 20px',
               borderRadius: '12px',
               border: `1px solid ${colors.border}`,
               cursor: 'pointer',
               transition: 'all 0.2s ease',
               boxShadow: '0 2px 8px rgba(0,0,0,0.05)',
+              flex: '1 1 200px',
+              minWidth: '200px',
+              maxWidth: '280px',
             }}
             onClick={async () => {
               try {
@@ -1464,12 +1486,15 @@ const HomePage = () => {
             whileTap={{ scale: 0.98 }}
             style={{
               backgroundColor: colors.card,
-              padding: '32px',
+              padding: '24px 20px',
               borderRadius: '12px',
               border: `1px solid ${colors.border}`,
               cursor: 'pointer',
               transition: 'all 0.2s ease',
               boxShadow: '0 2px 8px rgba(0,0,0,0.05)',
+              flex: '1 1 200px',
+              minWidth: '200px',
+              maxWidth: '280px',
             }}
             onClick={handleViewAnalytics}
           >

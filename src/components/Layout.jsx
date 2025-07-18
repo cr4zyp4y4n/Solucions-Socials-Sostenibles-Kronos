@@ -14,7 +14,8 @@ import {
   Shield,
   Activity,
   Bell,
-  Zap
+  Zap,
+  CreditCard
 } from 'feather-icons-react';
 import { useTheme } from './ThemeContext';
 import { useAuth } from './AuthContext';
@@ -22,7 +23,6 @@ import { useNavigation } from './NavigationContext';
 import { supabase } from '../config/supabase';
 import logo from '../assets/Logo Minimalist SSS Highest Opacity.PNG';
 import HomePage from './HomePage';
-import ProvidersPage from './ProvidersPage';
 import AnalyticsPage from './AnalyticsPage';
 import SettingsPage from './SettingsPage';
 import OnboardingPage from './OnboardingPage';
@@ -30,6 +30,7 @@ import UserProfile from './UserProfile';
 import UserManagement from './UserManagement';
 import AuditLog from './AuditLog';
 import HoldedTest from './HoldedTest';
+import ProvidersContacts from './ProvidersContacts';
 
 const Layout = () => {
   const { activeSection, navigateTo } = useNavigation();
@@ -190,16 +191,15 @@ const Layout = () => {
 
   const menuItems = [
     { id: 'home', icon: Home, label: 'Inicio' },
-    { id: 'providers', icon: Users, label: 'Proveedores' },
+    { id: 'contacts', icon: CreditCard, label: 'Contactos' },
     { id: 'analytics', icon: BarChart2, label: 'Análisis' },
+    { id: 'test', icon: Zap, label: 'Pruebas' },
     { id: 'settings', icon: Settings, label: 'Configuración' },
     // Solo mostrar gestión de usuarios y auditoría a administradores
     ...(isAdmin ? [
       { id: 'users', icon: Shield, label: 'Usuarios' },
       { id: 'audit', icon: Activity, label: 'Auditoría' }
     ] : []),
-    // Pestaña de pruebas al final
-    { id: 'test', icon: Zap, label: 'Pruebas' },
   ];
 
   const handleSignOut = async () => {
@@ -211,8 +211,8 @@ const Layout = () => {
     switch (activeSection) {
       case 'home':
         return <HomePage />;
-      case 'providers':
-        return <ProvidersPage />;
+      case 'contacts':
+        return <ProvidersContacts />;
       case 'analytics':
         return <AnalyticsPage />;
       case 'test':
@@ -396,10 +396,11 @@ const Layout = () => {
           }}
         >
           <h1 style={{
-            fontSize: '20px',
-            fontWeight: '500',
+            fontSize: 28,
+            fontWeight: 700,
             color: colors.text,
             margin: 0,
+            lineHeight: 1.2
           }}>
             {menuItems.find(item => item.id === activeSection)?.label}
           </h1>
@@ -607,7 +608,7 @@ const Layout = () => {
             <motion.button
               whileHover={{ scale: 1.05, rotate: 60 }}
               whileTap={{ scale: 0.95 }}
-              onClick={() => setActiveSection('settings')}
+              onClick={() => navigateTo('settings')}
               style={{
                 background: 'none',
                 border: 'none',
@@ -633,7 +634,7 @@ const Layout = () => {
           transition={{ duration: 0.3, delay: 0.2 }}
           style={{
             flex: 1,
-            padding: '16px 16px 0 16px',
+            padding: '0',
             overflow: 'auto',
             background: colors.background,
           }}

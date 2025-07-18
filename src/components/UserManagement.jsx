@@ -263,7 +263,7 @@ const UserManagement = () => {
         minHeight: '100%',
         backgroundColor: colors.background,
         display: 'block',
-        padding: '40px 40px 0 40px',
+        padding: '24px',
         boxSizing: 'border-box',
       }}
     >

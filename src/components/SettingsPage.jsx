@@ -556,12 +556,11 @@ const SettingsPage = () => {
       >
         <h1 style={{
           color: colors.text,
-          fontSize: 32,
+          fontSize: 28,
           fontWeight: 700,
           margin: 0,
-          lineHeight: 1.1,
-          userSelect: 'none',
-          letterSpacing: 0.1
+          lineHeight: 1.2,
+          userSelect: 'none'
         }}>
           Configuración
         </h1>

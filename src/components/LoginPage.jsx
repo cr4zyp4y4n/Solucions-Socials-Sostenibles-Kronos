@@ -122,9 +122,10 @@ const LoginPage = () => {
           />
           <h1 style={{
             color: colors.primary,
-            fontSize: '24px',
-            fontWeight: '700',
+            fontSize: 28,
+            fontWeight: 700,
             margin: '0 0 6px 0',
+            lineHeight: 1.2,
             userSelect: 'none'
           }}>
             SSS Kronos
