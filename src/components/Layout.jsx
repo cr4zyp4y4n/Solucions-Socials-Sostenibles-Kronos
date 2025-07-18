@@ -48,11 +48,16 @@ const Layout = () => {
       if (user?.id) {
         const { data, error } = await supabase
           .from('user_profiles')
-          .select('name, role')
+          .select('name, role, onboarding_completed')
           .eq('id', user.id)
           .single();
         if (!error && data) {
           setUserProfile(data);
+          
+          // Mostrar onboarding automáticamente si es un usuario nuevo
+          if (!data.onboarding_completed) {
+            setShowOnboarding(true);
+          }
         }
       }
     };
