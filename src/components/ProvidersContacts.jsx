@@ -15,7 +15,12 @@ import {
   XCircle,
   Info,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Edit,
+  Trash2,
+  Plus,
+  Save,
+  X
 } from 'lucide-react';
 
 const ProvidersContacts = () => {
@@ -38,6 +43,8 @@ const ProvidersContacts = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(25);
 
+
+
   useEffect(() => {
     loadContacts();
   }, [selectedCompany]);
@@ -52,7 +59,9 @@ const ProvidersContacts = () => {
     setError('');
 
     try {
+      console.log('Cargando contactos de Holded...');
       const allContacts = await holdedApi.getAllContacts(selectedCompany);
+      console.log('Contactos obtenidos de Holded:', allContacts.length);
       
       // Procesar contactos para extraer información de IBAN
       const processedContacts = allContacts.map(contact => {
@@ -81,7 +90,8 @@ const ProvidersContacts = () => {
         return {
           ...contact,
           iban: iban,
-          hasIban: !!iban
+          hasIban: !!iban,
+          phone: contact.mobile || contact.phone || '' // Usar mobile como teléfono principal
         };
       });
 
@@ -166,6 +176,8 @@ const ProvidersContacts = () => {
     return company === 'solucions' ? 'Solucions Socials' : 'Menjar d\'Hort';
   };
 
+
+
   return (
     <div style={{
       padding: '24px',
@@ -241,6 +253,8 @@ const ProvidersContacts = () => {
             <RefreshCw size={16} style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }} />
             <span>Actualizar</span>
           </motion.button>
+          
+
           
           <motion.button
             whileHover={{ scale: 1.02 }}
@@ -812,6 +826,7 @@ const ProvidersContacts = () => {
                   }}>
                     Estado
                   </th>
+
                 </tr>
               </thead>
               <tbody>
@@ -930,6 +945,7 @@ const ProvidersContacts = () => {
                           )}
                         </div>
                       </td>
+
                     </tr>
                   ))
                 )}

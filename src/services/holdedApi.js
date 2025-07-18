@@ -12,14 +12,17 @@ class HoldedApiService {
 
   // Método genérico para hacer peticiones a la API usando IPC
   async makeRequest(endpoint, options = {}, company = 'solucions') {
+    console.log('makeRequest: Endpoint:', endpoint);
+    console.log('makeRequest: Options:', options);
+    console.log('makeRequest: Company:', company);
+    
     try {
       const apiKey = HOLDED_API_KEYS[company];
       if (!apiKey) {
         throw new Error(`API key no encontrada para la empresa: ${company}`);
       }
 
-      // Usar IPC para hacer la petición desde el main process
-      const response = await window.electronAPI.makeHoldedRequest({
+      const requestData = {
         url: `${this.baseUrl}${endpoint}`,
         options: {
           headers: {
@@ -29,7 +32,14 @@ class HoldedApiService {
           },
           ...options
         }
-      });
+      };
+      
+      console.log('makeRequest: Enviando petición:', requestData);
+
+      // Usar IPC para hacer la petición desde el main process
+      const response = await window.electronAPI.makeHoldedRequest(requestData);
+      
+      console.log('makeRequest: Respuesta recibida:', response);
 
       if (!response.ok) {
         throw new Error(`Error en la API de Holded (${company}): ${response.status} ${response.statusText}`);
@@ -396,6 +406,61 @@ class HoldedApiService {
       return allContacts;
     } catch (error) {
       console.error('Error obteniendo todos los contactos:', error);
+      throw error;
+    }
+  }
+
+  // Crear un nuevo contacto
+  async createContact(contactData, company = 'solucions') {
+    console.log('API: Creando contacto con datos:', contactData);
+    console.log('API: Empresa:', company);
+    
+    try {
+      const response = await this.makeRequest('/contacts', {
+        method: 'POST',
+        body: contactData
+      }, company);
+      
+      console.log('API: Respuesta de creación:', response);
+      return response;
+    } catch (error) {
+      console.error('API: Error creando contacto:', error);
+      console.error('API: Detalles del error:', error.message);
+      throw error;
+    }
+  }
+
+  // Actualizar un contacto existente
+  async updateContact(contactId, contactData, company = 'solucions') {
+    console.log('API: Actualizando contacto ID:', contactId);
+    console.log('API: Datos de actualización:', contactData);
+    console.log('API: Empresa:', company);
+    
+    try {
+      const response = await this.makeRequest(`/contacts/${contactId}`, {
+        method: 'PUT',
+        body: contactData
+      }, company);
+      
+      console.log('API: Respuesta de actualización:', response);
+      return response;
+    } catch (error) {
+      console.error('API: Error actualizando contacto:', error);
+      console.error('API: Detalles del error:', error.message);
+      throw error;
+    }
+  }
+
+  // Eliminar un contacto
+  async deleteContact(contactId, company = 'solucions') {
+    try {
+      const response = await this.makeRequest(`/contacts/${contactId}`, {
+        method: 'DELETE'
+      }, company);
+      
+      return response;
+    } catch (error) {
+      console.error('Error eliminando contacto:', error);
       throw error;
     }
   }
