@@ -5,7 +5,7 @@
 ## 📦 Archivos de Distribución
 
 ### Windows
-- **Instalador:** SSS Kronos-2.0.0 Setup.exe (120 MB aprox.)
+- **Instalador:** SSS Kronos-2.0.0 Setup.exe (115 MB aprox.)
 - **Ubicación:** `out/make/squirrel.windows/x64/`
 - **Compatibilidad:** Windows 10/11 (64-bit)
 
@@ -13,6 +13,13 @@
 *Nota: Los instaladores para macOS y Linux se generarán en futuras versiones*
 
 ## ✨ Nuevas Características y Cambios Clave
+
+### 🔄 Sistema de Actualizaciones Automáticas
+- ✅ **Verificación automática:** La app verifica actualizaciones al iniciar
+- ✅ **Notificaciones automáticas:** Todos los usuarios reciben notificación cuando hay nueva versión
+- ✅ **Descarga en segundo plano:** Actualizaciones se descargan automáticamente
+- ✅ **Instalación con un clic:** Reinicio automático con la nueva versión
+- ✅ **Integración con GitHub:** Distribución automática desde GitHub Releases
 
 ### 🔐 Sistema de Roles y Permisos Avanzado
 - ✅ **4 roles diferenciados:** `admin`, `management`, `manager`, `user`
@@ -60,6 +67,7 @@
 - ✅ **Corregido:** Error "Element type is invalid" en Layout
 - ✅ **Corregido:** Checklist de contraseñas cortado/clipped
 - ✅ **Corregido:** Todos los elementos del sidebar seleccionados
+- ✅ **Corregido:** Consola de desarrollador abriéndose automáticamente
 
 ### 📚 Documentación y Mantenimiento
 - ✅ **Documentación técnica:** Guías detalladas en carpeta `docs/`
@@ -110,7 +118,7 @@
 
 ### 🎯 v2.1.0 (Planificada)
 - 📊 **Módulos ERP/CRM adicionales**
-- 🔄 **Actualizaciones automáticas**
+- 🔄 **Actualizaciones automáticas mejoradas**
 - 📈 **Análisis avanzado con machine learning**
 - 📱 **Aplicación móvil complementaria**
 - 🔐 **Autenticación biométrica**
@@ -121,6 +129,7 @@
 - 📊 **Dashboard ejecutivo avanzado**
 - 🔗 **Integración con más APIs de contabilidad**
 - 📱 **Sincronización multiplataforma**
+- 🔄 **Actualizaciones delta (más rápidas)**
 
 ## 🤝 Contribución
 

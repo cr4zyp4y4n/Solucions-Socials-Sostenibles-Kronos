@@ -168,7 +168,7 @@ const SettingsPage = () => {
   // Estado de conexión Holded Menjar (badge)
   const { status: holdedMenjarStatus, error: holdedMenjarError } = useHoldedMenjarConnectionStatus();
 
-  const appVersion = '1.0.0';
+  const appVersion = '2.0.1';
   const contactEmail = 'comunicacio@solucionssocials.org';
 
   const showAlertMessage = (message, type = 'success') => {
@@ -218,6 +218,26 @@ const SettingsPage = () => {
     };
   }, []);
 
+  // Función para verificar conectividad con GitHub
+  const testGitHubConnection = async () => {
+    try {
+      const response = await fetch('https://api.github.com/repos/cr4zyp4y4n/Solucions-Socials-Sostenibles-Kronos/releases/latest');
+      if (response.ok) {
+        const data = await response.json();
+        console.log('✅ Conexión con GitHub exitosa');
+        console.log('📦 Última versión en GitHub:', data.tag_name);
+        console.log('📋 Release notes:', data.body);
+        return data;
+      } else {
+        console.log('❌ Error conectando con GitHub:', response.status);
+        return null;
+      }
+    } catch (error) {
+      console.log('❌ Error de red:', error.message);
+      return null;
+    }
+  };
+
   // Función para verificar actualizaciones
   const checkForUpdates = async () => {
     if (!window.electronAPI) return;
@@ -227,10 +247,24 @@ const SettingsPage = () => {
     setDownloading(false);
     setUpdateDownloaded(false);
     
+    console.log('🔍 Verificando actualizaciones...');
+    console.log('📦 Versión actual:', appVersion);
+    console.log('🔗 Repositorio configurado: cr4zyp4y4n/Solucions-Socials-Sostenibles-Kronos');
+    
+    // Verificar conectividad con GitHub primero
+    const githubData = await testGitHubConnection();
+    if (githubData) {
+      console.log('🌐 GitHub conectado, verificando actualizaciones...');
+    } else {
+      console.log('⚠️ No se pudo conectar con GitHub, pero continuando...');
+    }
+    
     try {
       await window.electronAPI.checkForUpdates();
+      console.log('✅ Solicitud de verificación enviada correctamente');
     } catch (error) {
       console.error('Error verificando actualizaciones:', error);
+      console.log('❌ Error en verificación:', error.message);
       setChecking(false);
     }
   };
@@ -242,10 +276,14 @@ const SettingsPage = () => {
     setDownloading(true);
     setDownloadProgress(0);
     
+    console.log('⬇️ Iniciando descarga de actualización...');
+    
     try {
       await window.electronAPI.downloadUpdate();
+      console.log('✅ Solicitud de descarga enviada correctamente');
     } catch (error) {
       console.error('Error descargando actualización:', error);
+      console.log('❌ Error en descarga:', error.message);
       setDownloading(false);
     }
   };
@@ -254,10 +292,14 @@ const SettingsPage = () => {
   const installUpdate = async () => {
     if (!window.electronAPI) return;
     
+    console.log('🔄 Iniciando instalación de actualización...');
+    
     try {
       await window.electronAPI.installUpdate();
+      console.log('✅ Solicitud de instalación enviada correctamente');
     } catch (error) {
       console.error('Error instalando actualización:', error);
+      console.log('❌ Error en instalación:', error.message);
     }
   };
 
@@ -626,6 +668,23 @@ const SettingsPage = () => {
               Solo lectura
             </span>
           )}
+        </div>
+        
+        {/* Información de debug para todos los usuarios */}
+        <div style={{ 
+          marginBottom: 16, 
+          padding: '12px', 
+          background: colors.surface, 
+          borderRadius: 8,
+          fontSize: 12,
+          color: colors.textSecondary,
+          border: `1px solid ${colors.border}`
+        }}>
+          <strong>🔧 Información de Debug:</strong><br/>
+          • Repositorio: cr4zyp4y4n/Solucions-Socials-Sostenibles-Kronos<br/>
+          • Versión actual: {appVersion}<br/>
+          • Estado: {checking ? 'Verificando...' : 'Listo'}<br/>
+          • API disponible: {window.electronAPI ? '✅ Sí' : '❌ No'}
         </div>
         
         <div style={{ marginBottom: 16 }}>

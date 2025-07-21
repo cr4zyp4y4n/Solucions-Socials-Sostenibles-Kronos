@@ -17,13 +17,17 @@ autoUpdater.setFeedURL({
   private: false, // true si es repositorio privado
 });
 
+console.log('🔧 Auto-updater configurado para:', 'cr4zyp4y4n/Solucions-Socials-Sostenibles-Kronos');
+
 // Configurar eventos del auto-updater
 autoUpdater.on('checking-for-update', () => {
-  console.log('Verificando actualizaciones...');
+  console.log('🔍 Verificando actualizaciones...');
 });
 
 autoUpdater.on('update-available', (info) => {
-  console.log('Actualización disponible:', info);
+  console.log('✅ Actualización disponible:', info);
+  console.log('📦 Nueva versión:', info.version);
+  console.log('📋 Release notes:', info.releaseNotes);
   // Enviar notificación al renderer
   if (mainWindow) {
     mainWindow.webContents.send('update-available', info);
@@ -31,15 +35,20 @@ autoUpdater.on('update-available', (info) => {
 });
 
 autoUpdater.on('update-not-available', (info) => {
-  console.log('No hay actualizaciones disponibles:', info);
+  console.log('❌ No hay actualizaciones disponibles:', info);
+  console.log('📦 Versión actual es la más reciente');
 });
 
 autoUpdater.on('error', (err) => {
-  console.log('Error en auto-updater:', err);
+  console.log('❌ Error en auto-updater:', err);
+  console.log('🔍 Detalles del error:', err.message);
+  console.log('📋 Stack trace:', err.stack);
 });
 
 autoUpdater.on('download-progress', (progressObj) => {
-  console.log('Progreso de descarga:', progressObj);
+  console.log('⬇️ Progreso de descarga:', progressObj);
+  console.log('📊 Porcentaje:', progressObj.percent);
+  console.log('🚀 Velocidad:', progressObj.bytesPerSecond);
   // Enviar progreso al renderer
   if (mainWindow) {
     mainWindow.webContents.send('download-progress', progressObj);
@@ -47,7 +56,8 @@ autoUpdater.on('download-progress', (progressObj) => {
 });
 
 autoUpdater.on('update-downloaded', (info) => {
-  console.log('Actualización descargada:', info);
+  console.log('✅ Actualización descargada:', info);
+  console.log('📦 Versión descargada:', info.version);
   // Enviar notificación al renderer
   if (mainWindow) {
     mainWindow.webContents.send('update-downloaded', info);
