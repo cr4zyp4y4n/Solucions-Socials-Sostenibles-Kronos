@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Trash2, 
@@ -11,7 +11,8 @@ import {
   DollarSign,
   RefreshCw,
   Shield,
-  Slash
+  Slash,
+  Zap
 } from 'feather-icons-react';
 import { useTheme } from './ThemeContext';
 import { useDataContext } from './DataContext';
@@ -146,6 +147,13 @@ const SettingsPage = () => {
   const [alertMessage, setAlertMessage] = useState('');
   const [alertType, setAlertType] = useState('success');
 
+  // Estados para actualizaciones
+  const [updateAvailable, setUpdateAvailable] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState(0);
+  const [updateDownloaded, setUpdateDownloaded] = useState(false);
+  const [checking, setChecking] = useState(false);
+
   // Helpers de rol
   const isAdmin = user?.role === 'admin' || user?.user_metadata?.role === 'admin';
   const isManagementOrManager = user?.role === 'management' || user?.role === 'manager' || user?.user_metadata?.role === 'management' || user?.user_metadata?.role === 'manager';
@@ -178,6 +186,79 @@ const SettingsPage = () => {
   const handleRefreshRates = async () => {
     await refreshRates();
     showAlertMessage('Tasas de cambio actualizadas', 'success');
+  };
+
+  // Configurar listeners de actualizaciones
+  useEffect(() => {
+    if (window.electronAPI) {
+      // Listener para actualización disponible
+      window.electronAPI.onUpdateAvailable((event, info) => {
+        setUpdateAvailable(true);
+        setChecking(false);
+      });
+
+      // Listener para progreso de descarga
+      window.electronAPI.onDownloadProgress((event, progressObj) => {
+        setDownloadProgress(progressObj.percent);
+      });
+
+      // Listener para actualización descargada
+      window.electronAPI.onUpdateDownloaded((event, info) => {
+        setUpdateDownloaded(true);
+        setDownloading(false);
+      });
+    }
+
+    return () => {
+      if (window.electronAPI) {
+        window.electronAPI.removeAllListeners('update-available');
+        window.electronAPI.removeAllListeners('download-progress');
+        window.electronAPI.removeAllListeners('update-downloaded');
+      }
+    };
+  }, []);
+
+  // Función para verificar actualizaciones
+  const checkForUpdates = async () => {
+    if (!window.electronAPI) return;
+    
+    setChecking(true);
+    setUpdateAvailable(false);
+    setDownloading(false);
+    setUpdateDownloaded(false);
+    
+    try {
+      await window.electronAPI.checkForUpdates();
+    } catch (error) {
+      console.error('Error verificando actualizaciones:', error);
+      setChecking(false);
+    }
+  };
+
+  // Función para descargar actualización
+  const downloadUpdate = async () => {
+    if (!window.electronAPI) return;
+    
+    setDownloading(true);
+    setDownloadProgress(0);
+    
+    try {
+      await window.electronAPI.downloadUpdate();
+    } catch (error) {
+      console.error('Error descargando actualización:', error);
+      setDownloading(false);
+    }
+  };
+
+  // Función para instalar actualización
+  const installUpdate = async () => {
+    if (!window.electronAPI) return;
+    
+    try {
+      await window.electronAPI.installUpdate();
+    } catch (error) {
+      console.error('Error instalando actualización:', error);
+    }
   };
 
   const settingsSections = [
@@ -509,6 +590,183 @@ const SettingsPage = () => {
     )
   );
 
+  // Renderizar sección de actualizaciones (solo para admin)
+  function renderUpdateSection() {
+    // Visible para todos los usuarios, pero con funcionalidades diferentes según el rol
+    const canInstallUpdates = isAdmin; // Solo admin puede instalar
+    
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3 }}
+        style={{
+          background: colors.card,
+          borderRadius: 12,
+          padding: '24px',
+          marginBottom: '24px',
+          border: `1.5px solid ${colors.border}`,
+          boxShadow: '0 2px 8px rgba(0,0,0,0.04)'
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+          <Zap size={20} color={colors.primary} />
+          <h3 style={{ margin: 0, color: colors.text, fontSize: 18, fontWeight: 600 }}>
+            Actualizaciones de la Aplicación
+          </h3>
+          {!isAdmin && (
+            <span style={{
+              padding: '4px 8px',
+              borderRadius: '12px',
+              fontSize: '11px',
+              background: colors.warning + '22',
+              color: colors.warning,
+              fontWeight: '500'
+            }}>
+              Solo lectura
+            </span>
+          )}
+        </div>
+        
+        <div style={{ marginBottom: 16 }}>
+          <button
+            onClick={checkForUpdates}
+            disabled={checking || downloading}
+            style={{
+              background: colors.primary,
+              color: 'white',
+              border: 'none',
+              borderRadius: 8,
+              padding: '10px 16px',
+              fontSize: 14,
+              fontWeight: 600,
+              cursor: checking || downloading ? 'not-allowed' : 'pointer',
+              opacity: checking || downloading ? 0.6 : 1
+            }}
+          >
+            {checking ? 'Verificando...' : 'Verificar Actualizaciones'}
+          </button>
+        </div>
+        
+        {updateAvailable && !downloading && !updateDownloaded && (
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ color: colors.success, marginBottom: 8, fontWeight: 500 }}>
+              ✅ Nueva actualización disponible
+            </div>
+            {canInstallUpdates ? (
+              <button
+                onClick={downloadUpdate}
+                style={{
+                  background: colors.success,
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: 8,
+                  padding: '10px 16px',
+                  fontSize: 14,
+                  fontWeight: 600,
+                  cursor: 'pointer'
+                }}
+              >
+                Descargar Actualización
+              </button>
+            ) : (
+              <div style={{ 
+                padding: '12px', 
+                background: colors.warning + '22', 
+                borderRadius: 8,
+                color: colors.warning,
+                fontSize: 13
+              }}>
+                Contacta con un administrador para instalar la actualización
+              </div>
+            )}
+          </div>
+        )}
+        
+        {downloading && (
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ color: colors.warning, marginBottom: 8, fontWeight: 500 }}>
+              ⬇️ Descargando actualización...
+            </div>
+            <div style={{ 
+              width: '100%', 
+              height: 8, 
+              background: colors.border, 
+              borderRadius: 4,
+              overflow: 'hidden'
+            }}>
+              <div style={{
+                width: `${downloadProgress}%`,
+                height: '100%',
+                background: colors.primary,
+                transition: 'width 0.3s ease'
+              }} />
+            </div>
+            <div style={{ fontSize: 12, color: colors.textSecondary, marginTop: 4 }}>
+              {Math.round(downloadProgress)}% completado
+            </div>
+          </div>
+        )}
+        
+        {updateDownloaded && (
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ color: colors.success, marginBottom: 8, fontWeight: 500 }}>
+              ✅ Actualización descargada y lista para instalar
+            </div>
+            {canInstallUpdates ? (
+              <button
+                onClick={installUpdate}
+                style={{
+                  background: colors.error,
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: 8,
+                  padding: '10px 16px',
+                  fontSize: 14,
+                  fontWeight: 600,
+                  cursor: 'pointer'
+                }}
+              >
+                Reiniciar e Instalar
+              </button>
+            ) : (
+              <div style={{ 
+                padding: '12px', 
+                background: colors.warning + '22', 
+                borderRadius: 8,
+                color: colors.warning,
+                fontSize: 13
+              }}>
+                Contacta con un administrador para completar la instalación
+              </div>
+            )}
+            <div style={{ fontSize: 12, color: colors.textSecondary, marginTop: 8 }}>
+              La aplicación se cerrará automáticamente para instalar la actualización
+            </div>
+          </div>
+        )}
+        
+        <div style={{ fontSize: 12, color: colors.textSecondary }}>
+          Versión actual: {appVersion}
+        </div>
+        
+        {isAdmin && (
+          <div style={{ 
+            marginTop: 12, 
+            padding: '12px', 
+            background: colors.surface, 
+            borderRadius: 8,
+            fontSize: 12,
+            color: colors.textSecondary
+          }}>
+            <strong>Información técnica:</strong> Las actualizaciones se descargan automáticamente en segundo plano. 
+            Los usuarios recibirán notificaciones cuando haya nuevas versiones disponibles.
+          </div>
+        )}
+      </motion.div>
+    );
+  }
+
   // Render principal
   return (
     <motion.div
@@ -694,6 +952,7 @@ const SettingsPage = () => {
         {renderInfoApp()}
         {renderEstadoConexiones()}
         {renderPruebasTecnicas()}
+        {renderUpdateSection()}
       </motion.div>
     </motion.div>
   );

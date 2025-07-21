@@ -9,5 +9,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getExchangeRates: () => ipcRenderer.invoke('get-exchange-rates'),
   
   // API para peticiones a Holded
-  makeHoldedRequest: (requestData) => ipcRenderer.invoke('make-holded-request', requestData)
+  makeHoldedRequest: (requestData) => ipcRenderer.invoke('make-holded-request', requestData),
+  
+  // API para auto-updater
+  checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
+  downloadUpdate: () => ipcRenderer.invoke('download-update'),
+  installUpdate: () => ipcRenderer.invoke('install-update'),
+  
+  // Listeners para eventos del auto-updater
+  onUpdateAvailable: (callback) => ipcRenderer.on('update-available', callback),
+  onDownloadProgress: (callback) => ipcRenderer.on('download-progress', callback),
+  onUpdateDownloaded: (callback) => ipcRenderer.on('update-downloaded', callback),
+  
+  // Remover listeners
+  removeAllListeners: (channel) => ipcRenderer.removeAllListeners(channel),
 });

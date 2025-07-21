@@ -102,6 +102,48 @@ const Layout = () => {
     }
   }, [user]);
 
+  // Configurar listeners de actualizaciones para notificaciones
+  useEffect(() => {
+    if (window.electronAPI) {
+      // Listener para actualización disponible - mostrar notificación a todos
+      window.electronAPI.onUpdateAvailable((event, info) => {
+        // Crear notificación automática para todos los usuarios
+        createUpdateNotification(info);
+      });
+    }
+
+    return () => {
+      if (window.electronAPI) {
+        window.electronAPI.removeAllListeners('update-available');
+      }
+    };
+  }, [user]);
+
+  // Función para crear notificación de actualización
+  const createUpdateNotification = async (updateInfo) => {
+    if (!user?.id) return;
+    
+    try {
+      const { error } = await supabase
+        .from('notifications')
+        .insert({
+          user_id: user.id,
+          title: '🔄 Nueva actualización disponible',
+          message: `La versión ${updateInfo.version} de SSS Kronos está lista para descargar. Ve a Configuración > Actualizaciones para instalarla.`,
+          type: 'update',
+          read: false,
+          created_at: new Date().toISOString()
+        });
+
+      if (!error) {
+        // Recargar notificaciones para mostrar la nueva
+        loadNotifications();
+      }
+    } catch (err) {
+      console.error('Error creando notificación de actualización:', err);
+    }
+  };
+
   // Recargar datos del usuario cuando cambien los metadatos
   useEffect(() => {
     const refreshUserData = async () => {

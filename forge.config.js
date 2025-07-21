@@ -24,6 +24,21 @@ module.exports = {
       config: {},
     },
   ],
+  publishers: [
+    {
+      name: '@electron-forge/publisher-github',
+      config: {
+        repository: {
+          owner: 'cr4zyp4y4n',
+          name: 'Solucions-Socials-Sostenibles-Kronos'
+        },
+        prerelease: false,
+        draft: false,
+        // Añadir token de GitHub (opcional para publicación automática)
+        // token: process.env.GITHUB_TOKEN
+      }
+    }
+  ],
   plugins: [
     {
       name: '@electron-forge/plugin-auto-unpack-natives',
