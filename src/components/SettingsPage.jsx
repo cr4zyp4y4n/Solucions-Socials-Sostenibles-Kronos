@@ -147,6 +147,28 @@ const SettingsPage = () => {
   const [alertMessage, setAlertMessage] = useState('');
   const [alertType, setAlertType] = useState('success');
 
+  // Versión de la aplicación - obtener dinámicamente
+  const [appVersion, setAppVersion] = useState('2.0.3'); // Versión por defecto
+  const contactEmail = 'comunicacio@solucionssocials.org';
+
+  // Obtener la versión de la aplicación al cargar el componente
+  useEffect(() => {
+    const getAppVersion = async () => {
+      try {
+        if (window.electronAPI) {
+          const version = await window.electronAPI.getAppVersion();
+          setAppVersion(version);
+          console.log('📦 Versión de la aplicación obtenida:', version);
+        }
+      } catch (error) {
+        console.log('⚠️ No se pudo obtener la versión de la aplicación:', error.message);
+        // Mantener la versión por defecto
+      }
+    };
+
+    getAppVersion();
+  }, []);
+
   // Estados para actualizaciones
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [downloading, setDownloading] = useState(false);
@@ -154,8 +176,13 @@ const SettingsPage = () => {
   const [updateDownloaded, setUpdateDownloaded] = useState(false);
   const [checking, setChecking] = useState(false);
 
+  // Verificar si el usuario es admin
+  const isAdmin = user?.role === 'authenticated' && user?.user_metadata?.role === 'admin';
+  // Verificar si el usuario puede instalar actualizaciones (admin, management, manager)
+  const canInstallUpdates = user?.role === 'authenticated' && 
+    ['admin', 'management', 'manager'].includes(user?.user_metadata?.role);
+
   // Helpers de rol
-  const isAdmin = user?.role === 'admin' || user?.user_metadata?.role === 'admin';
   const isManagementOrManager = user?.role === 'management' || user?.role === 'manager' || user?.user_metadata?.role === 'management' || user?.user_metadata?.role === 'manager';
   const isUser = !isAdmin && !isManagementOrManager;
 
@@ -167,9 +194,6 @@ const SettingsPage = () => {
 
   // Estado de conexión Holded Menjar (badge)
   const { status: holdedMenjarStatus, error: holdedMenjarError } = useHoldedMenjarConnectionStatus();
-
-  const appVersion = '2.0.1';
-  const contactEmail = 'comunicacio@solucionssocials.org';
 
   const showAlertMessage = (message, type = 'success') => {
     setAlertMessage(message);
@@ -221,26 +245,45 @@ const SettingsPage = () => {
   // Función para verificar conectividad con GitHub
   const testGitHubConnection = async () => {
     try {
-      const response = await fetch('https://api.github.com/repos/cr4zyp4y4n/Solucions-Socials-Sostenibles-Kronos/releases/latest');
+      console.log('🌐 Intentando conectar con GitHub API...');
+      const response = await fetch('https://api.github.com/repos/cr4zyp4y4n/Solucions-Socials-Sostenibles-Kronos/releases/latest', {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/vnd.github.v3+json',
+          'User-Agent': 'SSS-Kronos-App'
+        }
+      });
+      
       if (response.ok) {
         const data = await response.json();
         console.log('✅ Conexión con GitHub exitosa');
         console.log('📦 Última versión en GitHub:', data.tag_name);
-        console.log('📋 Release notes:', data.body);
+        console.log('📋 Release notes:', data.body?.substring(0, 100) + '...');
+        console.log('🔗 URL del release:', data.html_url);
         return data;
       } else {
         console.log('❌ Error conectando con GitHub:', response.status);
+        console.log('📋 Respuesta del servidor:', response.statusText);
         return null;
       }
     } catch (error) {
       console.log('❌ Error de red:', error.message);
+      if (error.message.includes('Content Security Policy')) {
+        console.log('🔒 Error de CSP: La política de seguridad está bloqueando la conexión');
+        console.log('💡 Solución: Verificar que api.github.com esté en la CSP');
+      } else if (error.message.includes('Failed to fetch')) {
+        console.log('🌐 Error de conectividad: No se pudo conectar con GitHub');
+      }
       return null;
     }
   };
 
   // Función para verificar actualizaciones
   const checkForUpdates = async () => {
-    if (!window.electronAPI) return;
+    if (!window.electronAPI) {
+      console.log('❌ Electron API no disponible');
+      return;
+    }
     
     setChecking(true);
     setUpdateAvailable(false);
@@ -251,20 +294,44 @@ const SettingsPage = () => {
     console.log('📦 Versión actual:', appVersion);
     console.log('🔗 Repositorio configurado: cr4zyp4y4n/Solucions-Socials-Sostenibles-Kronos');
     
-    // Verificar conectividad con GitHub primero
-    const githubData = await testGitHubConnection();
-    if (githubData) {
-      console.log('🌐 GitHub conectado, verificando actualizaciones...');
-    } else {
-      console.log('⚠️ No se pudo conectar con GitHub, pero continuando...');
-    }
-    
     try {
-      await window.electronAPI.checkForUpdates();
-      console.log('✅ Solicitud de verificación enviada correctamente');
+      // Verificar conectividad con GitHub primero
+      const githubData = await testGitHubConnection();
+      if (githubData) {
+        console.log('🌐 GitHub conectado, verificando actualizaciones...');
+        console.log('📦 Última versión en GitHub:', githubData.tag_name);
+        
+        // Comparar versiones
+        const currentVersion = appVersion.replace('v', '');
+        const latestVersion = githubData.tag_name.replace('v', '');
+        
+        if (latestVersion > currentVersion) {
+          console.log('✅ Nueva versión disponible:', latestVersion);
+          setUpdateAvailable(true);
+          showAlertMessage(`Nueva versión disponible: ${latestVersion}`, 'success');
+        } else {
+          console.log('✅ Ya tienes la última versión');
+          showAlertMessage('Ya tienes la última versión disponible', 'info');
+        }
+      } else {
+        console.log('⚠️ No se pudo conectar con GitHub');
+        showAlertMessage('No se pudo verificar actualizaciones. Revisa tu conexión a internet.', 'warning');
+      }
+      
+      // También intentar verificar con electron-updater
+      try {
+        await window.electronAPI.checkForUpdates();
+        console.log('✅ Solicitud de verificación enviada correctamente');
+      } catch (electronError) {
+        console.log('⚠️ Error con electron-updater:', electronError.message);
+        // No mostrar error al usuario si ya tenemos respuesta de GitHub
+      }
+      
     } catch (error) {
       console.error('Error verificando actualizaciones:', error);
       console.log('❌ Error en verificación:', error.message);
+      showAlertMessage('Error al verificar actualizaciones', 'error');
+    } finally {
       setChecking(false);
     }
   };
@@ -635,7 +702,6 @@ const SettingsPage = () => {
   // Renderizar sección de actualizaciones (solo para admin)
   function renderUpdateSection() {
     // Visible para todos los usuarios, pero con funcionalidades diferentes según el rol
-    const canInstallUpdates = isAdmin; // Solo admin puede instalar
     
     return (
       <motion.div
@@ -656,7 +722,7 @@ const SettingsPage = () => {
           <h3 style={{ margin: 0, color: colors.text, fontSize: 18, fontWeight: 600 }}>
             Actualizaciones de la Aplicación
           </h3>
-          {!isAdmin && (
+          {!canInstallUpdates && (
             <span style={{
               padding: '4px 8px',
               borderRadius: '12px',

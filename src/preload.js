@@ -15,6 +15,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
   downloadUpdate: () => ipcRenderer.invoke('download-update'),
   installUpdate: () => ipcRenderer.invoke('install-update'),
+
+  // API para obtener versión de la aplicación
+  getAppVersion: () => ipcRenderer.invoke('get-app-version'),
   
   // Listeners para eventos del auto-updater
   onUpdateAvailable: (callback) => ipcRenderer.on('update-available', callback),

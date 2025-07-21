@@ -77,6 +77,11 @@ ipcMain.handle('install-update', () => {
   autoUpdater.quitAndInstall();
 });
 
+// Handler para obtener la versión de la aplicación
+ipcMain.handle('get-app-version', () => {
+  return app.getVersion();
+});
+
 // Handler IPC para tasas de cambio usando https nativo
 ipcMain.handle('get-exchange-rates', async () => {
   return new Promise((resolve, reject) => {
@@ -165,7 +170,7 @@ const createWindow = () => {
           "default-src 'self' 'unsafe-inline' data:; " +
           "script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +
           "style-src 'self' 'unsafe-inline'; " +
-          "connect-src 'self' https://v6.exchangerate-api.com https://api.exchangerate-api.com https://zalnsacawwekmibhoiba.supabase.co https://*.supabase.co https://api.holded.com; " +
+          "connect-src 'self' https://v6.exchangerate-api.com https://api.exchangerate-api.com https://zalnsacawwekmibhoiba.supabase.co https://*.supabase.co https://api.holded.com https://api.github.com; " +
           "img-src 'self' data:;"
         ]
       }
