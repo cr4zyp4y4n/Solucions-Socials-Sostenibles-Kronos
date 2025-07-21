@@ -9,13 +9,17 @@ import {
   CheckCircle,
   X,
   DollarSign,
-  RefreshCw
+  RefreshCw,
+  Shield,
+  Slash
 } from 'feather-icons-react';
 import { useTheme } from './ThemeContext';
 import { useDataContext } from './DataContext';
 import { useCurrency } from './CurrencyContext';
 import ConnectionTest from './ConnectionTest';
 import holdedApi from '../services/holdedApi';
+import HoldedTest from './HoldedTest';
+import { useAuth } from './AuthContext';
 
 // Hook para obtener el estado de conexión de Supabase de forma compacta
 import { useState as useReactState, useEffect as useReactEffect } from 'react';
@@ -60,14 +64,29 @@ function useHoldedSolucionsConnectionStatus() {
 
   React.useEffect(() => {
     let isMounted = true;
+    let retryCount = 0;
+    const maxRetries = 3;
+    
     async function testConnection() {
       try {
+        // Esperar un poco antes de intentar la conexión
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
         await holdedApi.testConnection('solucions');
         if (!isMounted) return;
         setStatus('success');
         setError(null);
       } catch (err) {
         if (!isMounted) return;
+        
+        // Si es un error de API no disponible, reintentar
+        if (err.message.includes('API de Electron no disponible') && retryCount < maxRetries) {
+          retryCount++;
+          console.log(`Reintentando conexión Holded Solucions (${retryCount}/${maxRetries})...`);
+          setTimeout(testConnection, 2000); // Esperar 2 segundos antes de reintentar
+          return;
+        }
+        
         setStatus('error');
         setError(err.message);
       }
@@ -86,14 +105,29 @@ function useHoldedMenjarConnectionStatus() {
 
   React.useEffect(() => {
     let isMounted = true;
+    let retryCount = 0;
+    const maxRetries = 3;
+    
     async function testConnection() {
       try {
+        // Esperar un poco antes de intentar la conexión
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
         await holdedApi.testConnection('menjar');
         if (!isMounted) return;
         setStatus('success');
         setError(null);
       } catch (err) {
         if (!isMounted) return;
+        
+        // Si es un error de API no disponible, reintentar
+        if (err.message.includes('API de Electron no disponible') && retryCount < maxRetries) {
+          retryCount++;
+          console.log(`Reintentando conexión Holded Menjar (${retryCount}/${maxRetries})...`);
+          setTimeout(testConnection, 2000); // Esperar 2 segundos antes de reintentar
+          return;
+        }
+        
         setStatus('error');
         setError(err.message);
       }
@@ -106,15 +140,16 @@ function useHoldedMenjarConnectionStatus() {
 
 const SettingsPage = () => {
   const { colors } = useTheme();
-  const { 
-    solucionsData, solucionsHeaders, clearSolucionsData,
-    menjarData, menjarHeaders, clearMenjarData,
-    clearAllData
-  } = useDataContext();
   const { currency, setCurrency, currencies, loading, lastUpdate, refreshRates } = useCurrency();
+  const { user } = useAuth();
   const [showAlert, setShowAlert] = useState(false);
   const [alertMessage, setAlertMessage] = useState('');
   const [alertType, setAlertType] = useState('success');
+
+  // Helpers de rol
+  const isAdmin = user?.role === 'admin' || user?.user_metadata?.role === 'admin';
+  const isManagementOrManager = user?.role === 'management' || user?.role === 'manager' || user?.user_metadata?.role === 'management' || user?.user_metadata?.role === 'manager';
+  const isUser = !isAdmin && !isManagementOrManager;
 
   // Estado de conexión Supabase (badge)
   const { status: supabaseStatus, error: supabaseError } = useSupabaseConnectionStatus();
@@ -124,126 +159,6 @@ const SettingsPage = () => {
 
   // Estado de conexión Holded Menjar (badge)
   const { status: holdedMenjarStatus, error: holdedMenjarError } = useHoldedMenjarConnectionStatus();
-
-  // Badge de estado de Supabase
-  const supabaseBadge = (
-    <span style={{
-      display: 'inline-flex',
-      alignItems: 'center',
-      gap: 6,
-      fontSize: 13,
-      fontWeight: 500,
-      marginLeft: 16,
-      padding: '2px 10px',
-      borderRadius: 12,
-      background:
-        supabaseStatus === 'success' ? colors.success + '22' :
-        supabaseStatus === 'error' ? colors.error + '22' :
-        colors.warning + '22',
-      color:
-        supabaseStatus === 'success' ? colors.success :
-        supabaseStatus === 'error' ? colors.error :
-        colors.warning,
-      border: `1px solid ${
-        supabaseStatus === 'success' ? colors.success :
-        supabaseStatus === 'error' ? colors.error :
-        colors.warning
-      }`,
-      userSelect: 'none',
-      minWidth: 0,
-      minHeight: 0,
-      lineHeight: 1.2
-    }}>
-      {supabaseStatus === 'success' && <span style={{fontSize: 15}}>●</span>}
-      {supabaseStatus === 'error' && <span style={{fontSize: 15}}>●</span>}
-      {supabaseStatus === 'testing' && <span style={{fontSize: 15}}>●</span>}
-      <span style={{fontWeight: 500}}>
-        {supabaseStatus === 'success' && 'Supabase'}
-        {supabaseStatus === 'error' && 'Supabase'}
-        {supabaseStatus === 'testing' && 'Supabase'}
-      </span>
-    </span>
-  );
-
-  // Badge de estado de Holded Solucions
-  const holdedSolucionsBadge = (
-    <span style={{
-      display: 'inline-flex',
-      alignItems: 'center',
-      gap: 6,
-      fontSize: 13,
-      fontWeight: 500,
-      marginLeft: 16,
-      padding: '2px 10px',
-      borderRadius: 12,
-      background:
-        holdedSolucionsStatus === 'success' ? colors.success + '22' :
-        holdedSolucionsStatus === 'error' ? colors.error + '22' :
-        colors.warning + '22',
-      color:
-        holdedSolucionsStatus === 'success' ? colors.success :
-        holdedSolucionsStatus === 'error' ? colors.error :
-        colors.warning,
-      border: `1px solid ${
-        holdedSolucionsStatus === 'success' ? colors.success :
-        holdedSolucionsStatus === 'error' ? colors.error :
-        colors.warning
-      }`,
-      userSelect: 'none',
-      minWidth: 0,
-      minHeight: 0,
-      lineHeight: 1.2
-    }}>
-      {holdedSolucionsStatus === 'success' && <span style={{fontSize: 15}}>●</span>}
-      {holdedSolucionsStatus === 'error' && <span style={{fontSize: 15}}>●</span>}
-      {holdedSolucionsStatus === 'testing' && <span style={{fontSize: 15}}>●</span>}
-      <span style={{fontWeight: 500}}>
-        {holdedSolucionsStatus === 'success' && 'Holded Solucions'}
-        {holdedSolucionsStatus === 'error' && 'Holded Solucions'}
-        {holdedSolucionsStatus === 'testing' && 'Holded Solucions'}
-      </span>
-    </span>
-  );
-
-  // Badge de estado de Holded Menjar
-  const holdedMenjarBadge = (
-    <span style={{
-      display: 'inline-flex',
-      alignItems: 'center',
-      gap: 6,
-      fontSize: 13,
-      fontWeight: 500,
-      marginLeft: 16,
-      padding: '2px 10px',
-      borderRadius: 12,
-      background:
-        holdedMenjarStatus === 'success' ? colors.success + '22' :
-        holdedMenjarStatus === 'error' ? colors.error + '22' :
-        colors.warning + '22',
-      color:
-        holdedMenjarStatus === 'success' ? colors.success :
-        holdedMenjarStatus === 'error' ? colors.error :
-        colors.warning,
-      border: `1px solid ${
-        holdedMenjarStatus === 'success' ? colors.success :
-        holdedMenjarStatus === 'error' ? colors.error :
-        colors.warning
-      }`,
-      userSelect: 'none',
-      minWidth: 0,
-      minHeight: 0,
-      lineHeight: 1.2
-    }}>
-      {holdedMenjarStatus === 'success' && <span style={{fontSize: 15}}>●</span>}
-      {holdedMenjarStatus === 'error' && <span style={{fontSize: 15}}>●</span>}
-      {holdedMenjarStatus === 'testing' && <span style={{fontSize: 15}}>●</span>}
-      <span style={{fontWeight: 500}}>
-        {holdedMenjarStatus === 'success' && 'Holded Menjar'}
-        {holdedMenjarStatus === 'error' && 'Holded Menjar'}
-        {holdedMenjarStatus === 'testing' && 'Holded Menjar'}
-      </span>
-    </span>
-  );
 
   const appVersion = '1.0.0';
   const contactEmail = 'comunicacio@solucionssocials.org';
@@ -263,83 +178,6 @@ const SettingsPage = () => {
   const handleRefreshRates = async () => {
     await refreshRates();
     showAlertMessage('Tasas de cambio actualizadas', 'success');
-  };
-
-  const handleClearSolucionsData = () => {
-    if (window.confirm('¿Estás seguro de que quieres borrar todos los datos de Solucions Socials? Esta acción no se puede deshacer.')) {
-      clearSolucionsData();
-      showAlertMessage('Datos de Solucions Socials borrados correctamente', 'success');
-    }
-  };
-
-  const handleClearMenjarData = () => {
-    if (window.confirm('¿Estás seguro de que quieres borrar todos los datos de Menjar d\'Hort? Esta acción no se puede deshacer.')) {
-      clearMenjarData();
-      showAlertMessage('Datos de Menjar d\'Hort borrados correctamente', 'success');
-    }
-  };
-
-  const handleClearAllData = () => {
-    if (window.confirm('¿Estás seguro de que quieres borrar TODOS los datos (Solucions Socials y Menjar d\'Hort)? Esta acción no se puede deshacer.')) {
-      clearAllData();
-      showAlertMessage('Todos los datos borrados correctamente', 'success');
-    }
-  };
-
-  const handleExportSolucionsData = () => {
-    if (solucionsData.length === 0) {
-      showAlertMessage('No hay datos de Solucions Socials para exportar', 'error');
-      return;
-    }
-
-    try {
-      // Crear CSV
-      const headers = solucionsHeaders.join(',');
-      const csvContent = [headers, ...solucionsData.map(row => row.join(','))].join('\n');
-      
-      // Crear y descargar archivo
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-      const link = document.createElement('a');
-      const url = URL.createObjectURL(blob);
-      link.setAttribute('href', url);
-      link.setAttribute('download', `solucions_socials_exportados_${new Date().toISOString().split('T')[0]}.csv`);
-      link.style.visibility = 'hidden';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      
-      showAlertMessage('Datos de Solucions Socials exportados correctamente', 'success');
-    } catch (error) {
-      showAlertMessage('Error al exportar datos de Solucions Socials', 'error');
-    }
-  };
-
-  const handleExportMenjarData = () => {
-    if (menjarData.length === 0) {
-      showAlertMessage('No hay datos de Menjar d\'Hort para exportar', 'error');
-      return;
-    }
-
-    try {
-      // Crear CSV
-      const headers = menjarHeaders.join(',');
-      const csvContent = [headers, ...menjarData.map(row => row.join(','))].join('\n');
-      
-      // Crear y descargar archivo
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-      const link = document.createElement('a');
-      const url = URL.createObjectURL(blob);
-      link.setAttribute('href', url);
-      link.setAttribute('download', `menjar_dhort_exportados_${new Date().toISOString().split('T')[0]}.csv`);
-      link.style.visibility = 'hidden';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      
-      showAlertMessage('Datos de Menjar d\'Hort exportados correctamente', 'success');
-    } catch (error) {
-      showAlertMessage('Error al exportar datos de Menjar d\'Hort', 'error');
-    }
   };
 
   const settingsSections = [
@@ -416,61 +254,6 @@ const SettingsPage = () => {
       ]
     },
     {
-      title: 'Gestión de Datos - Solucions Socials',
-      items: [
-        {
-          icon: Trash2,
-          title: 'Borrar datos de Solucions Socials',
-          description: 'Elimina todos los datos de Solucions Socials',
-          action: handleClearSolucionsData,
-          color: colors.error,
-          disabled: solucionsData.length === 0
-        },
-        {
-          icon: Download,
-          title: 'Exportar datos de Solucions Socials',
-          description: 'Descarga los datos de Solucions Socials en formato CSV',
-          action: handleExportSolucionsData,
-          color: colors.primary,
-          disabled: solucionsData.length === 0
-        }
-      ]
-    },
-    {
-      title: 'Gestión de Datos - Menjar d\'Hort',
-      items: [
-        {
-          icon: Trash2,
-          title: 'Borrar datos de Menjar d\'Hort',
-          description: 'Elimina todos los datos de Menjar d\'Hort',
-          action: handleClearMenjarData,
-          color: colors.error,
-          disabled: menjarData.length === 0
-        },
-        {
-          icon: Download,
-          title: 'Exportar datos de Menjar d\'Hort',
-          description: 'Descarga los datos de Menjar d\'Hort en formato CSV',
-          action: handleExportMenjarData,
-          color: colors.primary,
-          disabled: menjarData.length === 0
-        }
-      ]
-    },
-    {
-      title: 'Gestión de Datos - General',
-      items: [
-        {
-          icon: Trash2,
-          title: 'Borrar TODOS los datos',
-          description: 'Elimina todos los datos de Solucions Socials y Menjar d\'Hort',
-          action: handleClearAllData,
-          color: colors.error,
-          disabled: solucionsData.length === 0 && menjarData.length === 0
-        }
-      ]
-    },
-    {
       title: 'Información de la Aplicación',
       items: [
         {
@@ -534,6 +317,199 @@ const SettingsPage = () => {
     }
   ];
 
+  // Sección de configuración de divisa
+  const renderDivisaSection = () => {
+    if (isAdmin || isManagementOrManager) {
+      return settingsSections[0] && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.2 }}
+          style={{ background: colors.card, borderRadius: 8, boxShadow: '0 2px 8px rgba(0,0,0,0.04)', padding: '20px' }}
+        >
+          <h3 style={{ color: colors.text, fontSize: 18, fontWeight: 600, marginBottom: 18 }}>{settingsSections[0].title}</h3>
+          {settingsSections[0].items.map((item, idx) => (
+            <div key={item.title + idx} style={{ marginBottom: 18 }}>{item.customComponent || item.description}</div>
+          ))}
+        </motion.div>
+      );
+    } else if (isUser) {
+      // Solo lectura para user
+      return (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.2 }}
+          style={{ background: colors.card, borderRadius: 8, boxShadow: '0 2px 8px rgba(0,0,0,0.04)', padding: '20px' }}
+        >
+          <h3 style={{ color: colors.text, fontSize: 18, fontWeight: 600, marginBottom: 18 }}>{settingsSections[0].title}</h3>
+          <div style={{ fontSize: 15, color: colors.textSecondary }}>
+            {settingsSections[0].items[0].description}
+          </div>
+        </motion.div>
+      );
+    }
+    return null;
+  };
+
+  // Sección de estado de conexiones
+  const renderEstadoConexiones = () => {
+    if (isAdmin || isManagementOrManager) {
+      return settingsSections[2] && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.3 }}
+          style={{ background: 'none', boxShadow: 'none', padding: 0 }}
+        >
+          <h3 style={{ color: colors.text, fontSize: 18, fontWeight: 600, marginBottom: 18 }}>{settingsSections[2].title}</h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {settingsSections[2].items.map((item, idx) => (
+              <motion.div
+                key={item.title + idx}
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.3, delay: idx * 0.05 }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 16,
+                  padding: '16px',
+                  borderRadius: '8px',
+                  background: colors.card,
+                  border: `1.5px solid ${item.color}33`,
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.04)'
+                }}
+              >
+                <div style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 8,
+                  background: item.color + '22',
+                  color: item.color,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: 20,
+                  flexShrink: 0
+                }}>
+                  {<item.icon size={22} />}
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 600, fontSize: 15, color: colors.text }}>{item.title}</div>
+                  <div style={{ fontSize: 13, color: colors.textSecondary, marginTop: 2 }}>{item.description}</div>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        </motion.div>
+      );
+    } else if (isUser) {
+      // Solo mensaje simple para user
+      return (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.3 }}
+          style={{ background: colors.card, borderRadius: 8, boxShadow: '0 2px 8px rgba(0,0,0,0.04)', padding: '20px' }}
+        >
+          <h3 style={{ color: colors.text, fontSize: 18, fontWeight: 600, marginBottom: 18 }}>Estado de Conexión</h3>
+          <div style={{ fontSize: 15, color: colors.textSecondary }}>
+            La aplicación está conectada correctamente.
+          </div>
+        </motion.div>
+      );
+    }
+    return null;
+  };
+
+  // Sección de pruebas técnicas
+  const renderPruebasTecnicas = () => {
+    if (isAdmin) {
+      return (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.4 }}
+          style={{ background: colors.card, borderRadius: 8, boxShadow: '0 2px 8px rgba(0,0,0,0.04)', padding: '20px', marginBottom: 32 }}
+        >
+          <h3 style={{ color: colors.text, fontSize: 18, fontWeight: 600, marginBottom: 18 }}>Pruebas técnicas</h3>
+          <HoldedTest />
+        </motion.div>
+      );
+    } else {
+      // Acceso denegado visual
+      return (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.4 }}
+          style={{ background: colors.card, borderRadius: 8, boxShadow: '0 2px 8px rgba(0,0,0,0.04)', padding: '20px', marginBottom: 32, display: 'flex', alignItems: 'center', gap: 16 }}
+        >
+          <Shield size={28} color={colors.error} style={{ flexShrink: 0 }} />
+          <div>
+            <div style={{ color: colors.error, fontWeight: 600, fontSize: 16, marginBottom: 4 }}>Acceso denegado</div>
+            <div style={{ color: colors.textSecondary, fontSize: 14 }}>No tienes permisos para acceder a las pruebas técnicas.</div>
+          </div>
+        </motion.div>
+      );
+    }
+  };
+
+  // Sección de información de la app (siempre visible)
+  const renderInfoApp = () => (
+    settingsSections[1] && (
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.25 }}
+        style={{ background: 'none', boxShadow: 'none', padding: 0 }}
+      >
+        <h3 style={{ color: colors.text, fontSize: 18, fontWeight: 600, marginBottom: 18 }}>{settingsSections[1].title}</h3>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {settingsSections[1].items.map((item, idx) => (
+            <motion.div
+              key={item.title + idx}
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.3, delay: idx * 0.05 }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 16,
+                padding: '16px',
+                borderRadius: '8px',
+                background: colors.card,
+                border: `1.5px solid ${item.color}33`,
+                boxShadow: '0 2px 8px rgba(0,0,0,0.04)'
+              }}
+            >
+              <div style={{
+                width: 40,
+                height: 40,
+                borderRadius: 8,
+                background: item.color + '22',
+                color: item.color,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: 20,
+                flexShrink: 0
+              }}>
+                {<item.icon size={22} />}
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 600, fontSize: 15, color: colors.text }}>{item.title}</div>
+                <div style={{ fontSize: 13, color: colors.textSecondary, marginTop: 2 }}>{item.description}</div>
+              </div>
+            </motion.div>
+          ))}
+        </div>
+      </motion.div>
+    )
+  );
+
+  // Render principal
   return (
     <motion.div
       initial={{ opacity: 0, y: 30 }}
@@ -565,9 +541,95 @@ const SettingsPage = () => {
           Configuración
         </h1>
         <div style={{ display: 'flex', gap: 8 }}>
-          {supabaseBadge}
-          {holdedSolucionsBadge}
-          {holdedMenjarBadge}
+          {/* Badge de estado de Supabase */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            padding: '6px 12px',
+            borderRadius: '20px',
+            fontSize: '12px',
+            fontWeight: '500',
+            backgroundColor: supabaseStatus === 'success' ? colors.success + '22' : 
+                           supabaseStatus === 'error' ? colors.error + '22' : 
+                           colors.warning + '22',
+            color: supabaseStatus === 'success' ? colors.success : 
+                   supabaseStatus === 'error' ? colors.error : 
+                   colors.warning,
+            border: `1px solid ${supabaseStatus === 'success' ? colors.success : 
+                                supabaseStatus === 'error' ? colors.error : 
+                                colors.warning}33`
+          }}>
+            <div style={{
+              width: '6px',
+              height: '6px',
+              borderRadius: '50%',
+              backgroundColor: supabaseStatus === 'success' ? colors.success : 
+                             supabaseStatus === 'error' ? colors.error : 
+                             colors.warning
+            }} />
+            Supabase
+          </div>
+
+          {/* Badge de estado de Holded Solucions */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            padding: '6px 12px',
+            borderRadius: '20px',
+            fontSize: '12px',
+            fontWeight: '500',
+            backgroundColor: holdedSolucionsStatus === 'success' ? colors.success + '22' : 
+                           holdedSolucionsStatus === 'error' ? colors.error + '22' : 
+                           colors.warning + '22',
+            color: holdedSolucionsStatus === 'success' ? colors.success : 
+                   holdedSolucionsStatus === 'error' ? colors.error : 
+                   colors.warning,
+            border: `1px solid ${holdedSolucionsStatus === 'success' ? colors.success : 
+                                holdedSolucionsStatus === 'error' ? colors.error : 
+                                colors.warning}33`
+          }}>
+            <div style={{
+              width: '6px',
+              height: '6px',
+              borderRadius: '50%',
+              backgroundColor: holdedSolucionsStatus === 'success' ? colors.success : 
+                             holdedSolucionsStatus === 'error' ? colors.error : 
+                             colors.warning
+            }} />
+            Holded Solucions
+          </div>
+
+          {/* Badge de estado de Holded Menjar */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            padding: '6px 12px',
+            borderRadius: '20px',
+            fontSize: '12px',
+            fontWeight: '500',
+            backgroundColor: holdedMenjarStatus === 'success' ? colors.success + '22' : 
+                           holdedMenjarStatus === 'error' ? colors.error + '22' : 
+                           colors.warning + '22',
+            color: holdedMenjarStatus === 'success' ? colors.success : 
+                   holdedMenjarStatus === 'error' ? colors.error : 
+                   colors.warning,
+            border: `1px solid ${holdedMenjarStatus === 'success' ? colors.success : 
+                                holdedMenjarStatus === 'error' ? colors.error : 
+                                colors.warning}33`
+          }}>
+            <div style={{
+              width: '6px',
+              height: '6px',
+              borderRadius: '50%',
+              backgroundColor: holdedMenjarStatus === 'success' ? colors.success : 
+                             holdedMenjarStatus === 'error' ? colors.error : 
+                             colors.warning
+            }} />
+            Holded Menjar
+          </div>
         </div>
       </motion.div>
 
@@ -621,99 +683,17 @@ const SettingsPage = () => {
         )}
       </AnimatePresence>
 
-      {/* Resto del contenido de configuración */}
+      {/* Secciones según rol */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, delay: 0.15 }}
         style={{ display: 'flex', flexDirection: 'column', gap: 32, flex: 1 }}
       >
-        {settingsSections.map((section, sectionIndex) => (
-          <motion.div
-            key={section.title}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4, delay: 0.2 + (sectionIndex * 0.1) }}
-            style={{
-              background: colors.card,
-              borderRadius: 8,
-              boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
-              padding: '20px'
-            }}
-          >
-            <h3 style={{ 
-              margin: '0 0 16px 0', 
-              color: colors.text, 
-              fontSize: 18, 
-              fontWeight: 600, 
-              lineHeight: 1.2 
-            }}>
-              {section.title}
-            </h3>
-            
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {section.items.map((item, itemIndex) => {
-                const Icon = item.icon;
-                return (
-                  <motion.div
-                    key={item.title}
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ duration: 0.3, delay: (sectionIndex * 0.1) + (itemIndex * 0.05) }}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '16px',
-                      padding: '16px',
-                      borderRadius: '8px',
-                      background: item.disabled ? colors.hover : 'transparent',
-                      opacity: item.disabled ? 0.6 : 1,
-                      cursor: item.action && !item.disabled ? 'pointer' : 'default',
-                      transition: 'all 0.2s ease'
-                    }}
-                    onClick={item.action && !item.disabled ? item.action : undefined}
-                    whileHover={item.action && !item.disabled ? { 
-                      backgroundColor: colors.hover,
-                      scale: 1.02 
-                    } : {}}
-                    whileTap={item.action && !item.disabled ? { scale: 0.98 } : {}}
-                  >
-                    <div style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      width: '40px',
-                      height: '40px',
-                      borderRadius: '8px',
-                      background: item.disabled ? colors.border : `${item.color}20`,
-                      color: item.disabled ? colors.textSecondary : item.color
-                    }}>
-                      <Icon size={20} />
-                    </div>
-                    
-                    <div style={{ flex: 1 }}>
-                      <div style={{
-                        fontSize: '16px',
-                        fontWeight: '500',
-                        color: item.disabled ? colors.textSecondary : colors.text,
-                        marginBottom: '4px'
-                      }}>
-                        {item.title}
-                      </div>
-                      <div style={{
-                        fontSize: '14px',
-                        color: colors.textSecondary
-                      }}>
-                        {item.description}
-                      </div>
-                      {item.customComponent && item.customComponent}
-                    </div>
-                  </motion.div>
-                );
-              })}
-            </div>
-          </motion.div>
-        ))}
+        {renderDivisaSection()}
+        {renderInfoApp()}
+        {renderEstadoConexiones()}
+        {renderPruebasTecnicas()}
       </motion.div>
     </motion.div>
   );

@@ -32,6 +32,31 @@ import AuditLog from './AuditLog';
 import HoldedTest from './HoldedTest';
 import ProvidersContacts from './ProvidersContacts';
 
+// Componente visual de acceso denegado reutilizable
+function AccessDenied({ message = 'No tienes permisos para acceder a esta sección.' }) {
+  const { colors } = useTheme();
+  return (
+    <div style={{
+      display: 'flex',
+      alignItems: 'center',
+      gap: 18,
+      background: colors.card,
+      border: `1.5px solid ${colors.error}33`,
+      borderRadius: 12,
+      padding: '32px 28px',
+      margin: '40px auto',
+      maxWidth: 480,
+      boxShadow: '0 2px 8px rgba(0,0,0,0.04)'
+    }}>
+      <Shield size={36} color={colors.error} style={{ flexShrink: 0 }} />
+      <div>
+        <div style={{ color: colors.error, fontWeight: 700, fontSize: 20, marginBottom: 6 }}>Acceso denegado</div>
+        <div style={{ color: colors.textSecondary, fontSize: 15 }}>{message}</div>
+      </div>
+    </div>
+  );
+}
+
 const Layout = () => {
   const { activeSection, navigateTo } = useNavigation();
   const [showOnboarding, setShowOnboarding] = useState(false);
@@ -66,6 +91,8 @@ const Layout = () => {
 
   // Verificar si el usuario es administrador
   const isAdmin = userProfile?.role === 'admin';
+  const isManagementOrManager = userProfile?.role === 'management' || userProfile?.role === 'manager';
+  const isUser = !isAdmin && !isManagementOrManager;
 
   // Configurar notificaciones en tiempo real
   useEffect(() => {
@@ -194,18 +221,19 @@ const Layout = () => {
     }
   };
 
+  // Menú lateral según rol
   const menuItems = [
-    { id: 'home', icon: Home, label: 'Inicio' },
-    { id: 'contacts', icon: CreditCard, label: 'Contactos' },
-    { id: 'analytics', icon: BarChart2, label: 'Análisis' },
-    { id: 'test', icon: Zap, label: 'Pruebas' },
-    { id: 'settings', icon: Settings, label: 'Configuración' },
-    // Solo mostrar gestión de usuarios y auditoría a administradores
-    ...(isAdmin ? [
-      { id: 'users', icon: Shield, label: 'Usuarios' },
-      { id: 'audit', icon: Activity, label: 'Auditoría' }
-    ] : []),
+    { key: 'home', label: 'Inicio', path: '/home', icon: Home },
+    { key: 'analytics', label: 'Análisis', path: '/analytics', icon: BarChart2 },
+    { key: 'contacts', label: 'Contactos', path: '/contacts', icon: CreditCard },
+    { key: 'settings', label: 'Configuración', path: '/settings', icon: Settings },
   ];
+  if (isAdmin) {
+    menuItems.push(
+      { key: 'users', label: 'Usuarios', path: '/users', icon: Users },
+      { key: 'audit', label: 'Auditoría', path: '/audit', icon: Activity }
+    );
+  }
 
   const handleSignOut = async () => {
     await signOut();
@@ -220,8 +248,6 @@ const Layout = () => {
         return <ProvidersContacts />;
       case 'analytics':
         return <AnalyticsPage />;
-      case 'test':
-        return <HoldedTest />;
       case 'settings':
         return <SettingsPage />;
       case 'users':
@@ -287,14 +313,14 @@ const Layout = () => {
         <nav style={{ flex: 1 }}>
           {menuItems.map((item) => {
             const Icon = item.icon;
-            const isActive = activeSection === item.id;
+            const isActive = activeSection === item.key;
             
             return (
               <motion.div
-                key={item.id}
+                key={item.key}
                 whileHover={{ backgroundColor: colors.hover || 'rgba(64,64,64,0.7)' }}
                 whileTap={{ scale: 0.98 }}
-                onClick={() => navigateTo(item.id)}
+                onClick={() => navigateTo(item.key)}
                 style={{
                   padding: '12px 20px',
                   cursor: 'pointer',
@@ -302,7 +328,7 @@ const Layout = () => {
                   alignItems: 'center',
                   gap: '12px',
                   borderLeft: isActive ? `3px solid ${colors.primary}` : '3px solid transparent',
-                  backgroundColor: isActive ? (colors.hover || 'rgba(64,64,64,0.7)') : colors.sidebar,
+                  backgroundColor: isActive ? (colors.hover || 'rgba(64,64,64,0.7)') : colors.sidebar
                 }}
               >
                 <Icon 
@@ -407,7 +433,7 @@ const Layout = () => {
             margin: 0,
             lineHeight: 1.2
           }}>
-            {menuItems.find(item => item.id === activeSection)?.label}
+            {menuItems.find(item => item.key === activeSection)?.label}
           </h1>
           
           <div style={{

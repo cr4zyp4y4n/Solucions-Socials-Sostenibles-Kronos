@@ -12,9 +12,6 @@ class HoldedApiService {
 
   // Método genérico para hacer peticiones a la API usando IPC
   async makeRequest(endpoint, options = {}, company = 'solucions') {
-    console.log('makeRequest: Endpoint:', endpoint);
-    console.log('makeRequest: Options:', options);
-    console.log('makeRequest: Company:', company);
     
     try {
       const apiKey = HOLDED_API_KEYS[company];
@@ -33,13 +30,14 @@ class HoldedApiService {
           ...options
         }
       };
-      
-      console.log('makeRequest: Enviando petición:', requestData);
+
+      // Verificar que la API de Electron esté disponible
+      if (!window.electronAPI || !window.electronAPI.makeHoldedRequest) {
+        throw new Error('API de Electron no disponible. La aplicación debe ejecutarse en modo Electron.');
+      }
 
       // Usar IPC para hacer la petición desde el main process
       const response = await window.electronAPI.makeHoldedRequest(requestData);
-      
-      console.log('makeRequest: Respuesta recibida:', response);
 
       if (!response.ok) {
         throw new Error(`Error en la API de Holded (${company}): ${response.status} ${response.statusText}`);
@@ -243,7 +241,6 @@ class HoldedApiService {
           hasMorePages = false;
         }
       } catch (error) {
-        console.error(`Error obteniendo página ${page} de compras pendientes:`, error);
         hasMorePages = false;
       }
     }
@@ -275,7 +272,6 @@ class HoldedApiService {
           hasMorePages = false;
         }
       } catch (error) {
-        console.error(`Error obteniendo página ${page} de compras vencidas:`, error);
         hasMorePages = false;
       }
     }
@@ -290,8 +286,6 @@ class HoldedApiService {
     let hasMorePages = true;
     const limit = 100;
 
-    console.log('🔍 DIAGNÓSTICO: Obteniendo TODAS las compras sin filtros...');
-
     while (hasMorePages) {
       try {
         const purchases = await this.getPurchases({
@@ -302,15 +296,6 @@ class HoldedApiService {
         
         if (purchases && purchases.length > 0) {
           allPurchases.push(...purchases);
-          console.log(`Página ${page}: ${purchases.length} compras totales`);
-          
-          // Analizar status de esta página
-          const statusCount = {};
-          purchases.forEach(purchase => {
-            const status = purchase.status || 'sin_status';
-            statusCount[status] = (statusCount[status] || 0) + 1;
-          });
-          console.log(`Status en página ${page}:`, statusCount);
           
           if (purchases.length < limit) {
             hasMorePages = false;
@@ -321,32 +306,25 @@ class HoldedApiService {
           hasMorePages = false;
         }
       } catch (error) {
-        console.error(`Error obteniendo página ${page} de compras totales:`, error);
         hasMorePages = false;
       }
     }
 
-    console.log(`🔍 Total de compras obtenidas: ${allPurchases.length}`);
-    
     // Análisis completo de status
     const totalStatusCount = {};
     allPurchases.forEach(purchase => {
       const status = purchase.status || 'sin_status';
       totalStatusCount[status] = (totalStatusCount[status] || 0) + 1;
     });
-    console.log('📊 Análisis completo de status:', totalStatusCount);
     
     // Mostrar compras no pagadas
     const unpaidPurchases = allPurchases.filter(p => p.paid === false || p.paid === 0);
-    console.log(`💰 Compras no pagadas (paid=false/0): ${unpaidPurchases.length}`);
     
     return allPurchases;
   }
 
   // Obtener compras con diferentes filtros para encontrar las faltantes
   async findMissingPurchases(company = 'solucions') {
-    console.log('🔍 Buscando compras faltantes...');
-    
     // 1. Obtener todas las compras
     const allPurchases = await this.getAllPurchasesForDiagnosis(company);
     
@@ -363,7 +341,6 @@ class HoldedApiService {
     
     filters.forEach(({ name, filter }) => {
       const filtered = allPurchases.filter(filter);
-      console.log(`📋 ${name}: ${filtered.length} compras`);
     });
     
     return allPurchases;
@@ -405,48 +382,34 @@ class HoldedApiService {
       
       return allContacts;
     } catch (error) {
-      console.error('Error obteniendo todos los contactos:', error);
       throw error;
     }
   }
 
   // Crear un nuevo contacto
   async createContact(contactData, company = 'solucions') {
-    console.log('API: Creando contacto con datos:', contactData);
-    console.log('API: Empresa:', company);
-    
     try {
       const response = await this.makeRequest('/contacts', {
         method: 'POST',
         body: contactData
       }, company);
       
-      console.log('API: Respuesta de creación:', response);
       return response;
     } catch (error) {
-      console.error('API: Error creando contacto:', error);
-      console.error('API: Detalles del error:', error.message);
       throw error;
     }
   }
 
   // Actualizar un contacto existente
   async updateContact(contactId, contactData, company = 'solucions') {
-    console.log('API: Actualizando contacto ID:', contactId);
-    console.log('API: Datos de actualización:', contactData);
-    console.log('API: Empresa:', company);
-    
     try {
       const response = await this.makeRequest(`/contacts/${contactId}`, {
         method: 'PUT',
         body: contactData
       }, company);
       
-      console.log('API: Respuesta de actualización:', response);
       return response;
     } catch (error) {
-      console.error('API: Error actualizando contacto:', error);
-      console.error('API: Detalles del error:', error.message);
       throw error;
     }
   }
@@ -460,7 +423,6 @@ class HoldedApiService {
       
       return response;
     } catch (error) {
-      console.error('Error eliminando contacto:', error);
       throw error;
     }
   }
@@ -572,7 +534,6 @@ class HoldedApiService {
     const dateFields = ['issue_date', 'accounting_date', 'due_date', 'payment_date'];
     dateFields.forEach(field => {
       if (cleaned[field] && !this.isValidDate(cleaned[field])) {
-        console.warn(`Fecha inválida en ${field}:`, cleaned[field]);
         cleaned[field] = null;
       }
     });
@@ -783,7 +744,6 @@ class HoldedApiService {
 
       return enrichedDocuments.map(doc => this.transformHoldedDocumentToInvoice(doc));
     } catch (error) {
-      console.error('Error obteniendo compras de Holded:', error);
       throw error;
     }
   }
@@ -799,13 +759,12 @@ class HoldedApiService {
           const contactInfo = await this.getContact(purchase.contact.id, company);
           purchase.contact = { ...purchase.contact, ...contactInfo };
         } catch (error) {
-          console.log(`No se pudo obtener información del contacto:`, error.message);
+          // No se pudo obtener información del contacto
         }
       }
       
       return this.transformHoldedDocumentToInvoice(purchase);
     } catch (error) {
-      console.error('Error obteniendo detalles de la compra:', error);
       throw error;
     }
   }
@@ -841,9 +800,6 @@ class HoldedApiService {
         throw new Error(`Error creando registro de sincronización: ${syncError.message}`);
       }
 
-      // Verificar que el registro se creó correctamente
-      console.log('Registro de sincronización creado:', syncRecord);
-
       // Si no hay documentos para insertar, retornar éxito
       if (holdedDocuments.length === 0) {
         return {
@@ -860,14 +816,12 @@ class HoldedApiService {
         .filter(doc => doc.holded_id)
         .map(doc => doc.holded_id);
 
-      console.log('Verificando facturas existentes...');
       const { data: existingInvoices, error: fetchError } = await supabase
         .from('invoices')
         .select('holded_id, id')
         .in('holded_id', existingHoldedIds);
 
       if (fetchError) {
-        console.error('Error obteniendo facturas existentes:', fetchError);
         throw new Error(`Error verificando facturas existentes: ${fetchError.message}`);
       }
 
@@ -896,32 +850,25 @@ class HoldedApiService {
         }
       });
 
-      console.log(`Documentos nuevos: ${newDocuments.length}, Documentos existentes: ${existingDocuments.length}`);
-
       let insertedCount = 0;
       let updatedCount = 0;
 
       // Insertar documentos nuevos
       if (newDocuments.length > 0) {
-        console.log('Insertando documentos nuevos...');
         const { data: insertedDocs, error: insertError } = await supabase
           .from('invoices')
           .insert(newDocuments)
           .select();
 
         if (insertError) {
-          console.error('Error insertando documentos nuevos:', insertError);
           throw new Error(`Error insertando documentos nuevos: ${insertError.message}`);
         }
 
         insertedCount = insertedDocs?.length || 0;
-        console.log(`Insertados ${insertedCount} documentos nuevos`);
       }
 
       // Actualizar documentos existentes
       if (existingDocuments.length > 0) {
-        console.log('Actualizando documentos existentes...');
-        
         for (const doc of existingDocuments) {
           const existingId = existingHoldedIdsMap.get(doc.holded_id);
           if (existingId) {
@@ -955,15 +902,11 @@ class HoldedApiService {
               })
               .eq('id', existingId);
 
-            if (updateError) {
-              console.error(`Error actualizando documento ${doc.holded_id}:`, updateError);
-            } else {
+            if (!updateError) {
               updatedCount++;
             }
           }
         }
-        
-        console.log(`Actualizados ${updatedCount} documentos existentes`);
       }
 
       return {
@@ -975,8 +918,6 @@ class HoldedApiService {
       };
 
     } catch (error) {
-      console.error('Error en sincronización con Holded:', error);
-      
       // Intentar eliminar el registro de sincronización si existe
       if (syncRecord?.id) {
         try {
@@ -984,9 +925,8 @@ class HoldedApiService {
             .from('excel_uploads')
             .delete()
             .eq('id', syncRecord.id);
-          console.log('Registro de sincronización eliminado debido al error');
         } catch (deleteError) {
-          console.error('Error eliminando registro de sincronización:', deleteError);
+          // Error eliminando registro de sincronización
         }
       }
       

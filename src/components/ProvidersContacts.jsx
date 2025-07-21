@@ -59,9 +59,7 @@ const ProvidersContacts = () => {
     setError('');
 
     try {
-      console.log('Cargando contactos de Holded...');
       const allContacts = await holdedApi.getAllContacts(selectedCompany);
-      console.log('Contactos obtenidos de Holded:', allContacts.length);
       
       // Procesar contactos para extraer información de IBAN
       const processedContacts = allContacts.map(contact => {

@@ -51,9 +51,9 @@ const OnboardingPage = ({ onComplete }) => {
           .from('user_profiles')
           .update({ onboarding_completed: true })
           .eq('id', user.id);
-      } catch (error) {
-        console.error('Error marcando onboarding como completado:', error);
-      }
+          } catch (error) {
+      console.error('Error marcando onboarding como completado:', error);
+    }
     }
   };
 
