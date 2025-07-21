@@ -1,8 +1,8 @@
 {
   "name": "sss-kronos",
   "productName": "SSS Kronos",
-  "version": "1.0.3",
-  "description": "Sistema moderno de gestión de proveedores y análisis de facturas para Solucions Socials. Automatiza el procesamiento de archivos Excel, proporciona análisis en tiempo real y dashboard ejecutivo con sistema de roles avanzado.",
+  "version": "2.0.0",
+  "description": "Aplicación de escritorio para la gestión avanzada de proveedores y análisis de facturas en Solucions Socials. Automatiza la importación de Excel, integra roles y permisos, y ofrece dashboards y auditoría en tiempo real para equipos de administración y gestión.",
   "main": ".webpack/main",
   "scripts": {
     "start": "electron-forge start",

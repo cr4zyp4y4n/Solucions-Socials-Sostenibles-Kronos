@@ -14,6 +14,7 @@ import { useAuth } from './AuthContext';
 import { useTheme } from './ThemeContext';
 import ConnectionTest from './ConnectionTest';
 import logo from '../assets/Logo Minimalist SSS Highest Opacity.PNG';
+import ReactDOM from 'react-dom';
 
 // Función para validar contraseña fuerte
 function getPasswordStrength(password) {
@@ -35,6 +36,29 @@ const LoginPage = () => {
   const [role, setRole] = useState('user');
   const [showChecklist, setShowChecklist] = useState(false);
   const passwordInputRef = useRef();
+  const [checklistPosition, setChecklistPosition] = useState({ top: 0, left: 0, width: 0 });
+
+  // Calcular posición del checklist cuando se muestra
+  React.useEffect(() => {
+    if (showChecklist && passwordInputRef.current) {
+      const rect = passwordInputRef.current.getBoundingClientRect();
+      const scrollY = window.scrollY || window.pageYOffset;
+      const scrollX = window.scrollX || window.pageXOffset;
+      if (window.innerWidth < 700) {
+        setChecklistPosition({
+          top: rect.bottom + scrollY + 8,
+          left: rect.left + scrollX,
+          width: rect.width
+        });
+      } else {
+        setChecklistPosition({
+          top: rect.top + scrollY,
+          left: rect.right + scrollX + 12,
+          width: 260
+        });
+      }
+    }
+  }, [showChecklist, passwordInputRef.current, password]);
   
   const { signIn, signUp, loading, error, clearError } = useAuth();
   const { colors } = useTheme();
@@ -352,67 +376,58 @@ const LoginPage = () => {
                   {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
               </div>
-              {/* Checklist tipo tooltip */}
-              <AnimatePresence>
-                {!isLogin && showChecklist && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: 10 }}
-                    transition={{ duration: 0.25 }}
-                    style={{
-                      position: 'absolute',
-                      left: '105%',
-                      top: 0,
-                      zIndex: 20,
-                      minWidth: 220,
-                      maxWidth: 260,
-                      background: colors.surface,
-                      borderRadius: '10px',
-                      border: `1px solid ${colors.border}`,
-                      boxShadow: '0 4px 16px rgba(0,0,0,0.13)',
-                      padding: '14px 18px',
-                      fontSize: '13px',
-                      color: colors.textSecondary,
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '4px',
-                      userSelect: 'none',
-                      pointerEvents: 'none',
-                      // Responsive: debajo en móvil
-                      ...(window.innerWidth < 700 ? {
-                        left: 0,
-                        top: '110%',
-                        minWidth: '100%',
-                        maxWidth: '100%',
-                        boxShadow: '0 2px 8px rgba(0,0,0,0.10)'
-                      } : {})
-                    }}
-                  >
-                    <div style={{ fontWeight: 500, marginBottom: 2, color: colors.text }}>La contraseña debe contener:</div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                      {passwordChecks.length ? <CheckCircle size={14} color={colors.success} /> : <XCircle size={14} color={colors.error} />}
-                      <span>Mínimo 8 caracteres</span>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                      {passwordChecks.upper ? <CheckCircle size={14} color={colors.success} /> : <XCircle size={14} color={colors.error} />}
-                      <span>Una mayúscula</span>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                      {passwordChecks.lower ? <CheckCircle size={14} color={colors.success} /> : <XCircle size={14} color={colors.error} />}
-                      <span>Una minúscula</span>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                      {passwordChecks.number ? <CheckCircle size={14} color={colors.success} /> : <XCircle size={14} color={colors.error} />}
-                      <span>Un número</span>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                      {passwordChecks.special ? <CheckCircle size={14} color={colors.success} /> : <XCircle size={14} color={colors.error} />}
-                      <span>Un carácter especial</span>
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
+              {/* Checklist tipo tooltip usando portal */}
+              {(!isLogin && showChecklist) && ReactDOM.createPortal(
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 10 }}
+                  transition={{ duration: 0.25 }}
+                  style={{
+                    position: 'absolute',
+                    top: checklistPosition.top,
+                    left: checklistPosition.left,
+                    zIndex: 9999,
+                    minWidth: window.innerWidth < 700 ? checklistPosition.width : 220,
+                    maxWidth: window.innerWidth < 700 ? checklistPosition.width : 260,
+                    background: colors.surface,
+                    borderRadius: '10px',
+                    border: `1px solid ${colors.border}`,
+                    boxShadow: '0 4px 16px rgba(0,0,0,0.13)',
+                    padding: '14px 18px',
+                    fontSize: '13px',
+                    color: colors.textSecondary,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '4px',
+                    userSelect: 'none',
+                    pointerEvents: 'none'
+                  }}
+                >
+                  <div style={{ fontWeight: 500, marginBottom: 2, color: colors.text }}>La contraseña debe contener:</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                    {passwordChecks.length ? <CheckCircle size={14} color={colors.success} /> : <XCircle size={14} color={colors.error} />}
+                    <span>Mínimo 8 caracteres</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                    {passwordChecks.upper ? <CheckCircle size={14} color={colors.success} /> : <XCircle size={14} color={colors.error} />}
+                    <span>Una mayúscula</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                    {passwordChecks.lower ? <CheckCircle size={14} color={colors.success} /> : <XCircle size={14} color={colors.error} />}
+                    <span>Una minúscula</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                    {passwordChecks.number ? <CheckCircle size={14} color={colors.success} /> : <XCircle size={14} color={colors.error} />}
+                    <span>Un número</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                    {passwordChecks.special ? <CheckCircle size={14} color={colors.success} /> : <XCircle size={14} color={colors.error} />}
+                    <span>Un carácter especial</span>
+                  </div>
+                </motion.div>,
+                document.body
+              )}
             </div>
 
             {/* Error message */}
