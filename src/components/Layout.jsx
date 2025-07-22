@@ -15,11 +15,16 @@ import {
   Activity,
   Bell,
   Zap,
-  CreditCard
+  CreditCard,
+  Calendar,
+  Coffee,
+  DollarSign,
+  ShoppingBag
 } from 'feather-icons-react';
 import { useTheme } from './ThemeContext';
 import { useAuth } from './AuthContext';
 import { useNavigation } from './NavigationContext';
+import { CateringProvider } from './catering/CateringContext';
 import { supabase } from '../config/supabase';
 import logo from '../assets/Logo Minimalist SSS Highest Opacity.PNG';
 import HomePage from './HomePage';
@@ -31,6 +36,7 @@ import UserManagement from './UserManagement';
 import AuditLog from './AuditLog';
 import HoldedTest from './HoldedTest';
 import ProvidersContacts from './ProvidersContacts';
+import CateringApp from './catering/CateringApp';
 
 // Componente visual de acceso denegado reutilizable
 function AccessDenied({ message = 'No tienes permisos para acceder a esta sección.' }) {
@@ -266,6 +272,7 @@ const Layout = () => {
   // Menú lateral según rol
   const menuItems = [
     { key: 'home', label: 'Inicio', path: '/home', icon: Home },
+    { key: 'catering', label: 'Catering', path: '/catering', icon: Coffee },
     { key: 'analytics', label: 'Análisis', path: '/analytics', icon: BarChart2 },
     { key: 'contacts', label: 'Contactos', path: '/contacts', icon: CreditCard },
     { key: 'settings', label: 'Configuración', path: '/settings', icon: Settings },
@@ -286,6 +293,8 @@ const Layout = () => {
     switch (activeSection) {
       case 'home':
         return <HomePage />;
+      case 'catering':
+        return <CateringApp />;
       case 'contacts':
         return <ProvidersContacts />;
       case 'analytics':
@@ -308,11 +317,12 @@ const Layout = () => {
   }
 
   return (
-    <div style={{
-      display: 'flex',
-      height: '100vh',
-      backgroundColor: colors.background,
-    }}>
+    <CateringProvider>
+      <div style={{
+        display: 'flex',
+        height: '100vh',
+        backgroundColor: colors.background,
+      }}>
       {/* Sidebar */}
       <motion.div
         initial={{ x: -250 }}
@@ -716,6 +726,7 @@ const Layout = () => {
         </motion.main>
       </div>
     </div>
+    </CateringProvider>
   );
 };
 
