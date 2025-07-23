@@ -235,7 +235,7 @@ const CateringDashboard = () => {
           </h3>
         </div>
 
-        <div style={{ maxHeight: '600px', overflow: 'auto' }}>
+        <div style={{ overflow: 'hidden' }}>
           {filteredEvents.length === 0 ? (
             <div style={{
               padding: '60px 24px',

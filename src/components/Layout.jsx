@@ -69,6 +69,7 @@ const Layout = () => {
   const [notifications, setNotifications] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [showAllNotifications, setShowAllNotifications] = useState(false);
   const [userProfile, setUserProfile] = useState(null); // Nuevo estado para el perfil real
   const { isDarkMode, toggleTheme, colors } = useTheme();
   const { user, signOut } = useAuth();
@@ -107,6 +108,28 @@ const Layout = () => {
       setupRealtimeNotifications();
     }
   }, [user]);
+
+  // Cerrar notificaciones al hacer clic fuera
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      const notificationPanel = document.querySelector('[data-notification-panel]');
+      const notificationButton = document.querySelector('[data-notification-button]');
+      
+      if (showNotifications && 
+          notificationPanel && 
+          !notificationPanel.contains(event.target) &&
+          notificationButton &&
+          !notificationButton.contains(event.target)) {
+        setShowNotifications(false);
+        setShowAllNotifications(false); // Resetear vista cuando se cierre
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showNotifications]);
 
   // Configurar listeners de actualizaciones para notificaciones
   useEffect(() => {
@@ -267,6 +290,38 @@ const Layout = () => {
       case 'user': return 'Usuario';
       default: return 'Usuario';
     }
+  };
+
+  // Función para obtener color por estado de catering
+  const getCateringStatusColor = (status) => {
+    const statusColors = {
+      'recibido': '#3B82F6', // Azul
+      'aceptado': '#10B981', // Verde
+      'en_preparacion': '#F59E0B', // Naranja
+      'finalizado': '#6B7280', // Gris
+      'rechazado': '#EF4444' // Rojo
+    };
+    return statusColors[status] || '#3B82F6';
+  };
+
+  // Función para procesar notificaciones y agregar información visual
+  const processNotification = (notification) => {
+    const processed = { ...notification };
+    
+    // Detectar si es una notificación de cambio de estado de catering
+    if (notification.data?.status && notification.title?.includes('Estado de Evento')) {
+      processed.isCateringStatus = true;
+      processed.statusColor = getCateringStatusColor(notification.data.status);
+      processed.statusLabel = notification.data.status.replace('_', ' ');
+    }
+    
+    return processed;
+  };
+
+  // Obtener notificaciones para mostrar (limitadas o todas)
+  const getDisplayNotifications = () => {
+    const processedNotifications = notifications.map(processNotification);
+    return showAllNotifications ? processedNotifications : processedNotifications.slice(0, 5);
   };
 
   // Menú lateral según rol
@@ -496,6 +551,7 @@ const Layout = () => {
             {/* Botón de notificaciones */}
             <div style={{ position: 'relative' }}>
               <motion.button
+                data-notification-button
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
                 onClick={() => setShowNotifications(!showNotifications)}
@@ -541,6 +597,7 @@ const Layout = () => {
               <AnimatePresence>
                 {showNotifications && (
                   <motion.div
+                    data-notification-panel
                     initial={{ opacity: 0, y: 10, scale: 0.95 }}
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: 10, scale: 0.95 }}
@@ -549,13 +606,13 @@ const Layout = () => {
                       top: '100%',
                       right: 0,
                       width: 320,
-                      maxHeight: 400,
+                      maxHeight: 450,
                       background: colors.surface,
                       border: `1px solid ${colors.border}`,
                       borderRadius: 12,
                       boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
                       zIndex: 1000,
-                      overflow: 'hidden',
+                      overflow: 'visible',
                       marginTop: 8,
                     }}
                   >
@@ -586,7 +643,19 @@ const Layout = () => {
                       )}
                     </div>
                     
-                    <div style={{ maxHeight: 300, overflow: 'auto' }}>
+                    <div style={{ 
+                      maxHeight: 380, 
+                      overflow: 'auto',
+                      userSelect: 'none',
+                      paddingBottom: '8px',
+                      paddingTop: '4px',
+                      scrollBehavior: 'smooth',
+                      scrollbarWidth: 'thin',
+                      scrollbarColor: `${colors.border} transparent`
+                    }}>
+                      {/* Espacio al inicio para evitar problemas de scroll */}
+                      <div style={{ height: '4px' }}></div>
+                      
                       {notifications.length === 0 ? (
                         <div style={{
                           padding: '40px 20px',
@@ -597,7 +666,7 @@ const Layout = () => {
                           No hay notificaciones
                         </div>
                       ) : (
-                        notifications.map((notification) => (
+                        getDisplayNotifications().map((notification) => (
                           <div
                             key={notification.id}
                             onClick={() => markNotificationAsRead(notification.id)}
@@ -634,13 +703,34 @@ const Layout = () => {
                               }} />
                               <div style={{ flex: 1, minWidth: 0 }}>
                                 <div style={{
-                                  color: colors.text,
-                                  fontSize: 14,
-                                  fontWeight: 600,
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '8px',
                                   marginBottom: 4,
-                                  userSelect: 'none',
                                 }}>
-                                  {notification.title}
+                                  <div style={{
+                                    color: colors.text,
+                                    fontSize: 14,
+                                    fontWeight: 600,
+                                    userSelect: 'none',
+                                  }}>
+                                    {notification.title}
+                                  </div>
+                                  {notification.isCateringStatus && (
+                                    <div style={{
+                                      padding: '2px 8px',
+                                      borderRadius: '12px',
+                                      fontSize: '11px',
+                                      fontWeight: '600',
+                                      color: notification.statusColor,
+                                      background: notification.statusColor + '15',
+                                      border: `1px solid ${notification.statusColor}30`,
+                                      userSelect: 'none',
+                                      textTransform: 'capitalize'
+                                    }}>
+                                      {notification.statusLabel}
+                                    </div>
+                                  )}
                                 </div>
                                 <div style={{
                                   color: colors.textSecondary,
@@ -662,6 +752,81 @@ const Layout = () => {
                             </div>
                           </div>
                         ))
+                      )}
+                      
+                      {/* Espacio adicional para evitar problemas de scroll */}
+                      <div style={{ height: '12px' }}></div>
+                      
+                      {/* Botón Ver más */}
+                      {notifications.length > 5 && !showAllNotifications && (
+                        <div style={{
+                          padding: '12px 20px',
+                          borderTop: `1px solid ${colors.border}`,
+                          textAlign: 'center',
+                          background: colors.surface
+                        }}>
+                          <motion.button
+                            whileHover={{ scale: 1.02 }}
+                            whileTap={{ scale: 0.98 }}
+                            onClick={() => setShowAllNotifications(!showAllNotifications)}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              cursor: 'pointer',
+                              color: colors.primary,
+                              fontSize: '13px',
+                              fontWeight: '500',
+                              padding: '8px 16px',
+                              borderRadius: '6px',
+                              transition: 'background 0.2s',
+                              userSelect: 'none'
+                            }}
+                            onMouseEnter={(e) => {
+                              e.target.style.background = colors.primary + '08';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.target.style.background = 'transparent';
+                            }}
+                          >
+                            {`Ver ${notifications.length - 5} más`}
+                          </motion.button>
+                        </div>
+                      )}
+                      
+                      {/* Botón Ver menos */}
+                      {notifications.length > 5 && showAllNotifications && (
+                        <div style={{
+                          padding: '12px 20px',
+                          borderTop: `1px solid ${colors.border}`,
+                          textAlign: 'center',
+                          background: colors.surface
+                        }}>
+                          <motion.button
+                            whileHover={{ scale: 1.02 }}
+                            whileTap={{ scale: 0.98 }}
+                            onClick={() => setShowAllNotifications(false)}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              cursor: 'pointer',
+                              color: colors.textSecondary,
+                              fontSize: '13px',
+                              fontWeight: '500',
+                              padding: '8px 16px',
+                              borderRadius: '6px',
+                              transition: 'background 0.2s',
+                              userSelect: 'none'
+                            }}
+                            onMouseEnter={(e) => {
+                              e.target.style.background = colors.textSecondary + '08';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.target.style.background = 'transparent';
+                            }}
+                          >
+                            Ver menos
+                          </motion.button>
+                        </div>
                       )}
                     </div>
                   </motion.div>
@@ -720,6 +885,8 @@ const Layout = () => {
             padding: '0',
             overflow: 'auto',
             background: colors.background,
+            scrollbarWidth: 'thin',
+            scrollbarColor: `${colors.border} transparent`
           }}
         >
           {renderSection()}

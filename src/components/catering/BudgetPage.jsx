@@ -319,7 +319,12 @@ const BudgetPage = () => {
           </h3>
         </div>
 
-        <div style={{ maxHeight: '600px', overflow: 'auto' }}>
+        <div style={{ 
+          maxHeight: '600px', 
+          overflow: 'auto',
+          scrollbarWidth: 'thin',
+          scrollbarColor: `${colors.border} transparent`
+        }}>
           {filteredBudgets.length === 0 ? (
             <div style={{
               padding: '60px 24px',
@@ -580,7 +585,9 @@ const BudgetModal = ({ budget, onClose, onAccept, onReject, onExport }) => {
           maxWidth: '800px',
           width: '100%',
           maxHeight: '80vh',
-          overflow: 'auto'
+          overflow: 'auto',
+          scrollbarWidth: 'thin',
+          scrollbarColor: `${colors.border} transparent`
         }}
         onClick={(e) => e.stopPropagation()}
       >

@@ -163,7 +163,9 @@ const NewEventForm = ({ onCancel }) => {
           maxWidth: '1000px',
           width: '100%',
           maxHeight: '90vh',
-          overflow: 'auto'
+          overflow: 'auto',
+          scrollbarWidth: 'thin',
+          scrollbarColor: `${colors.border} transparent`
         }}
       >
         <div style={{

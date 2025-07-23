@@ -549,6 +549,8 @@ const CalendarPage = () => {
             width: '320px',
             maxHeight: '80vh',
             overflow: 'auto',
+            scrollbarWidth: 'thin',
+            scrollbarColor: `${colors.border} transparent`,
             boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
             zIndex: 100
           }}

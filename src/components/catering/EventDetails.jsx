@@ -23,14 +23,28 @@ import {
   Trash2
 } from 'feather-icons-react';
 import { useTheme } from '../ThemeContext';
+import { useCatering } from './CateringContext';
 
+const statusOptions = [
+  { value: 'recibido', label: 'Recibido', color: '#3B82F6' },
+  { value: 'aceptado', label: 'Aceptado', color: '#10B981' },
+  { value: 'en_preparacion', label: 'En Preparación', color: '#F59E0B' },
+  { value: 'finalizado', label: 'Finalizado', color: '#6B7280' },
+  { value: 'rechazado', label: 'Rechazado', color: '#EF4444' }
+];
 
-
-const EventDetails = ({ event, onBack }) => {
+const EventDetails = ({ event: initialEvent, onBack }) => {
   const { colors } = useTheme();
+  const { updateEvent, getEventById } = useCatering();
   const [activeTab, setActiveTab] = useState('general');
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState({});
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+  const [showStatusModal, setShowStatusModal] = useState(false);
+  const [pendingStatusChange, setPendingStatusChange] = useState(null);
+
+  // Obtener el evento actualizado del contexto
+  const event = getEventById(initialEvent?.id) || initialEvent;
 
   useEffect(() => {
     if (!event) {
@@ -39,6 +53,101 @@ const EventDetails = ({ event, onBack }) => {
     }
     console.log('Mostrando evento:', event);
   }, [event]);
+
+  // Forzar re-render cuando el evento se actualice
+  useEffect(() => {
+    if (initialEvent?.id) {
+      const updatedEvent = getEventById(initialEvent.id);
+      if (updatedEvent && updatedEvent.status !== initialEvent.status) {
+        console.log('Evento actualizado en contexto:', updatedEvent);
+      }
+    }
+  }, [initialEvent?.id, getEventById]);
+
+  const handleStatusChange = (newStatus) => {
+    if (!event || event.status === newStatus) return;
+    
+    setPendingStatusChange(newStatus);
+    setShowStatusModal(true);
+  };
+
+  const confirmStatusChange = async () => {
+    if (!pendingStatusChange) return;
+    
+    setIsUpdatingStatus(true);
+    try {
+      await updateEvent(event.id, { status: pendingStatusChange });
+      console.log('Estado actualizado exitosamente');
+      setShowStatusModal(false);
+      setPendingStatusChange(null);
+    } catch (error) {
+      console.error('Error actualizando estado:', error);
+    } finally {
+      setIsUpdatingStatus(false);
+    }
+  };
+
+  const cancelStatusChange = () => {
+    setShowStatusModal(false);
+    setPendingStatusChange(null);
+  };
+
+  // Función para validar si el evento está listo para el cambio de estado
+  const validateEventForStatusChange = (newStatus) => {
+    const validations = [];
+    
+    // Validaciones básicas que siempre se deben cumplir
+    if (!event.client_name) {
+      validations.push('❌ Nombre del cliente no especificado');
+    }
+    if (!event.client_phone) {
+      validations.push('❌ Teléfono del cliente no especificado');
+    }
+    if (!event.client_email) {
+      validations.push('❌ Email del cliente no especificado');
+    }
+    if (!event.location) {
+      validations.push('❌ Ubicación del evento no especificada');
+    }
+    if (!event.guests || event.guests < 1) {
+      validations.push('❌ Número de invitados no válido');
+    }
+
+    // Validaciones específicas según el estado
+    switch (newStatus) {
+      case 'aceptado':
+        if (!event.budget_id) {
+          validations.push('⚠️ Presupuesto no creado o enviado');
+        }
+        break;
+      case 'en_preparacion':
+        if (!event.budget_id) {
+          validations.push('⚠️ Presupuesto no creado o enviado');
+        }
+        validations.push('⚠️ Verificar que el menú esté configurado');
+        validations.push('⚠️ Verificar que el personal esté asignado');
+        break;
+      case 'finalizado':
+        validations.push('⚠️ Verificar que todos los servicios se hayan completado');
+        validations.push('⚠️ Verificar que el cliente esté satisfecho');
+        break;
+      case 'rechazado':
+        validations.push('⚠️ Confirmar motivo del rechazo con el cliente');
+        break;
+    }
+
+    return validations;
+  };
+
+  const getStatusChangeMessage = (newStatus) => {
+    const statusMessages = {
+      'aceptado': '¿Estás seguro de que quieres marcar este evento como ACEPTADO?',
+      'en_preparacion': '¿Estás seguro de que quieres marcar este evento como EN PREPARACIÓN?',
+      'finalizado': '¿Estás seguro de que quieres marcar este evento como FINALIZADO?',
+      'rechazado': '¿Estás seguro de que quieres marcar este evento como RECHAZADO?'
+    };
+    return statusMessages[newStatus] || '¿Estás seguro de que quieres cambiar el estado de este evento?';
+  };
 
   const handleSave = async () => {
     // TODO: Guardar cambios en la base de datos
@@ -177,6 +286,74 @@ const EventDetails = ({ event, onBack }) => {
             <div style={{ color: colors.primary, fontSize: '16px', fontWeight: '600' }}>{event.budget ? event.budget.toLocaleString('es-ES') : '0'}€</div>
           </div>
         </div>
+      </div>
+
+      {/* Estado del Evento */}
+      <div style={{
+        background: colors.surface,
+        borderRadius: '12px',
+        border: `1px solid ${colors.border}`,
+        padding: '24px'
+      }}>
+        <h3 style={{
+          color: colors.text,
+          fontSize: '18px',
+          fontWeight: '600',
+          marginBottom: '20px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px'
+        }}>
+          <CheckCircle size={18} />
+          Estado del Evento
+        </h3>
+        
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px' }}>
+          {statusOptions.map((status) => {
+            const isCurrentStatus = event.status === status.value;
+            const isSelected = event.status === status.value;
+            
+            return (
+              <motion.button
+                key={status.value}
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => handleStatusChange(status.value)}
+                disabled={isUpdatingStatus || isCurrentStatus}
+                style={{
+                  padding: '12px 16px',
+                  borderRadius: '8px',
+                  border: `2px solid ${isSelected ? status.color : colors.border}`,
+                  background: isSelected ? `${status.color}15` : colors.surface,
+                  color: isSelected ? status.color : colors.text,
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  cursor: isUpdatingStatus || isCurrentStatus ? 'not-allowed' : 'pointer',
+                  opacity: isUpdatingStatus || isCurrentStatus ? 0.6 : 1,
+                  transition: 'all 0.2s ease',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px'
+                }}
+              >
+                {isSelected && <CheckCircle size={16} />}
+                {status.label}
+              </motion.button>
+            );
+          })}
+        </div>
+        
+        {isUpdatingStatus && (
+          <div style={{
+            marginTop: '12px',
+            color: colors.textSecondary,
+            fontSize: '12px',
+            textAlign: 'center'
+          }}>
+            Actualizando estado...
+          </div>
+        )}
       </div>
 
       {/* Notas */}
@@ -741,7 +918,9 @@ const EventDetails = ({ event, onBack }) => {
         gap: '8px',
         marginBottom: '24px',
         borderBottom: `1px solid ${colors.border}`,
-        overflowX: 'auto'
+        overflowX: 'auto',
+        scrollbarWidth: 'thin',
+        scrollbarColor: `${colors.border} transparent`
       }}>
         {tabs.map((tab) => {
           const Icon = tab.icon;
@@ -784,6 +963,208 @@ const EventDetails = ({ event, onBack }) => {
       >
         {renderContent()}
       </motion.div>
+
+      {/* Modal de Confirmación de Cambio de Estado */}
+      {showStatusModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000,
+          padding: '20px'
+        }}>
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            style={{
+              background: colors.surface,
+              borderRadius: '12px',
+              border: `1px solid ${colors.border}`,
+              padding: '24px',
+              maxWidth: '500px',
+              width: '100%',
+              maxHeight: '80vh',
+              overflow: 'auto',
+              scrollbarWidth: 'thin',
+              scrollbarColor: `${colors.border} transparent`
+            }}
+          >
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '12px',
+              marginBottom: '20px'
+            }}>
+              <AlertCircle size={24} color={colors.primary} />
+              <h3 style={{
+                color: colors.text,
+                fontSize: '18px',
+                fontWeight: '600',
+                margin: 0
+              }}>
+                Confirmar Cambio de Estado
+              </h3>
+            </div>
+
+            <div style={{ marginBottom: '20px' }}>
+              <p style={{
+                color: colors.text,
+                fontSize: '14px',
+                lineHeight: '1.5',
+                marginBottom: '16px'
+              }}>
+                {getStatusChangeMessage(pendingStatusChange)}
+              </p>
+              
+              <div style={{
+                background: colors.card,
+                borderRadius: '8px',
+                padding: '16px',
+                marginBottom: '16px'
+              }}>
+                <h4 style={{
+                  color: colors.text,
+                  fontSize: '14px',
+                  fontWeight: '600',
+                  marginBottom: '12px'
+                }}>
+                  📋 Revisión del Evento
+                </h4>
+                
+                <div style={{ fontSize: '13px', lineHeight: '1.4' }}>
+                  <div style={{ marginBottom: '8px' }}>
+                    <strong>Cliente:</strong> {event.client_name}
+                  </div>
+                  <div style={{ marginBottom: '8px' }}>
+                    <strong>Evento:</strong> {event.event_type}
+                  </div>
+                  <div style={{ marginBottom: '8px' }}>
+                    <strong>Fecha:</strong> {new Date(event.date).toLocaleDateString('es-ES')}
+                  </div>
+                  <div style={{ marginBottom: '8px' }}>
+                    <strong>Invitados:</strong> {event.guests} personas
+                  </div>
+                  <div style={{ marginBottom: '8px' }}>
+                    <strong>Ubicación:</strong> {event.location}
+                  </div>
+                </div>
+              </div>
+
+              {/* Validaciones */}
+              {(() => {
+                const validations = validateEventForStatusChange(pendingStatusChange);
+                if (validations.length > 0) {
+                  return (
+                    <div style={{
+                      background: '#FEF3C7',
+                      border: '1px solid #F59E0B',
+                      borderRadius: '8px',
+                      padding: '16px',
+                      marginBottom: '16px'
+                    }}>
+                      <h4 style={{
+                        color: '#92400E',
+                        fontSize: '14px',
+                        fontWeight: '600',
+                        marginBottom: '12px'
+                      }}>
+                        ⚠️ Elementos a Verificar
+                      </h4>
+                      <ul style={{
+                        color: '#92400E',
+                        fontSize: '13px',
+                        lineHeight: '1.4',
+                        margin: 0,
+                        paddingLeft: '16px'
+                      }}>
+                        {validations.map((validation, index) => (
+                          <li key={index} style={{ marginBottom: '4px' }}>
+                            {validation}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
+            </div>
+
+            <div style={{
+              display: 'flex',
+              gap: '12px',
+              justifyContent: 'flex-end'
+            }}>
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={cancelStatusChange}
+                disabled={isUpdatingStatus}
+                style={{
+                  background: 'none',
+                  border: `1px solid ${colors.border}`,
+                  color: colors.text,
+                  padding: '10px 20px',
+                  borderRadius: '8px',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  cursor: isUpdatingStatus ? 'not-allowed' : 'pointer',
+                  opacity: isUpdatingStatus ? 0.6 : 1
+                }}
+              >
+                Cancelar
+              </motion.button>
+              
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={confirmStatusChange}
+                disabled={isUpdatingStatus}
+                style={{
+                  background: colors.primary,
+                  border: 'none',
+                  color: 'white',
+                  padding: '10px 20px',
+                  borderRadius: '8px',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  cursor: isUpdatingStatus ? 'not-allowed' : 'pointer',
+                  opacity: isUpdatingStatus ? 0.6 : 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}
+              >
+                {isUpdatingStatus ? (
+                  <>
+                    <div style={{
+                      width: '16px',
+                      height: '16px',
+                      border: '2px solid transparent',
+                      borderTop: '2px solid white',
+                      borderRadius: '50%',
+                      animation: 'spin 1s linear infinite'
+                    }} />
+                    Actualizando...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle size={16} />
+                    Confirmar Cambio
+                  </>
+                )}
+              </motion.button>
+            </div>
+          </motion.div>
+        </div>
+      )}
     </div>
   );
 };

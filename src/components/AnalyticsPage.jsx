@@ -1303,7 +1303,11 @@ const AnalyticsPage = () => {
                 <h3 style={{ margin: '0 0 20px 0', color: colors.text, fontSize: 18, fontWeight: 600, lineHeight: 1.2 }}>
                   {selectedProvider ? `Facturas de ${selectedProvider}` : 'Todas las facturas'}
                 </h3>
-                <div style={{ overflowX: 'auto' }}>
+                <div style={{ 
+                  overflowX: 'auto',
+                  scrollbarWidth: 'thin',
+                  scrollbarColor: `${colors.border} transparent`
+                }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
                     <thead>
                       <tr>
@@ -1459,7 +1463,11 @@ const AnalyticsPage = () => {
                         </span>
                       </div>
                       
-                      <div style={{ overflowX: 'auto' }}>
+                      <div style={{ 
+                        overflowX: 'auto',
+                        scrollbarWidth: 'thin',
+                        scrollbarColor: `${colors.border} transparent`
+                      }}>
                         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
                           <thead>
                             <tr>
@@ -1574,7 +1582,11 @@ const AnalyticsPage = () => {
                           {currentData.length} facturas encontradas
                         </span>
                       </div>
-                      <div style={{ overflowX: 'auto' }}>
+                      <div style={{ 
+                        overflowX: 'auto',
+                        scrollbarWidth: 'thin',
+                        scrollbarColor: `${colors.border} transparent`
+                      }}>
                         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
                           <thead>
                             <tr>
@@ -1720,7 +1732,11 @@ const AnalyticsPage = () => {
                   </div>
                   
                   <h4 style={{ margin: '0 0 16px 0', color: colors.text, fontSize: '18px', fontWeight: 600, lineHeight: 1.2 }}>Detalle por Proveedor</h4>
-                  <div style={{ overflowX: 'auto' }}>
+                  <div style={{ 
+                    overflowX: 'auto',
+                    scrollbarWidth: 'thin',
+                    scrollbarColor: `${colors.border} transparent`
+                  }}>
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
                       <thead>
                         <tr>
@@ -1804,7 +1820,11 @@ const AnalyticsPage = () => {
                                         }}>
                                           Facturas de {stat.provider}
                                         </h5>
-                                        <div style={{ overflowX: 'auto' }}>
+                                        <div style={{ 
+                                          overflowX: 'auto',
+                                          scrollbarWidth: 'thin',
+                                          scrollbarColor: `${colors.border} transparent`
+                                        }}>
                                           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                                             <thead>
                                               <tr>

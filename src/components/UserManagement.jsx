@@ -440,7 +440,11 @@ const UserManagement = () => {
             No se encontraron usuarios
           </div>
         ) : (
-          <div style={{ overflow: 'auto' }}>
+          <div style={{ 
+            overflow: 'auto',
+            scrollbarWidth: 'thin',
+            scrollbarColor: `${colors.border} transparent`
+          }}>
             {currentUsers.map((userItem, index) => {
               const isSelf = userItem.id === user.id;
               return (

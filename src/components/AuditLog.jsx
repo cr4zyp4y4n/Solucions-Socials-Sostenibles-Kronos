@@ -267,7 +267,11 @@ const AuditLog = () => {
             No hay registros de auditoría
           </div>
         ) : (
-          <div style={{ overflow: 'auto' }}>
+          <div style={{ 
+            overflow: 'auto',
+            scrollbarWidth: 'thin',
+            scrollbarColor: `${colors.border} transparent`
+          }}>
             {auditLogs.map((log, index) => {
               const actionColor = getActionColor(log.action);
               const isExpanded = showDetails[log.id];

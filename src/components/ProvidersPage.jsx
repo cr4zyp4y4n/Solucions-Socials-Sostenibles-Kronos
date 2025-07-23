@@ -455,7 +455,11 @@ const ProvidersPage = () => {
                       Facturas de {selectedProvider}
                     </h4>
                     
-                    <div style={{ overflowX: 'auto' }}>
+                    <div style={{ 
+                      overflowX: 'auto',
+                      scrollbarWidth: 'thin',
+                      scrollbarColor: `${colors.border} transparent`
+                    }}>
                       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
                         <thead>
                           <tr>

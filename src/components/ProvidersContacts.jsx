@@ -755,7 +755,9 @@ const ProvidersContacts = () => {
             backgroundColor: colors.surface,
             borderRadius: '8px',
             border: `1px solid ${colors.border}`,
-            boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
+            boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+            scrollbarWidth: 'thin',
+            scrollbarColor: `${colors.border} transparent`
           }}>
             <table style={{ 
               width: '100%', 

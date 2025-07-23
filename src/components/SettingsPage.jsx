@@ -899,7 +899,15 @@ const SettingsPage = () => {
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: 30 }}
       transition={{ duration: 0.5, ease: 'easeOut' }}
-      style={{ padding: '24px', height: '100%', display: 'flex', flexDirection: 'column' }}
+      style={{
+        padding: '24px',
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'auto',
+        scrollbarWidth: 'thin',
+        scrollbarColor: `${colors.border} transparent`
+      }}
     >
       {/* Título y badges de estado */}
       <motion.div
