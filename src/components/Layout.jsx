@@ -19,7 +19,8 @@ import {
   Calendar,
   Coffee,
   DollarSign,
-  ShoppingBag
+  ShoppingBag,
+  ExternalLink
 } from 'feather-icons-react';
 import { useTheme } from './ThemeContext';
 import { useAuth } from './AuthContext';
@@ -71,6 +72,7 @@ const Layout = () => {
   const [unreadCount, setUnreadCount] = useState(0);
   const [showAllNotifications, setShowAllNotifications] = useState(false);
   const [userProfile, setUserProfile] = useState(null); // Nuevo estado para el perfil real
+  const [cateringEventId, setCateringEventId] = useState(null); // Para navegación a eventos específicos
   const { isDarkMode, toggleTheme, colors } = useTheme();
   const { user, signOut } = useAuth();
 
@@ -98,6 +100,13 @@ const Layout = () => {
 
   // Verificar si el usuario es administrador
   const isAdmin = userProfile?.role === 'admin';
+
+  // Limpiar eventId cuando se navega a otra sección
+  useEffect(() => {
+    if (activeSection !== 'catering') {
+      setCateringEventId(null);
+    }
+  }, [activeSection]);
   const isManagementOrManager = userProfile?.role === 'management' || userProfile?.role === 'manager';
   const isUser = !isAdmin && !isManagementOrManager;
 
@@ -212,21 +221,21 @@ const Layout = () => {
           }
         )
         .on('error', (error) => {
-          // Error en suscripción de notificaciones
+          console.error('Error en suscripción de notificaciones:', error);
         })
         .subscribe((status) => {
-          // Estado de suscripción de notificaciones
+  
         });
 
       return () => {
         try {
           supabase.removeChannel(channel);
         } catch (error) {
-          // Error al remover canal de notificaciones
+          console.error('Error al remover canal de notificaciones:', error);
         }
       };
     } catch (error) {
-      // Error al configurar notificaciones en tiempo real
+      console.error('Error al configurar notificaciones en tiempo real:', error);
       return () => {};
     }
   };
@@ -241,13 +250,13 @@ const Layout = () => {
         .limit(20);
 
       if (error) {
-        // Error loading notifications
+        console.error('Error loading notifications:', error);
       } else {
         setNotifications(data || []);
         setUnreadCount(data?.filter(n => !n.read_at).length || 0);
       }
     } catch (e) {
-      // Error loading notifications
+      console.error('Error loading notifications:', e);
     }
   };
 
@@ -269,6 +278,17 @@ const Layout = () => {
     } catch (e) {
       // Error marking notification as read
     }
+  };
+
+  // Manejar clic en el enlace de ver evento
+  const handleViewEventClick = async (notification) => {
+    // Marcar como leída
+    await markNotificationAsRead(notification.id);
+    
+    // Navegar al evento
+    setCateringEventId(notification.data.event_id);
+    navigateTo('catering');
+    setShowNotifications(false); // Cerrar panel de notificaciones
   };
 
   const formatDate = (dateString) => {
@@ -349,7 +369,10 @@ const Layout = () => {
       case 'home':
         return <HomePage />;
       case 'catering':
-        return <CateringApp />;
+        return <CateringApp 
+          eventId={cateringEventId} 
+          onEventIdProcessed={() => setCateringEventId(null)}
+        />;
       case 'contacts':
         return <ProvidersContacts />;
       case 'analytics':
@@ -667,25 +690,25 @@ const Layout = () => {
                         </div>
                       ) : (
                         getDisplayNotifications().map((notification) => (
-                          <div
+                          <motion.div
                             key={notification.id}
+                            className="notification-item"
+                            whileHover={!notification.read_at ? { backgroundColor: colors.hover } : {}}
+                            whileTap={{ scale: 0.98 }}
                             onClick={() => markNotificationAsRead(notification.id)}
                             style={{
                               padding: '12px 20px',
                               borderBottom: `1px solid ${colors.border}`,
-                              cursor: 'pointer',
-                              background: notification.read_at ? 'transparent' : colors.primary + '08',
-                              transition: 'background 0.2s',
-                            }}
-                            onMouseEnter={(e) => {
-                              if (!notification.read_at) {
-                                e.target.style.background = colors.primary + '12';
-                              }
-                            }}
-                            onMouseLeave={(e) => {
-                              if (!notification.read_at) {
-                                e.target.style.background = colors.primary + '08';
-                              }
+                              cursor: !notification.read_at ? 'pointer' : 'default',
+                              background: 'transparent',
+                              userSelect: 'none',
+                              WebkitUserSelect: 'none',
+                              MozUserSelect: 'none',
+                              msUserSelect: 'none',
+                              WebkitTouchCallout: 'none',
+                              WebkitTapHighlightColor: 'transparent',
+                              WebkitHighlight: 'none',
+                              WebkitTextFillColor: 'inherit',
                             }}
                           >
                             <div style={{
@@ -700,6 +723,7 @@ const Layout = () => {
                                 background: notification.read_at ? colors.textSecondary : colors.primary,
                                 marginTop: 6,
                                 flexShrink: 0,
+                                boxShadow: !notification.read_at ? `0 0 0 2px ${colors.primary}33` : 'none',
                               }} />
                               <div style={{ flex: 1, minWidth: 0 }}>
                                 <div style={{
@@ -741,6 +765,29 @@ const Layout = () => {
                                 }}>
                                   {notification.message}
                                 </div>
+                                {notification.data?.event_id && (
+                                  <motion.div
+                                    whileHover={{ backgroundColor: colors.primary + '15' }}
+                                    whileTap={{ scale: 0.98 }}
+                                    onClick={() => handleViewEventClick(notification)}
+                                    style={{
+                                      color: colors.primary,
+                                      fontSize: 11,
+                                      fontStyle: 'italic',
+                                      marginBottom: 4,
+                                      userSelect: 'none',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '4px',
+                                      cursor: 'pointer',
+                                      padding: '2px 4px',
+                                      borderRadius: '4px',
+                                    }}
+                                  >
+                                    <ExternalLink size={10} />
+                                    Clic para ver evento →
+                                  </motion.div>
+                                )}
                                 <div style={{
                                   color: colors.textSecondary,
                                   fontSize: 11,
@@ -750,7 +797,7 @@ const Layout = () => {
                                 </div>
                               </div>
                             </div>
-                          </div>
+                          </motion.div>
                         ))
                       )}
                       
@@ -766,7 +813,10 @@ const Layout = () => {
                           background: colors.surface
                         }}>
                           <motion.button
-                            whileHover={{ scale: 1.02 }}
+                            whileHover={{ 
+                              scale: 1.02,
+                              backgroundColor: colors.primary + '08'
+                            }}
                             whileTap={{ scale: 0.98 }}
                             onClick={() => setShowAllNotifications(!showAllNotifications)}
                             style={{
@@ -778,14 +828,7 @@ const Layout = () => {
                               fontWeight: '500',
                               padding: '8px 16px',
                               borderRadius: '6px',
-                              transition: 'background 0.2s',
                               userSelect: 'none'
-                            }}
-                            onMouseEnter={(e) => {
-                              e.target.style.background = colors.primary + '08';
-                            }}
-                            onMouseLeave={(e) => {
-                              e.target.style.background = 'transparent';
                             }}
                           >
                             {`Ver ${notifications.length - 5} más`}
@@ -802,7 +845,10 @@ const Layout = () => {
                           background: colors.surface
                         }}>
                           <motion.button
-                            whileHover={{ scale: 1.02 }}
+                            whileHover={{ 
+                              scale: 1.02,
+                              backgroundColor: colors.textSecondary + '08'
+                            }}
                             whileTap={{ scale: 0.98 }}
                             onClick={() => setShowAllNotifications(false)}
                             style={{
@@ -814,14 +860,7 @@ const Layout = () => {
                               fontWeight: '500',
                               padding: '8px 16px',
                               borderRadius: '6px',
-                              transition: 'background 0.2s',
                               userSelect: 'none'
-                            }}
-                            onMouseEnter={(e) => {
-                              e.target.style.background = colors.textSecondary + '08';
-                            }}
-                            onMouseLeave={(e) => {
-                              e.target.style.background = 'transparent';
                             }}
                           >
                             Ver menos

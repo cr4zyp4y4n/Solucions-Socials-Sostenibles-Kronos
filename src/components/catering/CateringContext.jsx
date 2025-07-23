@@ -1,6 +1,157 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { supabase } from '../../config/supabase';
-import { useAuth } from '../AuthContext';
+
+// Función para crear notificaciones de cambio de estado
+const createStatusChangeNotification = async (event, oldStatus, newStatus, user) => {
+  if (!user?.id) return;
+
+  const statusLabels = {
+    'recibido': 'Recibido',
+    'aceptado': 'Aceptado',
+    'en_preparacion': 'En Preparación',
+    'finalizado': 'Finalizado',
+    'rechazado': 'Rechazado'
+  };
+
+  const statusColors = {
+    'recibido': '#3B82F6',
+    'aceptado': '#10B981',
+    'en_preparacion': '#F59E0B',
+    'finalizado': '#6B7280',
+    'rechazado': '#EF4444'
+  };
+
+  try {
+    const { data: users, error: usersError } = await supabase
+      .from('user_profiles')
+      .select('id');
+
+    if (usersError) {
+      console.error('Error obteniendo usuarios:', usersError);
+      return;
+    }
+
+    const notifications = users.map(u => ({
+      recipient_id: u.id,
+      sender_id: user.id,
+      title: 'Estado de Evento Actualizado',
+      message: `El evento "${event.event_type}" ha cambiado de estado: ${statusLabels[oldStatus]} → ${statusLabels[newStatus]}`,
+      type: 'system',
+      data: {
+        event_id: event.id,
+        event_type: event.event_type,
+        status: newStatus,
+        old_status: oldStatus
+      },
+      read_at: null,
+      created_at: new Date().toISOString()
+    }));
+
+    const { error: notificationError } = await supabase
+      .from('notifications')
+      .insert(notifications);
+
+    if (notificationError) {
+      console.error('Error creando notificaciones de cambio de estado:', notificationError);
+    }
+  } catch (error) {
+    console.error('Error en notificación de cambio de estado:', error);
+  }
+};
+
+// Función para crear notificaciones inteligentes de edición de eventos
+const createEventEditNotification = async (event, oldData, newData, user) => {
+  if (!user?.id) return;
+
+  // Definir campos importantes que requieren notificación
+  const importantFields = {
+    date: 'Fecha',
+    time: 'Hora', 
+    location: 'Ubicación',
+    guests: 'Invitados',
+    event_type: 'Tipo de Evento',
+    client_name: 'Cliente',
+    client_phone: 'Teléfono',
+    client_email: 'Email'
+  };
+
+  // Detectar cambios importantes
+  const changes = [];
+  for (const [field, label] of Object.entries(importantFields)) {
+    if (oldData[field] !== newData[field]) {
+      const oldValue = oldData[field];
+      const newValue = newData[field];
+      
+      // Formatear valores según el tipo de campo
+      let formattedOldValue = oldValue;
+      let formattedNewValue = newValue;
+      
+      if (field === 'date') {
+        formattedOldValue = new Date(oldValue).toLocaleDateString('es-ES');
+        formattedNewValue = new Date(newValue).toLocaleDateString('es-ES');
+      } else if (field === 'guests') {
+        formattedOldValue = `${oldValue} personas`;
+        formattedNewValue = `${newValue} personas`;
+      } else if (field === 'time') {
+        formattedOldValue = oldValue;
+        formattedNewValue = newValue;
+      }
+      
+      changes.push({
+        field: label,
+        oldValue: formattedOldValue,
+        newValue: formattedNewValue
+      });
+    }
+  }
+
+  // Solo crear notificación si hay cambios importantes
+  if (changes.length === 0) return;
+
+  // Crear mensaje de notificación
+  let message = `El evento "${event.event_type}" ha sido actualizado:`;
+  changes.forEach(change => {
+    message += `\n• ${change.field}: ${change.oldValue} → ${change.newValue}`;
+  });
+
+  // Obtener todos los usuarios para enviar la notificación
+  try {
+    const { data: users, error: usersError } = await supabase
+      .from('user_profiles')
+      .select('id');
+
+    if (usersError) {
+      console.error('Error obteniendo usuarios:', usersError);
+      return;
+    }
+
+    // Crear notificaciones para todos los usuarios
+    const notifications = users.map(user => ({
+      recipient_id: user.id,
+      sender_id: user.id,
+      title: 'Evento de Catering Actualizado',
+      message: message,
+      type: 'system',
+      data: {
+        event_id: event.id,
+        event_type: event.event_type,
+        changes: changes
+      },
+      read_at: null,
+      created_at: new Date().toISOString()
+    }));
+
+    const { error: notificationError } = await supabase
+      .from('notifications')
+      .insert(notifications);
+
+    if (notificationError) {
+      console.error('Error creando notificaciones:', notificationError);
+    }
+  } catch (error) {
+    console.error('Error en notificación de edición:', error);
+  }
+};
 
 const CateringContext = createContext();
 
@@ -12,62 +163,7 @@ export const useCatering = () => {
   return context;
 };
 
-// Función helper para crear notificaciones de catering
-const createCateringNotification = async (title, message, eventData = null) => {
-  try {
-    // Obtener todos los usuarios (excepto el creador)
-    let query = supabase
-      .from('user_profiles')
-      .select('id');
-    
-    // Solo excluir al creador si existe
-    if (eventData?.created_by) {
-      query = query.neq('id', eventData.created_by);
-    }
-    
-    const { data: users, error: usersError } = await query;
-
-    if (usersError) {
-      console.error('Error obteniendo usuarios para notificaciones:', usersError);
-      return;
-    }
-
-    if (users && users.length > 0) {
-      // Crear notificaciones para cada usuario
-      const notifications = users.map(user => ({
-        recipient_id: user.id,
-        sender_id: eventData?.created_by || null,
-        type: 'system',
-        title: title,
-        message: message,
-        data: {
-          event_id: eventData?.id,
-          event_type: eventData?.event_type,
-          client_name: eventData?.client_name,
-          date: eventData?.date,
-          status: eventData?.status
-        }
-      }));
-
-      const { error } = await supabase
-        .from('notifications')
-        .insert(notifications);
-
-      if (error) {
-        console.error('Error creando notificaciones de catering:', error);
-      } else {
-        console.log(`Notificaciones enviadas a ${users.length} usuarios`);
-      }
-    } else {
-      console.log('No hay usuarios para enviar notificaciones');
-    }
-  } catch (error) {
-    console.error('Error en createCateringNotification:', error);
-  }
-};
-
 export const CateringProvider = ({ children }) => {
-  const { user } = useAuth();
   const [events, setEvents] = useState([]);
   const [budgets, setBudgets] = useState([]);
   const [orders, setOrders] = useState([]);
@@ -81,6 +177,7 @@ export const CateringProvider = ({ children }) => {
   const [showNewEventForm, setShowNewEventForm] = useState(false);
   const [showEventDetails, setShowEventDetails] = useState(false);
   const [showBudgetForm, setShowBudgetForm] = useState(false);
+  const [navigationHistory, setNavigationHistory] = useState([]);
 
   // Cargar eventos desde Supabase
   const loadEvents = async () => {
@@ -127,7 +224,7 @@ export const CateringProvider = ({ children }) => {
   };
 
   // Crear nuevo evento
-  const createEvent = async (eventData) => {
+  const createEvent = async (eventData, user = null) => {
     setLoading(true);
     try {
       const { data, error } = await supabase
@@ -135,8 +232,7 @@ export const CateringProvider = ({ children }) => {
         .insert([{
           ...eventData,
           status: 'recibido',
-          created_at: new Date().toISOString(),
-          created_by: user?.id || null
+          created_at: new Date().toISOString()
         }])
         .select()
         .single();
@@ -148,11 +244,39 @@ export const CateringProvider = ({ children }) => {
 
       setEvents(prev => [data, ...prev]);
       setShowNewEventForm(false);
-      
-      // Crear notificación para nuevo evento
-      const notificationMessage = `Se ha creado un nuevo evento de catering: ${data.client_name} - ${data.event_type} para el ${data.date}`;
-      await createCateringNotification('Nuevo Evento de Catering', notificationMessage, data);
-      
+
+      // Crear notificación para todos los usuarios sobre el nuevo evento
+      if (user) {
+        try {
+          const { data: users, error: usersError } = await supabase
+            .from('user_profiles')
+            .select('id');
+
+          if (!usersError && users) {
+            const notifications = users.map(u => ({
+              recipient_id: u.id,
+              sender_id: user.id,
+              title: 'Nuevo Evento de Catering',
+              message: `Se ha creado un nuevo evento: "${data.event_type}" para ${data.client_name} el ${new Date(data.date).toLocaleDateString('es-ES')} a las ${data.time}`,
+              type: 'system',
+              data: {
+                event_id: data.id,
+                event_type: data.event_type,
+                client_name: data.client_name
+              },
+              read_at: null,
+              created_at: new Date().toISOString()
+            }));
+
+            await supabase
+              .from('notifications')
+              .insert(notifications);
+          }
+        } catch (notificationError) {
+          console.error('Error creando notificaciones de nuevo evento:', notificationError);
+        }
+      }
+
       return data;
     } catch (error) {
       console.error('Error creando evento:', error);
@@ -163,16 +287,25 @@ export const CateringProvider = ({ children }) => {
   };
 
   // Actualizar evento
-  const updateEvent = async (eventId, updates) => {
+  const updateEvent = async (eventId, updates, user = null) => {
     setLoading(true);
     try {
+      // Obtener el evento actual antes de actualizarlo
+      const { data: oldEvent, error: fetchError } = await supabase
+        .from('catering_events')
+        .select('*')
+        .eq('id', eventId)
+        .single();
+
+      if (fetchError) {
+        console.error('Error obteniendo evento actual:', fetchError);
+        throw fetchError;
+      }
+
+      // Actualizar el evento
       const { data, error } = await supabase
         .from('catering_events')
-        .update({
-          ...updates,
-          updated_by: user?.id || null,
-          updated_at: new Date().toISOString()
-        })
+        .update(updates)
         .eq('id', eventId)
         .select()
         .single();
@@ -185,22 +318,18 @@ export const CateringProvider = ({ children }) => {
       setEvents(prev => prev.map(event => 
         event.id === eventId ? data : event
       ));
-      
-      // Crear notificación solo si el estado cambió
-      const oldEvent = events.find(event => event.id === eventId);
-      if (oldEvent && oldEvent.status !== data.status) {
-        const statusMessages = {
-          'aceptado': 'aceptado',
-          'en_preparacion': 'en preparación',
-          'finalizado': 'finalizado',
-          'rechazado': 'rechazado'
-        };
-        
-        const statusText = statusMessages[data.status] || data.status;
-        const notificationMessage = `El evento de catering "${data.client_name}" ha cambiado su estado a: ${statusText}`;
-        await createCateringNotification('Estado de Evento Actualizado', notificationMessage, data);
+
+      // Crear notificación inteligente si hay cambios importantes
+      if (user) {
+        // Si es un cambio de estado, crear notificación específica
+        if (updates.status && updates.status !== oldEvent.status) {
+          await createStatusChangeNotification(data, oldEvent.status, updates.status, user);
+        } else {
+          // Si son otros cambios, crear notificación de edición
+          await createEventEditNotification(data, oldEvent, data, user);
+        }
       }
-      
+
       return data;
     } catch (error) {
       console.error('Error actualizando evento:', error);
@@ -327,15 +456,42 @@ export const CateringProvider = ({ children }) => {
 
   // Navegación
   const navigateTo = (view, params = {}) => {
+    // Guardar el estado actual en el historial (excepto si es dashboard)
+    if (currentView !== 'dashboard') {
+      setNavigationHistory(prev => [...prev, {
+        view: currentView,
+        event: selectedEvent,
+        budget: selectedBudget
+      }]);
+    }
+    
     setCurrentView(view);
     if (params.event) setSelectedEvent(params.event);
     if (params.budget) setSelectedBudget(params.budget);
   };
 
   const goBack = () => {
-    setCurrentView('dashboard');
-    setSelectedEvent(null);
-    setSelectedBudget(null);
+    if (navigationHistory.length > 0) {
+      // Volver al estado anterior del historial
+      const previousState = navigationHistory[navigationHistory.length - 1];
+      setNavigationHistory(prev => prev.slice(0, -1));
+      
+      setCurrentView(previousState.view);
+      setSelectedEvent(previousState.event);
+      setSelectedBudget(previousState.budget);
+    } else {
+      // Si no hay historial, ir al dashboard
+      setCurrentView('dashboard');
+      setSelectedEvent(null);
+      setSelectedBudget(null);
+    }
+  };
+
+  // Navegar directamente sin guardar en historial (para notificaciones)
+  const navigateDirectly = (view, params = {}) => {
+    setCurrentView(view);
+    if (params.event) setSelectedEvent(params.event);
+    if (params.budget) setSelectedBudget(params.budget);
   };
 
   // Cargar datos iniciales
@@ -374,6 +530,7 @@ export const CateringProvider = ({ children }) => {
 
     // Navegación
     navigateTo,
+    navigateDirectly,
     goBack,
     setShowNewEventForm,
     setShowEventDetails,

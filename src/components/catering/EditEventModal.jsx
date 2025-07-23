@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { 
   Calendar, 
@@ -26,9 +26,8 @@ const eventTypes = [
   'Otro'
 ];
 
-const NewEventForm = ({ onCancel }) => {
+const EditEventModal = ({ event, onCancel, onSave }) => {
   const { colors } = useTheme();
-  const { createEvent, goBack } = useCatering();
   const { user } = useAuth();
   const [formData, setFormData] = useState({
     clientName: '',
@@ -44,6 +43,24 @@ const NewEventForm = ({ onCancel }) => {
   });
   const [errors, setErrors] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Inicializar el formulario con los datos del evento
+  useEffect(() => {
+    if (event) {
+      setFormData({
+        clientName: event.client_name || '',
+        clientPhone: event.client_phone || '',
+        clientEmail: event.client_email || '',
+        eventType: event.event_type || '',
+        date: event.date || '',
+        time: event.time || '',
+        location: event.location || '',
+        guests: event.guests?.toString() || '',
+        notes: event.notes || '',
+        priority: event.priority || 'media'
+      });
+    }
+  }, [event]);
 
   const validateForm = () => {
     const newErrors = {};
@@ -68,13 +85,6 @@ const NewEventForm = ({ onCancel }) => {
 
     if (!formData.date) {
       newErrors.date = 'La fecha es obligatoria';
-    } else {
-      const selectedDate = new Date(formData.date);
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      if (selectedDate < today) {
-        newErrors.date = 'La fecha no puede ser anterior a hoy';
-      }
     }
 
     if (!formData.time) {
@@ -85,7 +95,7 @@ const NewEventForm = ({ onCancel }) => {
       newErrors.location = 'La ubicación es obligatoria';
     }
 
-    if (!formData.guests || formData.guests < 1) {
+    if (!formData.guests || parseInt(formData.guests) < 1) {
       newErrors.guests = 'El número de invitados debe ser mayor a 0';
     }
 
@@ -103,7 +113,8 @@ const NewEventForm = ({ onCancel }) => {
     setIsSubmitting(true);
 
     try {
-      const eventData = {
+      const updatedEvent = {
+        ...event,
         client_name: formData.clientName,
         client_phone: formData.clientPhone,
         client_email: formData.clientEmail,
@@ -116,8 +127,7 @@ const NewEventForm = ({ onCancel }) => {
         priority: formData.priority
       };
 
-      await createEvent(eventData, user);
-      goBack();
+      await onSave(updatedEvent);
     } catch (error) {
       console.error('Error al guardar evento:', error);
     } finally {
@@ -182,13 +192,13 @@ const NewEventForm = ({ onCancel }) => {
             fontWeight: '700',
             margin: 0
           }}>
-            Nuevo Evento de Catering
+            Editar Evento de Catering
           </h2>
           
           <motion.button
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
-            onClick={onCancel || goBack}
+            onClick={onCancel}
             style={{
               background: 'none',
               border: 'none',
@@ -706,7 +716,7 @@ const NewEventForm = ({ onCancel }) => {
               type="button"
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
-              onClick={onCancel || goBack}
+              onClick={onCancel}
               style={{
                 padding: '12px 24px',
                 border: `1px solid ${colors.border}`,
@@ -755,7 +765,7 @@ const NewEventForm = ({ onCancel }) => {
               ) : (
                 <>
                   <Save size={16} />
-                  Guardar Evento
+                  Guardar Cambios
                 </>
               )}
             </motion.button>
@@ -766,4 +776,4 @@ const NewEventForm = ({ onCancel }) => {
   );
 };
 
-export default NewEventForm; 
+export default EditEventModal; 

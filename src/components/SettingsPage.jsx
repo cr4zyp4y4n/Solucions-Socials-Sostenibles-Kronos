@@ -903,10 +903,7 @@ const SettingsPage = () => {
         padding: '24px',
         height: '100%',
         display: 'flex',
-        flexDirection: 'column',
-        overflow: 'auto',
-        scrollbarWidth: 'thin',
-        scrollbarColor: `${colors.border} transparent`
+        flexDirection: 'column'
       }}
     >
       {/* Título y badges de estado */}

@@ -24,6 +24,8 @@ import {
 } from 'feather-icons-react';
 import { useTheme } from '../ThemeContext';
 import { useCatering } from './CateringContext';
+import { useAuth } from '../AuthContext';
+import EditEventModal from './EditEventModal';
 
 const statusOptions = [
   { value: 'recibido', label: 'Recibido', color: '#3B82F6' },
@@ -36,12 +38,12 @@ const statusOptions = [
 const EventDetails = ({ event: initialEvent, onBack }) => {
   const { colors } = useTheme();
   const { updateEvent, getEventById } = useCatering();
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState('general');
-  const [isEditing, setIsEditing] = useState(false);
-  const [editData, setEditData] = useState({});
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [pendingStatusChange, setPendingStatusChange] = useState(null);
+  const [showEditModal, setShowEditModal] = useState(false);
 
   // Obtener el evento actualizado del contexto
   const event = getEventById(initialEvent?.id) || initialEvent;
@@ -51,7 +53,6 @@ const EventDetails = ({ event: initialEvent, onBack }) => {
       console.error('No se proporcionó evento para mostrar');
       return;
     }
-    console.log('Mostrando evento:', event);
   }, [event]);
 
   // Forzar re-render cuando el evento se actualice
@@ -59,7 +60,7 @@ const EventDetails = ({ event: initialEvent, onBack }) => {
     if (initialEvent?.id) {
       const updatedEvent = getEventById(initialEvent.id);
       if (updatedEvent && updatedEvent.status !== initialEvent.status) {
-        console.log('Evento actualizado en contexto:', updatedEvent);
+        // Evento actualizado en contexto
       }
     }
   }, [initialEvent?.id, getEventById]);
@@ -76,8 +77,7 @@ const EventDetails = ({ event: initialEvent, onBack }) => {
     
     setIsUpdatingStatus(true);
     try {
-      await updateEvent(event.id, { status: pendingStatusChange });
-      console.log('Estado actualizado exitosamente');
+      await updateEvent(event.id, { status: pendingStatusChange }, user);
       setShowStatusModal(false);
       setPendingStatusChange(null);
     } catch (error) {
@@ -149,15 +149,27 @@ const EventDetails = ({ event: initialEvent, onBack }) => {
     return statusMessages[newStatus] || '¿Estás seguro de que quieres cambiar el estado de este evento?';
   };
 
-  const handleSave = async () => {
-    // TODO: Guardar cambios en la base de datos
-    console.log('Guardando cambios:', editData);
-    setIsEditing(false);
+  const handleEditEvent = () => {
+    setShowEditModal(true);
   };
+
+  const handleSaveEvent = async (updatedEvent) => {
+    try {
+      await updateEvent(event.id, updatedEvent, user);
+      setShowEditModal(false);
+    } catch (error) {
+      console.error('Error al actualizar el evento:', error);
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setShowEditModal(false);
+  };
+
+
 
   const handleChecklistToggle = (checklistType, taskId) => {
     // TODO: Implementar actualización de checklist en la base de datos
-    console.log('Toggle checklist:', checklistType, taskId);
   };
 
   // Validación de evento
@@ -285,6 +297,36 @@ const EventDetails = ({ event: initialEvent, onBack }) => {
             <label style={{ color: colors.textSecondary, fontSize: '12px', fontWeight: '500' }}>Presupuesto</label>
             <div style={{ color: colors.primary, fontSize: '16px', fontWeight: '600' }}>{event.budget ? event.budget.toLocaleString('es-ES') : '0'}€</div>
           </div>
+        </div>
+      </div>
+
+      {/* Notas del Evento */}
+      <div style={{
+        background: colors.surface,
+        borderRadius: '12px',
+        border: `1px solid ${colors.border}`,
+        padding: '24px'
+      }}>
+        <h3 style={{
+          color: colors.text,
+          fontSize: '18px',
+          fontWeight: '600',
+          marginBottom: '20px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px'
+        }}>
+          <FileText size={18} />
+          Notas del Evento
+        </h3>
+
+        <div style={{ 
+          color: colors.text, 
+          fontSize: '14px', 
+          lineHeight: '1.6',
+          whiteSpace: 'pre-wrap'
+        }}>
+          {event.notes || 'No hay notas para este evento.'}
         </div>
       </div>
 
@@ -867,10 +909,10 @@ const EventDetails = ({ event: initialEvent, onBack }) => {
           <motion.button
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
-            onClick={() => setIsEditing(!isEditing)}
+            onClick={handleEditEvent}
             style={{
-              background: isEditing ? colors.primary : colors.surface,
-              color: isEditing ? 'white' : colors.text,
+              background: colors.surface,
+              color: colors.text,
               border: `1px solid ${colors.border}`,
               padding: '10px 20px',
               borderRadius: '8px',
@@ -883,32 +925,8 @@ const EventDetails = ({ event: initialEvent, onBack }) => {
             }}
           >
             <Edit size={16} />
-            {isEditing ? 'Cancelar' : 'Editar'}
+            Editar Evento
           </motion.button>
-
-          {isEditing && (
-            <motion.button
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={handleSave}
-              style={{
-                background: colors.primary,
-                color: 'white',
-                border: 'none',
-                padding: '10px 20px',
-                borderRadius: '8px',
-                fontSize: '14px',
-                fontWeight: '500',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px'
-              }}
-            >
-              <Save size={16} />
-              Guardar
-            </motion.button>
-          )}
         </div>
       </div>
 
@@ -1164,6 +1182,15 @@ const EventDetails = ({ event: initialEvent, onBack }) => {
             </div>
           </motion.div>
         </div>
+      )}
+
+      {/* Modal de Edición */}
+      {showEditModal && (
+        <EditEventModal
+          event={event}
+          onCancel={handleCancelEdit}
+          onSave={handleSaveEvent}
+        />
       )}
     </div>
   );

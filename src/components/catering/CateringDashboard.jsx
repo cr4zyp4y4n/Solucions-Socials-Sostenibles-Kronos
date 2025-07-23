@@ -46,6 +46,8 @@ const CateringDashboard = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedEvent, setSelectedEvent] = useState(null);
 
+
+
   const filteredEvents = events.filter(event => {
     const matchesStatus = filterStatus === 'todos' || event.status === filterStatus;
     const matchesSearch = (event.client_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -188,9 +190,7 @@ const CateringDashboard = () => {
           </select>
         </div>
 
-        <motion.button
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
+        <button
           onClick={handleNewEvent}
           style={{
             background: colors.primary,
@@ -208,7 +208,7 @@ const CateringDashboard = () => {
         >
           <Plus size={16} />
           Nuevo Evento
-        </motion.button>
+        </button>
       </motion.div>
 
       {/* Lista de eventos */}
@@ -250,23 +250,24 @@ const CateringDashboard = () => {
             filteredEvents.map((event, index) => (
               <motion.div
                 key={event.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.05 }}
+                whileHover={{ backgroundColor: colors.hover || 'rgba(64,64,64,0.7)' }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => handleViewEvent(event)}
                 style={{
                   padding: '20px 24px',
                   borderBottom: `1px solid ${colors.border}`,
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
-                  cursor: 'pointer',
-                  transition: 'background 0.2s'
+                  cursor: 'pointer'
                 }}
-                onMouseEnter={(e) => e.target.style.background = colors.hover}
-                onMouseLeave={(e) => e.target.style.background = 'transparent'}
-                onClick={() => handleViewEvent(event)}
               >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '20px', flex: 1 }}>
+                <div style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '20px', 
+                  flex: 1
+                }}>
                   <div style={{
                     width: '12px',
                     height: '12px',
@@ -282,7 +283,11 @@ const CateringDashboard = () => {
                       gap: '12px',
                       marginBottom: '8px'
                     }}>
-                      <div style={{ color: colors.text, fontSize: '16px', fontWeight: '600' }}>
+                      <div style={{ 
+                        color: colors.text, 
+                        fontSize: '16px', 
+                        fontWeight: '600'
+                      }}>
                         {event.client_name}
                       </div>
                       <div style={{
@@ -337,9 +342,7 @@ const CateringDashboard = () => {
                     {event.budget ? event.budget.toLocaleString('es-ES') : '0'}€
                   </div>
                   
-                  <motion.button
-                    whileHover={{ scale: 1.1 }}
-                    whileTap={{ scale: 0.9 }}
+                  <button
                     onClick={(e) => {
                       e.stopPropagation();
                       handleViewEvent(event);
@@ -357,7 +360,7 @@ const CateringDashboard = () => {
                     }}
                   >
                     <Eye size={16} />
-                  </motion.button>
+                  </button>
                 </div>
               </motion.div>
             ))
