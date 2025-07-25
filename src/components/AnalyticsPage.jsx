@@ -6,7 +6,7 @@ import { useCurrency } from './CurrencyContext';
 import { useAuth } from './AuthContext';
 import { supabase } from '../config/supabase';
 import holdedApi from '../services/holdedApi';
-
+import { Calendar, Filter } from 'lucide-react';
 
 const AnalyticsPage = () => {
   const { 
@@ -39,12 +39,31 @@ const AnalyticsPage = () => {
   const [sergiSortConfig, setSergiSortConfig] = useState({ key: null, direction: 'asc' });
   const [channelSortConfig, setChannelSortConfig] = useState({ key: null, direction: 'asc' });
   const [isChangingDataset, setIsChangingDataset] = useState(false);
+  
+  // Nuevos estados para filtro por meses
+  const [selectedMonth, setSelectedMonth] = useState('');
+  const [showMonthFilter, setShowMonthFilter] = useState(false);
+  
   const tableRef = useRef(null);
 
   // Cargar datos desde Holded al montar el componente
   useEffect(() => {
     loadDataFromHolded();
   }, []);
+
+  // Cerrar dropdown de meses cuando se hace clic fuera
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (showMonthFilter && !event.target.closest('[data-month-filter]')) {
+        setShowMonthFilter(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showMonthFilter]);
 
   // Verificar si necesita actualización cuando se monta el componente
   useEffect(() => {
@@ -302,6 +321,8 @@ const AnalyticsPage = () => {
         setSelectedProvider('');
         setSelectedChannel('');
         setExpandedProvider('');
+        setSelectedMonth(''); // Resetear filtro de mes
+        setShowMonthFilter(false); // Cerrar dropdown
         setIsChangingDataset(false);
       }, 100); // Pausa más corta para una transición más rápida
     }
@@ -311,9 +332,27 @@ const AnalyticsPage = () => {
   const currentHeaders = selectedDataset === 'solucions' 
     ? supabaseData.solucions.headers 
     : supabaseData.menjar.headers;
-  const currentData = selectedDataset === 'solucions' 
+  
+  // Datos base sin filtrar
+  const baseData = selectedDataset === 'solucions' 
     ? supabaseData.solucions.data 
     : supabaseData.menjar.data;
+  
+  // Datos para la vista General (sin filtro de mes)
+  const generalData = useMemo(() => {
+    return baseData;
+  }, [baseData]);
+  
+  // Datos para la vista Sergi (con filtro de mes si está seleccionado)
+  const sergiData = useMemo(() => {
+    if (!selectedMonth) return baseData;
+    return filterDataByMonth(baseData, selectedMonth);
+  }, [baseData, selectedMonth]);
+  
+  // Datos para la vista Bruno (sin filtro de mes)
+  const brunoData = useMemo(() => {
+    return baseData;
+  }, [baseData]);
 
   // Función para manejar el ordenamiento
   const handleSort = (key) => {
@@ -393,10 +432,10 @@ const AnalyticsPage = () => {
         case 'date':
           aValue = a[columnIndices.date];
           bValue = b[columnIndices.date];
-          // Convertir fechas de Excel
+          // Convertir fechas usando parseSpanishDate para ordenamiento correcto
           if (aValue && bValue) {
-            aValue = new Date(excelDateToString(aValue));
-            bValue = new Date(excelDateToString(bValue));
+            aValue = parseSpanishDate(aValue);
+            bValue = parseSpanishDate(bValue);
           }
           break;
         case 'invoiceNumber':
@@ -496,10 +535,10 @@ const AnalyticsPage = () => {
         case 'date':
           aValue = a[columnIndices.date];
           bValue = b[columnIndices.date];
-          // Convertir fechas de Excel
+          // Convertir fechas usando parseSpanishDate para ordenamiento correcto
           if (aValue && bValue) {
-            aValue = new Date(excelDateToString(aValue));
-            bValue = new Date(excelDateToString(bValue));
+            aValue = parseSpanishDate(aValue);
+            bValue = parseSpanishDate(bValue);
           }
           break;
         case 'invoiceNumber':
@@ -548,20 +587,20 @@ const AnalyticsPage = () => {
 
   // Extraer proveedores únicos
   const uniqueProviders = useMemo(() => {
-    if (!columnIndices.provider || currentData.length === 0) return [];
+    if (!columnIndices.provider || generalData.length === 0) return [];
     const providers = new Set();
-    currentData.forEach(row => {
+    generalData.forEach(row => {
       if (row[columnIndices.provider]) providers.add(row[columnIndices.provider]);
     });
     return Array.from(providers).sort();
-  }, [currentData, columnIndices.provider]);
+  }, [generalData, columnIndices.provider]);
 
   // Calcular estadísticas por proveedor
   const providerStats = useMemo(() => {
     if (!columnIndices.provider || !columnIndices.total) return [];
     
     const stats = {};
-    currentData.forEach(row => {
+    brunoData.forEach(row => {
       const provider = row[columnIndices.provider];
       const total = parseFloat(row[columnIndices.total]) || 0;
       const pending = columnIndices.pending ? (parseFloat(row[columnIndices.pending]) || 0) : 0;
@@ -592,7 +631,7 @@ const AnalyticsPage = () => {
       provider,
       ...data
     })).sort((a, b) => b.totalAmount - a.totalAmount);
-  }, [currentData, columnIndices]);
+  }, [brunoData, columnIndices]);
 
   // Calcular totales por canal según el dataset
   const channelStats = useMemo(() => {
@@ -617,7 +656,7 @@ const AnalyticsPage = () => {
       return {};
     }
     
-    currentData.forEach(row => {
+    sergiData.forEach(row => {
       const description = (row[columnIndices.description] || '').toLowerCase();
       const account = (row[columnIndices.account] || '').toLowerCase();
       const total = columnIndices.total ? (parseFloat(row[columnIndices.total]) || 0) : 0;
@@ -648,13 +687,13 @@ const AnalyticsPage = () => {
     });
     
     return channels;
-  }, [currentData, columnIndices, selectedDataset]);
+  }, [sergiData, columnIndices, selectedDataset]);
 
   // Filtrar y ordenar datos según vista seleccionada
   const filteredData = useMemo(() => {
-    let data = currentData;
+    let data = generalData;
     if (selectedProvider && columnIndices.provider) {
-      data = currentData.filter(row => row[columnIndices.provider] === selectedProvider);
+      data = generalData.filter(row => row[columnIndices.provider] === selectedProvider);
     }
     
     // Aplicar ordenamiento si hay configuración
@@ -663,13 +702,13 @@ const AnalyticsPage = () => {
     }
     
     return data;
-  }, [currentData, selectedProvider, columnIndices.provider, sortConfig]);
+  }, [generalData, selectedProvider, columnIndices.provider, sortConfig]);
 
   // Filtrar datos por canal seleccionado
   const channelFilteredData = useMemo(() => {
     if (!selectedChannel || !columnIndices.description || !columnIndices.account) return [];
     
-    return currentData.filter(row => {
+    return sergiData.filter(row => {
       const description = (row[columnIndices.description] || '').toLowerCase();
       const account = (row[columnIndices.account] || '').toLowerCase();
       
@@ -706,7 +745,7 @@ const AnalyticsPage = () => {
       }
       return false;
     });
-  }, [currentData, selectedChannel, columnIndices, selectedDataset]);
+  }, [sergiData, selectedChannel, columnIndices, selectedDataset]);
 
   // Columnas disponibles para selección
   const availableColumns = [
@@ -738,15 +777,18 @@ const AnalyticsPage = () => {
     { id: 'bruno', name: 'Vista Bruno', description: 'Análisis de deudas por proveedor' }
   ];
 
-  // Función para convertir número de serie Excel a fecha dd/MM/yyyy
-  function excelDateToString(excelDate) {
-    if (typeof excelDate === 'number' && !isNaN(excelDate)) {
-      const utc_days = Math.floor(excelDate - 25569);
+  // Función mejorada para convertir fechas a formato legible
+  function formatDate(dateValue) {
+    if (!dateValue) return '-';
+    
+    // Si es un número (Excel date)
+    if (typeof dateValue === 'number' && !isNaN(dateValue)) {
+      const utc_days = Math.floor(dateValue - 25569);
       const utc_value = utc_days * 86400;
       const date_info = new Date(utc_value * 1000);
       
-      if (excelDate % 1 !== 0) {
-        const totalSeconds = Math.round(86400 * (excelDate % 1));
+      if (dateValue % 1 !== 0) {
+        const totalSeconds = Math.round(86400 * (dateValue % 1));
         const hours = Math.floor(totalSeconds / 3600);
         const minutes = Math.floor((totalSeconds % 3600) / 60);
         const seconds = totalSeconds % 60;
@@ -756,11 +798,114 @@ const AnalyticsPage = () => {
       return date_info.toLocaleDateString('es-ES');
     }
     
-    if (typeof excelDate === 'string' && /^\d+(\.\d+)?$/.test(excelDate)) {
-      return excelDateToString(Number(excelDate));
+    // Si es un string que contiene formato ISO
+    if (typeof dateValue === 'string') {
+      // Si es formato ISO (2025-07-13T22:00:00.000Z)
+      if (dateValue.includes('T') && dateValue.includes('Z')) {
+        const date = new Date(dateValue);
+        return date.toLocaleDateString('es-ES');
+      }
+      
+      // Si es un número en string
+      if (/^\d+(\.\d+)?$/.test(dateValue)) {
+        return formatDate(Number(dateValue));
+      }
+      
+      // Si ya es una fecha en formato legible (DD/MM/YYYY)
+      if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(dateValue)) {
+        return dateValue; // Ya está en formato español
+      }
+      
+      // Si es una fecha en formato YYYY-MM-DD
+      if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(dateValue)) {
+        const [year, month, day] = dateValue.split('-');
+        return `${day}/${month}/${year}`;
+      }
+      
+      // Si ya es una fecha en formato legible
+      return dateValue;
     }
     
-    return excelDate;
+    // Si es un objeto Date
+    if (dateValue instanceof Date) {
+      return dateValue.toLocaleDateString('es-ES');
+    }
+    
+    return dateValue;
+  }
+
+  // Función para parsear fecha en formato español (DD/MM/YYYY)
+  function parseSpanishDate(dateString) {
+    if (!dateString) return null;
+    
+    // Si es formato ISO
+    if (dateString.includes('T') && dateString.includes('Z')) {
+      return new Date(dateString);
+    }
+    
+    // Si es un número (Excel date)
+    if (typeof dateString === 'number' || /^\d+(\.\d+)?$/.test(dateString)) {
+      const numValue = typeof dateString === 'number' ? dateString : Number(dateString);
+      const utc_days = Math.floor(numValue - 25569);
+      const utc_value = utc_days * 86400;
+      return new Date(utc_value * 1000);
+    }
+    
+    // Si es formato español DD/MM/YYYY
+    if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(dateString)) {
+      const [day, month, year] = dateString.split('/');
+      return new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+    }
+    
+    // Si es formato YYYY-MM-DD
+    if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(dateString)) {
+      return new Date(dateString);
+    }
+    
+    return null;
+  }
+
+  // Función para obtener los meses disponibles en los datos
+  function getAvailableMonths(data) {
+    const months = new Set();
+    
+    data.forEach(row => {
+      const dateValue = row[columnIndices.date]; // Usar el índice correcto de fecha
+      if (dateValue) {
+        const date = parseSpanishDate(dateValue);
+        if (date && !isNaN(date.getTime())) {
+          const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+          months.add(monthKey);
+        }
+      }
+    });
+    
+    return Array.from(months).sort().reverse();
+  }
+
+  // Función para filtrar datos por mes
+  function filterDataByMonth(data, monthKey) {
+    if (!monthKey) return data;
+    
+    return data.filter(row => {
+      const dateValue = row[0]; // Asumiendo que la primera columna es la fecha
+      if (!dateValue) return false;
+      
+      const date = parseSpanishDate(dateValue);
+      if (!date || isNaN(date.getTime())) return false;
+      
+      const rowMonthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      return rowMonthKey === monthKey;
+    });
+  }
+
+  // Función para obtener el nombre del mes
+  function getMonthName(monthKey) {
+    if (!monthKey) return 'Todos los meses';
+    
+    const [year, month] = monthKey.split('-');
+    const date = new Date(parseInt(year), parseInt(month) - 1);
+    return date.toLocaleDateString('es-ES', { year: 'numeric', month: 'long' });
   }
 
   // --- Unificar lógica de filtrado de facturas por canal ---
@@ -893,22 +1038,22 @@ const AnalyticsPage = () => {
   // Calcular total facturado y total a pagar (solo pendientes o vencidas)
   const totalFacturado = useMemo(() => {
     if (!columnIndices.total) return 0;
-    return currentData.reduce((sum, row) => {
+    return generalData.reduce((sum, row) => {
       const total = parseFloat(row[columnIndices.total]) || 0;
       return sum + total;
     }, 0);
-  }, [currentData, columnIndices]);
+  }, [generalData, columnIndices]);
 
   const totalAPagar = useMemo(() => {
     if (!columnIndices.total || columnIndices.estat === undefined) return 0;
-    return currentData.reduce((sum, row) => {
+    return generalData.reduce((sum, row) => {
       if (isPending(row, columnIndices)) {
         const total = parseFloat(row[columnIndices.total]) || 0;
         return sum + total;
       }
       return sum;
     }, 0);
-  }, [currentData, columnIndices]);
+  }, [generalData, columnIndices]);
 
   return (
     <motion.div
@@ -1340,7 +1485,7 @@ const AnalyticsPage = () => {
                                 color: colors.text 
                               }}>
                                 {col.key === 'date'
-                                  ? (col.index !== undefined && row[col.index] ? excelDateToString(row[col.index]) : '')
+                                  ? (col.index !== undefined && row[col.index] ? formatDate(row[col.index]) : '')
                                   : col.key === 'total' || col.key === 'pending' || col.key === 'subtotal'
                                     ? (col.index !== undefined && row[col.index] ? formatCurrency(row[col.index]) : '-')
                                     : (col.index !== undefined ? row[col.index] : '')}
@@ -1365,6 +1510,120 @@ const AnalyticsPage = () => {
                 >
                   Análisis por Canales
                 </motion.h3>
+
+                {/* Filtro por Meses - Solo en vista Sergi */}
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.3, delay: 0.1 }}
+                  style={{
+                    marginBottom: '24px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '16px',
+                    flexWrap: 'wrap',
+                    position: 'relative'
+                  }}
+                >
+                  <div 
+                    data-month-filter
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      padding: '8px 16px',
+                      background: colors.card,
+                      borderRadius: '8px',
+                      border: `1px solid ${colors.border}`,
+                      cursor: 'pointer',
+                      transition: 'all 0.2s ease',
+                      userSelect: 'none'
+                    }}
+                    onClick={() => setShowMonthFilter(!showMonthFilter)}
+                  >
+                    <Filter size={16} color={colors.text} />
+                    <span style={{ color: colors.text, fontSize: '14px', fontWeight: '500' }}>
+                      {selectedMonth ? getMonthName(selectedMonth) : 'Todos los meses'}
+                    </span>
+                    {selectedMonth && (
+                      <span style={{
+                        background: colors.primary + '22',
+                        color: colors.primary,
+                        fontSize: '11px',
+                        padding: '2px 6px',
+                        borderRadius: '4px',
+                        fontWeight: '500'
+                      }}>
+                        Filtrado
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Dropdown de meses */}
+                  <AnimatePresence>
+                    {showMonthFilter && (
+                      <motion.div
+                        data-month-filter
+                        initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: -10, scale: 0.95 }}
+                        transition={{ duration: 0.2 }}
+                        style={{
+                          position: 'absolute',
+                          top: '100%',
+                          left: 0,
+                          background: colors.card,
+                          borderRadius: '8px',
+                          border: `1px solid ${colors.border}`,
+                          boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                          zIndex: 1000,
+                          minWidth: '200px',
+                          maxHeight: '300px',
+                          overflowY: 'auto'
+                        }}
+                      >
+                        <div
+                          style={{
+                            padding: '8px 12px',
+                            cursor: 'pointer',
+                            transition: 'background-color 0.2s ease',
+                            borderBottom: `1px solid ${colors.border}`,
+                            background: !selectedMonth ? colors.hover : 'transparent',
+                            color: colors.text,
+                            fontSize: '14px',
+                            fontWeight: '500'
+                          }}
+                          onClick={() => {
+                            setSelectedMonth('');
+                            setShowMonthFilter(false);
+                          }}
+                        >
+                          Todos los meses
+                        </div>
+                        {getAvailableMonths(baseData).map(monthKey => (
+                          <div
+                            key={monthKey}
+                            style={{
+                              padding: '8px 12px',
+                              cursor: 'pointer',
+                              transition: 'background-color 0.2s ease',
+                              borderBottom: `1px solid ${colors.border}`,
+                              background: selectedMonth === monthKey ? colors.hover : 'transparent',
+                              color: colors.text,
+                              fontSize: '14px'
+                            }}
+                            onClick={() => {
+                              setSelectedMonth(monthKey);
+                              setShowMonthFilter(false);
+                            }}
+                          >
+                            {getMonthName(monthKey)}
+                          </div>
+                        ))}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </motion.div>
                 
                 <div style={{
                   fontSize: '16px',
@@ -1387,7 +1646,7 @@ const AnalyticsPage = () => {
                 >
                   {Object.entries(channelStats).map(([channel, stats]) => {
                     const isSelected = selectedChannel === channel;
-                    const channelRows = getChannelRows(channel, currentData, columnIndices);
+                    const channelRows = getChannelRows(channel, sergiData, columnIndices);
                     // Fondo especial para modo claro
                     const isLight = colors.background === '#fafafa' || colors.background === '#fff' || colors.background === '#ffffff';
                     const cardBg = isLight ? '#F7F7F7' : '#2A2A2A';
@@ -1528,7 +1787,7 @@ const AnalyticsPage = () => {
                                 transition: 'background-color 0.2s ease'
                               }}>
                                 <td style={{ borderBottom: `1px solid ${colors.border}`, padding: '12px 8px', color: colors.text }}>
-                                  {row[columnIndices.date] ? excelDateToString(row[columnIndices.date]) : '-'}
+                                  {row[columnIndices.date] ? formatDate(row[columnIndices.date]) : '-'}
                                 </td>
                                 <td style={{ borderBottom: `1px solid ${colors.border}`, padding: '12px 8px', color: colors.text }}>
                                   {row[columnIndices.invoiceNumber] || '-'}
@@ -1579,7 +1838,12 @@ const AnalyticsPage = () => {
                           color: colors.success,
                           fontWeight: '500'
                         }}>
-                          {currentData.length} facturas encontradas
+                          {sergiData.length} facturas encontradas
+                          {selectedMonth && baseData.length !== sergiData.length && (
+                            <span style={{ color: colors.primary, fontWeight: '600' }}>
+                              {' '}(filtradas de {baseData.length})
+                            </span>
+                          )}
                         </span>
                       </div>
                       <div style={{ 
@@ -1622,7 +1886,7 @@ const AnalyticsPage = () => {
                           </thead>
                           <tbody>
                             {(() => {
-                              const groupedData = currentData.reduce((acc, row) => {
+                              const groupedData = sergiData.reduce((acc, row) => {
                                 const description = row[columnIndices.description] || 'Sin descripción';
                                 const account = row[columnIndices.account] || 'Sin cuenta';
                                 const total = columnIndices.total ? (parseFloat(row[columnIndices.total]) || 0) : 0;
@@ -1643,9 +1907,18 @@ const AnalyticsPage = () => {
                                 // Usar descripción como clave, pero mostrar cuenta si la descripción está vacía
                                 const displayKey = description === 'Sin descripción' ? account : description;
                                 
-                                if (!acc[displayKey]) acc[displayKey] = { total: 0, count: 0, channel, description, account };
+                                if (!acc[displayKey]) {
+                                  acc[displayKey] = { 
+                                    total: 0, 
+                                    count: 0, 
+                                    channel, 
+                                    description, 
+                                    account
+                                  };
+                                }
                                 acc[displayKey].total += total;
                                 acc[displayKey].count += 1;
+                                
                                 return acc;
                               }, {});
                               
@@ -1906,7 +2179,7 @@ const AnalyticsPage = () => {
                                                     color: colors.text,
                                                     fontSize: '12px'
                                                   }}>
-                                                    {invoice[columnIndices.date] ? excelDateToString(invoice[columnIndices.date]) : '-'}
+                                                    {invoice[columnIndices.date] ? formatDate(invoice[columnIndices.date]) : '-'}
                                                   </td>
                                                   <td style={{ 
                                                     borderBottom: `1px solid ${colors.border}`, 
