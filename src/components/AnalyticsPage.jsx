@@ -6,12 +6,39 @@ import { useCurrency } from './CurrencyContext';
 import { useAuth } from './AuthContext';
 import { supabase } from '../config/supabase';
 import holdedApi from '../services/holdedApi';
-import { Calendar, Filter } from 'lucide-react';
+import { Calendar, Filter, Upload, FileText, Check, X, ChevronDown, ChevronRight } from 'lucide-react';
+import * as XLSX from 'xlsx';
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  LineElement,
+  PointElement,
+  Title,
+  Tooltip,
+  Legend,
+  Filler
+} from 'chart.js';
+import { Bar, Line } from 'react-chartjs-2';
+
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  LineElement,
+  PointElement,
+  Title,
+  Tooltip,
+  Legend,
+  Filler
+);
 
 const AnalyticsPage = () => {
   const { 
     solucionsHeaders, solucionsData, 
     menjarHeaders, menjarData,
+    idoniHeaders, idoniData,
     shouldReloadHolded,
     setShouldReloadHolded,
     needsUpdate,
@@ -24,7 +51,8 @@ const AnalyticsPage = () => {
   // Estados para datos desde Supabase
   const [supabaseData, setSupabaseData] = useState({
     solucions: { headers: [], data: [], loading: false },
-    menjar: { headers: [], data: [], loading: false }
+    menjar: { headers: [], data: [], loading: false },
+    idoni: { headers: [], data: [], loading: false }
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -44,7 +72,21 @@ const AnalyticsPage = () => {
   const [selectedMonth, setSelectedMonth] = useState('');
   const [showMonthFilter, setShowMonthFilter] = useState(false);
   
+  // Estados para carga de archivos Excel de IDONI
+  const [uploadingIdoni, setUploadingIdoni] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [showAlert, setShowAlert] = useState(false);
+  const [alertMessage, setAlertMessage] = useState('');
+  const [alertType, setAlertType] = useState('success');
+  const [uploadType, setUploadType] = useState(''); // 'diarias' o 'horas'
+  
+  // Estados para tabla jerárquica de IDONI
+  const [expandedDays, setExpandedDays] = useState(new Set());
+  const [idoniGroupedData, setIdoniGroupedData] = useState([]);
+  
   const tableRef = useRef(null);
+  const idoniDiariasFileInputRef = useRef(null);
+  const idoniHorasFileInputRef = useRef(null);
 
   // Cargar datos desde Holded al montar el componente
   useEffect(() => {
@@ -120,6 +162,11 @@ const AnalyticsPage = () => {
           headers: processedMenjar.headers,
           data: enrichedMenjarData,
           loading: false
+        },
+        idoni: {
+          headers: [],
+          data: [],
+          loading: false
         }
       });
 
@@ -129,6 +176,790 @@ const AnalyticsPage = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Función para cargar datos de IDONI desde Supabase
+  const loadIdoniData = async () => {
+    try {
+      setSupabaseData(prev => ({
+        ...prev,
+        idoni: { ...prev.idoni, loading: true }
+      }));
+
+      // Cargar datos de ventas diarias
+      const { data: ventasDiarias, error: errorDiarias } = await supabase
+        .from('idoni_ventas_diarias')
+        .select('*')
+        .order('data', { ascending: false });
+
+      if (errorDiarias) {
+        console.error('Error cargando ventas diarias de IDONI:', errorDiarias);
+        throw errorDiarias;
+      }
+
+      // Cargar datos de ventas por horas
+      const { data: ventasHoras, error: errorHoras } = await supabase
+        .from('idoni_ventas_horas')
+        .select('*')
+        .order('data', { ascending: false });
+
+      if (errorHoras) {
+        console.error('Error cargando ventas por horas de IDONI:', errorHoras);
+        throw errorHoras;
+      }
+
+      // Procesar datos de IDONI
+      const processedIdoniData = processIdoniData(ventasDiarias, ventasHoras);
+
+      // Procesar datos agrupados por día
+      const groupedData = processIdoniGroupedData(ventasDiarias);
+
+      setSupabaseData(prev => ({
+        ...prev,
+        idoni: {
+          headers: processedIdoniData.headers,
+          data: processedIdoniData.data,
+          loading: false
+        }
+      }));
+
+      setIdoniGroupedData(groupedData);
+
+    } catch (error) {
+      console.error('Error cargando datos de IDONI:', error);
+      setSupabaseData(prev => ({
+        ...prev,
+        idoni: { ...prev.idoni, loading: false }
+      }));
+    }
+  };
+
+  // Función para procesar datos de IDONI
+  const processIdoniData = (ventasDiarias, ventasHoras) => {
+    // Definir headers para IDONI
+    const headers = [
+      'Fecha',
+      'Día de la semana',
+      'C.Ven',
+      'Tienda',
+      'Ventas (€)',
+      'Tickets',
+      'Media por ticket',
+      'Kilos',
+      'Unidades'
+    ];
+
+    // Procesar datos de ventas diarias
+    const processedData = ventasDiarias.map(venta => [
+      venta.data,
+      venta.dia_setmana,
+      venta.c_ven, // Añadir el campo c_ven para poder filtrar
+      venta.nom_botiga,
+      venta.import,
+      venta.tiquets,
+      venta.mitja_tiq,
+      venta.kgs,
+      venta.unit
+    ]);
+
+    return { headers, data: processedData };
+  };
+
+  // Función para filtrar datos de IDONI excluyendo totales
+  const getFilteredIdoniData = (data) => {
+    if (selectedDataset !== 'idoni') return data;
+    
+    // Filtrar por C.Ven = 0 (totales), pero incluir la fila problemática específica
+    const filtered = data.filter(row => {
+      // Si C.Ven no es 0, incluir
+      if (row[2] !== 0) return true;
+      
+      // Si C.Ven es 0, verificar si es la fila problemática (17/5/2025, 468.70€, 1 ticket)
+      if (row[0] === '2025-05-17' && parseFloat(row[4]) === 468.70 && parseInt(row[5]) === 1) {
+        return true; // Incluir esta fila específica
+      }
+      
+      return false; // Excluir otros totales
+    });
+    
+    return filtered;
+  };
+
+  // Función para procesar datos agrupados por día
+  const processIdoniGroupedData = (ventasDiarias) => {
+    const groupedByDate = {};
+
+    // Agrupar datos por fecha
+    ventasDiarias.forEach(venta => {
+      const fecha = venta.data;
+      if (!groupedByDate[fecha]) {
+        groupedByDate[fecha] = {
+          fecha: venta.data,
+          dia: venta.dia_setmana,
+          tienda: venta.nom_botiga,
+          ventas: [],
+          totales: {
+            import: 0,
+            tiquets: 0,
+            kgs: 0,
+            unit: 0,
+            mitja_tiq: 0
+          }
+        };
+      }
+
+      // Si es un registro individual (no TOTAL), añadir a ventas y sumar a totales
+      if (venta.c_ven !== 0 || (venta.data === '2025-05-17' && venta.import === 468.70 && venta.tiquets === 1)) {
+        groupedByDate[fecha].ventas.push({
+          c_ven: venta.c_ven,
+          import: venta.import,
+          tiquets: venta.tiquets,
+          kgs: venta.kgs,
+          unit: venta.unit,
+          mitja_tiq: venta.mitja_tiq
+        });
+
+        // Sumar a los totales
+        groupedByDate[fecha].totales.import += venta.import || 0;
+        groupedByDate[fecha].totales.tiquets += venta.tiquets || 0;
+        groupedByDate[fecha].totales.kgs += venta.kgs || 0;
+        groupedByDate[fecha].totales.unit += venta.unit || 0;
+      }
+    });
+
+    // Calcular media por ticket para cada día
+    Object.values(groupedByDate).forEach(dia => {
+      if (dia.totales.tiquets > 0) {
+        dia.totales.mitja_tiq = dia.totales.import / dia.totales.tiquets;
+      }
+    });
+
+    // Convertir a array y ordenar por fecha (más reciente primero)
+    return Object.values(groupedByDate).sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
+  };
+
+  // Función para mostrar alertas
+  const showAlertMessage = (message, type = 'success') => {
+    setAlertMessage(message);
+    setAlertType(type);
+    setShowAlert(true);
+    setTimeout(() => setShowAlert(false), 5000);
+  };
+
+  // Función para procesar archivo Excel de IDONI
+  const processIdoniExcel = async (file, type) => {
+    setUploadingIdoni(true);
+    setUploadProgress(0);
+    setUploadType(type);
+
+    try {
+      // Paso 1: Procesar el archivo Excel
+      setUploadProgress(20);
+      const processedData = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          try {
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+            const sheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[sheetName];
+            const json = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+            
+            if (!json || json.length === 0) {
+              throw new Error('El archivo Excel está vacío o no contiene datos válidos');
+            }
+            
+            // Encontrar la fila de headers según el tipo
+            const bestHeaderIdx = type === 'diarias' ? 
+              findIdoniDiariasHeaderRow(json) : 
+              findIdoniHorasHeaderRow(json);
+            
+            if (bestHeaderIdx === -1 || bestHeaderIdx >= json.length) {
+              throw new Error(`No se encontraron headers válidos para ${type === 'diarias' ? 'ventas diarias' : 'ventas por horas'}`);
+            }
+            
+            const headers = json[bestHeaderIdx] || [];
+            
+            // Validar que los headers no estén vacíos
+            if (!headers || headers.length === 0) {
+              throw new Error('Los headers del archivo están vacíos');
+            }
+            
+            const rawRows = json.slice(bestHeaderIdx + 1);
+            const filteredRows = rawRows.filter(row => 
+              type === 'diarias' ? 
+                isValidIdoniDiariasRow(row, headers) : 
+                isValidIdoniHorasRow(row, headers)
+            );
+            
+            if (filteredRows.length === 0) {
+              throw new Error('No se encontraron filas válidas en el archivo');
+            }
+            
+            console.log(`Procesados ${filteredRows.length} filas válidas de ${rawRows.length} totales`);
+            resolve({ headers, data: filteredRows });
+          } catch (error) {
+            reject(error);
+          }
+        };
+        reader.onerror = () => reject(new Error('Error al leer el archivo'));
+        reader.readAsArrayBuffer(file);
+      });
+
+      setUploadProgress(40);
+
+      // Paso 2: Procesar y subir datos a Supabase
+      if (type === 'diarias') {
+        await uploadIdoniDiariasToSupabase(processedData.data);
+      } else {
+        await uploadIdoniHorasToSupabase(processedData.data);
+      }
+      setUploadProgress(80);
+
+      // Paso 3: Recargar datos
+      await loadIdoniData();
+      setUploadProgress(100);
+
+      const typeName = type === 'diarias' ? 'ventas diarias' : 'ventas por horas';
+      showAlertMessage(`Archivo de IDONI ${typeName} procesado correctamente. Se importaron ${processedData.data.length} filas de datos.`, 'success');
+
+    } catch (error) {
+      showAlertMessage(`Error al procesar el archivo: ${error.message}`, 'error');
+    } finally {
+      setUploadingIdoni(false);
+      setUploadProgress(0);
+      setUploadType('');
+    }
+  };
+
+  // Función para encontrar la fila de headers en archivo Excel de ventas diarias de IDONI
+  const findIdoniDiariasHeaderRow = (rows) => {
+    const expectedHeaders = ['data', 'dia_setmana', 'c_bot', 'nom_botiga', 'c_ven', 'kgs', 'unit', 'import', 'tiquets', 'mitja_tiq'];
+    
+    let bestIdx = -1;
+    let bestScore = 0;
+    
+    for (let i = 0; i < Math.min(10, rows.length); i++) {
+      const row = rows[i] || [];
+      let score = 0;
+      
+      // Buscar headers empezando desde el índice 2 (saltando las 2 columnas vacías)
+      for (const expected of expectedHeaders) {
+        if (row.slice(2).some(cell => 
+          typeof cell === 'string' && 
+          cell.trim().toLowerCase().includes(expected.toLowerCase())
+        )) {
+          score++;
+        }
+      }
+      
+      if (score > bestScore) {
+        bestScore = score;
+        bestIdx = i;
+      }
+    }
+    
+    // Solo retornar si encontramos al menos 3 headers esperados
+    return bestScore >= 3 ? bestIdx : -1;
+  };
+
+  // Función para encontrar la fila de headers en archivo Excel de ventas por horas de IDONI
+  const findIdoniHorasHeaderRow = (rows) => {
+    const expectedHeaders = ['data', 'num_tiquet', 'hora', 'c_bot', 'nom_botiga', 'c_cli', 'c_ven', 'total', 'balanca', 'seccio', 'oper', 'albaran', 'forma_pag', 'id_bd', 'efectiu', 'targeta', 'credit', 'xec', 'a_compte', 'data_cobrament', 'web', 'delivery'];
+    
+    let bestIdx = -1;
+    let bestScore = 0;
+    
+    for (let i = 0; i < Math.min(10, rows.length); i++) {
+      const row = rows[i] || [];
+      let score = 0;
+      
+      for (const expected of expectedHeaders) {
+        if (row.some(cell => 
+          typeof cell === 'string' && 
+          cell.trim().toLowerCase().includes(expected.toLowerCase())
+        )) {
+          score++;
+        }
+      }
+      
+      if (score > bestScore) {
+        bestScore = score;
+        bestIdx = i;
+      }
+    }
+    
+    // Solo retornar si encontramos al menos 5 headers esperados
+    return bestScore >= 5 ? bestIdx : -1;
+  };
+
+  // Función para validar filas de datos de ventas diarias de IDONI
+  const isValidIdoniDiariasRow = (row, headers) => {
+    if (!row || row.length === 0) return false;
+    
+    // Buscar índices de campos clave con validación de tipo
+    const idxData = headers.findIndex(h => 
+      typeof h === 'string' && h.toLowerCase().includes('data')
+    );
+    const idxImport = headers.findIndex(h => 
+      typeof h === 'string' && h.toLowerCase().includes('import')
+    );
+    const idxBotiga = headers.findIndex(h => 
+      typeof h === 'string' && h.toLowerCase().includes('botiga')
+    );
+    
+    // Si todos los campos clave están vacíos, es inválida
+    // Nota: Los datos reales empiezan en el índice 2 (después de las 2 columnas vacías)
+    const campos = [idxData, idxImport, idxBotiga].map(idx => 
+      idx >= 0 ? (row[idx + 2] || '').toString().trim() : ''
+    );
+    
+    const vacios = campos.every(val => val === '' || val === '-' || val === '--' || val === '+');
+    if (vacios) return false;
+    
+    return true;
+  };
+
+  // Función para validar filas de datos de ventas por horas de IDONI
+  const isValidIdoniHorasRow = (row, headers) => {
+    if (!row || row.length === 0) return false;
+    
+    // Buscar índices de campos clave con validación de tipo
+    const idxData = headers.findIndex(h => 
+      typeof h === 'string' && h.toLowerCase().includes('data')
+    );
+    const idxTotal = headers.findIndex(h => 
+      typeof h === 'string' && h.toLowerCase().includes('total')
+    );
+    const idxTiquet = headers.findIndex(h => 
+      typeof h === 'string' && h.toLowerCase().includes('tiquet')
+    );
+    
+    // Si todos los campos clave están vacíos, es inválida
+    const campos = [idxData, idxTotal, idxTiquet].map(idx => 
+      idx >= 0 ? (row[idx] || '').toString().trim() : ''
+    );
+    
+    const vacios = campos.every(val => val === '' || val === '-' || val === '--' || val === '+');
+    if (vacios) return false;
+    
+    return true;
+  };
+
+  // Función para subir datos de ventas diarias de IDONI a Supabase
+  const uploadIdoniDiariasToSupabase = async (data) => {
+    try {
+      // Limpiar datos existentes completamente
+      const { error: deleteError } = await supabase
+        .from('idoni_ventas_diarias')
+        .delete()
+        .gte('id', '00000000-0000-0000-0000-000000000000'); // Eliminar todos los registros
+
+      if (deleteError) {
+        console.error('Error limpiando datos existentes de ventas diarias:', deleteError);
+        throw new Error(`Error limpiando datos existentes: ${deleteError.message}`);
+      }
+
+      console.log('Datos antiguos de ventas diarias eliminados correctamente');
+
+      // Preparar datos para inserción
+      const ventasDiarias = data.map((row, rowIndex) => {
+        const headers = ['data', 'dia_setmana', 'c_bot', 'nom_botiga', 'c_ven', 'kgs', 'unit', 'import', 'tiquets', 'mitja_tiq'];
+        const mappedData = {};
+        
+        headers.forEach((header, index) => {
+          // Saltar las 2 primeras columnas vacías (índices 0 y 1)
+          // Los datos reales empiezan en el índice 2
+          const actualIndex = index + 2;
+          const cellValue = row[actualIndex];
+          
+          // Filtrar valores no válidos
+          if (cellValue === undefined || cellValue === null || 
+              cellValue === '' || cellValue === '+' || 
+              cellValue === '-' || cellValue === '--') {
+            return; // Saltar este campo
+          }
+          
+          if (header === 'data') {
+            // Convertir fecha de Excel a formato ISO
+            if (typeof cellValue === 'number') {
+              const excelDate = cellValue;
+              const utc_days = Math.floor(excelDate - 25569);
+              const utc_value = utc_days * 86400;
+              const date = new Date(utc_value * 1000);
+              const isoDate = date.toISOString().split('T')[0];
+              mappedData[header] = isoDate;
+            } else if (typeof cellValue === 'string') {
+              // Intentar parsear fecha en formato string (DD/MM/YYYY)
+              const trimmedValue = cellValue.trim();
+              if (trimmedValue && trimmedValue !== '+' && trimmedValue !== '-') {
+                // Intentar parsear formato DD/MM/YYYY
+                const dateParts = trimmedValue.split('/');
+                if (dateParts.length === 3) {
+                  const day = parseInt(dateParts[0]);
+                  const month = parseInt(dateParts[1]);
+                  const year = parseInt(dateParts[2]);
+                  if (!isNaN(day) && !isNaN(month) && !isNaN(year)) {
+                    const date = new Date(year, month - 1, day);
+                    const isoDate = date.toISOString().split('T')[0];
+                    mappedData[header] = isoDate;
+                  } else {
+                    mappedData[header] = trimmedValue;
+                  }
+                } else {
+                  mappedData[header] = trimmedValue;
+                }
+              }
+            }
+          } else if (['import', 'kgs', 'mitja_tiq'].includes(header)) {
+            const numValue = parseFloat(cellValue);
+            if (!isNaN(numValue)) {
+              mappedData[header] = numValue;
+            } else {
+              mappedData[header] = 0;
+            }
+          } else if (['c_bot', 'c_ven', 'unit', 'tiquets'].includes(header)) {
+            const intValue = parseInt(cellValue);
+            if (!isNaN(intValue)) {
+              mappedData[header] = intValue;
+            } else {
+              mappedData[header] = 0;
+            }
+          } else {
+            // Para campos de texto, solo incluir si no está vacío
+            const strValue = String(cellValue).trim();
+            if (strValue && strValue !== '+' && strValue !== '-') {
+              mappedData[header] = strValue;
+            }
+          }
+        });
+        
+        // Validar que el campo "data" esté presente
+        if (!mappedData.data) {
+          return null; // Retornar null para filtrar esta fila
+        }
+        
+        return mappedData;
+      }).filter(row => row !== null); // Filtrar filas nulas
+
+      // Insertar datos en la tabla
+      const { error: insertError } = await supabase
+        .from('idoni_ventas_diarias')
+        .insert(ventasDiarias);
+
+      if (insertError) {
+        throw new Error(`Error insertando datos de ventas diarias: ${insertError.message}`);
+      }
+
+    } catch (error) {
+      console.error('Error subiendo datos de ventas diarias de IDONI:', error);
+      throw error;
+    }
+  };
+
+  // Función para subir datos de ventas por horas de IDONI a Supabase
+  const uploadIdoniHorasToSupabase = async (data) => {
+    try {
+      // Limpiar datos existentes completamente
+      const { error: deleteError } = await supabase
+        .from('idoni_ventas_horas')
+        .delete()
+        .gte('id', '00000000-0000-0000-0000-000000000000'); // Eliminar todos los registros
+
+      if (deleteError) {
+        console.error('Error limpiando datos existentes de ventas por horas:', deleteError);
+        throw new Error(`Error limpiando datos existentes: ${deleteError.message}`);
+      }
+
+      console.log('Datos antiguos de ventas por horas eliminados correctamente');
+
+      // Preparar datos para inserción
+      const ventasHoras = data.map(row => {
+        const headers = ['data', 'num_tiquet', 'hora', 'c_bot', 'nom_botiga', 'c_cli', 'c_ven', 'total', 'balanca', 'seccio', 'oper', 'albaran', 'forma_pag', 'id_bd', 'efectiu', 'targeta', 'credit', 'xec', 'a_compte', 'data_cobrament', 'web', 'delivery'];
+        const mappedData = {};
+        
+        headers.forEach((header, index) => {
+          const cellValue = row[index];
+          
+          // Filtrar valores no válidos
+          if (cellValue === undefined || cellValue === null || 
+              cellValue === '' || cellValue === '+' || 
+              cellValue === '-' || cellValue === '--') {
+            return; // Saltar este campo
+          }
+          
+          if (header === 'data') {
+            // Convertir fecha de Excel a formato ISO
+            if (typeof cellValue === 'number') {
+              const excelDate = cellValue;
+              const utc_days = Math.floor(excelDate - 25569);
+              const utc_value = utc_days * 86400;
+              const date = new Date(utc_value * 1000);
+              mappedData[header] = date.toISOString().split('T')[0];
+            } else if (typeof cellValue === 'string') {
+              // Intentar parsear fecha en formato string
+              const trimmedValue = cellValue.trim();
+              if (trimmedValue && trimmedValue !== '+' && trimmedValue !== '-') {
+                mappedData[header] = trimmedValue;
+              }
+            }
+          } else if (['total', 'balanca', 'efectiu', 'targeta', 'credit', 'xec', 'a_compte', 'web', 'delivery'].includes(header)) {
+            const numValue = parseFloat(cellValue);
+            if (!isNaN(numValue)) {
+              mappedData[header] = numValue;
+            } else {
+              mappedData[header] = 0;
+            }
+          } else if (['num_tiquet', 'c_bot', 'c_cli', 'c_ven'].includes(header)) {
+            const intValue = parseInt(cellValue);
+            if (!isNaN(intValue)) {
+              mappedData[header] = intValue;
+            } else {
+              mappedData[header] = 0;
+            }
+          } else if (header === 'hora') {
+            // Convertir hora de Excel a formato TIME
+            if (typeof cellValue === 'number') {
+              const totalSeconds = Math.round(86400 * (cellValue % 1));
+              const hours = Math.floor(totalSeconds / 3600);
+              const minutes = Math.floor((totalSeconds % 3600) / 60);
+              const seconds = totalSeconds % 60;
+              mappedData[header] = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+            } else if (typeof cellValue === 'string') {
+              const trimmedValue = cellValue.trim();
+              if (trimmedValue && trimmedValue !== '+' && trimmedValue !== '-') {
+                mappedData[header] = trimmedValue;
+              }
+            }
+          } else {
+            // Para campos de texto, solo incluir si no está vacío
+            const strValue = String(cellValue).trim();
+            if (strValue && strValue !== '+' && strValue !== '-') {
+              mappedData[header] = strValue;
+            }
+          }
+        });
+        
+        return mappedData;
+      });
+
+      // Insertar datos en la tabla
+      const { error: insertError } = await supabase
+        .from('idoni_ventas_horas')
+        .insert(ventasHoras);
+
+      if (insertError) {
+        throw new Error(`Error insertando datos de ventas por horas: ${insertError.message}`);
+      }
+
+    } catch (error) {
+      console.error('Error subiendo datos de ventas por horas de IDONI:', error);
+      throw error;
+    }
+  };
+
+  // Función para manejar la selección de archivo de ventas diarias de IDONI
+  const handleIdoniDiariasFileSelect = () => {
+    if (uploadingIdoni) {
+      showAlertMessage('Espera a que termine la carga actual.', 'error');
+      return;
+    }
+    idoniDiariasFileInputRef.current.click();
+  };
+
+  // Función para manejar la selección de archivo de ventas por horas de IDONI
+  const handleIdoniHorasFileSelect = () => {
+    if (uploadingIdoni) {
+      showAlertMessage('Espera a que termine la carga actual.', 'error');
+      return;
+    }
+    idoniHorasFileInputRef.current.click();
+  };
+
+  // Función para manejar el cambio de archivo de ventas diarias de IDONI
+  const handleIdoniDiariasFileChange = (e) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      if (file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' || 
+          file.type === 'application/vnd.ms-excel' ||
+          file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+        processIdoniExcel(file, 'diarias');
+      } else {
+        showAlertMessage('Por favor selecciona un archivo Excel válido (.xlsx o .xls)', 'error');
+      }
+    }
+  };
+
+  // Función para manejar el cambio de archivo de ventas por horas de IDONI
+  const handleIdoniHorasFileChange = (e) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      if (file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' || 
+          file.type === 'application/vnd.ms-excel' ||
+          file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+        processIdoniExcel(file, 'horas');
+      } else {
+        showAlertMessage('Por favor selecciona un archivo Excel válido (.xlsx o .xls)', 'error');
+      }
+    }
+  };
+
+  // Función para procesar datos para gráficos de IDONI
+  const processIdoniChartData = (data) => {
+    if (!data || data.length === 0) return { monthlyData: [], weeklyData: [] };
+
+    const monthlyData = {};
+    const weeklyData = {};
+
+    data.forEach(row => {
+      const fecha = new Date(row[0]);
+      const monthKey = `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}`;
+      const dayOfWeek = fecha.getDay(); // 0 = Domingo, 1 = Lunes, etc.
+      const importe = parseFloat(row[4]) || 0;
+      const tickets = parseInt(row[5]) || 0;
+
+      // Datos mensuales
+      if (!monthlyData[monthKey]) {
+        monthlyData[monthKey] = { ventas: 0, tickets: 0 };
+      }
+      monthlyData[monthKey].ventas += importe;
+      monthlyData[monthKey].tickets += tickets;
+
+      // Datos por día de la semana por mes
+      if (!weeklyData[monthKey]) {
+        weeklyData[monthKey] = {
+          'Domingo': { ventas: 0, tickets: 0 },
+          'Lunes': { ventas: 0, tickets: 0 },
+          'Martes': { ventas: 0, tickets: 0 },
+          'Miércoles': { ventas: 0, tickets: 0 },
+          'Jueves': { ventas: 0, tickets: 0 },
+          'Viernes': { ventas: 0, tickets: 0 },
+          'Sábado': { ventas: 0, tickets: 0 }
+        };
+      }
+
+      const diasSemana = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+      const diaSemana = diasSemana[dayOfWeek];
+      
+      weeklyData[monthKey][diaSemana].ventas += importe;
+      weeklyData[monthKey][diaSemana].tickets += tickets;
+    });
+
+    return { monthlyData, weeklyData };
+  };
+
+  // Función para calcular análisis avanzados de IDONI
+  const calculateIdoniAnalytics = (monthlyData, weeklyData) => {
+    if (!monthlyData || !weeklyData || Object.keys(monthlyData).length === 0) {
+      return null;
+    }
+
+    // 1. Análisis por días de la semana (promedios)
+    const diasSemana = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+    const promediosPorDia = {};
+    const totalesPorDia = {};
+
+    diasSemana.forEach(dia => {
+      let totalVentas = 0;
+      let totalMeses = 0;
+      let totalTickets = 0;
+
+      Object.values(weeklyData).forEach(mesData => {
+        if (mesData[dia].ventas > 0) {
+          totalVentas += mesData[dia].ventas;
+          totalTickets += mesData[dia].tickets;
+          totalMeses++;
+        }
+      });
+
+      totalesPorDia[dia] = { ventas: totalVentas, tickets: totalTickets };
+      promediosPorDia[dia] = {
+        ventas: totalMeses > 0 ? totalVentas / totalMeses : 0,
+        tickets: totalMeses > 0 ? totalTickets / totalMeses : 0,
+        mesesConDatos: totalMeses
+      };
+    });
+
+    // 2. Mejor y peor día
+    const diasOrdenados = Object.entries(promediosPorDia)
+      .sort((a, b) => b[1].ventas - a[1].ventas);
+    
+    const mejorDia = diasOrdenados[0];
+    const peorDia = diasOrdenados[diasOrdenados.length - 1];
+
+    // 3. Análisis de tendencias mensuales
+    const mesesOrdenados = Object.entries(monthlyData)
+      .sort((a, b) => a[0].localeCompare(b[0]));
+    
+    const tendenciaMensual = mesesOrdenados.map(([mes, datos]) => ({
+      mes,
+      ventas: datos.ventas,
+      tickets: datos.tickets,
+      promedioDiario: datos.ventas / 30 // aproximado
+    }));
+
+    // 4. Cálculo de crecimiento
+    let crecimientoMensual = 0;
+    if (tendenciaMensual.length >= 2) {
+      const primerMes = tendenciaMensual[0].ventas;
+      const ultimoMes = tendenciaMensual[tendenciaMensual.length - 1].ventas;
+      crecimientoMensual = primerMes > 0 ? ((ultimoMes - primerMes) / primerMes) * 100 : 0;
+    }
+
+    // 5. Día más consistente (menor variabilidad)
+    const consistenciaPorDia = {};
+    Object.entries(weeklyData).forEach(([mes, mesData]) => {
+      diasSemana.forEach(dia => {
+        if (!consistenciaPorDia[dia]) {
+          consistenciaPorDia[dia] = [];
+        }
+        if (mesData[dia].ventas > 0) {
+          consistenciaPorDia[dia].push(mesData[dia].ventas);
+        }
+      });
+    });
+
+    // Calcular coeficiente de variación (desviación estándar / media)
+    const diaMasConsistente = Object.entries(consistenciaPorDia)
+      .filter(([dia, valores]) => valores.length > 1)
+      .map(([dia, valores]) => {
+        const media = valores.reduce((sum, val) => sum + val, 0) / valores.length;
+        const varianza = valores.reduce((sum, val) => sum + Math.pow(val - media, 2), 0) / valores.length;
+        const desviacion = Math.sqrt(varianza);
+        const coeficienteVariacion = media > 0 ? (desviacion / media) * 100 : 0;
+        return { dia, coeficienteVariacion, media };
+      })
+      .sort((a, b) => a.coeficienteVariacion - b.coeficienteVariacion)[0];
+
+    // 6. Total general
+    const totalGeneral = Object.values(monthlyData).reduce((sum, mes) => sum + mes.ventas, 0);
+    const promedioMensual = totalGeneral / Object.keys(monthlyData).length;
+
+    return {
+      promediosPorDia,
+      totalesPorDia,
+      mejorDia: { dia: mejorDia[0], ...mejorDia[1] },
+      peorDia: { dia: peorDia[0], ...peorDia[1] },
+      tendenciaMensual,
+      crecimientoMensual,
+      diaMasConsistente,
+      totalGeneral,
+      promedioMensual,
+      totalMeses: Object.keys(monthlyData).length
+    };
+  };
+
+  // Función para manejar la expansión/contracción de días en la tabla IDONI
+  const handleIdoniDayToggle = (fecha) => {
+    setExpandedDays(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(fecha)) {
+        newSet.delete(fecha);
+      } else {
+        newSet.add(fecha);
+      }
+      return newSet;
+    });
   };
 
 
@@ -315,8 +1146,14 @@ const AnalyticsPage = () => {
   const handleDatasetChange = (newDataset) => {
     if (newDataset !== selectedDataset) {
       setIsChangingDataset(true);
-      setTimeout(() => {
+      setTimeout(async () => {
         setSelectedDataset(newDataset);
+        
+        // Cargar datos específicos según el dataset seleccionado
+        if (newDataset === 'idoni') {
+          await loadIdoniData();
+        }
+        
         // Limpiar filtros al cambiar de dataset
         setSelectedProvider('');
         setSelectedChannel('');
@@ -331,12 +1168,29 @@ const AnalyticsPage = () => {
   // Obtener los datos y headers del dataset seleccionado (desde Supabase)
   const currentHeaders = selectedDataset === 'solucions' 
     ? supabaseData.solucions.headers 
-    : supabaseData.menjar.headers;
+    : selectedDataset === 'menjar'
+    ? supabaseData.menjar.headers
+    : supabaseData.idoni.headers;
   
   // Datos base sin filtrar
   const baseData = selectedDataset === 'solucions' 
     ? supabaseData.solucions.data 
-    : supabaseData.menjar.data;
+    : selectedDataset === 'menjar'
+    ? supabaseData.menjar.data
+    : supabaseData.idoni.data;
+
+  // Datos para gráficos de IDONI
+  const idoniChartData = useMemo(() => {
+    if (selectedDataset !== 'idoni') return null;
+    const filteredData = getFilteredIdoniData(baseData);
+    return processIdoniChartData(filteredData);
+  }, [selectedDataset, baseData]);
+  
+  // Análisis avanzados de IDONI
+  const idoniAnalytics = useMemo(() => {
+    if (!idoniChartData) return null;
+    return calculateIdoniAnalytics(idoniChartData.monthlyData, idoniChartData.weeklyData);
+  }, [idoniChartData]);
   
   // Datos para la vista General (sin filtro de mes)
   const generalData = useMemo(() => {
@@ -652,6 +1506,13 @@ const AnalyticsPage = () => {
         'CATERING': { total: 0, count: 0 },
         'Otros': { total: 0, count: 0 }
       };
+    } else if (selectedDataset === 'idoni') {
+      channels = {
+        'Ventas Diarias': { total: 0, count: 0 },
+        'Ventas por Hora': { total: 0, count: 0 },
+        'Análisis Mensual': { total: 0, count: 0 },
+        'Análisis por Día': { total: 0, count: 0 }
+      };
     } else {
       return {};
     }
@@ -680,6 +1541,14 @@ const AnalyticsPage = () => {
         } else if (description.includes('catering') || account.includes('catering')) {
           channel = 'CATERING';
         }
+      } else if (selectedDataset === 'idoni') {
+        // Para IDONI, usar la tienda como canal
+        const tienda = row[2] || ''; // Índice de la tienda en los datos de IDONI
+        if (tienda) {
+          channel = tienda;
+        } else {
+          channel = 'Ventas Diarias';
+        }
       }
       
       channels[channel].total += total;
@@ -706,7 +1575,17 @@ const AnalyticsPage = () => {
 
   // Filtrar datos por canal seleccionado
   const channelFilteredData = useMemo(() => {
-    if (!selectedChannel || !columnIndices.description || !columnIndices.account) return [];
+    if (!selectedChannel) return [];
+    
+    // Para IDONI, no necesitamos description y account
+    if (selectedDataset === 'idoni') {
+      return sergiData.filter(row => {
+        const tienda = row[2] || ''; // Índice de la tienda
+        return tienda === selectedChannel;
+      });
+    }
+    
+    if (!columnIndices.description || !columnIndices.account) return [];
     
     return sergiData.filter(row => {
       const description = (row[columnIndices.description] || '').toLowerCase();
@@ -769,7 +1648,9 @@ const AnalyticsPage = () => {
 
   const sergiChannelsText = selectedDataset === 'solucions'
     ? '(Estructura, Catering, IDONI)'
-    : '(Obrador, Estructura, Catering)';
+    : selectedDataset === 'menjar'
+    ? '(Obrador, Estructura, Catering)'
+    : '(Ventas Diarias, Ventas por Hora, Análisis Mensual, Análisis por Día)';
 
   const views = [
     { id: 'general', name: 'Vista General', description: 'Todas las facturas con columnas personalizables' },
@@ -911,6 +1792,12 @@ const AnalyticsPage = () => {
   // --- Unificar lógica de filtrado de facturas por canal ---
   function getChannelRows(channel, data, columnIndices) {
     return data.filter(row => {
+      // Para IDONI, usar la tienda como canal
+      if (selectedDataset === 'idoni') {
+        const tienda = row[2] || ''; // Índice de la tienda
+        return tienda === channel;
+      }
+      
       const description = (row[columnIndices.description] || '').toLowerCase();
       const account = (row[columnIndices.account] || '').toLowerCase();
       
@@ -978,6 +1865,12 @@ const AnalyticsPage = () => {
       'catering': '#4CAF50',
       'estructura': '#2196F3',
       'menjar_d_hort': '#FF6B35',
+      
+      // Canales de IDONI
+      'ventas diarias': '#FF5722',
+      'ventas por hora': '#9C27B0',
+      'análisis mensual': '#3F51B5',
+      'análisis por día': '#009688',
       
       // Canales generales
       'otros': '#9E9E9E',
@@ -1229,51 +2122,121 @@ const AnalyticsPage = () => {
               {supabaseData.menjar.data.length > 0 ? `${supabaseData.menjar.data.length} compras de Holded` : 'No hay compras cargadas'}
             </span>
           </motion.div>
+
+          <motion.div
+            whileHover={{ scale: 1.04, boxShadow: selectedDataset === 'idoni' ? `0 4px 16px 0 ${colors.primary}33` : `0 2px 8px 0 ${colors.primary}22` }}
+            whileTap={{ scale: 0.98 }}
+            onClick={() => handleDatasetChange('idoni')}
+            style={{
+              minWidth: 200,
+              flex: '1 1 200px',
+              background: colors.card,
+              borderRadius: 12,
+              boxShadow: selectedDataset === 'idoni' ? `0 4px 16px 0 ${colors.primary}33` : `0 2px 8px 0 rgba(0,0,0,0.04)`,
+              border: selectedDataset === 'idoni' ? `2.5px solid ${colors.primary}` : `1.5px solid ${colors.border}`,
+              color: selectedDataset === 'idoni' ? colors.primary : colors.text,
+              cursor: isChangingDataset ? 'not-allowed' : 'pointer',
+              padding: '22px 18px',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'flex-start',
+              justifyContent: 'center',
+              transition: 'all 0.18s',
+              fontWeight: selectedDataset === 'idoni' ? 600 : 400,
+              fontSize: 16,
+              outline: selectedDataset === 'idoni' ? `2px solid ${colors.primary}` : 'none',
+              position: 'relative',
+              opacity: isChangingDataset ? 0.6 : 1
+            }}
+          >
+            {/* Indicador de carga para IDONI */}
+            <AnimatePresence>
+              {isChangingDataset && selectedDataset === 'idoni' && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  style={{
+                    position: 'absolute',
+                    top: '50%',
+                    right: '18px',
+                    transform: 'translateY(-50%)',
+                    zIndex: 10
+                  }}
+                >
+                  <motion.div
+                    animate={{ rotate: 360 }}
+                    transition={{ duration: 0.6, repeat: Infinity, ease: 'linear' }}
+                    style={{
+                      width: '16px',
+                      height: '16px',
+                      border: `2px solid ${colors.border}`,
+                      borderTop: `2px solid ${colors.primary}`,
+                      borderRadius: '50%'
+                    }}
+                  />
+                </motion.div>
+              )}
+            </AnimatePresence>
+            
+            <span style={{ fontSize: 17, fontWeight: 600, marginBottom: 6 }}>
+              IDONI
+            </span>
+            <span style={{ 
+              fontSize: 13, 
+              color: selectedDataset === 'idoni' ? colors.primary : colors.textSecondary, 
+              marginTop: 2 
+            }}>
+              {supabaseData.idoni.data.length > 0 ? `${supabaseData.idoni.data.length} ventas registradas` : 'No hay datos de ventas'}
+            </span>
+          </motion.div>
         </div>
       </motion.div>
 
-      {/* Tarjetas de selección de vista */}
-      <div style={{
-        display: 'flex',
-        gap: '18px',
-        marginBottom: '28px',
-        flexWrap: 'wrap',
-      }}>
-        {views.map(view => {
-          const isActive = selectedView === view.id;
-          return (
-            <motion.div
-              key={view.id}
-              whileHover={{ scale: 1.04, boxShadow: isActive ? `0 4px 16px 0 ${colors.primary}33` : `0 2px 8px 0 ${colors.primary}22` }}
-              whileTap={{ scale: 0.98 }}
-              onClick={() => setSelectedView(view.id)}
-              style={{
-                minWidth: 180,
-                flex: '1 1 180px',
-                background: colors.card,
-                borderRadius: 12,
-                boxShadow: isActive ? `0 4px 16px 0 ${colors.primary}33` : `0 2px 8px 0 rgba(0,0,0,0.04)`,
-                border: isActive ? `2.5px solid ${colors.primary}` : `1.5px solid ${colors.border}`,
-                color: isActive ? colors.primary : colors.text,
-                cursor: 'pointer',
-                padding: '22px 18px',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'flex-start',
-                justifyContent: 'center',
-                transition: 'all 0.18s',
-                fontWeight: isActive ? 600 : 400,
-                fontSize: 16,
-                outline: isActive ? `2px solid ${colors.primary}` : 'none',
-                position: 'relative',
-              }}
-            >
-              <span style={{ fontSize: 17, fontWeight: 600, marginBottom: 6 }}>{view.name}</span>
-              <span style={{ fontSize: 13, color: isActive ? colors.primary : colors.textSecondary, marginTop: 2 }}>{view.description}</span>
-            </motion.div>
-          );
-        })}
-      </div>
+      {/* Tarjetas de selección de vista - Solo mostrar para Holded */}
+      {selectedDataset !== 'idoni' && (
+        <div style={{
+          display: 'flex',
+          gap: '18px',
+          marginBottom: '28px',
+          flexWrap: 'wrap',
+        }}>
+          {views.map(view => {
+            const isActive = selectedView === view.id;
+            return (
+              <motion.div
+                key={view.id}
+                whileHover={{ scale: 1.04, boxShadow: isActive ? `0 4px 16px 0 ${colors.primary}33` : `0 2px 8px 0 ${colors.primary}22` }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => setSelectedView(view.id)}
+                style={{
+                  minWidth: 180,
+                  flex: '1 1 180px',
+                  background: colors.card,
+                  borderRadius: 12,
+                  boxShadow: isActive ? `0 4px 16px 0 ${colors.primary}33` : `0 2px 8px 0 rgba(0,0,0,0.04)`,
+                  border: isActive ? `2.5px solid ${colors.primary}` : `1.5px solid ${colors.border}`,
+                  color: isActive ? colors.primary : colors.text,
+                  cursor: 'pointer',
+                  padding: '22px 18px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'flex-start',
+                  justifyContent: 'center',
+                  transition: 'all 0.18s',
+                  fontWeight: isActive ? 600 : 400,
+                  fontSize: 16,
+                  outline: isActive ? `2px solid ${colors.primary}` : 'none',
+                  position: 'relative',
+                }}
+              >
+                <span style={{ fontSize: 17, fontWeight: 600, marginBottom: 6 }}>{view.name}</span>
+                <span style={{ fontSize: 13, color: isActive ? colors.primary : colors.textSecondary, marginTop: 2 }}>{view.description}</span>
+              </motion.div>
+            );
+          })}
+        </div>
+      )}
 
       <AnimatePresence mode="wait">
         {loading ? (
@@ -1358,7 +2321,731 @@ const AnalyticsPage = () => {
             transition={{ duration: 0.2, ease: 'easeOut' }}
             style={{ color: colors.textSecondary, fontSize: 18, marginTop: 40 }}
           >
-            No hay datos importados para {selectedDataset === 'solucions' ? 'Solucions Socials' : 'Menjar d\'Hort'}. Por favor, importa un archivo Excel en la sección correspondiente.
+            No hay datos importados para {selectedDataset === 'solucions' ? 'Solucions Socials' : selectedDataset === 'menjar' ? 'Menjar d\'Hort' : 'IDONI'}. Por favor, importa un archivo Excel en la sección correspondiente.
+          </motion.div>
+        ) : selectedDataset === 'idoni' ? (
+          // Interfaz específica para IDONI
+          <motion.div
+            key="idoni-content"
+            initial={{ opacity: 0, y: 20, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -20, scale: 0.98 }}
+            transition={{ duration: 0.25, ease: 'easeOut' }}
+            style={{ display: 'flex', flexDirection: 'column', height: 'calc(100% - 80px)', gap: '24px' }}
+          >
+            {/* Descripción para IDONI */}
+            <div style={{ marginBottom: 0, color: colors.textSecondary, fontSize: 15, minHeight: 22 }}>
+              Análisis de ventas de IDONI - Datos de tienda y análisis temporal
+            </div>
+            
+            {/* Contenido específico para IDONI */}
+            <div style={{ background: colors.card, borderRadius: 8, boxShadow: '0 2px 8px rgba(0,0,0,0.04)', padding: '20px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                <h3 style={{ margin: 0, color: colors.text, fontSize: 18, fontWeight: 600, lineHeight: 1.2 }}>
+                  Análisis de Ventas IDONI
+                </h3>
+                
+                {/* Botones para cargar archivos Excel */}
+                <div style={{ display: 'flex', gap: '12px' }}>
+                  {/* Botón para ventas diarias */}
+                  <motion.button
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={handleIdoniDiariasFileSelect}
+                    disabled={uploadingIdoni}
+                    style={{
+                      background: colors.success,
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '8px',
+                      padding: '10px 16px',
+                      fontSize: '14px',
+                      fontWeight: '600',
+                      cursor: uploadingIdoni ? 'not-allowed' : 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      opacity: uploadingIdoni ? 0.6 : 1,
+                      transition: 'all 0.2s ease'
+                    }}
+                  >
+                    {uploadingIdoni && uploadType === 'diarias' ? (
+                      <>
+                        <motion.div
+                          animate={{ rotate: 360 }}
+                          transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+                          style={{
+                            width: '16px',
+                            height: '16px',
+                            border: `2px solid transparent`,
+                            borderTop: `2px solid white`,
+                            borderRadius: '50%'
+                          }}
+                        />
+                        Cargando...
+                      </>
+                    ) : (
+                      <>
+                        <FileText size={16} />
+                        Ventas Diarias
+                      </>
+                    )}
+                  </motion.button>
+                  
+                  {/* Botón para ventas por horas */}
+                  <motion.button
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={handleIdoniHorasFileSelect}
+                    disabled={uploadingIdoni}
+                    style={{
+                      background: colors.warning,
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '8px',
+                      padding: '10px 16px',
+                      fontSize: '14px',
+                      fontWeight: '600',
+                      cursor: uploadingIdoni ? 'not-allowed' : 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      opacity: uploadingIdoni ? 0.6 : 1,
+                      transition: 'all 0.2s ease'
+                    }}
+                  >
+                    {uploadingIdoni && uploadType === 'horas' ? (
+                      <>
+                        <motion.div
+                          animate={{ rotate: 360 }}
+                          transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+                          style={{
+                            width: '16px',
+                            height: '16px',
+                            border: `2px solid transparent`,
+                            borderTop: `2px solid white`,
+                            borderRadius: '50%'
+                          }}
+                        />
+                        Cargando...
+                      </>
+                    ) : (
+                      <>
+                        <FileText size={16} />
+                        Ventas por Horas
+                      </>
+                    )}
+                  </motion.button>
+                </div>
+              </div>
+              
+              {/* Barra de progreso */}
+              {uploadingIdoni && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  style={{
+                    background: colors.surface,
+                    borderRadius: '8px',
+                    padding: '12px',
+                    marginBottom: '20px'
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                    <span style={{ fontSize: '14px', color: colors.textSecondary }}>
+                      Procesando archivo...
+                    </span>
+                    <span style={{ fontSize: '14px', color: colors.primary, fontWeight: '600' }}>
+                      {uploadProgress}%
+                    </span>
+                  </div>
+                  <div style={{
+                    width: '100%',
+                    height: '4px',
+                    background: colors.border,
+                    borderRadius: '2px',
+                    overflow: 'hidden'
+                  }}>
+                    <motion.div
+                      initial={{ width: 0 }}
+                      animate={{ width: `${uploadProgress}%` }}
+                      transition={{ duration: 0.3 }}
+                      style={{
+                        height: '100%',
+                        background: colors.primary,
+                        borderRadius: '2px'
+                      }}
+                    />
+                  </div>
+                </motion.div>
+              )}
+              
+              {/* Inputs de archivo ocultos */}
+              <input
+                ref={idoniDiariasFileInputRef}
+                type="file"
+                accept=".xlsx,.xls"
+                onChange={handleIdoniDiariasFileChange}
+                style={{ display: 'none' }}
+              />
+              <input
+                ref={idoniHorasFileInputRef}
+                type="file"
+                accept=".xlsx,.xls"
+                onChange={handleIdoniHorasFileChange}
+                style={{ display: 'none' }}
+              />
+              
+              <div style={{ 
+                display: 'grid', 
+                gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', 
+                gap: '20px', 
+                marginBottom: '32px' 
+              }}>
+                <div style={{ background: colors.surface, padding: '20px', borderRadius: '8px' }}>
+                  <h4 style={{ margin: '0 0 12px 0', color: colors.text, fontSize: '16', fontWeight: 600, lineHeight: 1.2 }}>
+                    Total Ventas
+                  </h4>
+                  <div style={{ fontSize: '24px', fontWeight: 'bold', color: colors.success, marginBottom: '8px' }}>
+                    {formatCurrency(getFilteredIdoniData(baseData).reduce((sum, row) => sum + (parseFloat(row[4]) || 0), 0))}
+                  </div>
+                  <div style={{ fontSize: '14px', color: colors.textSecondary }}>
+                    Ventas totales registradas
+                  </div>
+                </div>
+                
+                <div style={{ background: colors.surface, padding: '20px', borderRadius: '8px' }}>
+                  <h4 style={{ margin: '0 0 12px 0', color: colors.text, fontSize: '16', fontWeight: 600, lineHeight: 1.2 }}>
+                    Total Tickets
+                  </h4>
+                  <div style={{ fontSize: '24px', fontWeight: 'bold', color: colors.primary, marginBottom: '8px' }}>
+                    {getFilteredIdoniData(baseData).reduce((sum, row) => sum + (parseInt(row[5]) || 0), 0)}
+                  </div>
+                  <div style={{ fontSize: '14px', color: colors.textSecondary }}>
+                    Número total de tickets
+                  </div>
+                </div>
+                
+                <div style={{ background: colors.surface, padding: '20px', borderRadius: '8px' }}>
+                  <h4 style={{ margin: '0 0 12px 0', color: colors.text, fontSize: '16', fontWeight: 600, lineHeight: 1.2 }}>
+                    Media por Ticket
+                  </h4>
+                  <div style={{ fontSize: '24px', fontWeight: 'bold', color: colors.warning, marginBottom: '8px' }}>
+                    {(() => {
+                      const filteredData = getFilteredIdoniData(baseData);
+                      const totalImport = filteredData.reduce((sum, row) => sum + (parseFloat(row[4]) || 0), 0);
+                      const totalTickets = filteredData.reduce((sum, row) => sum + (parseInt(row[5]) || 0), 0);
+                      return formatCurrency(totalTickets > 0 ? totalImport / totalTickets : 0);
+                    })()}
+                  </div>
+                  <div style={{ fontSize: '14px', color: colors.textSecondary }}>
+                    Promedio por transacción
+                  </div>
+                </div>
+              </div>
+              
+              {/* Tarjetas de análisis avanzado IDONI */}
+              {idoniAnalytics && (
+                <div style={{ 
+                  display: 'grid', 
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', 
+                  gap: '20px', 
+                  marginBottom: '32px' 
+                }}>
+                  <div style={{ background: colors.surface, padding: '20px', borderRadius: '8px' }}>
+                    <h4 style={{ margin: '0 0 12px 0', color: colors.text, fontSize: '16', fontWeight: 600, lineHeight: 1.2 }}>
+                      Mejor Día
+                    </h4>
+                    <div style={{ fontSize: '24px', fontWeight: 'bold', color: colors.success, marginBottom: '8px' }}>
+                      {idoniAnalytics.mejorDia.dia}
+                    </div>
+                    <div style={{ fontSize: '14px', color: colors.textSecondary }}>
+                      {formatCurrency(idoniAnalytics.mejorDia.ventas)} promedio
+                    </div>
+                  </div>
+                  
+                  <div style={{ background: colors.surface, padding: '20px', borderRadius: '8px' }}>
+                    <h4 style={{ margin: '0 0 12px 0', color: colors.text, fontSize: '16', fontWeight: 600, lineHeight: 1.2 }}>
+                      Peor Día
+                    </h4>
+                    <div style={{ fontSize: '24px', fontWeight: 'bold', color: colors.error, marginBottom: '8px' }}>
+                      {idoniAnalytics.peorDia.dia}
+                    </div>
+                    <div style={{ fontSize: '14px', color: colors.textSecondary }}>
+                      {formatCurrency(idoniAnalytics.peorDia.ventas)} promedio
+                    </div>
+                  </div>
+                  
+                  <div style={{ background: colors.surface, padding: '20px', borderRadius: '8px' }}>
+                    <h4 style={{ margin: '0 0 12px 0', color: colors.text, fontSize: '16', fontWeight: 600, lineHeight: 1.2 }}>
+                      Día Más Consistente
+                    </h4>
+                    <div style={{ fontSize: '24px', fontWeight: 'bold', color: colors.info, marginBottom: '8px' }}>
+                      {idoniAnalytics.diaMasConsistente?.dia || 'N/A'}
+                    </div>
+                    <div style={{ fontSize: '14px', color: colors.textSecondary }}>
+                      Menor variabilidad
+                    </div>
+                  </div>
+                  
+                  <div style={{ background: colors.surface, padding: '20px', borderRadius: '8px' }}>
+                    <h4 style={{ margin: '0 0 12px 0', color: colors.text, fontSize: '16', fontWeight: 600, lineHeight: 1.2 }}>
+                      Crecimiento Mensual
+                    </h4>
+                    <div style={{ 
+                      fontSize: '24px', 
+                      fontWeight: 'bold', 
+                      color: idoniAnalytics.crecimientoMensual >= 0 ? colors.success : colors.error, 
+                      marginBottom: '8px' 
+                    }}>
+                      {idoniAnalytics.crecimientoMensual >= 0 ? '+' : ''}{idoniAnalytics.crecimientoMensual.toFixed(1)}%
+                    </div>
+                    <div style={{ fontSize: '14px', color: colors.textSecondary }}>
+                      Desde el primer mes
+                    </div>
+                  </div>
+                </div>
+              )}
+              
+              {/* Gráficos de análisis de ventas IDONI */}
+              {idoniChartData && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                  {/* Gráfico de ventas mensuales */}
+                  <div style={{ background: colors.surface, borderRadius: '8px', padding: '20px' }}>
+                    <h4 style={{ margin: '0 0 16px 0', color: colors.text, fontSize: '16', fontWeight: 600 }}>
+                      Ventas Mensuales
+                    </h4>
+                    <div style={{ height: '300px' }}>
+                      <Bar
+                        data={{
+                          labels: Object.keys(idoniChartData.monthlyData).map(month => {
+                            const [year, monthNum] = month.split('-');
+                            return `${getMonthName(month)} ${year}`;
+                          }),
+                          datasets: [
+                            {
+                              label: 'Ventas (€)',
+                              data: Object.values(idoniChartData.monthlyData).map(month => month.ventas),
+                              backgroundColor: colors.primary,
+                              borderColor: colors.primary,
+                              borderWidth: 1,
+                              borderRadius: 4,
+                            },
+                            {
+                              label: 'Tickets',
+                              data: Object.values(idoniChartData.monthlyData).map(month => month.tickets),
+                              backgroundColor: colors.warning,
+                              borderColor: colors.warning,
+                              borderWidth: 1,
+                              borderRadius: 4,
+                              yAxisID: 'y1'
+                            }
+                          ]
+                        }}
+                        options={{
+                          responsive: true,
+                          maintainAspectRatio: false,
+                          plugins: {
+                            legend: {
+                              position: 'top',
+                              labels: {
+                                color: colors.text,
+                                usePointStyle: true,
+                                pointStyle: 'circle',
+                                padding: 20
+                              }
+                            },
+                            tooltip: {
+                              mode: 'index',
+                              intersect: false,
+                              backgroundColor: colors.card,
+                              titleColor: colors.text,
+                              bodyColor: colors.text,
+                              borderColor: colors.border,
+                              borderWidth: 1,
+                              titleFont: {
+                                size: 16,
+                                weight: 'bold'
+                              },
+                              bodyFont: {
+                                size: 14,
+                                weight: 'bold'
+                              },
+                              padding: 12,
+                              callbacks: {
+                                title: function(context) {
+                                  return context[0].label;
+                                },
+                                label: function(context) {
+                                  return `${context.dataset.label}: ${formatCurrency(context.parsed.y)}`;
+                                },
+                                afterBody: function(context) {
+                                  const monthKey = Object.keys(idoniChartData.monthlyData)[context[0].dataIndex];
+                                  const monthData = idoniChartData.monthlyData[monthKey];
+                                  if (monthData) {
+                                    const avgTicket = monthData.tickets > 0 ? monthData.ventas / monthData.tickets : 0;
+                                    return [
+                                      '',
+                                      'Resumen del mes:',
+                                      `   • Total: ${formatCurrency(monthData.ventas)}`,
+                                      `   • Tickets: ${monthData.tickets.toLocaleString()}`,
+                                      `   • Media/ticket: ${formatCurrency(avgTicket)}`
+                                    ];
+                                  }
+                                  return '';
+                                }
+                              }
+                            }
+                          },
+                          scales: {
+                            x: {
+                              grid: {
+                                color: colors.border
+                              },
+                              ticks: {
+                                color: colors.textSecondary
+                              }
+                            },
+                            y: {
+                              type: 'linear',
+                              display: true,
+                              position: 'left',
+                              grid: {
+                                color: colors.border
+                              },
+                              ticks: {
+                                color: colors.textSecondary,
+                                callback: function(value) {
+                                  return formatCurrency(value);
+                                }
+                              },
+                              title: {
+                                display: true,
+                                text: 'Ventas (€)',
+                                color: colors.textSecondary
+                              }
+                            },
+                            y1: {
+                              type: 'linear',
+                              display: true,
+                              position: 'right',
+                              grid: {
+                                drawOnChartArea: false,
+                              },
+                              ticks: {
+                                color: colors.textSecondary
+                              },
+                              title: {
+                                display: true,
+                                text: 'Tickets',
+                                color: colors.textSecondary
+                              }
+                            }
+                          }
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Gráfico de ventas por días de la semana */}
+                  <div style={{ background: colors.surface, borderRadius: '8px', padding: '20px' }}>
+                    <h4 style={{ margin: '0 0 16px 0', color: colors.text, fontSize: '16', fontWeight: 600 }}>
+                      Ventas por Días de la Semana
+                    </h4>
+                    <div style={{ height: '400px' }}>
+                      <Line
+                        data={{
+                          labels: Object.keys(idoniChartData.weeklyData).map(month => {
+                            const [year, monthNum] = month.split('-');
+                            return `${getMonthName(month)} ${year}`;
+                          }),
+                          datasets: [
+                            {
+                              label: 'Domingo',
+                              data: Object.keys(idoniChartData.weeklyData).map(month => 
+                                idoniChartData.weeklyData[month]['Domingo'].ventas
+                              ),
+                              borderColor: '#FF6B6B',
+                              backgroundColor: '#FF6B6B20',
+                              borderWidth: 2,
+                              fill: false,
+                              tension: 0.4,
+                              pointStyle: 'circle',
+                              pointBackgroundColor: '#FF6B6B',
+                              pointBorderColor: '#FF6B6B',
+                              pointBorderWidth: 2,
+                              pointRadius: 6,
+                              pointHoverRadius: 8
+                            },
+                            {
+                              label: 'Lunes',
+                              data: Object.keys(idoniChartData.weeklyData).map(month => 
+                                idoniChartData.weeklyData[month]['Lunes'].ventas
+                              ),
+                              borderColor: '#4ECDC4',
+                              backgroundColor: '#4ECDC420',
+                              borderWidth: 2,
+                              fill: false,
+                              tension: 0.4,
+                              pointStyle: 'circle',
+                              pointBackgroundColor: '#4ECDC4',
+                              pointBorderColor: '#4ECDC4',
+                              pointBorderWidth: 2,
+                              pointRadius: 6,
+                              pointHoverRadius: 8
+                            },
+                            {
+                              label: 'Martes',
+                              data: Object.keys(idoniChartData.weeklyData).map(month => 
+                                idoniChartData.weeklyData[month]['Martes'].ventas
+                              ),
+                              borderColor: '#6C5CE7',
+                              backgroundColor: '#6C5CE720',
+                              borderWidth: 2,
+                              fill: false,
+                              tension: 0.4,
+                              pointStyle: 'circle',
+                              pointBackgroundColor: '#6C5CE7',
+                              pointBorderColor: '#6C5CE7',
+                              pointBorderWidth: 2,
+                              pointRadius: 6,
+                              pointHoverRadius: 8
+                            },
+                            {
+                              label: 'Miércoles',
+                              data: Object.keys(idoniChartData.weeklyData).map(month => 
+                                idoniChartData.weeklyData[month]['Miércoles'].ventas
+                              ),
+                              borderColor: '#00B894',
+                              backgroundColor: '#00B89420',
+                              borderWidth: 2,
+                              fill: false,
+                              tension: 0.4,
+                              pointStyle: 'circle',
+                              pointBackgroundColor: '#00B894',
+                              pointBorderColor: '#00B894',
+                              pointBorderWidth: 2,
+                              pointRadius: 6,
+                              pointHoverRadius: 8
+                            },
+                            {
+                              label: 'Jueves',
+                              data: Object.keys(idoniChartData.weeklyData).map(month => 
+                                idoniChartData.weeklyData[month]['Jueves'].ventas
+                              ),
+                              borderColor: '#FDCB6E',
+                              backgroundColor: '#FDCB6E20',
+                              borderWidth: 2,
+                              fill: false,
+                              tension: 0.4,
+                              pointStyle: 'circle',
+                              pointBackgroundColor: '#FDCB6E',
+                              pointBorderColor: '#FDCB6E',
+                              pointBorderWidth: 2,
+                              pointRadius: 6,
+                              pointHoverRadius: 8
+                            },
+                            {
+                              label: 'Viernes',
+                              data: Object.keys(idoniChartData.weeklyData).map(month => 
+                                idoniChartData.weeklyData[month]['Viernes'].ventas
+                              ),
+                              borderColor: '#E84393',
+                              backgroundColor: '#E8439320',
+                              borderWidth: 2,
+                              fill: false,
+                              tension: 0.4,
+                              pointStyle: 'circle',
+                              pointBackgroundColor: '#E84393',
+                              pointBorderColor: '#E84393',
+                              pointBorderWidth: 2,
+                              pointRadius: 6,
+                              pointHoverRadius: 8
+                            },
+                            {
+                              label: 'Sábado',
+                              data: Object.keys(idoniChartData.weeklyData).map(month => 
+                                idoniChartData.weeklyData[month]['Sábado'].ventas
+                              ),
+                              borderColor: '#74B9FF',
+                              backgroundColor: '#74B9FF20',
+                              borderWidth: 2,
+                              fill: false,
+                              tension: 0.4,
+                              pointStyle: 'circle',
+                              pointBackgroundColor: '#74B9FF',
+                              pointBorderColor: '#74B9FF',
+                              pointBorderWidth: 2,
+                              pointRadius: 6,
+                              pointHoverRadius: 8
+                            }
+                          ]
+                        }}
+                        options={{
+                          responsive: true,
+                          maintainAspectRatio: false,
+                          plugins: {
+                            legend: {
+                              position: 'top',
+                              labels: {
+                                color: colors.text,
+                                usePointStyle: true,
+                                pointStyle: 'circle',
+                                padding: 20
+                              }
+                            },
+                            tooltip: {
+                              mode: 'index',
+                              intersect: false,
+                              backgroundColor: colors.card,
+                              titleColor: colors.text,
+                              bodyColor: colors.text,
+                              borderColor: colors.border,
+                              borderWidth: 1,
+                              titleFont: {
+                                size: 16,
+                                weight: 'bold'
+                              },
+                              bodyFont: {
+                                size: 14,
+                                weight: 'bold'
+                              },
+                              padding: 12,
+                              callbacks: {
+                                title: function(context) {
+                                  return context[0].label;
+                                },
+                                label: function(context) {
+                                  return `${context.dataset.label}: ${formatCurrency(context.parsed.y)}`;
+                                },
+                                afterBody: function(context) {
+                                  return '';
+                                }
+                              }
+                            }
+                          },
+                          scales: {
+                            x: {
+                              grid: {
+                                color: colors.border
+                              },
+                              ticks: {
+                                color: colors.textSecondary
+                              }
+                            },
+                            y: {
+                              grid: {
+                                color: colors.border
+                              },
+                              ticks: {
+                                color: colors.textSecondary,
+                                callback: function(value) {
+                                  return formatCurrency(value);
+                                }
+                              },
+                              title: {
+                                display: true,
+                                text: 'Ventas (€)',
+                                color: colors.textSecondary
+                              }
+                            }
+                          }
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+              
+              {/* Tabla comparativa de días de la semana */}
+              {idoniAnalytics && (
+                <div style={{ background: colors.surface, borderRadius: '8px', padding: '20px', marginTop: '24px' }}>
+                  <h4 style={{ margin: '0 0 16px 0', color: colors.text, fontSize: '16', fontWeight: 600 }}>
+                    Análisis por Días de la Semana
+                  </h4>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                      <thead>
+                        <tr style={{ borderBottom: `1px solid ${colors.border}` }}>
+                          <th style={{ padding: '12px', textAlign: 'left', color: colors.text, fontWeight: 600, fontSize: '14px' }}>
+                            Día
+                          </th>
+                          <th style={{ padding: '12px', textAlign: 'right', color: colors.text, fontWeight: 600, fontSize: '14px' }}>
+                            Promedio Ventas
+                          </th>
+                          <th style={{ padding: '12px', textAlign: 'right', color: colors.text, fontWeight: 600, fontSize: '14px' }}>
+                            Total Ventas
+                          </th>
+                          <th style={{ padding: '12px', textAlign: 'right', color: colors.text, fontWeight: 600, fontSize: '14px' }}>
+                            Promedio Tickets
+                          </th>
+                          <th style={{ padding: '12px', textAlign: 'right', color: colors.text, fontWeight: 600, fontSize: '14px' }}>
+                            Meses con Datos
+                          </th>
+                          <th style={{ padding: '12px', textAlign: 'center', color: colors.text, fontWeight: 600, fontSize: '14px' }}>
+                            Rendimiento
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {Object.entries(idoniAnalytics.promediosPorDia)
+                          .sort((a, b) => b[1].ventas - a[1].ventas)
+                          .map(([dia, datos], index) => {
+                            const esMejorDia = dia === idoniAnalytics.mejorDia.dia;
+                            const esPeorDia = dia === idoniAnalytics.peorDia.dia;
+                            const esMasConsistente = idoniAnalytics.diaMasConsistente?.dia === dia;
+                            
+                            return (
+                              <tr key={dia} style={{ 
+                                borderBottom: `1px solid ${colors.border}`,
+                                backgroundColor: esMejorDia ? `${colors.success}10` : 
+                                               esPeorDia ? `${colors.error}10` : 
+                                               esMasConsistente ? `${colors.info}10` : 'transparent'
+                              }}>
+                                <td style={{ padding: '12px', textAlign: 'left', color: colors.text, fontWeight: esMejorDia || esPeorDia || esMasConsistente ? 600 : 400 }}>
+                                  {dia}
+                                </td>
+                                <td style={{ padding: '12px', textAlign: 'right', color: colors.text, fontWeight: 600 }}>
+                                  {formatCurrency(datos.ventas)}
+                                </td>
+                                <td style={{ padding: '12px', textAlign: 'right', color: colors.textSecondary }}>
+                                  {formatCurrency(idoniAnalytics.totalesPorDia[dia].ventas)}
+                                </td>
+                                <td style={{ padding: '12px', textAlign: 'right', color: colors.textSecondary }}>
+                                  {datos.tickets.toFixed(1)}
+                                </td>
+                                <td style={{ padding: '12px', textAlign: 'right', color: colors.textSecondary }}>
+                                  {datos.mesesConDatos}
+                                </td>
+                                <td style={{ padding: '12px', textAlign: 'center' }}>
+                                  <div style={{
+                                    width: '60px',
+                                    height: '8px',
+                                    backgroundColor: colors.border,
+                                    borderRadius: '4px',
+                                    overflow: 'hidden',
+                                    margin: '0 auto'
+                                  }}>
+                                    <div style={{
+                                      width: `${(datos.ventas / idoniAnalytics.mejorDia.ventas) * 100}%`,
+                                      height: '100%',
+                                      backgroundColor: esMejorDia ? colors.success : 
+                                                     esPeorDia ? colors.error : 
+                                                     colors.primary,
+                                      borderRadius: '4px'
+                                    }} />
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
           </motion.div>
         ) : (
           <motion.div
@@ -2242,7 +3929,59 @@ const AnalyticsPage = () => {
       )}
       </AnimatePresence>
 
-
+      {/* Componente de alerta */}
+      <AnimatePresence>
+        {showAlert && (
+          <motion.div
+            initial={{ opacity: 0, y: -50, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -50, scale: 0.9 }}
+            transition={{ duration: 0.3, ease: 'easeOut' }}
+            style={{
+              position: 'fixed',
+              top: '20px',
+              right: '20px',
+              zIndex: 1000,
+              backgroundColor: alertType === 'success' ? colors.success + '22' : colors.error + '22',
+              border: `1px solid ${alertType === 'success' ? colors.success : colors.error}`,
+              borderRadius: '12px',
+              padding: '16px 20px',
+              boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '12px',
+              maxWidth: '400px',
+              minWidth: '300px'
+            }}
+          >
+            <div style={{
+              width: '24px',
+              height: '24px',
+              borderRadius: '50%',
+              backgroundColor: alertType === 'success' ? colors.success : colors.error,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0
+            }}>
+              {alertType === 'success' ? (
+                <Check size={14} color="white" />
+              ) : (
+                <X size={14} color="white" />
+              )}
+            </div>
+            <div style={{
+              flex: 1,
+              fontSize: '15px',
+              fontWeight: '500',
+              color: colors.text,
+              lineHeight: '1.4'
+            }}>
+              {alertMessage}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 };

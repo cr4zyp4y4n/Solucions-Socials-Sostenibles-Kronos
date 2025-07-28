@@ -51,6 +51,7 @@
     "@babel/preset-react": "^7.27.1",
     "@supabase/supabase-js": "^2.39.0",
     "babel-loader": "^10.0.0",
+    "chart.js": "^4.5.0",
     "electron-squirrel-startup": "^1.0.1",
     "electron-updater": "^6.6.2",
     "feather-icons-react": "^0.9.0",
@@ -59,6 +60,7 @@
     "lucide-react": "^0.525.0",
     "node-fetch": "^3.3.2",
     "react": "^19.1.0",
+    "react-chartjs-2": "^5.3.0",
     "react-dom": "^19.1.0",
     "xlsx": "^0.18.5"
   },

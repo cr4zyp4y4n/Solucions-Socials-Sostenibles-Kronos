@@ -11,6 +11,10 @@ export const DataProvider = ({ children }) => {
   const [menjarHeaders, setMenjarHeaders] = useState([]);
   const [menjarData, setMenjarData] = useState([]);
 
+  // Datos para IDONI
+  const [idoniHeaders, setIdoniHeaders] = useState([]);
+  const [idoniData, setIdoniData] = useState([]);
+
   // Estado para controlar recarga de datos de Holded
   const [shouldReloadHolded, setShouldReloadHolded] = useState(false);
 
@@ -22,6 +26,11 @@ export const DataProvider = ({ children }) => {
       loading: false
     },
     menjar: {
+      data: null,
+      timestamp: null,
+      loading: false
+    },
+    idoni: {
       data: null,
       timestamp: null,
       loading: false
@@ -51,9 +60,15 @@ export const DataProvider = ({ children }) => {
     setMenjarData([]);
   };
 
+  const clearIdoniData = () => {
+    setIdoniHeaders([]);
+    setIdoniData([]);
+  };
+
   const clearAllData = () => {
     clearSolucionsData();
     clearMenjarData();
+    clearIdoniData();
   };
 
   // Función para verificar si el caché es válido
@@ -137,6 +152,11 @@ export const DataProvider = ({ children }) => {
           data: null,
           timestamp: null,
           loading: false
+        },
+        idoni: {
+          data: null,
+          timestamp: null,
+          loading: false
         }
       });
     }
@@ -157,6 +177,13 @@ export const DataProvider = ({ children }) => {
       menjarData,
       setMenjarData,
       clearMenjarData,
+      
+      // Datos de IDONI
+      idoniHeaders,
+      setIdoniHeaders,
+      idoniData,
+      setIdoniData,
+      clearIdoniData,
       
       // Estado para recarga de Holded
       shouldReloadHolded,
