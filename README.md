@@ -1,11 +1,11 @@
-# SSS Kronos v2.0.3
+# SSS Kronos v2.0.4
 
-🚀 **Release Notes - SSS Kronos v2.0.3**
+🚀 **Release Notes - SSS Kronos v2.0.4**
 
 ## 📦 Archivos de Distribución
 
 ### Windows
-- **Instalador:** SSS Kronos-2.0.3 Setup.exe (115 MB aprox.)
+- **Instalador:** SSS Kronos-2.0.4 Setup.exe (115 MB aprox.)
 - **Ubicación:** `out/make/squirrel.windows/x64/`
 - **Compatibilidad:** Windows 10/11 (64-bit)
 
@@ -13,6 +13,24 @@
 *Nota: Los instaladores para macOS y Linux se generarán en futuras versiones*
 
 ## ✨ Nuevas Características y Cambios Clave
+
+### 🏪 **Nuevo Módulo IDONI - Análisis de Ventas de Tienda**
+- ✅ **Carga de datos Excel:** Subida de archivos "Ventas Diarias" y "Ventas por Horas"
+- ✅ **Almacenamiento en Supabase:** Persistencia de datos en tablas especializadas
+- ✅ **Análisis avanzado:** Ventas mensuales, por días de la semana y por horas
+- ✅ **Gráficos interactivos:** Visualización con Chart.js para mejor comprensión
+- ✅ **Tarjetas de resumen:** Total ventas, tickets y media por ticket
+- ✅ **Análisis de rendimiento:** Mejor/peor día, consistencia y crecimiento mensual
+- ✅ **Tabla comparativa:** Análisis detallado por días de la semana
+- ✅ **Filtrado inteligente:** Exclusión automática de filas "TOTAL" y datos problemáticos
+
+### 📊 **Mejoras en AnalyticsPage**
+- ✅ **Ordenación de fechas corregida:** Ahora ordena cronológicamente correctamente
+- ✅ **Filtros independientes:** El filtro de mes en vista Sergi ya no afecta a otras vistas
+- ✅ **Interfaz adaptativa:** Vista IDONI con interfaz específica sin vistas General/Sergi/Bruno
+- ✅ **Tooltips personalizados:** Sin emojis, texto más grande y en negrita
+- ✅ **Colores diferenciados:** Paleta de colores distintiva para cada día de la semana
+- ✅ **Alineación profesional:** Tablas con alineación natural (izquierda para texto, derecha para números)
 
 ### 🔄 Sistema de Actualizaciones Automáticas
 - ✅ **Verificación automática:** La app verifica actualizaciones al iniciar
@@ -37,14 +55,20 @@
 ### 🐞 Correcciones de Errores
 - ✅ **Corregido error de CSP:** Bloqueo de conexiones a GitHub API
 - ✅ **Corregido estado de verificación:** El botón ya no se queda colgado
-- ✅ **Corregida versión mostrada:** Ahora muestra correctamente la versión 2.0.2
+- ✅ **Corregida versión mostrada:** Ahora muestra correctamente la versión 2.0.4
 - ✅ **Corregidos permisos:** Jefes ya no ven "Solo lectura" incorrectamente
+- ✅ **Corregido procesamiento Excel:** Manejo robusto de columnas vacías y caracteres especiales
+- ✅ **Corregido cálculo de totales:** Filtrado correcto de filas "TOTAL" en datos IDONI
+- ✅ **Corregida superposición UI:** Elementos de análisis correctamente posicionados
 
 ### 🔧 Mejoras Técnicas
 - ✅ **API de GitHub mejorada:** Headers apropiados y manejo de errores
 - ✅ **Comparación de versiones:** Lógica robusta para detectar nuevas versiones
 - ✅ **Mensajes informativos:** Feedback claro sobre el estado de actualizaciones
 - ✅ **Integración con electron-updater:** Sistema de actualizaciones nativo de Electron
+- ✅ **Base de datos IDONI:** Nuevas tablas `idoni_ventas_diarias` e `idoni_ventas_horas`
+- ✅ **Procesamiento Excel avanzado:** Detección automática de headers y validación de datos
+- ✅ **Análisis estadístico:** Cálculo de promedios, tendencias y métricas de rendimiento
 
 ## 📋 Requisitos del Sistema
 
@@ -63,7 +87,7 @@
 
 ### 📥 Descargar
 1. Ve a la sección Releases de este repositorio
-2. Descarga `SSS Kronos-2.0.3 Setup.exe`
+2. Descarga `SSS Kronos-2.0.4 Setup.exe`
 3. Ejecuta el instalador y sigue las instrucciones
 
 ### ⚡ Primera Ejecución
@@ -96,6 +120,7 @@
 - **Documentación técnica:** Carpeta `docs/` con soluciones detalladas
 - **Configuración:** Guías para desarrolladores
 - **Scripts SQL:** `/database` para limpieza y mantenimiento
+- **Esquema IDONI:** `database/idoni_schema.sql` para configuración de base de datos
 
 ## 🆘 Soporte
 
@@ -106,10 +131,11 @@
 ## 🔄 Próximas Versiones
 
 ### 🎯 v2.1.0 (Planificada)
-- 📊 Módulos ERP/CRM adicionales
+- 📊 Análisis de "Ventas Por Horas" en módulo IDONI
 - 📈 Análisis avanzado con machine learning
 - 📱 Aplicación móvil complementaria
 - 🔧 Mejoras en el sistema de actualizaciones
+- 📋 Módulos ERP/CRM adicionales
 
 ## 🤝 Contribución
 

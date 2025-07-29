@@ -83,6 +83,44 @@ const AnalyticsPage = () => {
   // Estados para tabla jerárquica de IDONI
   const [expandedDays, setExpandedDays] = useState(new Set());
   const [idoniGroupedData, setIdoniGroupedData] = useState([]);
+  const [idoniHourlyData, setIdoniHourlyData] = useState(null);
+  const [idoniHourlyAnalytics, setIdoniHourlyAnalytics] = useState(null);
+
+  // Mantener orden cronológico fijo para el gráfico
+  const idoniHourlyChartData = useMemo(() => {
+    if (!idoniHourlyData) return null;
+    
+    // Orden cronológico fijo: 09:00, 10:00, 11:00, 12:00, 13:00, 14:00, 15:00, 16:00, 17:00, 18:00, etc.
+    const ordenCronologico = [
+      '09:00-10:00', '10:00-11:00', '11:00-12:00', '12:00-13:00', '13:00-14:00', '14:00-15:00', '15:00-16:00',
+      '16:00-17:00', '17:00-18:00', '18:00-20:00', '20:00-22:00', '22:00-00:00', '00:00-02:00', '02:00-04:00',
+      '04:00-06:00', '06:00-07:00', '07:00-08:00', '08:00-09:00'
+    ];
+    
+    const franjasOrdenadas = ordenCronologico.map(nombre => 
+      idoniHourlyData.franjasArray.find(f => f.nombre === nombre)
+    ).filter(Boolean);
+    
+    return {
+      labels: franjasOrdenadas.map(f => f.nombre),
+      data: franjasOrdenadas.map(f => f.ventas),
+      backgroundColor: franjasOrdenadas.map(f => {
+        if (f.tipo === 'comercial') return colors.primary;
+        if (f.tipo === 'correccion') return colors.warning;
+        if (f.tipo === 'preparacion') return colors.info;
+        if (f.tipo === 'cierre') return colors.error;
+        return colors.textSecondary;
+      }),
+      borderColor: franjasOrdenadas.map(f => {
+        if (f.tipo === 'comercial') return colors.primary;
+        if (f.tipo === 'correccion') return colors.warning;
+        if (f.tipo === 'preparacion') return colors.info;
+        if (f.tipo === 'cierre') return colors.error;
+        return colors.textSecondary;
+      })
+    };
+  }, [idoniHourlyData, colors]);
+
   
   const tableRef = useRef(null);
   const idoniDiariasFileInputRef = useRef(null);
@@ -197,22 +235,84 @@ const AnalyticsPage = () => {
         throw errorDiarias;
       }
 
-      // Cargar datos de ventas por horas
-      const { data: ventasHoras, error: errorHoras } = await supabase
-        .from('idoni_ventas_horas')
-        .select('*')
-        .order('data', { ascending: false });
+      // Cargar datos de ventas por horas (TODOS los registros usando paginación)
+      let allVentasHoras = [];
+      let page = 0;
+      const pageSize = 1000;
+      let hasMore = true;
+      
+      while (hasMore) {
+        const { data: ventasHoras, error: errorHoras } = await supabase
+          .from('idoni_ventas_horas')
+          .select('*')
+          .order('data', { ascending: false })
+          .range(page * pageSize, (page + 1) * pageSize - 1);
 
-      if (errorHoras) {
-        console.error('Error cargando ventas por horas de IDONI:', errorHoras);
-        throw errorHoras;
+        if (errorHoras) {
+          console.error('Error cargando ventas por horas de IDONI:', errorHoras);
+          throw errorHoras;
+        }
+
+        if (ventasHoras && ventasHoras.length > 0) {
+          allVentasHoras = [...allVentasHoras, ...ventasHoras];
+          page++;
+        } else {
+          hasMore = false;
+        }
       }
+
+      const ventasHoras = allVentasHoras;
 
       // Procesar datos de IDONI
       const processedIdoniData = processIdoniData(ventasDiarias, ventasHoras);
 
       // Procesar datos agrupados por día
       const groupedData = processIdoniGroupedData(ventasDiarias);
+
+      // Procesar datos de ventas por horas
+      const hourlyData = processIdoniHourlyData(ventasHoras);
+      const hourlyAnalytics = calculateIdoniHourlyAnalytics(hourlyData);
+
+      console.log('=== DATOS IDONI CARGADOS ===');
+      console.log('Ventas Diarias:', ventasDiarias?.length || 0, 'registros');
+      console.log('Ventas por Horas:', ventasHoras?.length || 0, 'registros');
+      console.log('Franjas procesadas:', hourlyData?.franjasArray?.length || 0);
+      console.log('Mejor franja comercial:', hourlyAnalytics?.mejorFranjaComercial?.nombre);
+      console.log('Peor franja comercial:', hourlyAnalytics?.peorFranjaComercial?.nombre);
+      
+      // Análisis detallado de ventas por horas
+      console.log('=== ANÁLISIS DETALLADO VENTAS POR HORAS ===');
+      console.log('Total registros originales:', ventasHoras?.length || 0);
+      
+      // Verificar registros con C.Ven = 0 (totales)
+      const registrosConCvenCero = ventasHoras?.filter(r => r.c_ven === 0 || r.c_ven === '0') || [];
+      console.log('Registros con C.Ven = 0 (totales):', registrosConCvenCero.length);
+      
+      // Verificar registros con importe 0
+      const registrosConImporteCero = ventasHoras?.filter(r => !r.total || r.total === 0) || [];
+      console.log('Registros con importe 0:', registrosConImporteCero.length);
+      
+      // Verificar registros duplicados
+      const registrosUnicos = new Set();
+      const registrosDuplicados = [];
+      ventasHoras?.forEach((r, index) => {
+        const key = `${r.data}_${r.hora}_${r.total}_${r.c_ven}`;
+        if (registrosUnicos.has(key)) {
+          registrosDuplicados.push({ index, registro: r });
+        } else {
+          registrosUnicos.add(key);
+        }
+      });
+      console.log('Registros duplicados encontrados:', registrosDuplicados.length);
+      
+      // Suma total sin filtrar
+      const sumaTotalSinFiltrar = ventasHoras?.reduce((sum, r) => sum + (parseFloat(r.total) || 0), 0) || 0;
+      console.log('Suma total sin filtrar:', sumaTotalSinFiltrar);
+      
+      // Suma total después del procesamiento
+      console.log('Suma total después del procesamiento:', hourlyData?.totalVentas || 0);
+
+
 
       setSupabaseData(prev => ({
         ...prev,
@@ -224,6 +324,8 @@ const AnalyticsPage = () => {
       }));
 
       setIdoniGroupedData(groupedData);
+      setIdoniHourlyData(hourlyData);
+      setIdoniHourlyAnalytics(hourlyAnalytics);
 
     } catch (error) {
       console.error('Error cargando datos de IDONI:', error);
@@ -1948,6 +2050,163 @@ const AnalyticsPage = () => {
     }, 0);
   }, [generalData, columnIndices]);
 
+  // Función para procesar datos de ventas por horas de IDONI
+  const processIdoniHourlyData = (ventasHoras) => {
+    if (!ventasHoras || ventasHoras.length === 0) return null;
+
+    // Crear array simple de franjas horarias
+    const franjas = [
+      { nombre: '09:00-10:00', inicio: 9, fin: 10, ventas: 0, tickets: 0, tipo: 'preparacion' },
+      { nombre: '10:00-11:00', inicio: 10, fin: 11, ventas: 0, tickets: 0, tipo: 'comercial' },
+      { nombre: '11:00-12:00', inicio: 11, fin: 12, ventas: 0, tickets: 0, tipo: 'comercial' },
+      { nombre: '12:00-13:00', inicio: 12, fin: 13, ventas: 0, tickets: 0, tipo: 'comercial' },
+      { nombre: '13:00-14:00', inicio: 13, fin: 14, ventas: 0, tickets: 0, tipo: 'comercial' },
+      { nombre: '14:00-15:00', inicio: 14, fin: 15, ventas: 0, tickets: 0, tipo: 'comercial' },
+      { nombre: '15:00-16:00', inicio: 15, fin: 16, ventas: 0, tickets: 0, tipo: 'comercial' },
+      { nombre: '16:00-17:00', inicio: 16, fin: 17, ventas: 0, tickets: 0, tipo: 'cierre' },
+      { nombre: '17:00-18:00', inicio: 17, fin: 18, ventas: 0, tickets: 0, tipo: 'cierre' },
+      { nombre: '18:00-20:00', inicio: 18, fin: 20, ventas: 0, tickets: 0, tipo: 'correccion' },
+      { nombre: '20:00-22:00', inicio: 20, fin: 22, ventas: 0, tickets: 0, tipo: 'correccion' },
+      { nombre: '22:00-00:00', inicio: 22, fin: 24, ventas: 0, tickets: 0, tipo: 'correccion' },
+      { nombre: '00:00-02:00', inicio: 0, fin: 2, ventas: 0, tickets: 0, tipo: 'correccion' },
+      { nombre: '02:00-04:00', inicio: 2, fin: 4, ventas: 0, tickets: 0, tipo: 'correccion' },
+      { nombre: '04:00-06:00', inicio: 4, fin: 6, ventas: 0, tickets: 0, tipo: 'correccion' },
+      { nombre: '06:00-07:00', inicio: 6, fin: 7, ventas: 0, tickets: 0, tipo: 'correccion' },
+      { nombre: '07:00-08:00', inicio: 7, fin: 8, ventas: 0, tickets: 0, tipo: 'correccion' },
+      { nombre: '08:00-09:00', inicio: 8, fin: 9, ventas: 0, tickets: 0, tipo: 'correccion' }
+    ];
+
+    // Procesar cada venta por hora - SUMAR TODO SIN FILTROS
+    let totalProcesado = 0;
+    let registrosProcesados = 0;
+    let registrosOmitidos = 0;
+    
+    ventasHoras.forEach((venta, index) => {
+      if (!venta.hora) {
+        registrosOmitidos++;
+        return;
+      }
+      
+      const importe = parseFloat(venta.total) || 0;
+
+      // Extraer la hora del campo TIME
+      const horaStr = venta.hora;
+      let hora = 0;
+      
+      if (typeof horaStr === 'string') {
+        const partes = horaStr.split(':');
+        if (partes.length >= 2) {
+          hora = parseInt(partes[0]);
+        }
+      } else if (typeof horaStr === 'number') {
+        hora = Math.floor(horaStr * 24);
+      }
+
+      // Encontrar la franja horaria correspondiente
+      let franjaEncontrada = false;
+                      for (const franja of franjas) {
+          if (hora >= franja.inicio && hora < franja.fin) {
+            franja.ventas += importe;
+            franja.tickets += 1;
+            totalProcesado += importe;
+            registrosProcesados++;
+            break;
+          }
+        }
+    });
+    
+          console.log('=== PROCESAMIENTO VENTAS POR HORAS ===');
+      console.log('Total registros:', ventasHoras.length);
+      console.log('Total procesado:', totalProcesado);
+
+    return {
+      franjasArray: franjas,
+      totalVentas: franjas.reduce((sum, f) => sum + f.ventas, 0),
+      totalTickets: franjas.reduce((sum, f) => sum + f.tickets, 0)
+    };
+  };
+
+  // Función para calcular análisis de franjas horarias
+  const calculateIdoniHourlyAnalytics = (hourlyData) => {
+    if (!hourlyData || !hourlyData.franjasArray) return null;
+
+    const franjas = hourlyData.franjasArray;
+    
+    // Encontrar mejor y peor franja por ventas
+    const mejorFranjaVentas = franjas.reduce((max, franja) => 
+      franja.ventas > max.ventas ? franja : max, franjas[0]);
+    
+    const peorFranjaVentas = franjas.reduce((min, franja) => 
+      franja.ventas < min.ventas ? franja : min, franjas[0]);
+
+    // Encontrar mejor y peor franja por tickets
+    const mejorFranjaTickets = franjas.reduce((max, franja) => 
+      franja.tickets > max.tickets ? franja : max, franjas[0]);
+    
+    const peorFranjaTickets = franjas.reduce((min, franja) => 
+      franja.tickets < min.tickets ? franja : min, franjas[0]);
+
+    // Análisis por tipo de franja
+    const franjasComerciales = franjas.filter(f => f.tipo === 'comercial');
+    const franjasCorreccion = franjas.filter(f => f.tipo === 'correccion');
+    const franjasPreparacion = franjas.filter(f => f.tipo === 'preparacion');
+    const franjasCierre = franjas.filter(f => f.tipo === 'cierre');
+
+    // Mejor franja comercial
+    const mejorFranjaComercial = franjasComerciales.reduce((max, franja) => 
+      franja.ventas > max.ventas ? franja : max, franjasComerciales[0] || { ventas: 0 });
+
+    // Peor franja comercial
+    const peorFranjaComercial = franjasComerciales.reduce((min, franja) => 
+      franja.ventas < min.ventas ? franja : min, franjasComerciales[0] || { ventas: 0 });
+
+    // Total de correcciones
+    const totalCorrecciones = franjasCorreccion.reduce((sum, f) => sum + f.ventas, 0);
+    const ticketsCorrecciones = franjasCorreccion.reduce((sum, f) => sum + f.tickets, 0);
+
+    // Calcular franja más consistente (menor desviación estándar)
+    const ventas = franjas.map(f => f.ventas).filter(v => v > 0);
+    const mediaVentas = ventas.reduce((sum, v) => sum + v, 0) / ventas.length;
+    const varianza = ventas.reduce((sum, v) => sum + Math.pow(v - mediaVentas, 2), 0) / ventas.length;
+    const desviacionEstandar = Math.sqrt(varianza);
+
+    // Encontrar franja más consistente (más cercana a la media)
+    const franjaMasConsistente = franjas.reduce((consistente, franja) => {
+      if (franja.ventas === 0) return consistente;
+      const distancia = Math.abs(franja.ventas - mediaVentas);
+      const distanciaConsistente = Math.abs(consistente.ventas - mediaVentas);
+      return distancia < distanciaConsistente ? franja : consistente;
+    }, franjas[0]);
+
+    // Calcular crecimiento entre franjas consecutivas
+    const franjasConVentas = franjas.filter(f => f.ventas > 0);
+    const crecimientoPromedio = franjasConVentas.length > 1 ? 
+      (franjasConVentas[franjasConVentas.length - 1].ventas - franjasConVentas[0].ventas) / (franjasConVentas.length - 1) : 0;
+
+    return {
+      mejorFranjaVentas,
+      peorFranjaVentas,
+      mejorFranjaTickets,
+      peorFranjaTickets,
+      franjaMasConsistente,
+      crecimientoPromedio,
+      mediaVentas,
+      desviacionEstandar,
+      totalFranjas: franjas.length,
+      franjasConActividad: franjas.filter(f => f.ventas > 0).length,
+      
+      // Análisis por tipo de franja
+      mejorFranjaComercial,
+      peorFranjaComercial,
+      totalCorrecciones,
+      ticketsCorrecciones,
+      franjasComerciales: franjasComerciales.length,
+      franjasCorreccion: franjasCorreccion.length,
+      franjasPreparacion: franjasPreparacion.length,
+      franjasCierre: franjasCierre.length
+    };
+  };
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 30 }}
@@ -2195,47 +2454,47 @@ const AnalyticsPage = () => {
 
       {/* Tarjetas de selección de vista - Solo mostrar para Holded */}
       {selectedDataset !== 'idoni' && (
-        <div style={{
-          display: 'flex',
-          gap: '18px',
-          marginBottom: '28px',
-          flexWrap: 'wrap',
-        }}>
-          {views.map(view => {
-            const isActive = selectedView === view.id;
-            return (
-              <motion.div
-                key={view.id}
-                whileHover={{ scale: 1.04, boxShadow: isActive ? `0 4px 16px 0 ${colors.primary}33` : `0 2px 8px 0 ${colors.primary}22` }}
-                whileTap={{ scale: 0.98 }}
-                onClick={() => setSelectedView(view.id)}
-                style={{
-                  minWidth: 180,
-                  flex: '1 1 180px',
-                  background: colors.card,
-                  borderRadius: 12,
-                  boxShadow: isActive ? `0 4px 16px 0 ${colors.primary}33` : `0 2px 8px 0 rgba(0,0,0,0.04)`,
-                  border: isActive ? `2.5px solid ${colors.primary}` : `1.5px solid ${colors.border}`,
-                  color: isActive ? colors.primary : colors.text,
-                  cursor: 'pointer',
-                  padding: '22px 18px',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'flex-start',
-                  justifyContent: 'center',
-                  transition: 'all 0.18s',
-                  fontWeight: isActive ? 600 : 400,
-                  fontSize: 16,
-                  outline: isActive ? `2px solid ${colors.primary}` : 'none',
-                  position: 'relative',
-                }}
-              >
-                <span style={{ fontSize: 17, fontWeight: 600, marginBottom: 6 }}>{view.name}</span>
-                <span style={{ fontSize: 13, color: isActive ? colors.primary : colors.textSecondary, marginTop: 2 }}>{view.description}</span>
-              </motion.div>
-            );
-          })}
-        </div>
+      <div style={{
+        display: 'flex',
+        gap: '18px',
+        marginBottom: '28px',
+        flexWrap: 'wrap',
+      }}>
+        {views.map(view => {
+          const isActive = selectedView === view.id;
+          return (
+            <motion.div
+              key={view.id}
+              whileHover={{ scale: 1.04, boxShadow: isActive ? `0 4px 16px 0 ${colors.primary}33` : `0 2px 8px 0 ${colors.primary}22` }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => setSelectedView(view.id)}
+              style={{
+                minWidth: 180,
+                flex: '1 1 180px',
+                background: colors.card,
+                borderRadius: 12,
+                boxShadow: isActive ? `0 4px 16px 0 ${colors.primary}33` : `0 2px 8px 0 rgba(0,0,0,0.04)`,
+                border: isActive ? `2.5px solid ${colors.primary}` : `1.5px solid ${colors.border}`,
+                color: isActive ? colors.primary : colors.text,
+                cursor: 'pointer',
+                padding: '22px 18px',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'flex-start',
+                justifyContent: 'center',
+                transition: 'all 0.18s',
+                fontWeight: isActive ? 600 : 400,
+                fontSize: 16,
+                outline: isActive ? `2px solid ${colors.primary}` : 'none',
+                position: 'relative',
+              }}
+            >
+              <span style={{ fontSize: 17, fontWeight: 600, marginBottom: 6 }}>{view.name}</span>
+              <span style={{ fontSize: 13, color: isActive ? colors.primary : colors.textSecondary, marginTop: 2 }}>{view.description}</span>
+            </motion.div>
+          );
+        })}
+      </div>
       )}
 
       <AnimatePresence mode="wait">
@@ -2659,7 +2918,7 @@ const AnalyticsPage = () => {
                             tooltip: {
                               mode: 'index',
                               intersect: false,
-                              backgroundColor: colors.card,
+                              backgroundColor: colors.background,
                               titleColor: colors.text,
                               bodyColor: colors.text,
                               borderColor: colors.border,
@@ -2898,13 +3157,13 @@ const AnalyticsPage = () => {
                             tooltip: {
                               mode: 'index',
                               intersect: false,
-                              backgroundColor: colors.card,
+                              backgroundColor: colors.background,
                               titleColor: colors.text,
                               bodyColor: colors.text,
                               borderColor: colors.border,
                               borderWidth: 1,
                               titleFont: {
-                                size: 16,
+                                size: 14,
                                 weight: 'bold'
                               },
                               bodyFont: {
@@ -3042,6 +3301,307 @@ const AnalyticsPage = () => {
                           })}
                       </tbody>
                     </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Análisis de Ventas por Horas */}
+              {idoniHourlyData && idoniHourlyAnalytics && (
+                <div style={{ marginTop: '24px' }}>
+                  <h3 style={{ margin: '0 0 16px 0', color: colors.text, fontSize: 18, fontWeight: 600 }}>
+                    Análisis de Ventas por Franjas Horarias (Enero-Julio)
+                  </h3>
+
+                  
+                  {/* Tarjetas de resumen de franjas horarias */}
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                    gap: '16px',
+                    marginBottom: '24px'
+                  }}>
+                    <div style={{
+                      background: colors.surface,
+                      padding: '16px',
+                      borderRadius: '8px',
+                      border: `1px solid ${colors.border}`,
+                      textAlign: 'center'
+                    }}>
+                      <div style={{ color: colors.success, fontSize: '24px', fontWeight: '700', marginBottom: '4px' }}>
+                        {idoniHourlyAnalytics.mejorFranjaComercial?.nombre || 'N/A'}
+                      </div>
+                      <div style={{ color: colors.textSecondary, fontSize: '12px' }}>Mejor Hora Comercial</div>
+                    </div>
+                    
+                    <div style={{
+                      background: colors.surface,
+                      padding: '16px',
+                      borderRadius: '8px',
+                      border: `1px solid ${colors.border}`,
+                      textAlign: 'center'
+                    }}>
+                      <div style={{ color: colors.error, fontSize: '24px', fontWeight: '700', marginBottom: '4px' }}>
+                        {idoniHourlyAnalytics.peorFranjaComercial?.nombre || 'N/A'}
+                      </div>
+                      <div style={{ color: colors.textSecondary, fontSize: '12px' }}>Peor Hora Comercial</div>
+                    </div>
+                    
+                    <div style={{
+                      background: colors.surface,
+                      padding: '16px',
+                      borderRadius: '8px',
+                      border: `1px solid ${colors.border}`,
+                      textAlign: 'center'
+                    }}>
+                      <div style={{ color: colors.warning, fontSize: '24px', fontWeight: '700', marginBottom: '4px' }}>
+                        {formatCurrency(idoniHourlyAnalytics.totalCorrecciones)}
+                      </div>
+                      <div style={{ color: colors.textSecondary, fontSize: '12px' }}>Total Correcciones</div>
+                    </div>
+                    
+                    <div style={{
+                      background: colors.surface,
+                      padding: '16px',
+                      borderRadius: '8px',
+                      border: `1px solid ${colors.border}`,
+                      textAlign: 'center'
+                    }}>
+                      <div style={{ color: colors.primary, fontSize: '24px', fontWeight: '700', marginBottom: '4px' }}>
+                        {idoniHourlyAnalytics.franjasComerciales}
+                      </div>
+                      <div style={{ color: colors.textSecondary, fontSize: '12px' }}>Horas Comerciales</div>
+                    </div>
+                    
+                    <div style={{
+                      background: colors.surface,
+                      padding: '16px',
+                      borderRadius: '8px',
+                      border: `1px solid ${colors.border}`,
+                      textAlign: 'center'
+                    }}>
+                      <div style={{ color: colors.info, fontSize: '24px', fontWeight: '700', marginBottom: '4px' }}>
+                        {formatCurrency(idoniHourlyData?.totalVentas || 0)}
+                      </div>
+                      <div style={{ color: colors.textSecondary, fontSize: '12px' }}>Total Ventas por Horas</div>
+                    </div>
+                  </div>
+
+                  {/* Gráfico de ventas por franjas horarias */}
+                  <div style={{ background: colors.surface, borderRadius: '8px', padding: '20px', marginBottom: '24px' }}>
+                    <h4 style={{ margin: '0 0 16px 0', color: colors.text, fontSize: '16', fontWeight: 600 }}>
+                      Ventas por Franjas Horarias
+                    </h4>
+                                        <div style={{ height: '400px' }}>
+                      <Bar
+                        data={{
+                          labels: idoniHourlyChartData.labels,
+                          datasets: [
+                            {
+                              label: 'Ventas (€)',
+                              data: idoniHourlyChartData.data,
+                              backgroundColor: idoniHourlyChartData.backgroundColor,
+                              borderColor: idoniHourlyChartData.borderColor,
+                              borderWidth: 2,
+                              borderRadius: 4
+                            }
+                          ]
+                        }}
+                        options={{
+                          responsive: true,
+                          maintainAspectRatio: false,
+                          plugins: {
+                            legend: {
+                              display: false
+                            },
+                            tooltip: {
+                              backgroundColor: colors.background,
+                              titleColor: colors.text,
+                              bodyColor: colors.text,
+                              borderColor: colors.border,
+                              borderWidth: 1,
+                              titleFont: {
+                                size: 14,
+                                weight: 'bold'
+                              },
+                              bodyFont: {
+                                size: 14,
+                                weight: 'bold'
+                              },
+                              padding: 12,
+                              callbacks: {
+                                title: function(context) {
+                                  return context[0].label;
+                                },
+                                label: function(context) {
+                                  return `Ventas: ${formatCurrency(context.parsed.y)}`;
+                                },
+                                afterBody: function(context) {
+                                  const franja = idoniHourlyData.franjasArray.find(f => f.nombre === context[0].label);
+                                  
+                                  if (franja) {
+                                    const tipoLabels = {
+                                      'comercial': 'Horario Comercial',
+                                      'correccion': 'Corrección de Tickets',
+                                      'preparacion': 'Preparación',
+                                      'cierre': 'Cierre'
+                                    };
+                                    
+                                    const mediaPorTicket = franja.tickets > 0 ? franja.ventas / franja.tickets : 0;
+                                    
+                                    return [
+                                      '',
+                                      'Detalles de la franja:',
+                                      `   • Tipo: ${tipoLabels[franja.tipo] || franja.tipo}`,
+                                      `   • Tickets: ${franja.tickets}`,
+                                      `   • Media/ticket: ${formatCurrency(mediaPorTicket)}`
+                                    ];
+                                  }
+                                  return '';
+                                }
+                              }
+                            }
+                          },
+                          scales: {
+                            x: {
+                              grid: {
+                                color: colors.border
+                              },
+                              ticks: {
+                                color: colors.textSecondary
+                              }
+                            },
+                            y: {
+                              grid: {
+                                color: colors.border
+                              },
+                              ticks: {
+                                color: colors.textSecondary,
+                                callback: function(value) {
+                                  return formatCurrency(value);
+                                }
+                              },
+                              title: {
+                                display: true,
+                                text: 'Ventas (€)',
+                                color: colors.textSecondary
+                              }
+                            }
+                          }
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Tabla comparativa de franjas horarias */}
+                  <div style={{ background: colors.surface, borderRadius: '8px', padding: '20px' }}>
+                    <h4 style={{ margin: '0 0 16px 0', color: colors.text, fontSize: '16', fontWeight: 600 }}>
+                      Análisis Detallado por Franjas Horarias
+                    </h4>
+                    <div style={{ 
+                      overflowX: 'auto',
+                      scrollbarWidth: 'thin',
+                      scrollbarColor: `${colors.border} transparent`
+                    }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
+                        <thead>
+                          <tr>
+                            <th style={{ padding: '12px', textAlign: 'left', color: colors.text, fontWeight: 600, fontSize: '14px' }}>
+                              Franja Horaria
+                            </th>
+                            <th style={{ padding: '12px', textAlign: 'center', color: colors.text, fontWeight: 600, fontSize: '14px' }}>
+                              Tipo
+                            </th>
+                            <th style={{ padding: '12px', textAlign: 'right', color: colors.text, fontWeight: 600, fontSize: '14px' }}>
+                              Ventas (€)
+                            </th>
+                            <th style={{ padding: '12px', textAlign: 'right', color: colors.text, fontWeight: 600, fontSize: '14px' }}>
+                              Tickets
+                            </th>
+                            <th style={{ padding: '12px', textAlign: 'right', color: colors.text, fontWeight: 600, fontSize: '14px' }}>
+                              Media/Ticket
+                            </th>
+                            <th style={{ padding: '12px', textAlign: 'center', color: colors.text, fontWeight: 600, fontSize: '14px' }}>
+                              Rendimiento
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {idoniHourlyData.franjasArray
+                            .sort((a, b) => b.ventas - a.ventas)
+                            .map((franja, index) => {
+                                                             const esMejorFranjaComercial = franja.nombre === idoniHourlyAnalytics.mejorFranjaComercial?.nombre;
+                               const esPeorFranjaComercial = franja.nombre === idoniHourlyAnalytics.peorFranjaComercial?.nombre;
+                               
+                               const tipoLabels = {
+                                 'comercial': 'Comercial',
+                                 'correccion': 'Corrección',
+                                 'preparacion': 'Preparación',
+                                 'cierre': 'Cierre'
+                               };
+                               
+                               const tipoColors = {
+                                 'comercial': colors.primary,
+                                 'correccion': colors.warning,
+                                 'preparacion': colors.info,
+                                 'cierre': colors.error
+                               };
+                               
+                               return (
+                                 <tr key={franja.nombre} style={{ 
+                                   borderBottom: `1px solid ${colors.border}`,
+                                   backgroundColor: esMejorFranjaComercial ? `${colors.success}10` : 
+                                                  esPeorFranjaComercial ? `${colors.error}10` : 'transparent'
+                                 }}>
+                                   <td style={{ padding: '12px', textAlign: 'left', color: colors.text, fontWeight: esMejorFranjaComercial || esPeorFranjaComercial ? 600 : 400 }}>
+                                     {franja.nombre}
+                                   </td>
+                                   <td style={{ padding: '12px', textAlign: 'center' }}>
+                                     <span style={{
+                                       padding: '4px 8px',
+                                       borderRadius: '4px',
+                                       fontSize: '12px',
+                                       fontWeight: '500',
+                                       backgroundColor: `${tipoColors[franja.tipo]}20`,
+                                       color: tipoColors[franja.tipo],
+                                       border: `1px solid ${tipoColors[franja.tipo]}40`
+                                     }}>
+                                       {tipoLabels[franja.tipo]}
+                                     </span>
+                                   </td>
+                                   <td style={{ padding: '12px', textAlign: 'right', color: colors.text, fontWeight: 600 }}>
+                                     {formatCurrency(franja.ventas)}
+                                   </td>
+                                   <td style={{ padding: '12px', textAlign: 'right', color: colors.textSecondary }}>
+                                     {franja.tickets}
+                                   </td>
+                                   <td style={{ padding: '12px', textAlign: 'right', color: colors.textSecondary }}>
+                                     {formatCurrency(franja.tickets > 0 ? franja.ventas / franja.tickets : 0)}
+                                   </td>
+                                   <td style={{ padding: '12px', textAlign: 'center' }}>
+                                     <div style={{
+                                       width: '60px',
+                                       height: '8px',
+                                       backgroundColor: colors.border,
+                                       borderRadius: '4px',
+                                       overflow: 'hidden',
+                                       margin: '0 auto'
+                                     }}>
+                                       <div style={{
+                                         width: `${(franja.ventas / idoniHourlyAnalytics.mejorFranjaComercial.ventas) * 100}%`,
+                                         height: '100%',
+                                         backgroundColor: esMejorFranjaComercial ? colors.success : 
+                                                        esPeorFranjaComercial ? colors.error : 
+                                                        tipoColors[franja.tipo],
+                                         borderRadius: '4px'
+                                       }} />
+                                     </div>
+                                   </td>
+                                 </tr>
+                               );
+                            })}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 </div>
               )}
