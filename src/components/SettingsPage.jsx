@@ -158,15 +158,17 @@ const SettingsPage = () => {
         if (window.electronAPI) {
           const version = await window.electronAPI.getAppVersion();
           setAppVersion(version);
-          console.log('📦 Versión de la aplicación obtenida:', version);
+          addDebugLog(`📦 Versión de la aplicación obtenida: ${version}`, 'success');
         }
       } catch (error) {
-        console.log('⚠️ No se pudo obtener la versión de la aplicación:', error.message);
+        addDebugLog(`⚠️ No se pudo obtener la versión de la aplicación: ${error.message}`, 'warning');
         // Mantener la versión por defecto
       }
     };
 
     getAppVersion();
+    addDebugLog('🚀 Componente SettingsPage cargado', 'info');
+    addDebugLog(`🔧 API de Electron disponible: ${!!window.electronAPI}`, 'info');
   }, []);
 
   // Estados para actualizaciones
@@ -175,6 +177,8 @@ const SettingsPage = () => {
   const [downloadProgress, setDownloadProgress] = useState(0);
   const [updateDownloaded, setUpdateDownloaded] = useState(false);
   const [checking, setChecking] = useState(false);
+  const [debugLogs, setDebugLogs] = useState([]);
+  const [showDebugLogs, setShowDebugLogs] = useState(false);
 
   // Verificar si el usuario es admin
   const isAdmin = user?.role === 'authenticated' && user?.user_metadata?.role === 'admin';
@@ -202,6 +206,19 @@ const SettingsPage = () => {
     setTimeout(() => setShowAlert(false), 3000);
   };
 
+  // Función para añadir logs de debug
+  const addDebugLog = (message, type = 'info') => {
+    const timestamp = new Date().toLocaleTimeString('es-ES');
+    const logEntry = {
+      id: Date.now(),
+      timestamp,
+      message,
+      type
+    };
+    setDebugLogs(prev => [logEntry, ...prev.slice(0, 19)]); // Mantener solo los últimos 20 logs
+    console.log(`[${timestamp}] ${message}`);
+  };
+
   const handleCurrencyChange = (newCurrency) => {
     setCurrency(newCurrency);
     showAlertMessage(`Divisa cambiada a ${currencies.find(c => c.code === newCurrency)?.name}`, 'success');
@@ -215,26 +232,39 @@ const SettingsPage = () => {
   // Configurar listeners de actualizaciones
   useEffect(() => {
     if (window.electronAPI) {
+      addDebugLog('🔧 Configurando listeners de actualizaciones...', 'info');
+      
       // Listener para actualización disponible
       window.electronAPI.onUpdateAvailable((event, info) => {
+        addDebugLog('✅ Evento: update-available recibido', 'success');
+        addDebugLog(`📦 Información: ${JSON.stringify(info)}`, 'info');
         setUpdateAvailable(true);
         setChecking(false);
       });
 
       // Listener para progreso de descarga
       window.electronAPI.onDownloadProgress((event, progressObj) => {
+        addDebugLog(`📊 Progreso de descarga: ${progressObj.percent}%`, 'info');
+        addDebugLog(`🚀 Velocidad: ${progressObj.bytesPerSecond} bytes/s`, 'info');
         setDownloadProgress(progressObj.percent);
       });
 
       // Listener para actualización descargada
       window.electronAPI.onUpdateDownloaded((event, info) => {
+        addDebugLog('✅ Evento: update-downloaded recibido', 'success');
+        addDebugLog(`📦 Información: ${JSON.stringify(info)}`, 'info');
         setUpdateDownloaded(true);
         setDownloading(false);
       });
+      
+      addDebugLog('✅ Listeners configurados correctamente', 'success');
+    } else {
+      addDebugLog('❌ No se pudieron configurar listeners: API no disponible', 'error');
     }
 
     return () => {
       if (window.electronAPI) {
+        addDebugLog('🧹 Limpiando listeners de actualizaciones...', 'info');
         window.electronAPI.removeAllListeners('update-available');
         window.electronAPI.removeAllListeners('download-progress');
         window.electronAPI.removeAllListeners('update-downloaded');
@@ -281,7 +311,7 @@ const SettingsPage = () => {
   // Función para verificar actualizaciones
   const checkForUpdates = async () => {
     if (!window.electronAPI) {
-      console.log('❌ Electron API no disponible');
+      addDebugLog('❌ Electron API no disponible', 'error');
       return;
     }
     
@@ -289,69 +319,100 @@ const SettingsPage = () => {
     setUpdateAvailable(false);
     setDownloading(false);
     setUpdateDownloaded(false);
-    
-    console.log('🔍 Verificando actualizaciones...');
-    console.log('📦 Versión actual:', appVersion);
-    console.log('🔗 Repositorio configurado: cr4zyp4y4n/Solucions-Socials-Sostenibles-Kronos');
+    addDebugLog('🔍 Iniciando verificación de actualizaciones...', 'info');
+    addDebugLog(`📦 Versión actual: ${appVersion}`, 'info');
+    addDebugLog('🔗 Repositorio: cr4zyp4y4n/Solucions-Socials-Sostenibles-Kronos', 'info');
     
     try {
       // Verificar conectividad con GitHub primero
+      addDebugLog('🌐 Conectando con GitHub API...', 'info');
       const githubData = await testGitHubConnection();
       if (githubData) {
-        console.log('🌐 GitHub conectado, verificando actualizaciones...');
-        console.log('📦 Última versión en GitHub:', githubData.tag_name);
+        addDebugLog('✅ GitHub conectado exitosamente', 'success');
+        addDebugLog(`📦 Última versión en GitHub: ${githubData.tag_name}`, 'info');
         
         // Comparar versiones
         const currentVersion = appVersion.replace('v', '');
         const latestVersion = githubData.tag_name.replace('v', '');
         
         if (latestVersion > currentVersion) {
-          console.log('✅ Nueva versión disponible:', latestVersion);
+          addDebugLog(`✅ Nueva versión disponible: ${latestVersion}`, 'success');
           setUpdateAvailable(true);
           showAlertMessage(`Nueva versión disponible: ${latestVersion}`, 'success');
         } else {
-          console.log('✅ Ya tienes la última versión');
+          addDebugLog('✅ Ya tienes la última versión', 'info');
+          addDebugLog(`📦 Versión actual: ${currentVersion}`, 'info');
+          addDebugLog(`📦 Última versión en GitHub: ${latestVersion}`, 'info');
+          addDebugLog('ℹ️ No hay actualización disponible porque ya tienes la versión más reciente', 'info');
           showAlertMessage('Ya tienes la última versión disponible', 'info');
         }
       } else {
-        console.log('⚠️ No se pudo conectar con GitHub');
+        addDebugLog('⚠️ No se pudo conectar con GitHub', 'warning');
         showAlertMessage('No se pudo verificar actualizaciones. Revisa tu conexión a internet.', 'warning');
       }
       
       // También intentar verificar con electron-updater
       try {
+        addDebugLog('📡 Enviando solicitud a electron-updater...', 'info');
         await window.electronAPI.checkForUpdates();
-        console.log('✅ Solicitud de verificación enviada correctamente');
+        addDebugLog('✅ Solicitud de verificación enviada correctamente', 'success');
       } catch (electronError) {
-        console.log('⚠️ Error con electron-updater:', electronError.message);
+        addDebugLog(`⚠️ Error con electron-updater: ${electronError.message}`, 'warning');
         // No mostrar error al usuario si ya tenemos respuesta de GitHub
       }
       
     } catch (error) {
-      console.error('Error verificando actualizaciones:', error);
-      console.log('❌ Error en verificación:', error.message);
+      addDebugLog(`❌ Error verificando actualizaciones: ${error.message}`, 'error');
       showAlertMessage('Error al verificar actualizaciones', 'error');
     } finally {
       setChecking(false);
+      addDebugLog('🔍 Verificación completada', 'info');
     }
   };
 
   // Función para descargar actualización
   const downloadUpdate = async () => {
-    if (!window.electronAPI) return;
+    if (!window.electronAPI) {
+      addDebugLog('❌ Electron API no disponible para descarga', 'error');
+      showAlertMessage('Error: API de Electron no disponible', 'error');
+      return;
+    }
     
     setDownloading(true);
     setDownloadProgress(0);
     
-    console.log('⬇️ Iniciando descarga de actualización...');
+    addDebugLog('⬇️ Iniciando descarga de actualización...', 'info');
+    addDebugLog('🔧 Detalles de la descarga:', 'info');
+    addDebugLog(`   • API disponible: ${!!window.electronAPI}`, 'info');
+    addDebugLog(`   • Función downloadUpdate disponible: ${typeof window.electronAPI.downloadUpdate}`, 'info');
+    addDebugLog('   • Estado actual: descargando', 'info');
     
     try {
+      addDebugLog('📡 Enviando solicitud de descarga al proceso principal...', 'info');
       await window.electronAPI.downloadUpdate();
-      console.log('✅ Solicitud de descarga enviada correctamente');
+      addDebugLog('✅ Solicitud de descarga enviada correctamente al proceso principal', 'success');
+      addDebugLog('⏳ Esperando eventos de progreso y finalización...', 'info');
+      
+      // Añadir timeout para detectar si no hay respuesta
+      setTimeout(() => {
+        if (downloading && downloadProgress === 0) {
+          addDebugLog('⚠️ Timeout: No se recibió progreso de descarga después de 10 segundos', 'warning');
+          addDebugLog('🔍 Posibles causas:', 'warning');
+          addDebugLog('   • El proceso principal no está respondiendo', 'warning');
+          addDebugLog('   • Error en la configuración del auto-updater', 'warning');
+          addDebugLog('   • Problema de conectividad con GitHub', 'warning');
+          showAlertMessage('Timeout: No se recibió respuesta del proceso de descarga', 'warning');
+        }
+      }, 10000);
+      
     } catch (error) {
-      console.error('Error descargando actualización:', error);
-      console.log('❌ Error en descarga:', error.message);
+      addDebugLog(`❌ Error descargando actualización: ${error.message}`, 'error');
+      addDebugLog('🔍 Detalles del error:', 'error');
+      addDebugLog(`   • Mensaje: ${error.message}`, 'error');
+      addDebugLog(`   • Stack: ${error.stack}`, 'error');
+      addDebugLog(`   • Tipo de error: ${error.constructor.name}`, 'error');
       setDownloading(false);
+      showAlertMessage(`Error en descarga: ${error.message}`, 'error');
     }
   };
 
@@ -746,14 +807,85 @@ const SettingsPage = () => {
           color: colors.textSecondary,
           border: `1px solid ${colors.border}`
         }}>
-          <strong>🔧 Información de Debug:</strong><br/>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <strong>🔧 Información de Debug:</strong>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                onClick={() => setDebugLogs([])}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: colors.error,
+                  cursor: 'pointer',
+                  fontSize: 10,
+                  textDecoration: 'underline'
+                }}
+                title="Limpiar logs"
+              >
+                Limpiar
+              </button>
+              <button
+                onClick={() => setShowDebugLogs(!showDebugLogs)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: colors.primary,
+                  cursor: 'pointer',
+                  fontSize: 11,
+                  textDecoration: 'underline'
+                }}
+              >
+                {showDebugLogs ? 'Ocultar logs' : 'Mostrar logs'}
+              </button>
+            </div>
+          </div>
           • Repositorio: cr4zyp4y4n/Solucions-Socials-Sostenibles-Kronos<br/>
           • Versión actual: {appVersion}<br/>
-          • Estado: {checking ? 'Verificando...' : 'Listo'}<br/>
-          • API disponible: {window.electronAPI ? '✅ Sí' : '❌ No'}
+          • Estado: {checking ? 'Verificando...' : downloading ? 'Descargando...' : 'Listo'}<br/>
+          • API disponible: {window.electronAPI ? '✅ Sí' : '❌ No'}<br/>
+          • Modo: {process.env.NODE_ENV === 'development' ? '🛠️ Desarrollo' : '🚀 Producción'}
+          
+          {/* Logs de debug expandibles */}
+          {showDebugLogs && (
+            <div style={{ 
+              marginTop: 12, 
+              padding: '8px', 
+              background: colors.card, 
+              borderRadius: 4,
+              border: `1px solid ${colors.border}`,
+              maxHeight: '200px',
+              overflowY: 'auto',
+              fontSize: 10
+            }}>
+              <div style={{ marginBottom: 8, fontWeight: 600, color: colors.text }}>
+                📋 Logs de Debug ({debugLogs.length} entradas):
+              </div>
+              {debugLogs.length === 0 ? (
+                <div style={{ color: colors.textSecondary, fontStyle: 'italic' }}>
+                  No hay logs disponibles. Ejecuta una verificación para ver los logs.
+                </div>
+              ) : (
+                debugLogs.map((log) => (
+                  <div key={log.id} style={{ 
+                    marginBottom: 4, 
+                    padding: '2px 4px',
+                    borderRadius: 2,
+                    fontSize: 9,
+                    fontFamily: 'monospace',
+                    color: log.type === 'error' ? colors.error : 
+                           log.type === 'warning' ? colors.warning : 
+                           log.type === 'success' ? colors.success : 
+                           colors.textSecondary
+                  }}>
+                    [{log.timestamp}] {log.message}
+                  </div>
+                ))
+              )}
+            </div>
+          )}
         </div>
         
-        <div style={{ marginBottom: 16 }}>
+        <div style={{ marginBottom: 16, display: 'flex', gap: 8 }}>
           <button
             onClick={checkForUpdates}
             disabled={checking || downloading}
@@ -771,6 +903,44 @@ const SettingsPage = () => {
           >
             {checking ? 'Verificando...' : 'Verificar Actualizaciones'}
           </button>
+          
+          {/* Botón de prueba para simular descarga */}
+          <button
+            onClick={() => {
+              addDebugLog('🧪 Iniciando prueba de descarga simulada...', 'info');
+              setDownloading(true);
+              setDownloadProgress(0);
+              
+              // Simular progreso de descarga
+              let progress = 0;
+              const interval = setInterval(() => {
+                progress += Math.random() * 15;
+                if (progress >= 100) {
+                  progress = 100;
+                  clearInterval(interval);
+                  addDebugLog('✅ Prueba de descarga completada', 'success');
+                  setDownloading(false);
+                  setUpdateDownloaded(true);
+                } else {
+                  setDownloadProgress(progress);
+                  addDebugLog(`📊 Progreso simulado: ${Math.round(progress)}%`, 'info');
+                }
+              }, 500);
+            }}
+            style={{
+              background: colors.secondary,
+              color: 'white',
+              border: 'none',
+              borderRadius: 8,
+              padding: '10px 16px',
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: 'pointer'
+            }}
+            title="Simular proceso de descarga para probar los logs"
+          >
+            🧪 Probar Logs
+          </button>
         </div>
         
         {updateAvailable && !downloading && !updateDownloaded && (
@@ -780,7 +950,10 @@ const SettingsPage = () => {
             </div>
             {canInstallUpdates ? (
               <button
-                onClick={downloadUpdate}
+                onClick={() => {
+                  addDebugLog('🖱️ Botón de descarga clickeado', 'info');
+                  downloadUpdate();
+                }}
                 style={{
                   background: colors.success,
                   color: 'white',
@@ -918,16 +1091,16 @@ const SettingsPage = () => {
           marginBottom: 32,
         }}
       >
-        <h1 style={{
-          color: colors.text,
-          fontSize: 28,
-          fontWeight: 700,
-          margin: 0,
-          lineHeight: 1.2,
-          userSelect: 'none'
-        }}>
-          Configuración
-        </h1>
+                  <h1 style={{
+            color: colors.text,
+            fontSize: 28,
+            fontWeight: 700,
+            margin: 0,
+            lineHeight: 1.2,
+            userSelect: 'none'
+          }}>
+            Configuración v2.0.5
+          </h1>
         <div style={{ display: 'flex', gap: 8 }}>
           {/* Badge de estado de Supabase */}
           <div style={{
