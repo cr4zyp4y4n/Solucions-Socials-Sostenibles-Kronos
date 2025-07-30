@@ -22,6 +22,8 @@ import holdedApi from '../services/holdedApi';
 import HoldedTest from './HoldedTest';
 import { useAuth } from './AuthContext';
 
+console.log('SettingsPage');
+
 // Hook para obtener el estado de conexión de Supabase de forma compacta
 import { useState as useReactState, useEffect as useReactEffect } from 'react';
 function useSupabaseConnectionStatus() {
