@@ -1,0 +1,23 @@
+¡Bienvenido a SSS Kronos!
+
+¡Hola {{ .Email }}!
+
+Nos complace darte la bienvenida a SSS Kronos, tu solución integral para la gestión administrativa y el análisis de datos empresariales.
+
+¿Qué puedes hacer con SSS Kronos?
+
+📊 Importar y analizar datos de Excel de forma inteligente
+📈 Generar reportes y dashboards personalizados
+👥 Gestionar proveedores y relaciones comerciales
+💰 Control de facturación y análisis financiero
+🔒 Acceso seguro con roles y permisos personalizados
+
+Para confirmar tu cuenta y comenzar a usar SSS Kronos, haz clic en el siguiente enlace:
+
+{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=signup&next=/dashboard
+
+Si no solicitaste esta cuenta, puedes ignorar este email de forma segura.
+
+---
+© 2024 SSS Kronos. Todos los derechos reservados.
+Soporte | Documentación | Contacto 

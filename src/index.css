@@ -1,0 +1,53 @@
+html, body, #root {
+  height: 100%;
+  min-height: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica,
+    Arial, sans-serif;
+}
+
+
+
+/* Estilos específicos para notificaciones */
+.notification-item {
+  -webkit-user-select: none !important;
+  -moz-user-select: none !important;
+  -ms-user-select: none !important;
+  user-select: none !important;
+  -webkit-touch-callout: none !important;
+  -webkit-tap-highlight-color: transparent !important;
+  -webkit-highlight: none !important;
+  -webkit-text-fill-color: inherit !important;
+  -webkit-touch-callout: none !important;
+  -webkit-tap-highlight-color: transparent !important;
+}
+
+.notification-item * {
+  -webkit-user-select: none !important;
+  -moz-user-select: none !important;
+  -ms-user-select: none !important;
+  user-select: none !important;
+  -webkit-touch-callout: none !important;
+  -webkit-tap-highlight-color: transparent !important;
+}
+
+/* Prevenir cualquier selección en notificaciones */
+.notification-item::selection,
+.notification-item *::selection {
+  background-color: transparent !important;
+  color: inherit !important;
+}
+
+.notification-item::-moz-selection,
+.notification-item *::-moz-selection {
+  background-color: transparent !important;
+  color: inherit !important;
+}
+
+
