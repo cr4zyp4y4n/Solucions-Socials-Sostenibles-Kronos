@@ -347,12 +347,14 @@ const Layout = () => {
   // Menú lateral según rol
   const menuItems = [
     { key: 'home', label: 'Inicio', path: '/home', icon: Home },
-    { key: 'catering', label: 'Catering', path: '/catering', icon: Coffee },
     { key: 'analytics', label: 'Análisis', path: '/analytics', icon: BarChart2 },
     { key: 'contacts', label: 'Contactos', path: '/contacts', icon: CreditCard },
     { key: 'settings', label: 'Configuración', path: '/settings', icon: Settings },
   ];
+  
+  // Solo administradores pueden ver catering
   if (isAdmin) {
+    menuItems.splice(1, 0, { key: 'catering', label: 'Catering', path: '/catering', icon: Coffee });
     menuItems.push(
       { key: 'users', label: 'Usuarios', path: '/users', icon: Users },
       { key: 'audit', label: 'Auditoría', path: '/audit', icon: Activity }
@@ -369,6 +371,9 @@ const Layout = () => {
       case 'home':
         return <HomePage />;
       case 'catering':
+        if (!isAdmin) {
+          return <AccessDenied message="Solo los administradores pueden acceder a la sección de Catering." />;
+        }
         return <CateringApp 
           eventId={cateringEventId} 
           onEventIdProcessed={() => setCateringEventId(null)}
@@ -380,8 +385,14 @@ const Layout = () => {
       case 'settings':
         return <SettingsPage />;
       case 'users':
+        if (!isAdmin) {
+          return <AccessDenied message="Solo los administradores pueden acceder a la gestión de usuarios." />;
+        }
         return <UserManagement />;
       case 'audit':
+        if (!isAdmin) {
+          return <AccessDenied message="Solo los administradores pueden acceder a la auditoría." />;
+        }
         return <AuditLog />;
       case 'profile':
         return <UserProfile onShowOnboarding={() => setShowOnboarding(true)} />;

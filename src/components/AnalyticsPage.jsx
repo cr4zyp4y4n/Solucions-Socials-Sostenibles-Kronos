@@ -2662,27 +2662,28 @@ const AnalyticsPage = () => {
       </motion.h2>
 
       {/* Selector de Dataset */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, delay: 0.15 }}
-        style={{
-          marginBottom: '28px',
-        }}
-      >
-        <h3 style={{ 
-          margin: '0 0 20px 0', 
-          color: colors.text, 
-          fontSize: '20px', 
-          fontWeight: '600' 
-        }}>
-          Seleccionar Vista
-        </h3>
-        <div style={{
-          display: 'flex',
-          gap: '18px',
-          flexWrap: 'wrap',
-        }}>
+      {!loading && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.15 }}
+          style={{
+            marginBottom: '28px',
+          }}
+        >
+          <h3 style={{ 
+            margin: '0 0 20px 0', 
+            color: colors.text, 
+            fontSize: '20px', 
+            fontWeight: '600' 
+          }}>
+            Seleccionar Vista
+          </h3>
+          <div style={{
+            display: 'flex',
+            gap: '18px',
+            flexWrap: 'wrap',
+          }}>
           <motion.div
             whileHover={{ scale: 1.04, boxShadow: selectedDataset === 'solucions' ? `0 4px 16px 0 ${colors.primary}33` : `0 2px 8px 0 ${colors.primary}22` }}
             whileTap={{ scale: 0.98 }}
@@ -2763,7 +2764,7 @@ const AnalyticsPage = () => {
               boxShadow: selectedDataset === 'menjar' ? `0 4px 16px 0 ${colors.primary}33` : `0 2px 8px 0 rgba(0,0,0,0.04)`,
               border: selectedDataset === 'menjar' ? `2.5px solid ${colors.primary}` : `1.5px solid ${colors.border}`,
               color: selectedDataset === 'menjar' ? colors.primary : colors.text,
-              cursor: isChangingDataset ? 'not-allowed' : 'pointer',
+              cursor: (isChangingDataset || loading) ? 'not-allowed' : 'pointer',
               padding: '22px 18px',
               display: 'flex',
               flexDirection: 'column',
@@ -2774,7 +2775,7 @@ const AnalyticsPage = () => {
               fontSize: 16,
               outline: selectedDataset === 'menjar' ? `2px solid ${colors.primary}` : 'none',
               position: 'relative',
-              opacity: isChangingDataset ? 0.6 : 1
+              opacity: (isChangingDataset || loading) ? 0.6 : 1
             }}
           >
             {/* Indicador de carga para Menjar */}
@@ -2887,10 +2888,11 @@ const AnalyticsPage = () => {
             </span>
           </motion.div>
         </div>
-      </motion.div>
+        </motion.div>
+      )}
 
       {/* Tarjetas de selección de vista - Solo mostrar para Holded */}
-      {selectedDataset !== 'idoni' && (
+      {!loading && selectedDataset !== 'idoni' && (
       <div style={{
         display: 'flex',
         gap: '18px',
@@ -2924,6 +2926,7 @@ const AnalyticsPage = () => {
                 fontSize: 16,
                 outline: isActive ? `2px solid ${colors.primary}` : 'none',
                 position: 'relative',
+                opacity: 1
               }}
             >
               <span style={{ fontSize: 17, fontWeight: 600, marginBottom: 6 }}>{view.name}</span>
