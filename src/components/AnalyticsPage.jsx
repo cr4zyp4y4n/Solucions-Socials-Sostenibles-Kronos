@@ -2739,8 +2739,8 @@ const AnalyticsPage = () => {
               'Proveedor': row[columnIndices.provider] || '-',
               'Descripción': row[columnIndices.description] || '-',
               'Cuenta': row[columnIndices.account] || '-',
-              'Total': formatCurrency(amountToShow),
-              'Pendiente': columnIndices.pending ? formatCurrency(pending) : '-',
+              'Total': amountToShow, // Número para que Excel pueda sumar
+              'Pendiente': columnIndices.pending ? pending : 0, // Número para que Excel pueda sumar
               'Canal': channel,
               'Estado': isPending(row, columnIndices) ? 'Pendiente' : 'Pagado'
             };
@@ -2847,17 +2847,15 @@ const AnalyticsPage = () => {
           stat.invoices.forEach(row => {
             const total = parseFloat(row[columnIndices.total]) || 0;
             const pending = columnIndices.pending ? (parseFloat(row[columnIndices.pending]) || 0) : 0;
-            // Para facturas pendientes, mostrar el monto pendiente en lugar del total
-            const amountToShow = pending > 0 ? pending : total;
             
             allInvoicesData.push({
               'Fecha': formatDate(row[columnIndices.date]),
               'Número de Factura': row[columnIndices.invoiceNumber] || '-',
               'Descripción': row[columnIndices.description] || '-',
               'Cuenta': row[columnIndices.account] || '-',
-              'IBAN': columnIndices.iban ? (row[columnIndices.iban] || '-') : '-',
-              'Total': formatCurrency(amountToShow),
-              'Pendiente': columnIndices.pending ? formatCurrency(pending) : '-',
+              'IBAN': '', // IBAN vacío para facturas individuales
+              'Total': total, // Número para que Excel pueda sumar
+              'Pendiente': columnIndices.pending ? pending : 0, // Número para que Excel pueda sumar
               'Estado': isPending(row, columnIndices) ? 'Pendiente' : 'Pagado'
             });
           });
@@ -2866,7 +2864,7 @@ const AnalyticsPage = () => {
           const providerTotal = stat.invoices.reduce((sum, row) => {
             const total = parseFloat(row[columnIndices.total]) || 0;
             const pending = columnIndices.pending ? (parseFloat(row[columnIndices.pending]) || 0) : 0;
-            // Para facturas pendientes, usar el monto pendiente en lugar del total
+            // Usar el monto pendiente si existe, sino el total
             const amountToAdd = pending > 0 ? pending : total;
             return sum + amountToAdd;
           }, 0);
@@ -2877,8 +2875,8 @@ const AnalyticsPage = () => {
             'Descripción': '',
             'Cuenta': '',
             'IBAN': '',
-            'Total': `TOTAL ${stat.provider}: ${formatCurrency(providerTotal)}`,
-            'Pendiente': '',
+            'Total': '',
+            'Pendiente': `TOTAL ${stat.provider}: ${formatCurrency(providerTotal)}`,
             'Estado': ''
           });
         }

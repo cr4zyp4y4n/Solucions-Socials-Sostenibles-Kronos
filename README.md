@@ -106,6 +106,8 @@
 - ✅ **Corregidos cálculos financieros:** Montos pendientes en lugar de totales
 - ✅ **Corregida exportación Excel:** Consistencia entre vistas y archivos descargados
 - ✅ **Limpieza de código:** Eliminados logs de debugging y funciones de prueba
+- ✅ **Exportación Bruno optimizada:** IBAN solo una vez por proveedor, columnas Total/Pendiente correctas, totales en columna Pendiente
+- ✅ **Formato Excel mejorado:** Valores numéricos para permitir sumas automáticas en Excel
 
 ### 🔧 Mejoras Técnicas
 - ✅ **API de GitHub mejorada:** Headers apropiados y manejo de errores
