@@ -1,11 +1,11 @@
-# SSS Kronos v2.0.4
+# SSS Kronos v2.0.9
 
-🚀 **Release Notes - SSS Kronos v2.0.4**
+🚀 **Release Notes - SSS Kronos v2.0.9**
 
 ## 📦 Archivos de Distribución
 
 ### Windows
-- **Instalador:** SSS Kronos-2.0.4 Setup.exe (115 MB aprox.)
+- **Instalador:** SSS Kronos-2.0.9 Setup.exe (115 MB aprox.)
 - **Ubicación:** `out/make/squirrel.windows/x64/`
 - **Compatibilidad:** Windows 10/11 (64-bit)
 
@@ -14,7 +14,49 @@
 
 ## ✨ Nuevas Características y Cambios Clave
 
-### 🏪 **Nuevo Módulo IDONI - Análisis de Ventas de Tienda**
+### 🔐 **Sistema de Control de Acceso Robusto (RBAC)**
+- ✅ **Catering exclusivo:** Solo visible para administradores
+- ✅ **Actualizaciones restringidas:** Solo administradores pueden gestionar actualizaciones
+- ✅ **Mensajes de acceso denegado:** Interfaz clara para usuarios no autorizados
+- ✅ **Permisos extendidos:** Rol "Usuario" tiene acceso a configuración y conexiones
+- ✅ **Navegación inteligente:** Menú adaptativo según el rol del usuario
+
+### 🗑️ **Sistema de Eliminación de Usuarios Mejorado**
+- ✅ **Eliminación en cascada robusta:** Sin errores de foreign key constraints
+- ✅ **Manejo de tablas relacionadas:** `catering_events`, `notifications`, `catering_staff`
+- ✅ **Verificaciones de seguridad:** Comprobaciones `EXISTS` antes de eliminar
+- ✅ **Función SQL optimizada:** `complete_delete_user_cascade` mejorada
+- ✅ **Eliminación segura:** Sin afectar integridad de la base de datos
+
+### 📊 **Exportación de Datos Avanzada**
+- ✅ **Vista Sergi mejorada:** Descarga por canales con hojas separadas
+- ✅ **Vista Bruno optimizada:** Todas las facturas en una hoja, agrupadas por proveedor
+- ✅ **Inclusión de IBAN:** Para cada factura individual en exportaciones
+- ✅ **Límites Excel manejados:** Nombres de hojas truncados a 31 caracteres
+- ✅ **Totales precisos:** Calculados por canal y proveedor correctamente
+
+### 💰 **Cálculos Financieros Precisos**
+- ✅ **Montos pendientes:** En lugar de totales para facturas parcialmente pagadas
+- ✅ **Nueva columna "Pendiente":** En vista Sergi con montos específicos
+- ✅ **Vista Bruno actualizada:** Facturas individuales muestran montos pendientes
+- ✅ **Totales correctos:** Reflejan realmente lo que falta por pagar
+- ✅ **Consistencia en exportaciones:** Excel refleja exactamente las vistas en pantalla
+
+### 🔍 **Integración Completa con Holded API**
+- ✅ **Facturas parcialmente pagadas:** 5 facturas encontradas e integradas correctamente
+- ✅ **Consultas específicas:** Para `paid=2` (parcialmente pagadas)
+- ✅ **Deduplicación inteligente:** Combinación de resultados sin duplicados
+- ✅ **Logs detallados:** Para diagnóstico y debugging avanzado
+- ✅ **Función de prueba:** Botón específico para testear facturas parcialmente pagadas
+
+### 🎨 **Mejoras de Experiencia de Usuario**
+- ✅ **Botones de analytics:** No aparecen hasta cargar datos completamente
+- ✅ **Versión dinámica:** Configuración muestra versión actual del app automáticamente
+- ✅ **Botón de prueba integrado:** Para facturas parcialmente pagadas en configuración
+- ✅ **Columna "Monto":** En lugar de "Total" para mayor claridad
+- ✅ **Interfaz responsiva:** Mejor manejo de estados de carga
+
+### 🏪 **Módulo IDONI - Análisis de Ventas de Tienda**
 - ✅ **Carga de datos Excel:** Subida de archivos "Ventas Diarias" y "Ventas por Horas"
 - ✅ **Almacenamiento en Supabase:** Persistencia de datos en tablas especializadas
 - ✅ **Análisis avanzado:** Ventas mensuales, por días de la semana y por horas
@@ -39,7 +81,7 @@
 - ✅ **Instalación con un clic:** Reinicio automático con la nueva versión
 - ✅ **Integración con GitHub:** Distribución automática desde GitHub Releases
 - ✅ **Verificación manual:** Botón en Configuración para verificar actualizaciones manualmente
-- ✅ **Permisos inteligentes:** Administradores, jefes y managers pueden instalar actualizaciones
+- ✅ **Permisos inteligentes:** Administradores, jefes, managers y usuarios pueden instalar actualizaciones
 
 ### 🛡️ Mejoras de Seguridad y Estabilidad
 - ✅ **Content Security Policy mejorada:** Permite conexiones seguras a GitHub API
@@ -55,11 +97,15 @@
 ### 🐞 Correcciones de Errores
 - ✅ **Corregido error de CSP:** Bloqueo de conexiones a GitHub API
 - ✅ **Corregido estado de verificación:** El botón ya no se queda colgado
-- ✅ **Corregida versión mostrada:** Ahora muestra correctamente la versión 2.0.4
+- ✅ **Corregida versión mostrada:** Ahora muestra correctamente la versión 2.0.9
 - ✅ **Corregidos permisos:** Jefes ya no ven "Solo lectura" incorrectamente
 - ✅ **Corregido procesamiento Excel:** Manejo robusto de columnas vacías y caracteres especiales
 - ✅ **Corregido cálculo de totales:** Filtrado correcto de filas "TOTAL" en datos IDONI
 - ✅ **Corregida superposición UI:** Elementos de análisis correctamente posicionados
+- ✅ **Corregidos errores de eliminación:** Foreign key constraints en eliminación de usuarios
+- ✅ **Corregidos cálculos financieros:** Montos pendientes en lugar de totales
+- ✅ **Corregida exportación Excel:** Consistencia entre vistas y archivos descargados
+- ✅ **Limpieza de código:** Eliminados logs de debugging y funciones de prueba
 
 ### 🔧 Mejoras Técnicas
 - ✅ **API de GitHub mejorada:** Headers apropiados y manejo de errores
@@ -69,6 +115,11 @@
 - ✅ **Base de datos IDONI:** Nuevas tablas `idoni_ventas_diarias` e `idoni_ventas_horas`
 - ✅ **Procesamiento Excel avanzado:** Detección automática de headers y validación de datos
 - ✅ **Análisis estadístico:** Cálculo de promedios, tendencias y métricas de rendimiento
+- ✅ **Función SQL robusta:** `complete_delete_user_cascade` con verificaciones EXISTS
+- ✅ **API Holded optimizada:** Consultas específicas para facturas parcialmente pagadas
+- ✅ **Exportación Excel inteligente:** Manejo de límites y cálculos precisos
+- ✅ **Sistema RBAC avanzado:** Control granular de permisos por rol
+- ✅ **Código optimizado:** Eliminación de logs verbosos y funciones de prueba
 
 ## 📋 Requisitos del Sistema
 
@@ -87,7 +138,7 @@
 
 ### 📥 Descargar
 1. Ve a la sección Releases de este repositorio
-2. Descarga `SSS Kronos-2.0.4 Setup.exe`
+2. Descarga `SSS Kronos-2.0.9 Setup.exe`
 3. Ejecuta el instalador y sigue las instrucciones
 
 ### ⚡ Primera Ejecución
@@ -112,7 +163,7 @@
 ### Permisos
 - **Administradores:** Acceso completo a todas las funciones
 - **Jefes (Management/Manager):** Pueden instalar actualizaciones
-- **Usuarios básicos:** Solo pueden verificar, no instalar
+- **Usuarios básicos:** Pueden instalar actualizaciones y acceder a configuración
 
 ## 📚 Documentación
 
@@ -136,6 +187,8 @@
 - 📱 Aplicación móvil complementaria
 - 🔧 Mejoras en el sistema de actualizaciones
 - 📋 Módulos ERP/CRM adicionales
+- 🔐 Sistema de auditoría avanzado
+- 📊 Dashboard ejecutivo con KPIs
 
 ## 🤝 Contribución
 

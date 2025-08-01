@@ -722,6 +722,39 @@ const SettingsPage = () => {
         >
           <h3 style={{ color: colors.text, fontSize: 18, fontWeight: 600, marginBottom: 18 }}>Pruebas técnicas</h3>
           <HoldedTest />
+          
+          {/* Botón de prueba para facturas parcialmente pagadas */}
+          <div style={{ marginTop: 16, padding: '16px', background: colors.surface, borderRadius: 8, border: `1px solid ${colors.border}` }}>
+            <h4 style={{ color: colors.text, fontSize: 16, fontWeight: 600, marginBottom: 12 }}>Prueba Facturas Parcialmente Pagadas</h4>
+            <button
+              onClick={async () => {
+                try {
+                  showAlertMessage('Iniciando prueba de facturas parcialmente pagadas...', 'info');
+                  const holdedApi = (await import('../services/holdedApi')).default;
+                  await holdedApi.testPartiallyPaidPurchases('solucions');
+                  showAlertMessage('Prueba completada. Revisa la consola para ver los resultados.', 'success');
+                } catch (error) {
+                  console.error('Error en prueba:', error);
+                  showAlertMessage('Error en la prueba: ' + error.message, 'error');
+                }
+              }}
+              style={{
+                background: colors.primary,
+                color: 'white',
+                border: 'none',
+                padding: '8px 16px',
+                borderRadius: '6px',
+                fontSize: '14px',
+                fontWeight: '500',
+                cursor: 'pointer',
+                transition: 'background-color 0.2s ease'
+              }}
+              onMouseEnter={(e) => e.target.style.background = colors.primary + 'dd'}
+              onMouseLeave={(e) => e.target.style.background = colors.primary}
+            >
+              Probar Facturas Parcialmente Pagadas
+            </button>
+          </div>
         </motion.div>
       );
     } else {
@@ -792,6 +825,8 @@ const SettingsPage = () => {
             </motion.div>
           ))}
         </div>
+        
+
       </motion.div>
     )
   );
@@ -1178,7 +1213,7 @@ const SettingsPage = () => {
             lineHeight: 1.2,
             userSelect: 'none'
           }}>
-            Configuración v2.0.8
+            Configuración v2.0.10
           </h1>
         <div style={{ display: 'flex', gap: 8 }}>
           {/* Badge de estado de Supabase */}
@@ -1333,7 +1368,6 @@ const SettingsPage = () => {
         {renderDivisaSection()}
         {renderInfoApp()}
         {renderEstadoConexiones()}
-        {renderPruebasTecnicas()}
         {renderUpdateSection()}
       </motion.div>
     </motion.div>

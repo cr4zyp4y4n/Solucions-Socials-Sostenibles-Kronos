@@ -94,6 +94,71 @@ class HoldedApiService {
     }, company);
   }
 
+  // Obtener compras parcialmente pagadas (paid=2)
+  async getPartiallyPaidPurchases(page = 1, limit = 100, company = 'solucions') {
+    return await this.getPurchases({
+      page,
+      limit,
+      paid: '2' // 2 = partially paid
+    }, company);
+  }
+
+  // Obtener TODAS las compras parcialmente pagadas (todas las páginas)
+  async getAllPartiallyPaidPurchasesPages(company = 'solucions') {
+    const allPartiallyPaidPurchases = [];
+    let page = 1;
+    let hasMorePages = true;
+    const limit = 100; // Máximo por página
+
+    while (hasMorePages) {
+      try {
+        const purchases = await this.getPartiallyPaidPurchases(page, limit, company);
+        
+        if (purchases && purchases.length > 0) {
+          allPartiallyPaidPurchases.push(...purchases);
+          
+          // Si obtenemos menos del límite, significa que es la última página
+          if (purchases.length < limit) {
+            hasMorePages = false;
+          } else {
+            page++;
+          }
+        } else {
+          hasMorePages = false;
+        }
+      } catch (error) {
+        console.error(`Error obteniendo compras parcialmente pagadas en página ${page}:`, error);
+        hasMorePages = false;
+      }
+    }
+
+    return allPartiallyPaidPurchases;
+  }
+
+  // Obtener compras pendientes incluyendo parcialmente pagadas
+  async getPendingPurchasesIncludingPartial(page = 1, limit = 100, company = 'solucions') {
+    // Obtener todas las compras de esta página
+    const allPurchases = await this.getPurchases({
+      page,
+      limit,
+      sort: 'created-desc'
+    }, company);
+    
+    // Filtrar solo las que realmente son pendientes
+    const pendingPurchases = allPurchases.filter(purchase => {
+      // Incluir:
+      // 1. Las compras con paid=false (no pagadas)
+      // 2. Las compras con status=2 que tienen paymentsPending > 0 (parcialmente pagadas)
+      
+      const isUnpaid = purchase.paid === false || purchase.paid === 0;
+      const isPartiallyPaid = purchase.status === 2 && purchase.paymentsPending > 0;
+      
+      return isUnpaid || isPartiallyPaid;
+    });
+    
+    return pendingPurchases;
+  }
+
   // Obtener compras pendientes incluyendo status=2
   async getPendingPurchasesWithStatus2(page = 1, limit = 100, company = 'solucions') {
     // Primero obtener compras con paid=0
@@ -226,7 +291,7 @@ class HoldedApiService {
 
     while (hasMorePages) {
       try {
-        const purchases = await this.getPendingPurchases(page, limit, company);
+        const purchases = await this.getPendingPurchasesIncludingPartial(page, limit, company);
         
         if (purchases && purchases.length > 0) {
           allPurchases.push(...purchases);
@@ -246,6 +311,45 @@ class HoldedApiService {
     }
 
     return allPurchases;
+  }
+
+  // Obtener TODAS las compras parcialmente pagadas (todas las páginas)
+  async getAllPartiallyPaidPurchasesPages(company = 'solucions') {
+    console.log(`🚀 [Holded API] Iniciando obtención de TODAS las compras parcialmente pagadas para ${company}`);
+    
+    const allPartiallyPaidPurchases = [];
+    let page = 1;
+    let hasMorePages = true;
+    const limit = 100; // Máximo por página
+
+    while (hasMorePages) {
+      try {
+        console.log(`📄 [Holded API] Procesando página ${page} de compras parcialmente pagadas...`);
+        const purchases = await this.getPartiallyPaidPurchases(page, limit, company);
+        
+        if (purchases && purchases.length > 0) {
+          allPartiallyPaidPurchases.push(...purchases);
+          console.log(`✅ [Holded API] Página ${page}: ${purchases.length} compras parcialmente pagadas agregadas. Total acumulado: ${allPartiallyPaidPurchases.length}`);
+          
+          // Si obtenemos menos del límite, significa que es la última página
+          if (purchases.length < limit) {
+            console.log(`🏁 [Holded API] Última página alcanzada (${purchases.length} < ${limit})`);
+            hasMorePages = false;
+          } else {
+            page++;
+          }
+        } else {
+          console.log(`🏁 [Holded API] Página ${page} vacía, finalizando`);
+          hasMorePages = false;
+        }
+      } catch (error) {
+        console.error(`❌ [Holded API] Error en página ${page}:`, error);
+        hasMorePages = false;
+      }
+    }
+
+    console.log(`🎯 [Holded API] Total final de compras parcialmente pagadas: ${allPartiallyPaidPurchases.length}`);
+    return allPartiallyPaidPurchases;
   }
 
   // Obtener TODAS las compras vencidas (todas las páginas)
@@ -550,6 +654,17 @@ class HoldedApiService {
 
   // Función para transformar datos de Holded al formato de nuestra aplicación
   transformHoldedDocumentToInvoice(holdedDocument) {
+    console.log(`🔄 [Holded API] Transformando documento:`, {
+      id: holdedDocument.id,
+      docNumber: holdedDocument.docNumber,
+      contactName: holdedDocument.contactName,
+      total: holdedDocument.total,
+      paid: holdedDocument.paid,
+      status: holdedDocument.status,
+      paymentsPending: holdedDocument.paymentsPending,
+      paymentsTotal: holdedDocument.paymentsTotal
+    });
+    
     // Determinar el canal basándose en el proveedor o tags
     const determineChannel = (provider, tags) => {
       const providerLower = (provider || '').toLowerCase();
@@ -636,6 +751,24 @@ class HoldedApiService {
     
 
     
+    // Calcular el monto pendiente correctamente
+    let pendingAmount = holdedDocument.total;
+    if (holdedDocument.paymentsPending !== undefined && holdedDocument.paymentsPending !== null) {
+      pendingAmount = holdedDocument.paymentsPending;
+    } else if (holdedDocument.pending !== undefined && holdedDocument.pending !== null) {
+      pendingAmount = holdedDocument.pending;
+    }
+
+    // Determinar si está pagada basándose en paymentsPending y status
+    const isPartiallyPaid = holdedDocument.status === 2 && holdedDocument.paymentsPending > 0;
+    const isFullyPaid = holdedDocument.paymentsPending === 0 || holdedDocument.paymentsPending === null;
+    const isPaid = isFullyPaid && !isPartiallyPaid;
+    
+    // Para facturas parcialmente pagadas, asegurar que se muestren como pendientes
+    if (isPartiallyPaid) {
+      pendingAmount = holdedDocument.paymentsPending || holdedDocument.total;
+    }
+
     const transformed = {
       invoice_number: holdedDocument.docNumber || holdedDocument.num || holdedDocument.number || `HOLD-${holdedDocument.id}`,
       internal_number: holdedDocument.internalNum || holdedDocument.docNumber || holdedDocument.num || holdedDocument.number,
@@ -653,8 +786,8 @@ class HoldedApiService {
       employees: holdedDocument.employees,
       equipment_recovery: holdedDocument.equipmentRecovery,
       total: holdedDocument.total,
-      paid: holdedDocument.paid || false,
-      pending: holdedDocument.pending || holdedDocument.total,
+      paid: isPaid,
+      pending: pendingAmount,
       status: holdedDocument.status || 'Pendiente',
       payment_date: this.convertHoldedDate(holdedDocument.paymentDate),
       holded_id: holdedDocument.id, // ID original de Holded para referencia
@@ -663,22 +796,39 @@ class HoldedApiService {
       document_type: 'purchase' // Solo compras ahora
     };
     
-    return this.validateAndCleanInvoiceData(transformed);
+    const finalData = this.validateAndCleanInvoiceData(transformed);
+    
+    console.log(`✅ [Holded API] Documento transformado:`, {
+      invoice_number: finalData.invoice_number,
+      provider: finalData.provider,
+      total: finalData.total,
+      paid: finalData.paid,
+      pending: finalData.pending,
+      status: finalData.status
+    });
+    
+    return finalData;
   }
 
   // Función para obtener todas las compras pendientes y vencidas
   async getAllPendingAndOverduePurchases(company = 'solucions') {
     try {
-      const [pendingPurchases, overduePurchases] = await Promise.all([
+      const [pendingPurchases, partiallyPaidPurchases, overduePurchases] = await Promise.all([
         this.getAllPendingPurchasesPages(company),
+        this.getAllPartiallyPaidPurchasesPages(company),
         this.getAllOverduePurchasesPages(company)
       ]);
 
       // Combinar y eliminar duplicados basándose en el ID
-      const allDocuments = [...pendingPurchases, ...overduePurchases];
+      const allDocuments = [...pendingPurchases, ...partiallyPaidPurchases, ...overduePurchases];
       const uniqueDocuments = allDocuments.filter((doc, index, self) => 
         index === self.findIndex(d => d.id === doc.id)
       );
+
+      console.log(`📊 [Holded API] Compras pendientes: ${pendingPurchases.length}`);
+      console.log(`📊 [Holded API] Compras parcialmente pagadas: ${partiallyPaidPurchases.length}`);
+      console.log(`📊 [Holded API] Compras vencidas: ${overduePurchases.length}`);
+      console.log(`📊 [Holded API] Total único de documentos: ${uniqueDocuments.length}`);
 
       // Obtener todos los contactos de una vez para hacer match por nombre
       const allContacts = await this.getAllContacts(company);
@@ -768,6 +918,8 @@ class HoldedApiService {
       throw error;
     }
   }
+
+
 
   // Función para sincronizar datos con nuestra base de datos
   async syncDocumentsWithDatabase(supabase, company = 'solucions') {
