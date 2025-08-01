@@ -185,13 +185,14 @@ const SettingsPage = () => {
 
   // Verificar si el usuario es admin
   const isAdmin = user?.role === 'authenticated' && user?.user_metadata?.role === 'admin';
-  // Verificar si el usuario puede instalar actualizaciones (admin, management, directiva)
+  // Verificar si el usuario puede instalar actualizaciones (admin, management, manager, user)
   const canInstallUpdates = user?.role === 'authenticated' && 
-    ['admin', 'management', 'directiva'].includes(user?.user_metadata?.role);
+    ['admin', 'management', 'manager', 'user'].includes(user?.user_metadata?.role);
 
   // Helpers de rol
-  const isManagementOrDirectiva = user?.role === 'management' || user?.role === 'directiva' || user?.user_metadata?.role === 'management' || user?.user_metadata?.role === 'directiva';
-  const isUser = !isAdmin && !isManagementOrDirectiva;
+  const isManagementOrManager = user?.role === 'management' || user?.role === 'manager' || user?.user_metadata?.role === 'management' || user?.user_metadata?.role === 'manager';
+  const isUser = user?.role === 'authenticated' && user?.user_metadata?.role === 'user';
+  const isManagementOrUser = isManagementOrManager || isUser;
 
   // Estado de conexión Supabase (badge)
   const { status: supabaseStatus, error: supabaseError } = useSupabaseConnectionStatus();
@@ -635,7 +636,7 @@ const SettingsPage = () => {
 
   // Sección de configuración de divisa
   const renderDivisaSection = () => {
-    if (isAdmin || isManagementOrDirectiva) {
+    if (isAdmin || isManagementOrUser) {
       return settingsSections[0] && (
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -649,28 +650,13 @@ const SettingsPage = () => {
           ))}
         </motion.div>
       );
-    } else if (isUser) {
-      // Solo lectura para user
-      return (
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, delay: 0.2 }}
-          style={{ background: colors.card, borderRadius: 8, boxShadow: '0 2px 8px rgba(0,0,0,0.04)', padding: '20px' }}
-        >
-          <h3 style={{ color: colors.text, fontSize: 18, fontWeight: 600, marginBottom: 18 }}>{settingsSections[0].title}</h3>
-          <div style={{ fontSize: 15, color: colors.textSecondary }}>
-            {settingsSections[0].items[0].description}
-          </div>
-        </motion.div>
-      );
     }
     return null;
   };
 
   // Sección de estado de conexiones
   const renderEstadoConexiones = () => {
-    if (isAdmin || isManagementOrDirectiva) {
+    if (isAdmin || isManagementOrUser) {
       return settingsSections[2] && (
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -717,21 +703,6 @@ const SettingsPage = () => {
                 </div>
               </motion.div>
             ))}
-          </div>
-        </motion.div>
-      );
-    } else if (isUser) {
-      // Solo mensaje simple para user
-      return (
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, delay: 0.3 }}
-          style={{ background: colors.card, borderRadius: 8, boxShadow: '0 2px 8px rgba(0,0,0,0.04)', padding: '20px' }}
-        >
-          <h3 style={{ color: colors.text, fontSize: 18, fontWeight: 600, marginBottom: 18 }}>Estado de Conexión</h3>
-          <div style={{ fontSize: 15, color: colors.textSecondary }}>
-            La aplicación está conectada correctamente.
           </div>
         </motion.div>
       );

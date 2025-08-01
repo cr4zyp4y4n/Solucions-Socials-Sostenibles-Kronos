@@ -204,7 +204,7 @@ const UserManagement = () => {
     switch (role) {
       case 'admin': return 'Administrador';
       case 'management': return 'Gestión';
-      case 'directiva': return 'Directiva';
+      case 'manager': return 'Jefe';
       case 'user': return 'Usuario';
       default: return 'Usuario';
     }
@@ -215,7 +215,7 @@ const UserManagement = () => {
     switch (role) {
       case 'admin': return colors.error;
       case 'management': return '#8B5CF6';
-      case 'directiva': return colors.warning;
+      case 'manager': return colors.warning;
       case 'user': return colors.primary;
       default: return colors.primary;
     }
@@ -384,7 +384,7 @@ const UserManagement = () => {
             <option value="all">Todos los roles</option>
             <option value="admin">Administradores</option>
             <option value="management">Gestión</option>
-            <option value="directiva">Directiva</option>
+            <option value="manager">Jefes</option>
             <option value="user">Usuarios</option>
           </select>
         </div>
@@ -844,7 +844,7 @@ const UserManagement = () => {
                         }}
                       >
                         <option value="user">Usuario</option>
-                        <option value="directiva">Directiva</option>
+                        <option value="manager">Jefe</option>
                         <option value="management">Gestión</option>
                         <option value="admin">Administrador</option>
                       </select>

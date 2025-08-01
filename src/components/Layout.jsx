@@ -107,8 +107,8 @@ const Layout = () => {
       setCateringEventId(null);
     }
   }, [activeSection]);
-  const isManagementOrDirectiva = userProfile?.role === 'management' || userProfile?.role === 'directiva';
-  const isUser = !isAdmin && !isManagementOrDirectiva;
+  const isManagementOrManager = userProfile?.role === 'management' || userProfile?.role === 'manager';
+  const isUser = !isAdmin && !isManagementOrManager;
 
   // Configurar notificaciones en tiempo real
   useEffect(() => {
@@ -306,7 +306,7 @@ const Layout = () => {
     switch (role) {
       case 'admin': return 'Administrador';
       case 'management': return 'Gestión';
-      case 'directiva': return 'Directiva';
+      case 'manager': return 'Jefe';
       case 'user': return 'Usuario';
       default: return 'Usuario';
     }
@@ -352,7 +352,7 @@ const Layout = () => {
     { key: 'settings', label: 'Configuración', path: '/settings', icon: Settings },
   ];
   
-  // Solo administradores pueden ver catering, usuarios y auditoría
+  // Solo administradores pueden ver catering
   if (isAdmin) {
     menuItems.splice(1, 0, { key: 'catering', label: 'Catering', path: '/catering', icon: Coffee });
     menuItems.push(

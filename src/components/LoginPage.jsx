@@ -250,7 +250,7 @@ const LoginPage = () => {
                     onBlur={(e) => e.target.style.borderColor = colors.border}
                   >
                     <option value="user">Usuario</option>
-                    <option value="directiva">Directiva</option>
+                    <option value="manager">Jefe</option>
                     <option value="management">Gestión</option>
                     <option value="admin">Administrador</option>
                   </select>
@@ -264,7 +264,7 @@ const LoginPage = () => {
                   }}>
                     <strong>Roles disponibles:</strong><br />
                     • <strong>Usuario:</strong> Acceso básico a la aplicación<br />
-                    • <strong>Directiva:</strong> Gestión de equipo y reportes<br />
+                    • <strong>Jefe:</strong> Gestión de equipo y reportes<br />
                     • <strong>Gestión:</strong> Subida de archivos y análisis completo<br />
                     • <strong>Administrador:</strong> Control total del sistema
                   </div>

@@ -576,21 +576,21 @@ const HomePage = () => {
   /*
   const createNotificationForManagers = async (uploadInfo, type) => {
     try {
-        // Obtener usuarios con roles de directiva y admin
-  const { data: managers, error: managersError } = await supabase
-    .from('user_profiles')
-    .select('id')
-    .in('role', ['directiva', 'admin'])
+      // Obtener usuarios con roles de manager y admin
+      const { data: managers, error: managersError } = await supabase
+        .from('user_profiles')
+        .select('id')
+        .in('role', ['manager', 'admin'])
         .neq('id', user.id); // No notificar al creador
 
       if (managersError) {
         return;
       }
 
-          if (managers && managers.length > 0) {
-      // Crear notificaciones para cada directiva/admin
-      const notifications = managers.map(manager => ({
-        recipient_id: manager.id,
+      if (managers && managers.length > 0) {
+        // Crear notificaciones para cada manager/admin
+        const notifications = managers.map(manager => ({
+          recipient_id: manager.id,
           sender_id: user.id,
           type: 'system', // Usar 'system' que está permitido en el check constraint
           title: `Nuevo archivo Excel subido`,
