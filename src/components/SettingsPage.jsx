@@ -185,13 +185,13 @@ const SettingsPage = () => {
 
   // Verificar si el usuario es admin
   const isAdmin = user?.role === 'authenticated' && user?.user_metadata?.role === 'admin';
-  // Verificar si el usuario puede instalar actualizaciones (admin, management, manager)
+  // Verificar si el usuario puede instalar actualizaciones (admin, management, directiva)
   const canInstallUpdates = user?.role === 'authenticated' && 
-    ['admin', 'management', 'manager'].includes(user?.user_metadata?.role);
+    ['admin', 'management', 'directiva'].includes(user?.user_metadata?.role);
 
   // Helpers de rol
-  const isManagementOrManager = user?.role === 'management' || user?.role === 'manager' || user?.user_metadata?.role === 'management' || user?.user_metadata?.role === 'manager';
-  const isUser = !isAdmin && !isManagementOrManager;
+  const isManagementOrDirectiva = user?.role === 'management' || user?.role === 'directiva' || user?.user_metadata?.role === 'management' || user?.user_metadata?.role === 'directiva';
+  const isUser = !isAdmin && !isManagementOrDirectiva;
 
   // Estado de conexión Supabase (badge)
   const { status: supabaseStatus, error: supabaseError } = useSupabaseConnectionStatus();
@@ -635,7 +635,7 @@ const SettingsPage = () => {
 
   // Sección de configuración de divisa
   const renderDivisaSection = () => {
-    if (isAdmin || isManagementOrManager) {
+    if (isAdmin || isManagementOrDirectiva) {
       return settingsSections[0] && (
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -670,7 +670,7 @@ const SettingsPage = () => {
 
   // Sección de estado de conexiones
   const renderEstadoConexiones = () => {
-    if (isAdmin || isManagementOrManager) {
+    if (isAdmin || isManagementOrDirectiva) {
       return settingsSections[2] && (
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -1207,7 +1207,7 @@ const SettingsPage = () => {
             lineHeight: 1.2,
             userSelect: 'none'
           }}>
-            Configuración v2.0.5
+            Configuración v2.0.8
           </h1>
         <div style={{ display: 'flex', gap: 8 }}>
           {/* Badge de estado de Supabase */}

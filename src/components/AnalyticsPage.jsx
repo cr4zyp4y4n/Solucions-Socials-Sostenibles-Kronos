@@ -6,7 +6,7 @@ import { useCurrency } from './CurrencyContext';
 import { useAuth } from './AuthContext';
 import { supabase } from '../config/supabase';
 import holdedApi from '../services/holdedApi';
-import { Calendar, Filter, Upload, FileText, Check, X, ChevronDown, ChevronRight } from 'lucide-react';
+import { Calendar, Filter, Upload, FileText, Check, X, ChevronDown, ChevronRight, Download } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import {
   Chart as ChartJS,
@@ -2644,6 +2644,270 @@ const AnalyticsPage = () => {
     };
   };
 
+  // Función para descargar datos de la vista Sergi
+  const downloadSergiData = () => {
+    if (!sergiData || sergiData.length === 0) {
+      showAlertMessage('No hay datos para descargar.', 'error');
+      return;
+    }
+
+    try {
+      // Crear workbook
+      const wb = XLSX.utils.book_new();
+      const datasetName = selectedDataset === 'solucions' ? 'Solucions Socials' : 'Menjar D\'Hort';
+      const monthFilter = selectedMonth ? ` - ${getMonthName(selectedMonth)}` : '';
+      
+      // Obtener canales disponibles según el dataset
+      const channels = selectedDataset === 'solucions' 
+        ? ['Estructura', 'Catering', 'IDONI', 'Otros']
+        : selectedDataset === 'menjar'
+        ? ['OBRADOR', 'ESTRUCTURA', 'CATERING', 'Otros']
+        : ['Ventas Diarias', 'Ventas por Hora', 'Análisis Mensual', 'Análisis por Día'];
+
+      // Crear una hoja por cada canal
+      channels.forEach(channel => {
+        // Filtrar datos por canal
+        let channelData;
+        if (selectedDataset === 'idoni') {
+          channelData = sergiData.filter(row => {
+            const tienda = row[2] || '';
+            return tienda === channel;
+          });
+        } else {
+          channelData = sergiData.filter(row => {
+            const description = (row[columnIndices.description] || '').toLowerCase();
+            const account = (row[columnIndices.account] || '').toLowerCase();
+            
+            if (selectedDataset === 'solucions') {
+              switch (channel) {
+                case 'Estructura':
+                  return description.includes('estructura') || account.includes('estructura');
+                case 'Catering':
+                  return description.includes('catering') || account.includes('catering');
+                case 'IDONI':
+                  return description.includes('idoni') || account.includes('idoni');
+                case 'Otros':
+                  return !description.includes('estructura') && !description.includes('catering') && 
+                         !description.includes('idoni') && !account.includes('estructura') && 
+                         !account.includes('catering') && !account.includes('idoni');
+                default:
+                  return false;
+              }
+            } else if (selectedDataset === 'menjar') {
+              switch (channel) {
+                case 'OBRADOR':
+                  return description.includes('obrador') || account.includes('obrador');
+                case 'ESTRUCTURA':
+                  return description.includes('estructura') || account.includes('estructura');
+                case 'CATERING':
+                  return description.includes('catering') || account.includes('catering');
+                case 'Otros':
+                  return !description.includes('obrador') && !description.includes('estructura') && 
+                         !description.includes('catering') && !account.includes('obrador') &&
+                         !account.includes('estructura') && !account.includes('catering');
+                default:
+                  return false;
+              }
+            }
+            return false;
+          });
+        }
+
+        // Solo crear hoja si hay datos para este canal
+        if (channelData.length > 0) {
+          // Preparar datos para descarga
+          const downloadData = channelData.map(row => ({
+            'Fecha': formatDate(row[columnIndices.date]),
+            'Número de Factura': row[columnIndices.invoiceNumber] || '-',
+            'Proveedor': row[columnIndices.provider] || '-',
+            'Descripción': row[columnIndices.description] || '-',
+            'Cuenta': row[columnIndices.account] || '-',
+            'Total': row[columnIndices.total] ? formatCurrency(row[columnIndices.total]) : '-',
+            'Canal': channel,
+            'Estado': isPending(row, columnIndices) ? 'Pendiente' : 'Pagado'
+          }));
+
+          // Calcular total del canal
+          const totalAmount = channelData.reduce((sum, row) => {
+            const amount = parseFloat(row[columnIndices.total]) || 0;
+            return sum + amount;
+          }, 0);
+
+          // Agregar fila de total al final
+          downloadData.push({
+            'Fecha': '',
+            'Número de Factura': '',
+            'Proveedor': '',
+            'Descripción': '',
+            'Cuenta': '',
+            'Total': `TOTAL: ${formatCurrency(totalAmount)}`,
+            'Canal': '',
+            'Estado': ''
+          });
+
+          const ws = XLSX.utils.json_to_sheet(downloadData);
+
+          // Configurar anchos de columna
+          const colWidths = [
+            { wch: 12 }, // Fecha
+            { wch: 15 }, // Número de Factura
+            { wch: 25 }, // Proveedor
+            { wch: 30 }, // Descripción
+            { wch: 20 }, // Cuenta
+            { wch: 12 }, // Total
+            { wch: 15 }, // Canal
+            { wch: 10 }  // Estado
+          ];
+          ws['!cols'] = colWidths;
+
+          // Crear nombre de hoja limitado a 31 caracteres
+          const sheetName = `${channel}${monthFilter}`.substring(0, 31);
+          XLSX.utils.book_append_sheet(wb, ws, sheetName);
+        }
+      });
+
+      // Descargar archivo
+      const fileName = `${datasetName}_Vista_Sergi_Todos_Canales${monthFilter}_${new Date().toISOString().split('T')[0]}.xlsx`;
+      XLSX.writeFile(wb, fileName);
+
+      showAlertMessage('Datos de todos los canales descargados correctamente', 'success');
+    } catch (error) {
+      console.error('Error al descargar datos:', error);
+      showAlertMessage('Error al descargar los datos', 'error');
+    }
+  };
+
+  // Función para descargar datos de la vista Bruno
+  const downloadBrunoData = () => {
+    if (!providerStats || providerStats.length === 0) {
+      showAlertMessage('No hay datos para descargar', 'error');
+      return;
+    }
+
+    try {
+      // Crear workbook
+      const wb = XLSX.utils.book_new();
+      const datasetName = selectedDataset === 'solucions' ? 'Solucions Socials' : 'Menjar D\'Hort';
+      const monthFilter = selectedMonth ? ` - ${getMonthName(selectedMonth)}` : '';
+
+      // Preparar todos los datos en una sola hoja, separados por proveedor
+      let allInvoicesData = [];
+      
+      providerStats.forEach((stat, index) => {
+        if (stat.invoices && stat.invoices.length > 0) {
+          // Agregar separador de proveedor
+          if (index > 0) {
+            allInvoicesData.push({
+              'Fecha': '',
+              'Número de Factura': '',
+              'Descripción': '',
+              'Cuenta': '',
+              'IBAN': '',
+              'Total': '',
+              'Pendiente': '',
+              'Estado': ''
+            });
+          }
+          
+          // Agregar encabezado del proveedor
+          allInvoicesData.push({
+            'Fecha': '',
+            'Número de Factura': '',
+            'Descripción': `=== ${stat.provider} ===`,
+            'Cuenta': '',
+            'IBAN': stat.iban || '-',
+            'Total': '',
+            'Pendiente': '',
+            'Estado': ''
+          });
+
+          // Agregar todas las facturas del proveedor
+          stat.invoices.forEach(row => {
+            allInvoicesData.push({
+              'Fecha': formatDate(row[columnIndices.date]),
+              'Número de Factura': row[columnIndices.invoiceNumber] || '-',
+              'Descripción': row[columnIndices.description] || '-',
+              'Cuenta': row[columnIndices.account] || '-',
+              'IBAN': columnIndices.iban ? (row[columnIndices.iban] || '-') : '-',
+              'Total': row[columnIndices.total] ? formatCurrency(row[columnIndices.total]) : '-',
+              'Pendiente': columnIndices.pending ? (row[columnIndices.pending] ? formatCurrency(row[columnIndices.pending]) : '-') : '-',
+              'Estado': isPending(row, columnIndices) ? 'Pendiente' : 'Pagado'
+            });
+          });
+
+          // Agregar total del proveedor
+          const providerTotal = stat.invoices.reduce((sum, row) => {
+            const amount = parseFloat(row[columnIndices.total]) || 0;
+            return sum + amount;
+          }, 0);
+
+          allInvoicesData.push({
+            'Fecha': '',
+            'Número de Factura': '',
+            'Descripción': '',
+            'Cuenta': '',
+            'IBAN': '',
+            'Total': `TOTAL ${stat.provider}: ${formatCurrency(providerTotal)}`,
+            'Pendiente': '',
+            'Estado': ''
+          });
+        }
+      });
+
+      // Crear hoja con todos los datos
+      const ws = XLSX.utils.json_to_sheet(allInvoicesData);
+
+      // Configurar anchos de columna
+      const colWidths = [
+        { wch: 12 }, // Fecha
+        { wch: 15 }, // Número de Factura
+        { wch: 30 }, // Descripción
+        { wch: 20 }, // Cuenta
+        { wch: 25 }, // IBAN
+        { wch: 12 }, // Total
+        { wch: 12 }, // Pendiente
+        { wch: 10 }  // Estado
+      ];
+      ws['!cols'] = colWidths;
+
+      // Agregar hoja con todas las facturas
+      XLSX.utils.book_append_sheet(wb, ws, 'Todas las Facturas');
+
+      // Crear hoja de resumen con estadísticas por proveedor
+      const summaryData = providerStats.map(stat => ({
+        'Proveedor': stat.provider,
+        'IBAN': stat.iban || '-',
+        'Total Facturas': formatCurrency(stat.totalAmount),
+        'Total Pendiente': formatCurrency(stat.totalPending),
+        'Número de Facturas': stat.invoiceCount,
+        'Estado': stat.totalPending > 0 ? 'Con Deuda' : 'Sin Deuda'
+      }));
+
+      const summaryWs = XLSX.utils.json_to_sheet(summaryData);
+      const summaryColWidths = [
+        { wch: 30 }, // Proveedor
+        { wch: 25 }, // IBAN
+        { wch: 15 }, // Total Facturas
+        { wch: 15 }, // Total Pendiente
+        { wch: 15 }, // Número de Facturas
+        { wch: 12 }  // Estado
+      ];
+      summaryWs['!cols'] = summaryColWidths;
+
+      // Agregar hoja de resumen
+      XLSX.utils.book_append_sheet(wb, summaryWs, 'Resumen');
+
+      // Descargar archivo
+      const fileName = `${datasetName}_Vista_Bruno_Todas_Facturas${monthFilter}_${new Date().toISOString().split('T')[0]}.xlsx`;
+      XLSX.writeFile(wb, fileName);
+
+      showAlertMessage('Todas las facturas por proveedor descargadas correctamente', 'success');
+    } catch (error) {
+      console.error('Error al descargar datos:', error);
+      showAlertMessage('Error al descargar los datos', 'error');
+    }
+  };
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 30 }}
@@ -4600,15 +4864,40 @@ const AnalyticsPage = () => {
 
             {selectedView === 'sergi' && (
               <div>
-                <motion.h3
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: 20 }}
-                  transition={{ duration: 0.3, ease: 'easeOut' }}
-                  style={{ margin: '0 0 20px 0', color: colors.text, fontSize: 18, fontWeight: 600, lineHeight: 1.2 }}
-                >
-                  Análisis por Canales
-                </motion.h3>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                  <motion.h3
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 20 }}
+                    transition={{ duration: 0.3, ease: 'easeOut' }}
+                    style={{ margin: 0, color: colors.text, fontSize: 18, fontWeight: 600, lineHeight: 1.2 }}
+                  >
+                    Análisis por Canales
+                  </motion.h3>
+                  
+                  <motion.button
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={downloadSergiData}
+                    style={{
+                      background: colors.primary,
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: 8,
+                      padding: '10px 16px',
+                      fontSize: 14,
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      transition: 'all 0.2s ease'
+                    }}
+                  >
+                    <Download size={16} />
+                    Descargar Datos
+                  </motion.button>
+                </div>
 
                 {/* Filtro por Meses - Solo en vista Sergi */}
                 <motion.div
@@ -5081,7 +5370,32 @@ const AnalyticsPage = () => {
                 transition={{ duration: 0.5, ease: 'easeOut' }}
               >
                 <div>
-                  <h3 style={{ margin: '0 0 20px 0', color: colors.text, fontSize: 18, fontWeight: 600, lineHeight: 1.2 }}>Análisis de Deudas por Proveedor</h3>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                    <h3 style={{ margin: 0, color: colors.text, fontSize: 18, fontWeight: 600, lineHeight: 1.2 }}>Análisis de Deudas por Proveedor</h3>
+                    
+                    <motion.button
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                      onClick={downloadBrunoData}
+                      style={{
+                        background: colors.primary,
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: 8,
+                        padding: '10px 16px',
+                        fontSize: 14,
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        transition: 'all 0.2s ease'
+                      }}
+                    >
+                      <Download size={16} />
+                      Descargar Datos
+                    </motion.button>
+                  </div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px', marginBottom: '32px' }}>
                     <div style={{ background: colors.surface, padding: '20px', borderRadius: '8px' }}>
                       <h4 style={{ margin: '0 0 12px 0', color: colors.text, fontSize: '16', fontWeight: 600, lineHeight: 1.2 }}>Total Pendiente</h4>
