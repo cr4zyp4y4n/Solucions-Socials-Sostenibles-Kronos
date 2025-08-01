@@ -2739,30 +2739,46 @@ const AnalyticsPage = () => {
               'Proveedor': row[columnIndices.provider] || '-',
               'Descripción': row[columnIndices.description] || '-',
               'Cuenta': row[columnIndices.account] || '-',
-              'Total': amountToShow, // Número para que Excel pueda sumar
-              'Pendiente': columnIndices.pending ? pending : 0, // Número para que Excel pueda sumar
+              'Total': total, // Total real de la factura
+              'Pendiente': columnIndices.pending ? pending : 0, // Monto pendiente
               'Canal': channel,
               'Estado': isPending(row, columnIndices) ? 'Pendiente' : 'Pagado'
             };
           });
 
-          // Calcular total del canal
+          // Calcular totales del canal
           const totalAmount = channelData.reduce((sum, row) => {
             const total = parseFloat(row[columnIndices.total]) || 0;
-            const pending = columnIndices.pending ? (parseFloat(row[columnIndices.pending]) || 0) : 0;
-            // Para facturas pendientes, usar el monto pendiente en lugar del total
-            const amountToAdd = pending > 0 ? pending : total;
-            return sum + amountToAdd;
+            return sum + total;
           }, 0);
 
-          // Agregar fila de total al final
+          const pendingAmount = channelData.reduce((sum, row) => {
+            const pending = columnIndices.pending ? (parseFloat(row[columnIndices.pending]) || 0) : 0;
+            return sum + pending;
+          }, 0);
+
+          // Agregar fila de separación
           downloadData.push({
             'Fecha': '',
             'Número de Factura': '',
             'Proveedor': '',
             'Descripción': '',
             'Cuenta': '',
-            'Total': `TOTAL: ${formatCurrency(totalAmount)}`,
+            'Total': '',
+            'Pendiente': '',
+            'Canal': '',
+            'Estado': ''
+          });
+
+          // Agregar texto del total y suma en la misma fila
+          downloadData.push({
+            'Fecha': '',
+            'Número de Factura': '',
+            'Proveedor': '',
+            'Descripción': '',
+            'Cuenta': '',
+            'Total': `TOTAL ${channel}`,
+            'Pendiente': pendingAmount,
             'Canal': '',
             'Estado': ''
           });
@@ -2860,15 +2876,13 @@ const AnalyticsPage = () => {
             });
           });
 
-          // Agregar total del proveedor
-          const providerTotal = stat.invoices.reduce((sum, row) => {
-            const total = parseFloat(row[columnIndices.total]) || 0;
+          // Calcular total de pendientes del proveedor
+          const providerPendingTotal = stat.invoices.reduce((sum, row) => {
             const pending = columnIndices.pending ? (parseFloat(row[columnIndices.pending]) || 0) : 0;
-            // Usar el monto pendiente si existe, sino el total
-            const amountToAdd = pending > 0 ? pending : total;
-            return sum + amountToAdd;
+            return sum + pending;
           }, 0);
 
+          // Agregar fila de separación
           allInvoicesData.push({
             'Fecha': '',
             'Número de Factura': '',
@@ -2876,7 +2890,19 @@ const AnalyticsPage = () => {
             'Cuenta': '',
             'IBAN': '',
             'Total': '',
-            'Pendiente': `TOTAL ${stat.provider}: ${formatCurrency(providerTotal)}`,
+            'Pendiente': '',
+            'Estado': ''
+          });
+
+          // Agregar texto del total y suma en la misma fila
+          allInvoicesData.push({
+            'Fecha': '',
+            'Número de Factura': '',
+            'Descripción': '',
+            'Cuenta': '',
+            'IBAN': '',
+            'Total': `TOTAL ${stat.provider}`,
+            'Pendiente': providerPendingTotal,
             'Estado': ''
           });
         }
