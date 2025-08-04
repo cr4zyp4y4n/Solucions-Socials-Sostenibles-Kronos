@@ -2655,6 +2655,127 @@ const AnalyticsPage = () => {
     };
   };
 
+  // Función para generar resumen completo de datos de IDONI para análisis de IA
+  const generateIdoniSummary = () => {
+    const summary = {
+      metadata: {
+        fechaGeneracion: new Date().toISOString(),
+        empresa: 'IDONI',
+        tipoAnalisis: 'Resumen Completo para IA',
+        version: '1.0'
+      },
+      
+      // Datos de ventas diarias
+      ventasDiarias: {
+        disponible: idoniGroupedData.length > 0,
+        totalDias: idoniGroupedData.length,
+        rangoFechas: idoniGroupedData.length > 0 ? {
+          inicio: idoniGroupedData[0]?.fecha,
+          fin: idoniGroupedData[idoniGroupedData.length - 1]?.fecha
+        } : null,
+        datos: idoniGroupedData.map(dia => ({
+          fecha: dia.fecha,
+          ventas: dia.ventas,
+          tickets: dia.tickets,
+          promedioTicket: dia.ventas / dia.tickets
+        }))
+      },
+      
+      // Datos de ventas por horas
+      ventasPorHoras: {
+        disponible: idoniHourlyData !== null,
+        franjas: idoniHourlyData?.franjasArray?.map(franja => ({
+          nombre: franja.nombre,
+          tipo: franja.tipo,
+          ventas: franja.ventas,
+          tickets: franja.tickets,
+          promedioTicket: franja.ventas / franja.tickets
+        })) || [],
+        analytics: idoniHourlyAnalytics ? {
+          mejorFranja: idoniHourlyAnalytics.mejorFranjaVentas,
+          peorFranja: idoniHourlyAnalytics.peorFranjaVentas,
+          franjaMasConsistente: idoniHourlyAnalytics.franjaMasConsistente,
+          totalCorrecciones: idoniHourlyAnalytics.totalCorrecciones,
+          mediaVentas: idoniHourlyAnalytics.mediaVentas,
+          desviacionEstandar: idoniHourlyAnalytics.desviacionEstandar
+        } : null
+      },
+      
+      // Datos de productos
+      productos: {
+        disponible: idoniProductosData !== null,
+        totalProductos: idoniProductosData?.totalProductos || 0,
+        totalVentas: idoniProductosData?.totalVentas || 0,
+        totalCostos: idoniProductosData?.totalCostos || 0,
+        totalMargen: idoniProductosData?.totalMargen || 0,
+        margenPromedio: idoniProductosAnalytics?.margenPromedio || 0,
+        topProductos: idoniProductosAnalytics?.top10PorVentas?.map(p => ({
+          nombre: p.nombre,
+          ventas: p.totalVentas,
+          costos: p.totalCostImport,
+          margen: p.totalMargeImport,
+          unidades: p.totalUnit,
+          kilos: p.totalKilos
+        })) || []
+      },
+      
+      // Analytics generales
+      analyticsGenerales: {
+        mejorDia: idoniAnalytics?.mejorDia,
+        peorDia: idoniAnalytics?.peorDia,
+        diaMasConsistente: idoniAnalytics?.diaMasConsistente,
+        crecimientoMensual: idoniAnalytics?.crecimientoMensual,
+        totalGeneral: idoniAnalytics?.totalGeneral,
+        promedioMensual: idoniAnalytics?.promedioMensual,
+        promediosPorDia: idoniAnalytics?.promediosPorDia,
+        tendenciaMensual: idoniAnalytics?.tendenciaMensual
+      },
+      
+      // Recomendaciones para IA
+      recomendacionesIA: {
+        areasAnalisis: [
+          'Identificar patrones de ventas por día de la semana',
+          'Analizar franjas horarias más rentables',
+          'Evaluar rendimiento de productos por margen',
+          'Detectar tendencias de crecimiento mensual',
+          'Identificar oportunidades de optimización de horarios',
+          'Analizar correlación entre productos y horarios'
+        ],
+        preguntasSugeridas: [
+          '¿Qué días de la semana son más rentables y por qué?',
+          '¿Qué franjas horarias generan más ventas?',
+          '¿Qué productos tienen mejor margen de beneficio?',
+          '¿Hay tendencias de crecimiento o decrecimiento?',
+          '¿Qué recomendaciones darías para optimizar las ventas?',
+          '¿Qué estrategias de precios serían más efectivas?'
+        ]
+      }
+    };
+    
+    return summary;
+  };
+
+  // Función para exportar resumen de IDONI
+  const exportIdoniSummary = () => {
+    const summary = generateIdoniSummary();
+    
+    // Crear archivo JSON
+    const jsonContent = JSON.stringify(summary, null, 2);
+    const blob = new Blob([jsonContent], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    
+    // Crear enlace de descarga
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `resumen_idoni_${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    
+    showAlertMessage('Resumen de IDONI exportado correctamente. El archivo está listo para análisis de IA.', 'success');
+  };
+
   // Función para descargar datos de la vista Sergi
   const downloadSergiData = () => {
     if (!sergiData || sergiData.length === 0) {
@@ -2815,6 +2936,19 @@ const AnalyticsPage = () => {
     }
   };
 
+  // Función para formatear IBAN con espacios cada 4 dígitos
+  const formatIBAN = (iban) => {
+    if (!iban || iban === '-') return iban;
+    
+    // Eliminar espacios y caracteres especiales existentes
+    const cleanIBAN = iban.replace(/[\s\-_]/g, '');
+    
+    // Formatear cada 4 dígitos
+    const formattedIBAN = cleanIBAN.replace(/(.{4})/g, '$1 ').trim();
+    
+    return formattedIBAN;
+  };
+
   // Función para descargar datos de la vista Bruno
   const downloadBrunoData = () => {
     if (!providerStats || providerStats.length === 0) {
@@ -2847,13 +2981,13 @@ const AnalyticsPage = () => {
             });
           }
           
-          // Agregar encabezado del proveedor
+          // Agregar encabezado del proveedor con IBAN formateado
           allInvoicesData.push({
             'Fecha': '',
             'Número de Factura': '',
             'Descripción': `=== ${stat.provider} ===`,
             'Cuenta': '',
-            'IBAN': stat.iban || '-',
+            'IBAN': formatIBAN(stat.iban || '-'),
             'Total': '',
             'Pendiente': '',
             'Estado': ''
@@ -2917,7 +3051,7 @@ const AnalyticsPage = () => {
         { wch: 15 }, // Número de Factura
         { wch: 30 }, // Descripción
         { wch: 20 }, // Cuenta
-        { wch: 25 }, // IBAN
+        { wch: 30 }, // IBAN (aumentado para acomodar formato)
         { wch: 12 }, // Total
         { wch: 12 }, // Pendiente
         { wch: 10 }  // Estado
@@ -2930,7 +3064,7 @@ const AnalyticsPage = () => {
       // Crear hoja de resumen con estadísticas por proveedor
       const summaryData = providerStats.map(stat => ({
         'Proveedor': stat.provider,
-        'IBAN': stat.iban || '-',
+        'IBAN': formatIBAN(stat.iban || '-'),
         'Total Facturas': formatCurrency(stat.totalAmount),
         'Total Pendiente': formatCurrency(stat.totalPending),
         'Número de Facturas': stat.invoiceCount,
@@ -2940,7 +3074,7 @@ const AnalyticsPage = () => {
       const summaryWs = XLSX.utils.json_to_sheet(summaryData);
       const summaryColWidths = [
         { wch: 30 }, // Proveedor
-        { wch: 25 }, // IBAN
+        { wch: 30 }, // IBAN (aumentado para acomodar formato)
         { wch: 15 }, // Total Facturas
         { wch: 15 }, // Total Pendiente
         { wch: 15 }, // Número de Facturas
@@ -2959,6 +3093,179 @@ const AnalyticsPage = () => {
     } catch (error) {
       console.error('Error al descargar datos:', error);
       showAlertMessage('Error al descargar los datos', 'error');
+    }
+  };
+
+  // Función para exportar resumen completo de IDONI para análisis de IA
+  const downloadIdoniAIAnalysis = () => {
+    if (!idoniData || !idoniAnalytics || !idoniHourlyAnalytics || !idoniProductosAnalytics) {
+      showAlertMessage('No hay datos completos de IDONI disponibles para análisis', 'error');
+      return;
+    }
+
+    try {
+      // Crear estructura de datos para IA
+      const aiAnalysisData = {
+        metadata: {
+          fechaGeneracion: new Date().toISOString(),
+          empresa: 'IDONI',
+          periodoAnalisis: {
+            mesesDisponibles: Object.keys(idoniData.monthlyData || {}).length,
+            rangoFechas: {
+              inicio: Object.keys(idoniData.monthlyData || {}).sort()[0],
+              fin: Object.keys(idoniData.monthlyData || {}).sort().pop()
+            }
+          }
+        },
+        
+        // 1. RESUMEN EJECUTIVO
+        resumenEjecutivo: {
+          totalVentas: idoniAnalytics.totalGeneral || 0,
+          promedioMensual: idoniAnalytics.promedioMensual || 0,
+          crecimientoMensual: idoniAnalytics.crecimientoMensual || 0,
+          totalMeses: idoniAnalytics.totalMeses || 0,
+          mejorDia: idoniAnalytics.mejorDia || {},
+          peorDia: idoniAnalytics.peorDia || {},
+          diaMasConsistente: idoniAnalytics.diaMasConsistente || {}
+        },
+
+        // 2. ANÁLISIS POR DÍAS DE LA SEMANA
+        analisisDiasSemana: {
+          promediosPorDia: idoniAnalytics.promediosPorDia || {},
+          totalesPorDia: idoniAnalytics.totalesPorDia || {},
+          recomendaciones: {
+            mejorDia: idoniAnalytics.mejorDia?.dia || 'N/A',
+            peorDia: idoniAnalytics.peorDia?.dia || 'N/A',
+            diaMasConsistente: idoniAnalytics.diaMasConsistente?.dia || 'N/A'
+          }
+        },
+
+        // 3. TENDENCIAS MENSUALES
+        tendenciasMensuales: {
+          datos: idoniAnalytics.tendenciaMensual || [],
+          crecimiento: idoniAnalytics.crecimientoMensual || 0,
+          prediccion: {
+            tendencia: idoniAnalytics.crecimientoMensual > 0 ? 'CRECIENTE' : 'DECRECIENTE',
+            porcentajeCrecimiento: Math.abs(idoniAnalytics.crecimientoMensual || 0)
+          }
+        },
+
+        // 4. ANÁLISIS POR HORAS
+        analisisHorario: {
+          mejorFranjaVentas: idoniHourlyAnalytics.mejorFranjaVentas || {},
+          peorFranjaVentas: idoniHourlyAnalytics.peorFranjaVentas || {},
+          mejorFranjaTickets: idoniHourlyAnalytics.mejorFranjaTickets || {},
+          peorFranjaTickets: idoniHourlyAnalytics.peorFranjaTickets || {},
+          franjaMasConsistente: idoniHourlyAnalytics.franjaMasConsistente || {},
+          estadisticasGenerales: {
+            totalFranjas: idoniHourlyAnalytics.totalFranjas || 0,
+            franjasConActividad: idoniHourlyAnalytics.franjasConActividad || 0,
+            mediaVentas: idoniHourlyAnalytics.mediaVentas || 0,
+            desviacionEstandar: idoniHourlyAnalytics.desviacionEstandar || 0,
+            crecimientoPromedio: idoniHourlyAnalytics.crecimientoPromedio || 0
+          },
+          analisisPorTipo: {
+            mejorFranjaComercial: idoniHourlyAnalytics.mejorFranjaComercial || {},
+            peorFranjaComercial: idoniHourlyAnalytics.peorFranjaComercial || {},
+            totalCorrecciones: idoniHourlyAnalytics.totalCorrecciones || 0,
+            ticketsCorrecciones: idoniHourlyAnalytics.ticketsCorrecciones || 0,
+            franjasComerciales: idoniHourlyAnalytics.franjasComerciales || 0,
+            franjasCorreccion: idoniHourlyAnalytics.franjasCorreccion || 0,
+            franjasPreparacion: idoniHourlyAnalytics.franjasPreparacion || 0,
+            franjasCierre: idoniHourlyAnalytics.franjasCierre || 0
+          }
+        },
+
+        // 5. ANÁLISIS DE PRODUCTOS
+        analisisProductos: {
+          totalProductos: idoniProductosAnalytics.totalProductos || 0,
+          totalVentas: idoniProductosAnalytics.totalVentas || 0,
+          totalCostos: idoniProductosAnalytics.totalCostos || 0,
+          totalMargen: idoniProductosAnalytics.totalMargen || 0,
+          totalUnidades: idoniProductosAnalytics.totalUnidades || 0,
+          totalKilos: idoniProductosAnalytics.totalKilos || 0,
+          margenPromedio: idoniProductosAnalytics.margenPromedio || 0,
+          ventaPromedioPorProducto: idoniProductosAnalytics.ventaPromedioPorProducto || 0,
+          topProductos: {
+            porVentas: idoniProductosAnalytics.top10PorVentas || [],
+            porMargen: idoniProductosAnalytics.top10PorMargen || [],
+            porUnidades: idoniProductosAnalytics.top10PorUnidades || [],
+            porMargenPorcentual: idoniProductosAnalytics.top10PorMargenPorcentual || []
+          }
+        },
+
+        // 6. DATOS DETALLADOS PARA ANÁLISIS PROFUNDO
+        datosDetallados: {
+          ventasDiarias: idoniData.ventasDiarias || [],
+          ventasHoras: idoniData.ventasHoras || [],
+          productos: idoniProductosData?.productosArray || []
+        },
+
+        // 7. RECOMENDACIONES AUTOMÁTICAS
+        recomendaciones: {
+          horarios: {
+            mejorHorario: idoniHourlyAnalytics.mejorFranjaVentas?.franja || 'N/A',
+            horarioOptimizacion: idoniHourlyAnalytics.peorFranjaVentas?.franja || 'N/A',
+            recomendacion: idoniHourlyAnalytics.mejorFranjaVentas?.ventas > (idoniHourlyAnalytics.mediaVentas * 1.5) ? 
+              'Considerar ampliar horario en la mejor franja' : 'Horarios actuales parecen óptimos'
+          },
+          productos: {
+            productoEstrella: idoniProductosAnalytics.top10PorVentas?.[0]?.descripcio || 'N/A',
+            productoMargen: idoniProductosAnalytics.top10PorMargen?.[0]?.descripcio || 'N/A',
+            recomendacion: idoniProductosAnalytics.margenPromedio > 30 ? 
+              'Margen promedio saludable' : 'Considerar revisar precios o costos'
+          },
+          dias: {
+            diaMasRentable: idoniAnalytics.mejorDia?.dia || 'N/A',
+            diaMenosRentable: idoniAnalytics.peorDia?.dia || 'N/A',
+            recomendacion: idoniAnalytics.mejorDia?.ventas > (idoniAnalytics.promedioMensual * 1.3) ? 
+              'Considerar promociones en días menos rentables' : 'Distribución de ventas equilibrada'
+          }
+        },
+
+        // 8. MÉTRICAS DE RENDIMIENTO
+        metricasRendimiento: {
+          eficienciaVentas: {
+            ventasPorDia: idoniAnalytics.totalGeneral / (idoniAnalytics.totalMeses * 30) || 0,
+            ventasPorHora: idoniHourlyAnalytics.mediaVentas || 0,
+            ticketsPorDia: idoniAnalytics.totalesPorDia ? 
+              Object.values(idoniAnalytics.totalesPorDia).reduce((sum, dia) => sum + (dia.tickets || 0), 0) / 7 : 0
+          },
+          rentabilidad: {
+            margenPromedio: idoniProductosAnalytics.margenPromedio || 0,
+            rentabilidadPorProducto: idoniProductosAnalytics.ventaPromedioPorProducto || 0,
+            eficienciaOperativa: idoniHourlyAnalytics.franjasConActividad / idoniHourlyAnalytics.totalFranjas || 0
+          }
+        }
+      };
+
+      // Crear archivo JSON para descarga
+      const jsonString = JSON.stringify(aiAnalysisData, null, 2);
+      const blob = new Blob([jsonString], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      
+      // Crear enlace de descarga
+      const link = document.createElement('a');
+      link.href = url;
+      
+      // Generar nombre de archivo con fecha
+      const now = new Date();
+      const dateStr = now.toISOString().split('T')[0];
+      link.download = `IDONI_Analisis_IA_${dateStr}.json`;
+      
+      // Descargar archivo
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      // Limpiar URL
+      URL.revokeObjectURL(url);
+      
+      showAlertMessage('Análisis de IDONI para IA descargado correctamente', 'success');
+
+    } catch (error) {
+      console.error('Error al generar análisis para IA:', error);
+      showAlertMessage('Error al generar análisis de IDONI para IA', 'error');
     }
   };
 
@@ -3352,7 +3659,7 @@ const AnalyticsPage = () => {
           >
             {/* Descripción para IDONI */}
             <div style={{ marginBottom: 0, color: colors.textSecondary, fontSize: 15, minHeight: 22 }}>
-              Análisis de ventas de IDONI - Datos de tienda y análisis temporal
+              Análisis de ventas de IDONI - Datos de tienda y análisis temporal. Exporta un resumen completo para análisis de IA.
             </div>
             
             {/* Contenido específico para IDONI */}
@@ -3497,6 +3804,32 @@ const AnalyticsPage = () => {
                         Ventas de Productos
                       </>
                     )}
+                  </motion.button>
+                  
+                  {/* Botón para exportar resumen para IA */}
+                  <motion.button
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={exportIdoniSummary}
+                    disabled={!idoniGroupedData.length && !idoniHourlyData && !idoniProductosData}
+                    style={{
+                      background: colors.primary,
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '8px',
+                      padding: '10px 16px',
+                      fontSize: '14px',
+                      fontWeight: '600',
+                      cursor: (!idoniGroupedData.length && !idoniHourlyData && !idoniProductosData) ? 'not-allowed' : 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      opacity: (!idoniGroupedData.length && !idoniHourlyData && !idoniProductosData) ? 0.6 : 1,
+                      transition: 'all 0.2s ease'
+                    }}
+                  >
+                    <Download size={16} />
+                    Exportar para IA
                   </motion.button>
                 </div>
               </div>
@@ -5548,7 +5881,7 @@ const AnalyticsPage = () => {
                                   {stat.provider}
                                 </td>
                                 <td style={{ borderBottom: `1px solid ${colors.border}`, padding: '12px 8px', color: colors.textSecondary, fontSize: '13px', fontFamily: 'monospace' }}>
-                                  {stat.iban || '-'}
+                                  {formatIBAN(stat.iban) || '-'}
                                 </td>
                                 <td style={{ borderBottom: `1px solid ${colors.border}`, padding: '12px 8px', color: colors.text }}>
                                   {formatCurrency(stat.totalAmount)}

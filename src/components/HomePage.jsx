@@ -12,7 +12,9 @@ import {
   X,
   Loader,
   RefreshCw,
-  Download
+  Download,
+  Activity,
+  Info
 } from 'feather-icons-react';
 import { useDataContext } from './DataContext';
 import { useTheme } from './ThemeContext';
@@ -29,8 +31,7 @@ const EXPECTED_HEADERS = [
 ];
 
 // Componente de alerta personalizado
-const CustomAlert = ({ isVisible, message, type = 'success', onClose }) => {
-  const { colors } = useTheme();
+const CustomAlert = ({ isVisible, message, type = 'success', onClose, colors }) => {
   if (!isVisible) return null;
 
   const alertStyles = {
@@ -45,10 +46,16 @@ const CustomAlert = ({ isVisible, message, type = 'success', onClose }) => {
       borderColor: colors.error,
       iconColor: colors.error,
       textColor: colors.text
+    },
+    info: {
+      backgroundColor: colors.primary + '22',
+      borderColor: colors.primary,
+      iconColor: colors.primary,
+      textColor: colors.text
     }
   };
 
-  const style = alertStyles[type];
+  const style = alertStyles[type] || alertStyles.success;
 
   return (
     <AnimatePresence>
@@ -86,6 +93,8 @@ const CustomAlert = ({ isVisible, message, type = 'success', onClose }) => {
         }}>
           {type === 'success' ? (
             <Check size={14} color="white" />
+          ) : type === 'info' ? (
+            <Info size={14} color="white" />
           ) : (
             <X size={14} color="white" />
           )}
@@ -155,6 +164,12 @@ const HomePage = () => {
   });
   const [loadingData, setLoadingData] = useState(true);
 
+  // Estado para rastrear errores de suscripción
+  const [subscriptionErrors, setSubscriptionErrors] = useState({
+    solucions: null,
+    menjar: null
+  });
+
   // Cargar datos desde Holded al montar el componente
   useEffect(() => {
     loadDataFromHolded();
@@ -190,11 +205,32 @@ const HomePage = () => {
           holdedApi.getAllPendingAndOverduePurchases('solucions')
             .then(data => {
               updateCache('solucions', data);
+              // Limpiar error de suscripción si se cargan datos exitosamente
+              setSubscriptionErrors(prev => ({
+                ...prev,
+                solucions: null
+              }));
               return data;
             })
             .catch(error => {
               console.error('Error cargando datos de Solucions:', error);
               setLoading('solucions', false);
+              
+              // Rastrear error de suscripción
+              if (error.message.includes('Error 402')) {
+                setSubscriptionErrors(prev => ({
+                  ...prev,
+                  solucions: 'ERROR: Holded'
+                }));
+                showAlert(`Error en Solucions Socials: ${error.message}`, 'error');
+              } else {
+                setSubscriptionErrors(prev => ({
+                  ...prev,
+                  solucions: `Error de conexión: ${error.message}`
+                }));
+                showAlert(`Error cargando datos de Solucions Socials: ${error.message}`, 'error');
+              }
+              
               return [];
             })
         );
@@ -207,11 +243,32 @@ const HomePage = () => {
           holdedApi.getAllPendingAndOverduePurchases('menjar')
             .then(data => {
               updateCache('menjar', data);
+              // Limpiar error de suscripción si se cargan datos exitosamente
+              setSubscriptionErrors(prev => ({
+                ...prev,
+                menjar: null
+              }));
               return data;
             })
             .catch(error => {
               console.error('Error cargando datos de Menjar:', error);
               setLoading('menjar', false);
+              
+              // Rastrear error de suscripción
+              if (error.message.includes('Error 402')) {
+                setSubscriptionErrors(prev => ({
+                  ...prev,
+                  menjar: 'ERROR: Holded'
+                }));
+                showAlert(`Error en Menjar D'Hort: ${error.message}`, 'error');
+              } else {
+                setSubscriptionErrors(prev => ({
+                  ...prev,
+                  menjar: `Error de conexión: ${error.message}`
+                }));
+                showAlert(`Error cargando datos de Menjar D'Hort: ${error.message}`, 'error');
+              }
+              
               return [];
             })
         );
@@ -326,7 +383,32 @@ const HomePage = () => {
     setAlertMessage(message);
     setAlertType(type);
     setAlertVisible(true);
-    setTimeout(() => setAlertVisible(false), 4000);
+    setTimeout(() => setAlertVisible(false), 12000); // 12 segundos en lugar de 8
+  };
+
+  // Función para verificar el estado de la suscripción de Holded
+  const checkHoldedSubscriptionStatus = async (company) => {
+    try {
+      await holdedApi.testConnection(company);
+      // Si la conexión es exitosa, limpiar el error de suscripción
+      setSubscriptionErrors(prev => ({
+        ...prev,
+        [company]: null
+      }));
+      return { status: 'active', message: `Conexión exitosa con ${company}` };
+    } catch (error) {
+      if (error.message.includes('Error 402')) {
+        return { 
+          status: 'payment_required', 
+          message: `La cuenta de ${company} necesita actualizar la suscripción de Holded`,
+          details: 'Para continuar usando la API, es necesario actualizar el plan de suscripción en Holded.'
+        };
+      }
+      return { 
+        status: 'error', 
+        message: `Error de conexión con ${company}: ${error.message}` 
+      };
+    }
   };
 
   // FUNCIÓN DE SUBIDA DE ARCHIVOS COMENTADA - FUNCIONALIDAD DE EXCEL DESHABILITADA
@@ -868,9 +950,14 @@ const HomePage = () => {
     const solucionsCache = holdedCache.solucions;
     const menjarCache = holdedCache.menjar;
     
-    const getCacheStatus = (cache) => {
+    const getCacheStatus = (cache, company) => {
       // Priorizar mostrar estado de carga si está activo
       if (cache.loading) return 'Actualizando datos...';
+      
+      // Si hay error de suscripción, mostrar ese estado
+      if (subscriptionErrors[company]) {
+        return subscriptionErrors[company];
+      }
       
       if (!cache.data) return 'Sin datos';
       if (!cache.timestamp) return 'Sin timestamp';
@@ -887,14 +974,16 @@ const HomePage = () => {
 
     return {
       solucions: {
-        status: getCacheStatus(solucionsCache),
+        status: getCacheStatus(solucionsCache, 'solucions'),
         count: solucionsCache.data ? solucionsCache.data.length : 0,
-        loading: solucionsCache.loading
+        loading: solucionsCache.loading,
+        hasError: !!subscriptionErrors.solucions
       },
       menjar: {
-        status: getCacheStatus(menjarCache),
+        status: getCacheStatus(menjarCache, 'menjar'),
         count: menjarCache.data ? menjarCache.data.length : 0,
-        loading: menjarCache.loading
+        loading: menjarCache.loading,
+        hasError: !!subscriptionErrors.menjar
       }
     };
   };
@@ -961,6 +1050,7 @@ const HomePage = () => {
         message={alertMessage}
         type={alertType}
         onClose={() => setAlertVisible(false)}
+        colors={colors}
       />
 
       {/* Indicador de progreso de subida */}
@@ -1220,8 +1310,10 @@ const HomePage = () => {
                 fontSize: '12px',
                 fontWeight: '500',
                 backgroundColor: cacheInfo.solucions.loading ? '#FF9800' + '15' : 
+                               cacheInfo.solucions.hasError ? '#F44336' + '15' :
                                cacheInfo.solucions.status.includes('Válido') ? '#4CAF50' + '15' : '#F44336' + '15',
                 color: cacheInfo.solucions.loading ? '#FF9800' : 
+                       cacheInfo.solucions.hasError ? '#F44336' :
                        cacheInfo.solucions.status.includes('Válido') ? '#4CAF50' : '#F44336',
               }}>
                 {cacheInfo.solucions.loading ? 'Cargando...' : cacheInfo.solucions.status}
@@ -1273,8 +1365,10 @@ const HomePage = () => {
                 fontSize: '12px',
                 fontWeight: '500',
                 backgroundColor: cacheInfo.menjar.loading ? '#FF9800' + '15' : 
+                               cacheInfo.menjar.hasError ? '#F44336' + '15' :
                                cacheInfo.menjar.status.includes('Válido') ? '#4CAF50' + '15' : '#F44336' + '15',
                 color: cacheInfo.menjar.loading ? '#FF9800' : 
+                       cacheInfo.menjar.hasError ? '#F44336' :
                        cacheInfo.menjar.status.includes('Válido') ? '#4CAF50' : '#F44336',
               }}>
                 {cacheInfo.menjar.loading ? 'Cargando...' : cacheInfo.menjar.status}
@@ -1402,6 +1496,99 @@ const HomePage = () => {
               lineHeight: '1.5',
             }}>
               Actualizar información de compras de ambas empresas desde Holded
+            </p>
+          </motion.div>
+
+          {/* Botón de Verificar Estado */}
+          <motion.div
+            whileHover={{ y: -3, scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            style={{
+              backgroundColor: colors.card,
+              padding: '24px 20px',
+              borderRadius: '12px',
+              border: `1px solid ${colors.border}`,
+              cursor: 'pointer',
+              transition: 'all 0.2s ease',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.05)',
+              flex: '1 1 200px',
+              minWidth: '200px',
+              maxWidth: '280px',
+            }}
+            onClick={async () => {
+              try {
+                showAlert('Verificando estado de las cuentas de Holded...', 'info');
+                
+                const [solucionsStatus, menjarStatus] = await Promise.all([
+                  checkHoldedSubscriptionStatus('solucions'),
+                  checkHoldedSubscriptionStatus('menjar')
+                ]);
+
+                let statusMessage = '';
+                let statusType = 'success';
+
+                if (solucionsStatus.status === 'payment_required' || menjarStatus.status === 'payment_required') {
+                  statusType = 'error';
+                  statusMessage = `Estado de cuentas:\n\n`;
+                  if (solucionsStatus.status === 'payment_required') {
+                    statusMessage += `Solucions Socials: ${solucionsStatus.message}\n\n`;
+                  }
+                  if (menjarStatus.status === 'payment_required') {
+                    statusMessage += `Menjar D'Hort: ${menjarStatus.message}\n\n`;
+                  }
+                  statusMessage += 'Para resolver: Actualizar suscripción en Holded';
+                } else if (solucionsStatus.status === 'active' && menjarStatus.status === 'active') {
+                  statusMessage = '✅ Ambas cuentas están activas y funcionando correctamente';
+                } else {
+                  statusType = 'error';
+                  statusMessage = `Errores de conexión:\n\n`;
+                  if (solucionsStatus.status !== 'active') {
+                    statusMessage += `❌ Solucions Socials: ${solucionsStatus.message}\n\n`;
+                  }
+                  if (menjarStatus.status !== 'active') {
+                    statusMessage += `❌ Menjar D'Hort: ${menjarStatus.message}\n\n`;
+                  }
+                }
+
+                showAlert(statusMessage, statusType);
+              } catch (error) {
+                showAlert(`Error verificando estado: ${error.message}`, 'error');
+              }
+            }}
+          >
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '20px',
+              marginBottom: '16px',
+            }}>
+              <div style={{
+                width: '50px',
+                height: '50px',
+                borderRadius: '10px',
+                backgroundColor: '#3B82F6' + '15',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}>
+                <Activity size={24} color="#3B82F6" />
+              </div>
+              <h4 style={{
+                fontSize: '20px',
+                fontWeight: '600',
+                color: colors.text,
+                margin: 0,
+              }}>
+                Verificar Estado
+              </h4>
+            </div>
+            <p style={{
+              fontSize: '16px',
+              color: colors.textSecondary,
+              margin: 0,
+              lineHeight: '1.5',
+            }}>
+              Verificar el estado de las cuentas de Holded y suscripciones
             </p>
           </motion.div>
 

@@ -40,6 +40,10 @@ class HoldedApiService {
       const response = await window.electronAPI.makeHoldedRequest(requestData);
 
       if (!response.ok) {
+        // Manejo específico para error 402 (Payment Required)
+        if (response.status === 402) {
+          throw new Error(`Error 402: La cuenta de Holded para ${company} ha alcanzado el límite de uso gratuito. Es necesario actualizar la suscripción para continuar usando la API.`);
+        }
         throw new Error(`Error en la API de Holded (${company}): ${response.status} ${response.statusText}`);
       }
 

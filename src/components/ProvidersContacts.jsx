@@ -154,7 +154,7 @@ const ProvidersContacts = () => {
         `"${contact.company || ''}"`,
         `"${contact.email || ''}"`,
         `"${contact.phone || ''}"`,
-        `"${contact.iban || ''}"`,
+        `"${formatIBAN(contact.iban) || ''}"`,
         contact.hasIban ? 'Sí' : 'No'
       ].join(','))
     ].join('\n');
@@ -172,6 +172,19 @@ const ProvidersContacts = () => {
 
   const getCompanyName = (company) => {
     return company === 'solucions' ? 'Solucions Socials' : 'Menjar d\'Hort';
+  };
+
+  // Función para formatear IBAN con espacios cada 4 dígitos
+  const formatIBAN = (iban) => {
+    if (!iban || iban === '-') return iban;
+    
+    // Limpiar IBAN de espacios y caracteres especiales existentes
+    const cleanIBAN = iban.replace(/[\s\-_]/g, '');
+    
+    // Formatear cada 4 dígitos con espacios
+    const formattedIBAN = cleanIBAN.replace(/(.{4})/g, '$1 ').trim();
+    
+    return formattedIBAN;
   };
 
 
@@ -909,7 +922,7 @@ const ProvidersContacts = () => {
                         fontSize: '13px',
                         fontFamily: 'monospace'
                       }}>
-                        {contact.iban || '-'}
+                        {formatIBAN(contact.iban) || '-'}
                       </td>
                       <td style={{
                         borderBottom: `1px solid ${colors.border}`,
