@@ -39,6 +39,7 @@ import HoldedTest from './HoldedTest';
 import ProvidersContacts from './ProvidersContacts';
 import CateringApp from './catering/CateringApp';
 
+
 // Componente visual de acceso denegado reutilizable
 function AccessDenied({ message = 'No tienes permisos para acceder a esta sección.' }) {
   const { colors } = useTheme();
@@ -361,6 +362,8 @@ const Layout = () => {
     );
   }
 
+
+
   const handleSignOut = async () => {
     await signOut();
   };
@@ -394,6 +397,7 @@ const Layout = () => {
           return <AccessDenied message="Solo los administradores pueden acceder a la auditoría." />;
         }
         return <AuditLog />;
+
       case 'profile':
         return <UserProfile onShowOnboarding={() => setShowOnboarding(true)} />;
       default:

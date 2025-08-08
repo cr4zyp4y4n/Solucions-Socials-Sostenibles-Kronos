@@ -6,6 +6,8 @@ import { useCurrency } from './CurrencyContext';
 import { useAuth } from './AuthContext';
 import { supabase } from '../config/supabase';
 import holdedApi from '../services/holdedApi';
+import { brunoInvoicesService } from '../services/brunoInvoicesService';
+import { solucionsInvoicesService } from '../services/solucionsInvoicesService';
 import { Calendar, Filter, Upload, FileText, Check, X, ChevronDown, ChevronRight, Download } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import {
@@ -92,6 +94,17 @@ const AnalyticsPage = () => {
   const [uploadingIdoniProductos, setUploadingIdoniProductos] = useState(false);
   const [uploadTypeProductos, setUploadTypeProductos] = useState(''); // 'productos'
   const [productosSearchTerm, setProductosSearchTerm] = useState('');
+  const [productosNuevoFormatoSearchTerm, setProductosNuevoFormatoSearchTerm] = useState('');
+
+  // Estados para visibilidad de facturas
+  const [solucionsInvoicesData, setSolucionsInvoicesData] = useState([]);
+  const [loadingSolucionsInvoices, setLoadingSolucionsInvoices] = useState(false);
+
+  
+  // Estados para modal de ocultar factura
+  const [showHideModal, setShowHideModal] = useState(false);
+  const [selectedInvoiceForHide, setSelectedInvoiceForHide] = useState(null);
+  const [hideReason, setHideReason] = useState('');
 
   // Mantener orden cronológico fijo para el gráfico
   const idoniHourlyChartData = useMemo(() => {
@@ -133,6 +146,8 @@ const AnalyticsPage = () => {
   const idoniDiariasFileInputRef = useRef(null);
   const idoniHorasFileInputRef = useRef(null);
   const idoniProductosFileInputRef = useRef(null);
+  const idoniProductosImporteFileInputRef = useRef(null);
+  const idoniProductosCantidadFileInputRef = useRef(null);
 
   // Filtrar productos según el término de búsqueda
   const filteredProductos = useMemo(() => {
@@ -149,9 +164,26 @@ const AnalyticsPage = () => {
     );
   }, [idoniProductosData, productosSearchTerm]);
 
+  // Filtrar productos del nuevo formato según el término de búsqueda
+  const filteredProductosNuevoFormato = useMemo(() => {
+    if (!idoniProductosData || !idoniProductosData.productosArray) return [];
+    
+    if (!productosNuevoFormatoSearchTerm.trim()) {
+      return idoniProductosData.productosArray;
+    }
+    
+    const searchTerm = productosNuevoFormatoSearchTerm.toLowerCase();
+    return idoniProductosData.productosArray.filter(producto => 
+      producto.codi.toLowerCase().includes(searchTerm) ||
+      producto.descripcio.toLowerCase().includes(searchTerm)
+    );
+  }, [idoniProductosData, productosNuevoFormatoSearchTerm]);
+
   // Cargar datos desde Holded al montar el componente
   useEffect(() => {
     loadDataFromHolded();
+    loadBrunoData(); // Cargar datos de Bruno
+    loadSolucionsData(); // Cargar datos de Solucions
   }, []);
 
   // Cerrar dropdown de meses cuando se hace clic fuera
@@ -172,6 +204,8 @@ const AnalyticsPage = () => {
   useEffect(() => {
     if (needsUpdate('analytics')) {
       loadDataFromHolded();
+      loadBrunoData(); // Cargar datos de Bruno
+      loadSolucionsData(); // Cargar datos de Solucions
       markTabUpdated('analytics');
     }
   }, []);
@@ -180,16 +214,23 @@ const AnalyticsPage = () => {
   useEffect(() => {
     if (shouldReloadHolded) {
       loadDataFromHolded();
+      loadBrunoData(); // Cargar datos de Bruno
+      loadSolucionsData(); // Cargar datos de Solucions
       setShouldReloadHolded(false);
     }
   }, [shouldReloadHolded]);
 
-  // Función para cargar datos desde Holded
+
+
+  // Función para cargar datos desde Holded con filtrado de visibilidad
   const loadDataFromHolded = async () => {
     setLoading(true);
     setError('');
 
     try {
+      // Obtener el rol del usuario actual
+      const userRole = user?.user_metadata?.role || 'user';
+      
       // Cargar datos para ambas empresas en paralelo
       const [solucionsPurchases, menjarPurchases] = await Promise.all([
         // Cargar datos de Solucions Socials
@@ -211,6 +252,16 @@ const AnalyticsPage = () => {
       // Enriquecer datos con IBAN de contactos
       const enrichedSolucionsData = await enrichDataWithContactIban(processedSolucions.data, 'solucions');
       const enrichedMenjarData = await enrichDataWithContactIban(processedMenjar.data, 'menjar');
+
+      // Sincronizar datos de Holded con las tablas de facturas
+      // Usar los datos originales de Holded (objetos), no los arrays procesados
+      const allHoldedData = [...solucionsPurchases, ...menjarPurchases];
+      
+      // Sincronizar con bruno_invoices (para la vista de Bruno)
+      await brunoInvoicesService.syncHoldedData(allHoldedData);
+      
+      // Sincronizar con solucions_invoices (para la vista de Solucions)
+      await solucionsInvoicesService.syncHoldedData(solucionsPurchases);
 
       // Actualizar el estado con datos separados
       setSupabaseData({
@@ -236,6 +287,108 @@ const AnalyticsPage = () => {
       console.error('Error en loadDataFromHolded:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Función simplificada para filtrar datos por visibilidad
+  // Función para cargar datos de Bruno desde la nueva tabla
+  const loadBrunoData = async () => {
+    try {
+      setLoading(true);
+      
+      // Obtener facturas de Bruno según el rol del usuario
+      let { data: brunoInvoices, error } = user?.user_metadata?.role === 'manager' 
+        ? await brunoInvoicesService.getVisibleInvoices()
+        : await brunoInvoicesService.getAllInvoices();
+      
+      if (error) {
+        console.error('Error cargando datos de Bruno:', error);
+        return;
+      }
+
+      console.log('📊 Datos de Bruno cargados:', brunoInvoices?.length || 0, 'facturas');
+      
+      // Convertir datos al formato esperado por el componente
+      const processedData = brunoInvoices?.map(invoice => [
+        invoice.invoice_number,
+        invoice.provider,
+        invoice.issue_date,
+        invoice.total,
+        invoice.status,
+        invoice.pending,
+        invoice.description,
+        invoice.due_date,
+        invoice.subtotal,
+        invoice.vat,
+        invoice.retention,
+        invoice.employees,
+        invoice.equipment_recovery,
+        invoice.payment_date,
+        invoice.tags,
+        invoice.account,
+        invoice.project,
+        invoice.holded_id,
+        invoice.holded_contact_id,
+        invoice.document_type
+      ]) || [];
+
+      setGeneralData(processedData);
+      setBrunoData(processedData);
+      
+    } catch (error) {
+      console.error('Error cargando datos de Bruno:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Función para cargar datos de Solucions desde la nueva tabla
+  const loadSolucionsData = async () => {
+    try {
+      setLoadingSolucionsInvoices(true);
+      
+      // Obtener facturas de Solucions según el rol del usuario
+      let { data: solucionsInvoices, error } = user?.user_metadata?.role === 'manager' 
+        ? await solucionsInvoicesService.getVisibleInvoices()
+        : await solucionsInvoicesService.getAllInvoices();
+      
+      if (error) {
+        console.error('Error cargando datos de Solucions:', error);
+        return;
+      }
+
+      console.log('📊 Datos de Solucions cargados:', solucionsInvoices?.length || 0, 'facturas');
+      
+      // Convertir datos al formato esperado por el componente
+      const processedData = solucionsInvoices?.map(invoice => [
+        invoice.invoice_number,
+        invoice.provider,
+        invoice.issue_date,
+        invoice.total,
+        invoice.status,
+        invoice.pending,
+        invoice.description,
+        invoice.due_date,
+        invoice.subtotal,
+        invoice.vat,
+        invoice.retention,
+        invoice.employees,
+        invoice.equipment_recovery,
+        invoice.payment_date,
+        invoice.tags,
+        invoice.account,
+        invoice.project,
+        invoice.holded_id,
+        invoice.holded_contact_id,
+        invoice.document_type
+      ]) || [];
+
+      setSolucionsInvoicesData(processedData);
+      
+    } catch (error) {
+      console.error('Error cargando datos de Solucions:', error);
+    } finally {
+      setLoadingSolucionsInvoices(false);
     }
   };
 
@@ -286,24 +439,42 @@ const AnalyticsPage = () => {
 
       const ventasHoras = allVentasHoras;
 
-      // Cargar datos de ventas de productos
-      let ventasProductos = [];
+      // Cargar datos de ventas de productos por importe
+      let ventasProductosImporte = [];
       try {
-        const { data: productosData, error: errorProductos } = await supabase
-          .from('idoni_ventas_productos')
+        const { data: productosImporteData, error: errorImporte } = await supabase
+          .from('idoni_ventas_productos_importe')
           .select('*')
-          .order('data_venta', { ascending: false });
+          .order('data_importacio', { ascending: false });
 
-        if (errorProductos) {
-          console.warn('Tabla idoni_ventas_productos no existe aún. Error:', errorProductos);
-          // No lanzar error, simplemente usar array vacío
-          ventasProductos = [];
+        if (errorImporte) {
+          console.warn('Tabla idoni_ventas_productos_importe no existe aún. Error:', errorImporte);
+          ventasProductosImporte = [];
         } else {
-          ventasProductos = productosData || [];
+          ventasProductosImporte = productosImporteData || [];
         }
       } catch (error) {
-        console.warn('Error cargando ventas de productos de IDONI (tabla puede no existir):', error);
-        ventasProductos = [];
+        console.warn('Error cargando ventas de productos por importe de IDONI:', error);
+        ventasProductosImporte = [];
+      }
+
+      // Cargar datos de ventas de productos por cantidad
+      let ventasProductosCantidad = [];
+      try {
+        const { data: productosCantidadData, error: errorCantidad } = await supabase
+          .from('idoni_ventas_productos_cantidad')
+          .select('*')
+          .order('data_importacio', { ascending: false });
+
+        if (errorCantidad) {
+          console.warn('Tabla idoni_ventas_productos_cantidad no existe aún. Error:', errorCantidad);
+          ventasProductosCantidad = [];
+        } else {
+          ventasProductosCantidad = productosCantidadData || [];
+        }
+      } catch (error) {
+        console.warn('Error cargando ventas de productos por cantidad de IDONI:', error);
+        ventasProductosCantidad = [];
       }
 
       // Procesar datos de IDONI
@@ -316,9 +487,11 @@ const AnalyticsPage = () => {
       const hourlyData = processIdoniHourlyData(ventasHoras);
       const hourlyAnalytics = calculateIdoniHourlyAnalytics(hourlyData);
 
-      // Procesar datos de ventas de productos
-      const productosData = ventasProductos.length > 0 ? processIdoniProductosData(ventasProductos) : null;
-      const productosAnalytics = productosData ? calculateIdoniProductosAnalytics(productosData) : null;
+      // Procesar datos de ventas de productos (nuevo formato)
+      const productosData = (ventasProductosImporte.length > 0 || ventasProductosCantidad.length > 0) 
+        ? processIdoniProductosNuevoFormato(ventasProductosImporte, ventasProductosCantidad) 
+        : null;
+      const productosAnalytics = productosData ? calculateIdoniProductosNuevoFormatoAnalytics(productosData) : null;
 
 
 
@@ -1265,6 +1438,10 @@ const AnalyticsPage = () => {
         // Cargar datos específicos según el dataset seleccionado
         if (newDataset === 'idoni') {
           await loadIdoniData();
+        } else if (newDataset === 'bruno') {
+          await loadBrunoData();
+        } else if (newDataset === 'solucions') {
+          await loadSolucionsData();
         }
         
         // Limpiar filtros al cambiar de dataset
@@ -1280,16 +1457,20 @@ const AnalyticsPage = () => {
 
   // Obtener los datos y headers del dataset seleccionado (desde Supabase)
   const currentHeaders = selectedDataset === 'solucions' 
-    ? supabaseData.solucions.headers 
+    ? ['Número', 'Proveedor', 'Fecha', 'Total', 'Estado', 'Pendiente', 'Descripción', 'Vencimiento', 'Subtotal', 'IVA', 'Retención', 'Empleados', 'Equipos', 'Pago', 'Etiquetas', 'Cuenta', 'Proyecto', 'Holded ID', 'Contacto', 'Tipo']
     : selectedDataset === 'menjar'
     ? supabaseData.menjar.headers
+    : selectedDataset === 'bruno'
+    ? ['Número', 'Proveedor', 'Fecha', 'Total', 'Estado', 'Pendiente', 'Descripción', 'Vencimiento', 'Subtotal', 'IVA', 'Retención', 'Empleados', 'Equipos', 'Pago', 'Etiquetas', 'Cuenta', 'Proyecto', 'Holded ID', 'Contacto', 'Tipo']
     : supabaseData.idoni.headers;
   
   // Datos base sin filtrar
   const baseData = selectedDataset === 'solucions' 
-    ? supabaseData.solucions.data 
+    ? solucionsInvoicesData
     : selectedDataset === 'menjar'
     ? supabaseData.menjar.data
+    : selectedDataset === 'bruno'
+    ? brunoData
     : supabaseData.idoni.data;
 
   // Datos para gráficos de IDONI
@@ -1903,8 +2084,13 @@ const AnalyticsPage = () => {
     if (!monthKey) return 'Todos los meses';
     
     const [year, month] = monthKey.split('-');
-    const date = new Date(parseInt(year), parseInt(month) - 1);
-    return date.toLocaleDateString('es-ES', { year: 'numeric', month: 'long' });
+    const monthNames = [
+      'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+      'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+    ];
+    
+    const monthName = monthNames[parseInt(month) - 1];
+    return `${monthName} ${year}`;
   }
 
   // --- Unificar lógica de filtrado de facturas por canal ---
@@ -2045,6 +2231,155 @@ const AnalyticsPage = () => {
       </th>
     );
   };
+
+  // ========================================
+  // FUNCIONES DE VISIBILIDAD DE FACTURAS
+  // ========================================
+
+  // Función para abrir modal de ocultar factura
+  const openHideModal = (invoice) => {
+    setSelectedInvoiceForHide(invoice);
+    setHideReason('');
+    setShowHideModal(true);
+  };
+
+  // Función para cerrar modal de ocultar factura
+  const closeHideModal = () => {
+    setShowHideModal(false);
+    setSelectedInvoiceForHide(null);
+    setHideReason('');
+  };
+
+  // Función para ocultar una factura
+  const hideInvoice = async (invoice, reason = '') => {
+    try {
+      if (!user) {
+        showAlertMessage('Debes iniciar sesión para ocultar facturas', 'error');
+        return false;
+      }
+
+      console.log('Intentando ocultar factura:', invoice);
+
+      // Encontrar la factura en brunoData por número de factura
+      const brunoInvoice = brunoData.find(row => row[0] === invoice[0]); // Comparar por número de factura
+      
+      if (!brunoInvoice) {
+        showAlertMessage('No se encontró la factura en la base de datos de Bruno', 'error');
+        return false;
+      }
+
+      // Obtener el ID de la factura desde la base de datos
+      const { data: invoiceData, error: fetchError } = await brunoInvoicesService.getAllInvoices();
+      
+      if (fetchError) {
+        showAlertMessage('Error obteniendo datos de la factura', 'error');
+        return false;
+      }
+
+      const dbInvoice = invoiceData.find(inv => inv.invoice_number === invoice[0]);
+      
+      if (!dbInvoice) {
+        showAlertMessage('No se encontró la factura en la base de datos', 'error');
+        return false;
+      }
+
+      const result = await brunoInvoicesService.hideInvoice(dbInvoice.id, reason);
+
+      if (result.error) {
+        const errorMessage = extractErrorMessage(result.error);
+        showAlertMessage(errorMessage, 'error');
+        return false;
+      }
+
+      showAlertMessage('Factura ocultada correctamente', 'success');
+      // Recargar datos de Bruno para reflejar los cambios
+      await loadBrunoData();
+      closeHideModal();
+      return true;
+      
+    } catch (error) {
+      console.error('Error al ocultar factura:', error);
+      const errorMessage = extractErrorMessage(error);
+      showAlertMessage(errorMessage, 'error');
+      return false;
+    }
+  };
+
+  // Función para verificar si el usuario actual puede ocultar facturas
+  const canHideInvoices = () => {
+    return user && (user.user_metadata?.role === 'management' || user.user_metadata?.role === 'admin');
+  };
+
+  // Función helper para extraer mensajes de error de Supabase
+  const extractErrorMessage = (error) => {
+    if (typeof error === 'string') return error;
+    if (error?.message) return error.message;
+    if (error?.details) return error.details;
+    if (error?.hint) return error.hint;
+    return 'Error desconocido';
+  };
+
+  // Función helper para crear identificador único de factura
+  const createInvoiceIdentifier = (invoice, columnIndices) => {
+    const invoiceNumber = invoice[columnIndices.invoiceNumber] || '';
+    const provider = invoice[columnIndices.provider] || '';
+    const date = invoice[columnIndices.date] || '';
+    
+    if (!invoiceNumber || !provider || !date) {
+      return null;
+    }
+    
+    // Crear un identificador único y limpio
+    const cleanInvoiceNumber = invoiceNumber.toString().replace(/[^a-zA-Z0-9]/g, '_');
+    const cleanProvider = provider.toString().replace(/[^a-zA-Z0-9]/g, '_');
+    const cleanDate = date.toString().replace(/[^a-zA-Z0-9]/g, '_');
+    
+    return `${cleanInvoiceNumber}_${cleanProvider}_${cleanDate}`;
+  };
+
+  // Función para obtener el estado de pago de una factura
+  const getInvoicePaymentStatus = (invoice, columnIndices) => {
+    if (!columnIndices.status) return 'unknown';
+    
+    const status = invoice[columnIndices.status]?.toLowerCase() || '';
+    
+    if (status.includes('paid') || status.includes('pagado')) return 'paid';
+    if (status.includes('partially') || status.includes('parcial')) return 'partially_paid';
+    if (status.includes('pending') || status.includes('pendiente')) return 'pending';
+    if (status.includes('overdue') || status.includes('vencido')) return 'overdue';
+    
+    // Si no hay estado, verificar si hay monto pendiente
+    if (columnIndices.pending) {
+      const pending = parseFloat(invoice[columnIndices.pending]) || 0;
+      if (pending > 0) return 'pending';
+    }
+    
+    return 'unknown';
+  };
+
+  // Función para verificar si una factura está oculta para el rol manager
+  const isInvoiceHiddenForManager = async (invoice) => {
+    try {
+      // Crear el mismo identificador que se usa para ocultar
+      const invoiceNumber = invoice[columnIndices.invoiceNumber];
+      const provider = invoice[columnIndices.provider];
+      const issueDate = invoice[columnIndices.date];
+      
+      const cleanInvoiceNumber = (invoiceNumber || '').toString().replace(/[^a-zA-Z0-9]/g, '_');
+      const cleanProvider = (provider || '').toString().replace(/[^a-zA-Z0-9]/g, '_');
+      const cleanDate = (issueDate || '').toString().replace(/[^a-zA-Z0-9]/g, '_');
+      
+      const invoiceIdentifier = `${cleanInvoiceNumber}_${cleanProvider}_${cleanDate}`;
+      
+      const result = await invoiceVisibilityService.isInvoiceHiddenForRole(invoiceIdentifier, 'manager');
+      return result.data || false;
+    } catch (error) {
+      console.error('Error verificando si factura está oculta:', error);
+      return false;
+    }
+  };
+
+
 
   // Calcular total facturado y total a pagar (solo pendientes o vencidas)
   const totalFacturado = useMemo(() => {
@@ -2655,6 +2990,730 @@ const AnalyticsPage = () => {
     };
   };
 
+  // ===== NUEVAS FUNCIONES PARA EL NUEVO FORMATO DE VENTAS POR PRODUCTOS =====
+
+  // Función para procesar Excel de ventas por productos por importe (nuevo formato)
+  const processIdoniProductosImporteExcel = async (file) => {
+    setUploadingIdoniProductos(true);
+    setUploadProgress(0);
+    setUploadTypeProductos('productos_importe');
+
+    try {
+      // Paso 1: Procesar el archivo Excel
+      setUploadProgress(20);
+      const processedData = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          try {
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+            const sheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[sheetName];
+            const json = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+            
+            if (!json || json.length === 0) {
+              throw new Error('El archivo Excel está vacío o no contiene datos válidos');
+            }
+            
+            // Encontrar la fila de headers
+            const bestHeaderIdx = findIdoniProductosImporteHeaderRow(json);
+            
+            if (bestHeaderIdx === -1 || bestHeaderIdx >= json.length) {
+              throw new Error('No se encontraron headers válidos para ventas de productos por importe');
+            }
+            
+            const headers = json[bestHeaderIdx] || [];
+            
+            // Validar que los headers no estén vacíos
+            if (!headers || headers.length === 0) {
+              throw new Error('Los headers del archivo están vacíos');
+            }
+            
+            const rawRows = json.slice(bestHeaderIdx + 1);
+            const filteredRows = rawRows.filter(row => isValidIdoniProductosImporteRow(row, headers));
+            
+            if (filteredRows.length === 0) {
+              throw new Error('No se encontraron filas válidas en el archivo');
+            }
+            
+            resolve({ headers, data: filteredRows });
+          } catch (error) {
+            reject(error);
+          }
+        };
+        reader.onerror = () => reject(new Error('Error al leer el archivo'));
+        reader.readAsArrayBuffer(file);
+      });
+
+      setUploadProgress(40);
+
+      // Paso 2: Procesar y subir datos a Supabase
+      await uploadIdoniProductosImporteToSupabase(processedData.data, processedData.headers);
+      setUploadProgress(80);
+
+      // Paso 3: Recargar datos
+      await loadIdoniData();
+      setUploadProgress(100);
+
+      showAlertMessage(`Archivo de IDONI ventas de productos por importe procesado correctamente. Se importaron ${processedData.data.length} filas de datos.`, 'success');
+
+    } catch (error) {
+      showAlertMessage(`Error al procesar el archivo: ${error.message}`, 'error');
+    } finally {
+      setUploadingIdoniProductos(false);
+      setUploadProgress(0);
+      setUploadTypeProductos('');
+    }
+  };
+
+  // Función para procesar Excel de ventas por productos por cantidad (nuevo formato)
+  const processIdoniProductosCantidadExcel = async (file) => {
+    setUploadingIdoniProductos(true);
+    setUploadProgress(0);
+    setUploadTypeProductos('productos_cantidad');
+
+    try {
+      // Paso 1: Procesar el archivo Excel
+      setUploadProgress(20);
+      const processedData = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          try {
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+            const sheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[sheetName];
+            const json = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+            
+            if (!json || json.length === 0) {
+              throw new Error('El archivo Excel está vacío o no contiene datos válidos');
+            }
+            
+            // Encontrar la fila de headers
+            const bestHeaderIdx = findIdoniProductosCantidadHeaderRow(json);
+            
+            if (bestHeaderIdx === -1 || bestHeaderIdx >= json.length) {
+              throw new Error('No se encontraron headers válidos para ventas de productos por cantidad');
+            }
+            
+            const headers = json[bestHeaderIdx] || [];
+            
+            // Validar que los headers no estén vacíos
+            if (!headers || headers.length === 0) {
+              throw new Error('Los headers del archivo están vacíos');
+            }
+            
+            const rawRows = json.slice(bestHeaderIdx + 1);
+            const filteredRows = rawRows.filter(row => isValidIdoniProductosCantidadRow(row, headers));
+            
+            if (filteredRows.length === 0) {
+              throw new Error('No se encontraron filas válidas en el archivo');
+            }
+            
+            resolve({ headers, data: filteredRows });
+          } catch (error) {
+            reject(error);
+          }
+        };
+        reader.onerror = () => reject(new Error('Error al leer el archivo'));
+        reader.readAsArrayBuffer(file);
+      });
+
+      setUploadProgress(40);
+
+      // Paso 2: Procesar y subir datos a Supabase
+      await uploadIdoniProductosCantidadToSupabase(processedData.data, processedData.headers);
+      setUploadProgress(80);
+
+      // Paso 3: Recargar datos
+      await loadIdoniData();
+      setUploadProgress(100);
+
+      showAlertMessage(`Archivo de IDONI ventas de productos por cantidad procesado correctamente. Se importaron ${processedData.data.length} filas de datos.`, 'success');
+
+    } catch (error) {
+      showAlertMessage(`Error al procesar el archivo: ${error.message}`, 'error');
+    } finally {
+      setUploadingIdoniProductos(false);
+      setUploadProgress(0);
+      setUploadTypeProductos('');
+    }
+  };
+
+  // Función para encontrar la fila de headers en archivo Excel de ventas de productos por importe
+  const findIdoniProductosImporteHeaderRow = (rows) => {
+    const expectedHeaders = ['Codi', 'Descripció', 'Gener', 'Febrer', 'Març', 'Abril', 'Maig', 'Juny', 'Juliol', 'Agost', 'Setembre', 'Octubre', 'Novembre', 'Desembre', 'TOTAL'];
+    
+    for (let i = 0; i < Math.min(rows.length, 10); i++) {
+      const row = rows[i] || [];
+      let score = 0;
+      
+      for (const expected of expectedHeaders) {
+        const found = row.some(cell => {
+          if (cell && typeof cell === 'string') {
+            const cellLower = cell.toLowerCase().trim();
+            const expectedLower = expected.toLowerCase().trim();
+            return cellLower.includes(expectedLower) || expectedLower.includes(cellLower);
+          }
+          return false;
+        });
+        
+        if (found) {
+          score++;
+        }
+      }
+      
+      // Si encontramos suficientes headers, usar esta fila
+      if (score >= 8) {
+        return i;
+      }
+    }
+    
+    return -1;
+  };
+
+  // Función para encontrar la fila de headers en archivo Excel de ventas de productos por cantidad
+  const findIdoniProductosCantidadHeaderRow = (rows) => {
+    const expectedHeaders = ['Codi', 'Descripció', 'Gener', 'Febrer', 'Març', 'Abril', 'Maig', 'Juny', 'Juliol', 'Agost', 'Setembre', 'Octubre', 'Novembre', 'Desembre', 'TOTAL'];
+    
+    for (let i = 0; i < Math.min(rows.length, 10); i++) {
+      const row = rows[i] || [];
+      let score = 0;
+      
+      for (const expected of expectedHeaders) {
+        const found = row.some(cell => {
+          if (cell && typeof cell === 'string') {
+            const cellLower = cell.toLowerCase().trim();
+            const expectedLower = expected.toLowerCase().trim();
+            return cellLower.includes(expectedLower) || expectedLower.includes(cellLower);
+          }
+          return false;
+        });
+        
+        if (found) {
+          score++;
+        }
+      }
+      
+      // Si encontramos suficientes headers, usar esta fila
+      if (score >= 8) {
+        return i;
+      }
+    }
+    
+    return -1;
+  };
+
+  // Función para validar filas de datos de ventas de productos por importe
+  const isValidIdoniProductosImporteRow = (row, headers) => {
+    if (!row || row.length < 3) return false;
+    
+    // Verificar que al menos tenga código de producto
+    const codiIndex = headers.findIndex(h => 
+      typeof h === 'string' && h.toLowerCase().includes('codi')
+    );
+    
+    if (codiIndex === -1) {
+      return false;
+    }
+    
+    const codi = row[codiIndex];
+    
+    // Debe tener código válido (no vacío)
+    if (!codi || (typeof codi === 'string' && codi.trim() === '')) {
+      return false;
+    }
+    
+    // Verificar que al menos una columna de mes tenga valor numérico
+    const monthHeaders = ['Gener', 'Febrer', 'Març', 'Abril', 'Maig', 'Juny', 'Juliol', 'Agost', 'Setembre', 'Octubre', 'Novembre', 'Desembre', 'TOTAL'];
+    const hasNumericValue = monthHeaders.some(monthName => {
+      const index = headers.findIndex(h => 
+        typeof h === 'string' && h.toLowerCase().includes(monthName.toLowerCase())
+      );
+      if (index !== -1) {
+        const value = row[index];
+        return value !== null && value !== undefined && value !== '' && !isNaN(parseFloat(value));
+      }
+      return false;
+    });
+    
+    return hasNumericValue;
+  };
+
+  // Función para validar filas de datos de ventas de productos por cantidad
+  const isValidIdoniProductosCantidadRow = (row, headers) => {
+    if (!row || row.length < 3) return false;
+    
+    // Verificar que al menos tenga código de producto
+    const codiIndex = headers.findIndex(h => 
+      typeof h === 'string' && h.toLowerCase().includes('codi')
+    );
+    
+    if (codiIndex === -1) {
+      return false;
+    }
+    
+    const codi = row[codiIndex];
+    
+    // Debe tener código válido (no vacío)
+    if (!codi || (typeof codi === 'string' && codi.trim() === '')) {
+      return false;
+    }
+    
+    // Verificar que al menos una columna de mes tenga valor numérico
+    const monthHeaders = ['Gener', 'Febrer', 'Març', 'Abril', 'Maig', 'Juny', 'Juliol', 'Agost', 'Setembre', 'Octubre', 'Novembre', 'Desembre', 'TOTAL'];
+    const hasNumericValue = monthHeaders.some(monthName => {
+      const index = headers.findIndex(h => 
+        typeof h === 'string' && h.toLowerCase().includes(monthName.toLowerCase())
+      );
+      if (index !== -1) {
+        const value = row[index];
+        return value !== null && value !== undefined && value !== '' && !isNaN(parseFloat(value));
+      }
+      return false;
+    });
+    
+    return hasNumericValue;
+  };
+
+  // Función para subir datos de ventas de productos por importe a Supabase
+  const uploadIdoniProductosImporteToSupabase = async (data, headers) => {
+    try {
+      // Primero, eliminar todos los datos existentes de productos por importe
+      try {
+        const { error: deleteError } = await supabase
+          .from('idoni_ventas_productos_importe')
+          .delete()
+          .neq('id', '00000000-0000-0000-0000-000000000000');
+
+        if (deleteError) {
+          console.error('Error limpiando datos existentes de ventas de productos por importe:', deleteError);
+          throw new Error(`Error limpiando datos existentes: ${deleteError.message}`);
+        }
+      } catch (error) {
+        console.warn('No se pudieron eliminar datos existentes (tabla puede no existir):', error);
+        // Continuar con la inserción
+      }
+
+      // Preparar datos para inserción
+      if (!headers || headers.length === 0) {
+        throw new Error('Headers no disponibles para procesar los datos');
+      }
+      
+      const productosToInsert = data.map(row => {
+        // Encontrar índices de las columnas
+        const findColumnIndex = (headerName) => {
+          return headers.findIndex(h => 
+            typeof h === 'string' && h.toLowerCase().includes(headerName.toLowerCase())
+          );
+        };
+        
+        const codiIndex = findColumnIndex('Codi');
+        const descripcioIndex = findColumnIndex('Descripció');
+        const generIndex = findColumnIndex('Gener');
+        const febrerIndex = findColumnIndex('Febrer');
+        const marcIndex = findColumnIndex('Març');
+        const abrilIndex = findColumnIndex('Abril');
+        const maigIndex = findColumnIndex('Maig');
+        const junyIndex = findColumnIndex('Juny');
+        const juliolIndex = findColumnIndex('Juliol');
+        const agostIndex = findColumnIndex('Agost');
+        const setembreIndex = findColumnIndex('Setembre');
+        const octubreIndex = findColumnIndex('Octubre');
+        const novembreIndex = findColumnIndex('Novembre');
+        const desembreIndex = findColumnIndex('Desembre');
+        const totalIndex = findColumnIndex('TOTAL');
+        
+        return {
+          codi: codiIndex !== -1 ? (row[codiIndex] || '') : '',
+          descripcio: descripcioIndex !== -1 ? (row[descripcioIndex] || '') : '',
+          gener: generIndex !== -1 ? (parseFloat(row[generIndex]) || 0) : 0,
+          febrer: febrerIndex !== -1 ? (parseFloat(row[febrerIndex]) || 0) : 0,
+          marc: marcIndex !== -1 ? (parseFloat(row[marcIndex]) || 0) : 0,
+          abril: abrilIndex !== -1 ? (parseFloat(row[abrilIndex]) || 0) : 0,
+          maig: maigIndex !== -1 ? (parseFloat(row[maigIndex]) || 0) : 0,
+          juny: junyIndex !== -1 ? (parseFloat(row[junyIndex]) || 0) : 0,
+          juliol: juliolIndex !== -1 ? (parseFloat(row[juliolIndex]) || 0) : 0,
+          agost: agostIndex !== -1 ? (parseFloat(row[agostIndex]) || 0) : 0,
+          setembre: setembreIndex !== -1 ? (parseFloat(row[setembreIndex]) || 0) : 0,
+          octubre: octubreIndex !== -1 ? (parseFloat(row[octubreIndex]) || 0) : 0,
+          novembre: novembreIndex !== -1 ? (parseFloat(row[novembreIndex]) || 0) : 0,
+          desembre: desembreIndex !== -1 ? (parseFloat(row[desembreIndex]) || 0) : 0,
+          total: totalIndex !== -1 ? (parseFloat(row[totalIndex]) || 0) : 0,
+          data_importacio: new Date().toISOString().split('T')[0]
+        };
+      });
+
+      // Insertar nuevos datos
+      try {
+        const { error: insertError } = await supabase
+          .from('idoni_ventas_productos_importe')
+          .insert(productosToInsert);
+
+        if (insertError) {
+          console.error('Error insertando datos de ventas de productos por importe:', insertError);
+          
+          // Manejar errores específicos de RLS
+          if (insertError.code === '42501') {
+            throw new Error(`Error de permisos: ${insertError.message}. Por favor, ejecuta el script SQL actualizado en Supabase.`);
+          } else {
+            throw new Error(`Error insertando datos: ${insertError.message}`);
+          }
+        }
+      } catch (error) {
+        console.error('Error insertando datos de ventas de productos por importe:', error);
+        
+        // Si es un error de tabla no existente, dar instrucciones específicas
+        if (error.message.includes('relation') || error.message.includes('does not exist')) {
+          throw new Error(`La tabla idoni_ventas_productos_importe no existe. Por favor, ejecuta el script SQL en Supabase primero.`);
+        } else {
+          throw error;
+        }
+      }
+
+    } catch (error) {
+      console.error('Error subiendo datos de ventas de productos por importe de IDONI:', error);
+      throw error;
+    }
+  };
+
+  // Función para subir datos de ventas de productos por cantidad a Supabase
+  const uploadIdoniProductosCantidadToSupabase = async (data, headers) => {
+    try {
+      // Primero, eliminar todos los datos existentes de productos por cantidad
+      try {
+        const { error: deleteError } = await supabase
+          .from('idoni_ventas_productos_cantidad')
+          .delete()
+          .neq('id', '00000000-0000-0000-0000-000000000000');
+
+        if (deleteError) {
+          console.error('Error limpiando datos existentes de ventas de productos por cantidad:', deleteError);
+          throw new Error(`Error limpiando datos existentes: ${deleteError.message}`);
+        }
+      } catch (error) {
+        console.warn('No se pudieron eliminar datos existentes (tabla puede no existir):', error);
+        // Continuar con la inserción
+      }
+
+      // Preparar datos para inserción
+      if (!headers || headers.length === 0) {
+        throw new Error('Headers no disponibles para procesar los datos');
+      }
+      
+      const productosToInsert = data.map(row => {
+        // Encontrar índices de las columnas
+        const findColumnIndex = (headerName) => {
+          return headers.findIndex(h => 
+            typeof h === 'string' && h.toLowerCase().includes(headerName.toLowerCase())
+          );
+        };
+        
+        const codiIndex = findColumnIndex('Codi');
+        const descripcioIndex = findColumnIndex('Descripció');
+        const generIndex = findColumnIndex('Gener');
+        const febrerIndex = findColumnIndex('Febrer');
+        const marcIndex = findColumnIndex('Març');
+        const abrilIndex = findColumnIndex('Abril');
+        const maigIndex = findColumnIndex('Maig');
+        const junyIndex = findColumnIndex('Juny');
+        const juliolIndex = findColumnIndex('Juliol');
+        const agostIndex = findColumnIndex('Agost');
+        const setembreIndex = findColumnIndex('Setembre');
+        const octubreIndex = findColumnIndex('Octubre');
+        const novembreIndex = findColumnIndex('Novembre');
+        const desembreIndex = findColumnIndex('Desembre');
+        const totalIndex = findColumnIndex('TOTAL');
+        
+        return {
+          codi: codiIndex !== -1 ? (row[codiIndex] || '') : '',
+          descripcio: descripcioIndex !== -1 ? (row[descripcioIndex] || '') : '',
+          gener: generIndex !== -1 ? (parseFloat(row[generIndex]) || 0) : 0,
+          febrer: febrerIndex !== -1 ? (parseFloat(row[febrerIndex]) || 0) : 0,
+          marc: marcIndex !== -1 ? (parseFloat(row[marcIndex]) || 0) : 0,
+          abril: abrilIndex !== -1 ? (parseFloat(row[abrilIndex]) || 0) : 0,
+          maig: maigIndex !== -1 ? (parseFloat(row[maigIndex]) || 0) : 0,
+          juny: junyIndex !== -1 ? (parseFloat(row[junyIndex]) || 0) : 0,
+          juliol: juliolIndex !== -1 ? (parseFloat(row[juliolIndex]) || 0) : 0,
+          agost: agostIndex !== -1 ? (parseFloat(row[agostIndex]) || 0) : 0,
+          setembre: setembreIndex !== -1 ? (parseFloat(row[setembreIndex]) || 0) : 0,
+          octubre: octubreIndex !== -1 ? (parseFloat(row[octubreIndex]) || 0) : 0,
+          novembre: novembreIndex !== -1 ? (parseFloat(row[novembreIndex]) || 0) : 0,
+          desembre: desembreIndex !== -1 ? (parseFloat(row[desembreIndex]) || 0) : 0,
+          total: totalIndex !== -1 ? (parseFloat(row[totalIndex]) || 0) : 0,
+          data_importacio: new Date().toISOString().split('T')[0]
+        };
+      });
+
+      // Insertar nuevos datos
+      try {
+        const { error: insertError } = await supabase
+          .from('idoni_ventas_productos_cantidad')
+          .insert(productosToInsert);
+
+        if (insertError) {
+          console.error('Error insertando datos de ventas de productos por cantidad:', insertError);
+          
+          // Manejar errores específicos de RLS
+          if (insertError.code === '42501') {
+            throw new Error(`Error de permisos: ${insertError.message}. Por favor, ejecuta el script SQL actualizado en Supabase.`);
+          } else {
+            throw new Error(`Error insertando datos: ${insertError.message}`);
+          }
+        }
+      } catch (error) {
+        console.error('Error insertando datos de ventas de productos por cantidad:', error);
+        
+        // Si es un error de tabla no existente, dar instrucciones específicas
+        if (error.message.includes('relation') || error.message.includes('does not exist')) {
+          throw new Error(`La tabla idoni_ventas_productos_cantidad no existe. Por favor, ejecuta el script SQL en Supabase primero.`);
+        } else {
+          throw error;
+        }
+      }
+
+    } catch (error) {
+      console.error('Error subiendo datos de ventas de productos por cantidad de IDONI:', error);
+      throw error;
+    }
+  };
+
+  // Función para manejar la selección de archivo de ventas de productos por importe
+  const handleIdoniProductosImporteFileSelect = () => {
+    if (uploadingIdoniProductos) {
+      return;
+    }
+    idoniProductosImporteFileInputRef.current.click();
+  };
+
+  // Función para manejar la selección de archivo de ventas de productos por cantidad
+  const handleIdoniProductosCantidadFileSelect = () => {
+    if (uploadingIdoniProductos) {
+      return;
+    }
+    idoniProductosCantidadFileInputRef.current.click();
+  };
+
+  // Función para manejar el cambio de archivo de ventas de productos por importe
+  const handleIdoniProductosImporteFileChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      processIdoniProductosImporteExcel(file);
+    }
+    e.target.value = '';
+  };
+
+  // Función para manejar el cambio de archivo de ventas de productos por cantidad
+  const handleIdoniProductosCantidadFileChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      processIdoniProductosCantidadExcel(file);
+    }
+    e.target.value = '';
+  };
+
+  // ===== NUEVAS FUNCIONES PARA PROCESAR DATOS DEL NUEVO FORMATO =====
+
+  // Función para procesar datos del nuevo formato de productos
+  const processIdoniProductosNuevoFormato = (ventasProductosImporte, ventasProductosCantidad) => {
+    if ((!ventasProductosImporte || ventasProductosImporte.length === 0) && 
+        (!ventasProductosCantidad || ventasProductosCantidad.length === 0)) {
+      return null;
+    }
+
+    // Crear un mapa combinado de productos
+    const productosCombinados = new Map();
+
+    // Procesar datos por importe
+    if (ventasProductosImporte && ventasProductosImporte.length > 0) {
+      ventasProductosImporte.forEach(producto => {
+        const key = producto.codi;
+        if (!productosCombinados.has(key)) {
+          productosCombinados.set(key, {
+            codi: producto.codi,
+            descripcio: producto.descripcio,
+            importe: {
+              gener: producto.gener || 0,
+              febrer: producto.febrer || 0,
+              marc: producto.marc || 0,
+              abril: producto.abril || 0,
+              maig: producto.maig || 0,
+              juny: producto.juny || 0,
+              juliol: producto.juliol || 0,
+              agost: producto.agost || 0,
+              setembre: producto.setembre || 0,
+              octubre: producto.octubre || 0,
+              novembre: producto.novembre || 0,
+              desembre: producto.desembre || 0,
+              total: producto.total || 0
+            },
+            cantidad: {
+              gener: 0,
+              febrer: 0,
+              marc: 0,
+              abril: 0,
+              maig: 0,
+              juny: 0,
+              juliol: 0,
+              agost: 0,
+              setembre: 0,
+              octubre: 0,
+              novembre: 0,
+              desembre: 0,
+              total: 0
+            }
+          });
+        } else {
+          // Actualizar datos de importe existentes
+          const existing = productosCombinados.get(key);
+          existing.importe = {
+            gener: producto.gener || 0,
+            febrer: producto.febrer || 0,
+            marc: producto.marc || 0,
+            abril: producto.abril || 0,
+            maig: producto.maig || 0,
+            juny: producto.juny || 0,
+            juliol: producto.juliol || 0,
+            agost: producto.agost || 0,
+            setembre: producto.setembre || 0,
+            octubre: producto.octubre || 0,
+            novembre: producto.novembre || 0,
+            desembre: producto.desembre || 0,
+            total: producto.total || 0
+          };
+        }
+      });
+    }
+
+    // Procesar datos por cantidad
+    if (ventasProductosCantidad && ventasProductosCantidad.length > 0) {
+      ventasProductosCantidad.forEach(producto => {
+        const key = producto.codi;
+        if (!productosCombinados.has(key)) {
+          productosCombinados.set(key, {
+            codi: producto.codi,
+            descripcio: producto.descripcio,
+            importe: {
+              gener: 0,
+              febrer: 0,
+              marc: 0,
+              abril: 0,
+              maig: 0,
+              juny: 0,
+              juliol: 0,
+              agost: 0,
+              setembre: 0,
+              octubre: 0,
+              novembre: 0,
+              desembre: 0,
+              total: 0
+            },
+            cantidad: {
+              gener: producto.gener || 0,
+              febrer: producto.febrer || 0,
+              marc: producto.marc || 0,
+              abril: producto.abril || 0,
+              maig: producto.maig || 0,
+              juny: producto.juny || 0,
+              juliol: producto.juliol || 0,
+              agost: producto.agost || 0,
+              setembre: producto.setembre || 0,
+              octubre: producto.octubre || 0,
+              novembre: producto.novembre || 0,
+              desembre: producto.desembre || 0,
+              total: producto.total || 0
+            }
+          });
+        } else {
+          // Actualizar datos de cantidad existentes
+          const existing = productosCombinados.get(key);
+          existing.cantidad = {
+            gener: producto.gener || 0,
+            febrer: producto.febrer || 0,
+            marc: producto.marc || 0,
+            abril: producto.abril || 0,
+            maig: producto.maig || 0,
+            juny: producto.juny || 0,
+            juliol: producto.juliol || 0,
+            agost: producto.agost || 0,
+            setembre: producto.setembre || 0,
+            octubre: producto.octubre || 0,
+            novembre: producto.novembre || 0,
+            desembre: producto.desembre || 0,
+            total: producto.total || 0
+          };
+        }
+      });
+    }
+
+    // Convertir a array y ordenar por total de importe
+    const productosArray = Array.from(productosCombinados.values());
+    productosArray.sort((a, b) => b.importe.total - a.importe.total);
+
+    return {
+      productosArray,
+      totalProductos: productosArray.length,
+      totalImporte: productosArray.reduce((sum, p) => sum + p.importe.total, 0),
+      totalCantidad: productosArray.reduce((sum, p) => sum + p.cantidad.total, 0),
+      productosConImporte: productosArray.filter(p => p.importe.total > 0).length,
+      productosConCantidad: productosArray.filter(p => p.cantidad.total > 0).length
+    };
+  };
+
+  // Función para calcular análisis del nuevo formato de productos
+  const calculateIdoniProductosNuevoFormatoAnalytics = (productosData) => {
+    if (!productosData || !productosData.productosArray) return null;
+
+    const productos = productosData.productosArray;
+    
+    // Top 10 productos por importe
+    const top10PorImporte = productos
+      .filter(p => p.importe.total > 0)
+      .slice(0, 10);
+    
+    // Top 10 productos por cantidad
+    const top10PorCantidad = productos
+      .filter(p => p.cantidad.total > 0)
+      .sort((a, b) => b.cantidad.total - a.cantidad.total)
+      .slice(0, 10);
+    
+    // Productos con mayor crecimiento mensual (comparando últimos meses)
+    const productosConCrecimiento = productos
+      .filter(p => p.importe.total > 0)
+      .map(producto => {
+        const meses = ['gener', 'febrer', 'marc', 'abril', 'maig', 'juny', 'juliol', 'agost', 'setembre', 'octubre', 'novembre', 'desembre'];
+        const valores = meses.map(mes => producto.importe[mes] || 0);
+        const crecimiento = valores.length > 1 ? ((valores[valores.length - 1] - valores[0]) / valores[0]) * 100 : 0;
+        
+        return {
+          ...producto,
+          crecimiento: isFinite(crecimiento) ? crecimiento : 0
+        };
+      })
+      .sort((a, b) => b.crecimiento - a.crecimiento)
+      .slice(0, 10);
+
+    // Calcular estadísticas generales
+    const importePromedioPorProducto = productosData.totalProductos > 0 ? 
+      productosData.totalImporte / productosData.totalProductos : 0;
+    
+    const cantidadPromedioPorProducto = productosData.totalProductos > 0 ? 
+      productosData.totalCantidad / productosData.totalProductos : 0;
+
+    return {
+      top10PorImporte,
+      top10PorCantidad,
+      top10PorCrecimiento: productosConCrecimiento,
+      importePromedioPorProducto,
+      cantidadPromedioPorProducto,
+      totalProductos: productosData.totalProductos,
+      totalImporte: productosData.totalImporte,
+      totalCantidad: productosData.totalCantidad,
+      productosConImporte: productosData.productosConImporte,
+      productosConCantidad: productosData.productosConCantidad
+    };
+  };
+
   // Función para generar resumen completo de datos de IDONI para análisis de IA
   const generateIdoniSummary = () => {
     const summary = {
@@ -2951,7 +4010,7 @@ const AnalyticsPage = () => {
 
   // Función para descargar datos de la vista Bruno
   const downloadBrunoData = () => {
-    if (!providerStats || providerStats.length === 0) {
+    if (!brunoData || brunoData.length === 0) {
       showAlertMessage('No hay datos para descargar', 'error');
       return;
     }
@@ -2959,137 +4018,67 @@ const AnalyticsPage = () => {
     try {
       // Crear workbook
       const wb = XLSX.utils.book_new();
-      const datasetName = selectedDataset === 'solucions' ? 'Solucions Socials' : 'Menjar D\'Hort';
-      const monthFilter = selectedMonth ? ` - ${getMonthName(selectedMonth)}` : '';
+      const fileName = `Vista_Bruno_Facturas_${new Date().toISOString().split('T')[0]}.xlsx`;
 
-      // Preparar todos los datos en una sola hoja, separados por proveedor
-      let allInvoicesData = [];
-      
-      providerStats.forEach((stat, index) => {
-        if (stat.invoices && stat.invoices.length > 0) {
-          // Agregar separador de proveedor
-          if (index > 0) {
-            allInvoicesData.push({
-              'Fecha': '',
-              'Número de Factura': '',
-              'Descripción': '',
-              'Cuenta': '',
-              'IBAN': '',
-              'Total': '',
-              'Pendiente': '',
-              'Estado': ''
-            });
-          }
-          
-          // Agregar encabezado del proveedor con IBAN formateado
-          allInvoicesData.push({
-            'Fecha': '',
-            'Número de Factura': '',
-            'Descripción': `=== ${stat.provider} ===`,
-            'Cuenta': '',
-            'IBAN': formatIBAN(stat.iban || '-'),
-            'Total': '',
-            'Pendiente': '',
-            'Estado': ''
-          });
-
-          // Agregar todas las facturas del proveedor
-          stat.invoices.forEach(row => {
-            const total = parseFloat(row[columnIndices.total]) || 0;
-            const pending = columnIndices.pending ? (parseFloat(row[columnIndices.pending]) || 0) : 0;
-            
-            allInvoicesData.push({
-              'Fecha': formatDate(row[columnIndices.date]),
-              'Número de Factura': row[columnIndices.invoiceNumber] || '-',
-              'Descripción': row[columnIndices.description] || '-',
-              'Cuenta': row[columnIndices.account] || '-',
-              'IBAN': '', // IBAN vacío para facturas individuales
-              'Total': total, // Número para que Excel pueda sumar
-              'Pendiente': columnIndices.pending ? pending : 0, // Número para que Excel pueda sumar
-              'Estado': isPending(row, columnIndices) ? 'Pendiente' : 'Pagado'
-            });
-          });
-
-          // Calcular total de pendientes del proveedor
-          const providerPendingTotal = stat.invoices.reduce((sum, row) => {
-            const pending = columnIndices.pending ? (parseFloat(row[columnIndices.pending]) || 0) : 0;
-            return sum + pending;
-          }, 0);
-
-          // Agregar fila de separación
-          allInvoicesData.push({
-            'Fecha': '',
-            'Número de Factura': '',
-            'Descripción': '',
-            'Cuenta': '',
-            'IBAN': '',
-            'Total': '',
-            'Pendiente': '',
-            'Estado': ''
-          });
-
-          // Agregar texto del total y suma en la misma fila
-          allInvoicesData.push({
-            'Fecha': '',
-            'Número de Factura': '',
-            'Descripción': '',
-            'Cuenta': '',
-            'IBAN': '',
-            'Total': `TOTAL ${stat.provider}`,
-            'Pendiente': providerPendingTotal,
-            'Estado': ''
-          });
-        }
-      });
+      // Preparar datos para Excel
+      const excelData = brunoData.map(row => ({
+        'Número': row[0] || '-',
+        'Proveedor': row[1] || '-',
+        'Fecha': formatDate(row[2]) || '-',
+        'Total': parseFloat(row[3]) || 0,
+        'Estado': row[4] || '-',
+        'Pendiente': parseFloat(row[5]) || 0,
+        'Descripción': row[6] || '-',
+        'Vencimiento': formatDate(row[7]) || '-',
+        'Subtotal': parseFloat(row[8]) || 0,
+        'IVA': parseFloat(row[9]) || 0,
+        'Retención': parseFloat(row[10]) || 0,
+        'Empleados': parseFloat(row[11]) || 0,
+        'Equipos': parseFloat(row[12]) || 0,
+        'Pago': formatDate(row[13]) || '-',
+        'Etiquetas': row[14] || '-',
+        'Cuenta': row[15] || '-',
+        'Proyecto': row[16] || '-',
+        'Holded ID': row[17] || '-',
+        'Contacto': row[18] || '-',
+        'Tipo': row[19] || '-'
+      }));
 
       // Crear hoja con todos los datos
-      const ws = XLSX.utils.json_to_sheet(allInvoicesData);
+      const ws = XLSX.utils.json_to_sheet(excelData);
 
       // Configurar anchos de columna
       const colWidths = [
+        { wch: 15 }, // Número
+        { wch: 25 }, // Proveedor
         { wch: 12 }, // Fecha
-        { wch: 15 }, // Número de Factura
-        { wch: 30 }, // Descripción
-        { wch: 20 }, // Cuenta
-        { wch: 30 }, // IBAN (aumentado para acomodar formato)
         { wch: 12 }, // Total
+        { wch: 12 }, // Estado
         { wch: 12 }, // Pendiente
-        { wch: 10 }  // Estado
+        { wch: 30 }, // Descripción
+        { wch: 12 }, // Vencimiento
+        { wch: 12 }, // Subtotal
+        { wch: 10 }, // IVA
+        { wch: 12 }, // Retención
+        { wch: 12 }, // Empleados
+        { wch: 12 }, // Equipos
+        { wch: 12 }, // Pago
+        { wch: 20 }, // Etiquetas
+        { wch: 15 }, // Cuenta
+        { wch: 15 }, // Proyecto
+        { wch: 15 }, // Holded ID
+        { wch: 15 }, // Contacto
+        { wch: 10 }  // Tipo
       ];
       ws['!cols'] = colWidths;
 
       // Agregar hoja con todas las facturas
-      XLSX.utils.book_append_sheet(wb, ws, 'Todas las Facturas');
-
-      // Crear hoja de resumen con estadísticas por proveedor
-      const summaryData = providerStats.map(stat => ({
-        'Proveedor': stat.provider,
-        'IBAN': formatIBAN(stat.iban || '-'),
-        'Total Facturas': formatCurrency(stat.totalAmount),
-        'Total Pendiente': formatCurrency(stat.totalPending),
-        'Número de Facturas': stat.invoiceCount,
-        'Estado': stat.totalPending > 0 ? 'Con Deuda' : 'Sin Deuda'
-      }));
-
-      const summaryWs = XLSX.utils.json_to_sheet(summaryData);
-      const summaryColWidths = [
-        { wch: 30 }, // Proveedor
-        { wch: 30 }, // IBAN (aumentado para acomodar formato)
-        { wch: 15 }, // Total Facturas
-        { wch: 15 }, // Total Pendiente
-        { wch: 15 }, // Número de Facturas
-        { wch: 12 }  // Estado
-      ];
-      summaryWs['!cols'] = summaryColWidths;
-
-      // Agregar hoja de resumen
-      XLSX.utils.book_append_sheet(wb, summaryWs, 'Resumen');
+      XLSX.utils.book_append_sheet(wb, ws, 'Facturas de Bruno');
 
       // Descargar archivo
-      const fileName = `${datasetName}_Vista_Bruno_Todas_Facturas${monthFilter}_${new Date().toISOString().split('T')[0]}.xlsx`;
       XLSX.writeFile(wb, fileName);
 
-      showAlertMessage('Todas las facturas por proveedor descargadas correctamente', 'success');
+      showAlertMessage('Facturas de Bruno descargadas correctamente', 'success');
     } catch (error) {
       console.error('Error al descargar datos:', error);
       showAlertMessage('Error al descargar los datos', 'error');
@@ -3761,11 +4750,11 @@ const AnalyticsPage = () => {
                     )}
                   </motion.button>
                   
-                  {/* Botón para ventas de productos */}
+                  {/* Botón para ventas de productos por importe */}
                   <motion.button
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
-                    onClick={handleIdoniProductosFileSelect}
+                    onClick={handleIdoniProductosImporteFileSelect}
                     disabled={uploadingIdoniProductos}
                     style={{
                       background: colors.idoni,
@@ -3783,7 +4772,7 @@ const AnalyticsPage = () => {
                       transition: 'all 0.2s ease'
                     }}
                   >
-                    {uploadingIdoniProductos && uploadTypeProductos === 'productos' ? (
+                    {uploadingIdoniProductos && uploadTypeProductos === 'productos_importe' ? (
                       <>
                         <motion.div
                           animate={{ rotate: 360 }}
@@ -3801,7 +4790,52 @@ const AnalyticsPage = () => {
                     ) : (
                       <>
                         <FileText size={16} />
-                        Ventas de Productos
+                        Productos por Importe
+                      </>
+                    )}
+                  </motion.button>
+                  
+                  {/* Botón para ventas de productos por cantidad */}
+                  <motion.button
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={handleIdoniProductosCantidadFileSelect}
+                    disabled={uploadingIdoniProductos}
+                    style={{
+                      background: colors.idoni,
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '8px',
+                      padding: '10px 16px',
+                      fontSize: '14px',
+                      fontWeight: '600',
+                      cursor: uploadingIdoniProductos ? 'not-allowed' : 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      opacity: uploadingIdoniProductos ? 0.6 : 1,
+                      transition: 'all 0.2s ease'
+                    }}
+                  >
+                    {uploadingIdoniProductos && uploadTypeProductos === 'productos_cantidad' ? (
+                      <>
+                        <motion.div
+                          animate={{ rotate: 360 }}
+                          transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+                          style={{
+                            width: '16px',
+                            height: '16px',
+                            border: `2px solid transparent`,
+                            borderTop: `2px solid white`,
+                            borderRadius: '50%'
+                          }}
+                        />
+                        Cargando...
+                      </>
+                    ) : (
+                      <>
+                        <FileText size={16} />
+                        Productos por Cantidad
                       </>
                     )}
                   </motion.button>
@@ -3896,6 +4930,20 @@ const AnalyticsPage = () => {
                 type="file"
                 accept=".xlsx,.xls"
                 onChange={handleIdoniProductosFileChange}
+                style={{ display: 'none' }}
+              />
+              <input
+                ref={idoniProductosImporteFileInputRef}
+                type="file"
+                accept=".xlsx,.xls"
+                onChange={handleIdoniProductosImporteFileChange}
+                style={{ display: 'none' }}
+              />
+              <input
+                ref={idoniProductosCantidadFileInputRef}
+                type="file"
+                accept=".xlsx,.xls"
+                onChange={handleIdoniProductosCantidadFileChange}
                 style={{ display: 'none' }}
               />
               
@@ -4022,8 +5070,7 @@ const AnalyticsPage = () => {
                       <Bar
                         data={{
                           labels: Object.keys(idoniChartData.monthlyData).map(month => {
-                            const [year, monthNum] = month.split('-');
-                            return `${getMonthName(month)} ${year}`;
+                            return getMonthName(month);
                           }),
                           datasets: [
                             {
@@ -4080,7 +5127,11 @@ const AnalyticsPage = () => {
                                   return context[0].label;
                                 },
                                 label: function(context) {
-                                  return `${context.dataset.label}: ${formatCurrency(context.parsed.y)}`;
+                                  if (context.dataset.label === 'Tickets') {
+                                    return `${context.dataset.label}: ${context.parsed.y.toLocaleString()}`;
+                                  } else {
+                                    return `${context.dataset.label}: ${formatCurrency(context.parsed.y)}`;
+                                  }
                                 },
                                 afterBody: function(context) {
                                   const monthKey = Object.keys(idoniChartData.monthlyData)[context[0].dataIndex];
@@ -4089,10 +5140,7 @@ const AnalyticsPage = () => {
                                     const avgTicket = monthData.tickets > 0 ? monthData.ventas / monthData.tickets : 0;
                                     return [
                                       '',
-                                      'Resumen del mes:',
-                                      `   • Total: ${formatCurrency(monthData.ventas)}`,
-                                      `   • Tickets: ${monthData.tickets.toLocaleString()}`,
-                                      `   • Media/ticket: ${formatCurrency(avgTicket)}`
+                                      `Media por ticket: ${formatCurrency(avgTicket)}`
                                     ];
                                   }
                                   return '';
@@ -4448,11 +5496,11 @@ const AnalyticsPage = () => {
                 </div>
               )}
 
-              {/* Análisis de Ventas de Productos */}
+              {/* Análisis de Ventas de Productos - Nuevo Formato */}
               {idoniProductosData && idoniProductosAnalytics && (
                 <div style={{ marginTop: '24px' }}>
                   <h3 style={{ margin: '0 0 16px 0', color: colors.text, fontSize: 18, fontWeight: 600 }}>
-                    Análisis de Ventas de Productos (Enero-Julio)
+                    Análisis de Ventas de Productos (Nuevo Formato)
                   </h3>
 
                   {/* Tarjetas de resumen de productos */}
@@ -4464,10 +5512,19 @@ const AnalyticsPage = () => {
                   }}>
                     <div style={{ background: colors.surface, padding: '16px', borderRadius: '8px' }}>
                       <h4 style={{ margin: '0 0 8px 0', color: colors.text, fontSize: '14', fontWeight: 600 }}>
-                        Total Ventas
+                        Total Importe
                       </h4>
                       <div style={{ fontSize: '20px', fontWeight: 'bold', color: colors.success }}>
-                        {formatCurrency(idoniProductosAnalytics.totalVentas)}
+                        {formatCurrency(idoniProductosAnalytics.totalImporte)}
+                      </div>
+                    </div>
+                    
+                    <div style={{ background: colors.surface, padding: '16px', borderRadius: '8px' }}>
+                      <h4 style={{ margin: '0 0 8px 0', color: colors.text, fontSize: '14', fontWeight: 600 }}>
+                        Total Cantidad
+                      </h4>
+                      <div style={{ fontSize: '20px', fontWeight: 'bold', color: colors.info }}>
+                        {idoniProductosAnalytics.totalCantidad.toLocaleString()}
                       </div>
                     </div>
                     
@@ -4482,21 +5539,104 @@ const AnalyticsPage = () => {
                     
                     <div style={{ background: colors.surface, padding: '16px', borderRadius: '8px' }}>
                       <h4 style={{ margin: '0 0 8px 0', color: colors.text, fontSize: '14', fontWeight: 600 }}>
-                        Margen Promedio
+                        Productos con Importe
                       </h4>
                       <div style={{ fontSize: '20px', fontWeight: 'bold', color: colors.warning }}>
-                        {idoniProductosAnalytics.margenPromedio.toFixed(1)}%
+                        {idoniProductosAnalytics.productosConImporte}
                       </div>
                     </div>
-                    
-                    <div style={{ background: colors.surface, padding: '16px', borderRadius: '8px' }}>
-                      <h4 style={{ margin: '0 0 8px 0', color: colors.text, fontSize: '14', fontWeight: 600 }}>
-                        Total Unidades
-                      </h4>
-                      <div style={{ fontSize: '20px', fontWeight: 'bold', color: colors.info }}>
-                        {idoniProductosAnalytics.totalUnidades.toLocaleString()}
-                      </div>
+                  </div>
+
+                  {/* Charts de productos más vendidos */}
+                    <div style={{
+                    display: 'grid', 
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', 
+                    gap: '24px', 
+                    marginBottom: '32px' 
+                  }}>
+                    {/* Chart Top 10 por Importe */}
+                    {idoniProductosAnalytics.top10PorImporte && idoniProductosAnalytics.top10PorImporte.length > 0 && (
+                      <div style={{ background: colors.card, padding: '20px', borderRadius: '12px', border: `1px solid ${colors.border}` }}>
+                        <h4 style={{ margin: '0 0 16px 0', color: colors.text, fontSize: '16px', fontWeight: '600' }}>
+                          Top 10 Productos por Importe
+                    </h4>
+                        <div style={{ height: '300px' }}>
+                      <Bar
+                        data={{
+                              labels: idoniProductosAnalytics.top10PorImporte.map(p => p.codi),
+                              datasets: [{
+                                label: 'Importe Total (€)',
+                                data: idoniProductosAnalytics.top10PorImporte.map(p => p.importe.total),
+                              backgroundColor: colors.primary,
+                              borderColor: colors.primary,
+                                borderWidth: 1
+                              }]
+                        }}
+                        options={{
+                          responsive: true,
+                          maintainAspectRatio: false,
+                          plugins: {
+                            legend: {
+                                  display: false
+                            }
+                          },
+                          scales: {
+                            y: {
+                              beginAtZero: true,
+                              ticks: {
+                                callback: function(value) {
+                                  return formatCurrency(value);
+                                }
+                              }
+                            }
+                          }
+                        }}
+                      />
                     </div>
+                  </div>
+                    )}
+
+                    {/* Chart Top 10 por Cantidad */}
+                    {idoniProductosAnalytics.top10PorCantidad && idoniProductosAnalytics.top10PorCantidad.length > 0 && (
+                      <div style={{ background: colors.card, padding: '20px', borderRadius: '12px', border: `1px solid ${colors.border}` }}>
+                        <h4 style={{ margin: '0 0 16px 0', color: colors.text, fontSize: '16px', fontWeight: '600' }}>
+                          Top 10 Productos por Cantidad
+                    </h4>
+                        <div style={{ height: '300px' }}>
+                      <Bar
+                        data={{
+                              labels: idoniProductosAnalytics.top10PorCantidad.map(p => p.codi),
+                              datasets: [{
+                                label: 'Cantidad Total',
+                                data: idoniProductosAnalytics.top10PorCantidad.map(p => p.cantidad.total),
+                                backgroundColor: colors.info,
+                                borderColor: colors.info,
+                                borderWidth: 1
+                              }]
+                        }}
+                        options={{
+                          responsive: true,
+                          maintainAspectRatio: false,
+                          plugins: {
+                            legend: {
+                                  display: false
+                            }
+                          },
+                          scales: {
+                            y: {
+                              beginAtZero: true,
+                              ticks: {
+                                callback: function(value) {
+                                      return value.toLocaleString();
+                                    }
+                                  }
+                            }
+                          }
+                        }}
+                      />
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Tabla con buscador de productos */}
@@ -4508,8 +5648,8 @@ const AnalyticsPage = () => {
                       <input
                         type="text"
                         placeholder="Buscar por código, descripción..."
-                        value={productosSearchTerm}
-                        onChange={(e) => setProductosSearchTerm(e.target.value)}
+                        value={productosNuevoFormatoSearchTerm}
+                        onChange={(e) => setProductosNuevoFormatoSearchTerm(e.target.value)}
                         style={{
                           width: 'calc(100% - 32px)',
                           padding: '12px 16px',
@@ -4526,7 +5666,7 @@ const AnalyticsPage = () => {
                     </div>
                     
                     <div style={{
-                      maxHeight: '400px',
+                      maxHeight: '500px',
                       overflowY: 'auto',
                       border: `1px solid ${colors.border}`,
                       borderRadius: '8px',
@@ -4535,274 +5675,46 @@ const AnalyticsPage = () => {
                       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                         <thead style={{ position: 'sticky', top: 0, backgroundColor: colors.card, zIndex: 1 }}>
                           <tr style={{ borderBottom: `1px solid ${colors.border}` }}>
-                            <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: '600', color: colors.text, fontSize: '14px' }}>Código</th>
-                            <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: '600', color: colors.text, fontSize: '14px' }}>Descripción</th>
-                            <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: '600', color: colors.text, fontSize: '14px' }}>Unidades</th>
-                            <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: '600', color: colors.text, fontSize: '14px' }}>Kilos</th>
-                            <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: '600', color: colors.text, fontSize: '14px' }}>Ventas</th>
-                            <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: '600', color: colors.text, fontSize: '14px' }}>PVP</th>
-                            <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: '600', color: colors.text, fontSize: '14px' }}>Costo</th>
-                            <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: '600', color: colors.text, fontSize: '14px' }}>Margen</th>
+                            <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: '600', color: colors.text, fontSize: '14px', minWidth: '120px' }}>Código</th>
+                            <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: '600', color: colors.text, fontSize: '14px', minWidth: '200px' }}>Descripción</th>
+                            <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: '600', color: colors.text, fontSize: '14px', minWidth: '120px' }}>Total Importe</th>
+                            <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: '600', color: colors.text, fontSize: '14px', minWidth: '120px' }}>Total Cantidad</th>
+                            <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: '600', color: colors.text, fontSize: '14px', minWidth: '80px' }}>Q1</th>
+                            <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: '600', color: colors.text, fontSize: '14px', minWidth: '80px' }}>Q2</th>
+                            <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: '600', color: colors.text, fontSize: '14px', minWidth: '80px' }}>Q3</th>
+                            <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: '600', color: colors.text, fontSize: '14px', minWidth: '80px' }}>Q4</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {filteredProductos.map((producto, index) => (
-                            <tr key={producto.codi} style={{ 
-                              borderBottom: `1px solid ${colors.border}`,
-                              backgroundColor: index % 2 === 0 ? colors.card : colors.background
-                            }}>
-                              <td style={{ padding: '12px 16px', fontSize: '14px', color: colors.text, fontWeight: '500' }}>{producto.codi}</td>
-                              <td style={{ padding: '12px 16px', fontSize: '14px', color: colors.text }}>{producto.descripcio}</td>
-                              <td style={{ padding: '12px 16px', fontSize: '14px', color: colors.text, textAlign: 'right' }}>{producto.totalUnit.toLocaleString()}</td>
-                              <td style={{ padding: '12px 16px', fontSize: '14px', color: colors.text, textAlign: 'right' }}>{producto.totalKgs.toFixed(2)}</td>
-                              <td style={{ padding: '12px 16px', fontSize: '14px', color: colors.text, textAlign: 'right', fontWeight: '500' }}>{formatCurrency(producto.totalVendaImport)}</td>
-                              <td style={{ padding: '12px 16px', fontSize: '14px', color: colors.text, textAlign: 'right' }}>{formatCurrency(producto.pvpIndividual)}</td>
-                              <td style={{ padding: '12px 16px', fontSize: '14px', color: colors.text, textAlign: 'right' }}>{formatCurrency(producto.costIndividual)}</td>
-                              <td style={{ padding: '12px 16px', fontSize: '14px', color: colors.text, textAlign: 'right', fontWeight: '500' }}>
-                                {producto.totalCostImport > 0 ? 
-                                  `${((producto.totalMargeImport / producto.totalCostImport) * 100).toFixed(1)}%` : 
-                                  '0%'
-                                }
-                              </td>
-                            </tr>
-                          ))}
+                          {filteredProductosNuevoFormato.map((producto, index) => {
+                            // Calcular totales por trimestre
+                            const q1 = producto.importe.gener + producto.importe.febrer + producto.importe.marc;
+                            const q2 = producto.importe.abril + producto.importe.maig + producto.importe.juny;
+                            const q3 = producto.importe.juliol + producto.importe.agost + producto.importe.setembre;
+                            const q4 = producto.importe.octubre + producto.importe.novembre + producto.importe.desembre;
+                            
+                            return (
+                              <tr key={producto.codi} style={{ 
+                                borderBottom: `1px solid ${colors.border}`,
+                                backgroundColor: index % 2 === 0 ? colors.card : colors.background
+                              }}>
+                                <td style={{ padding: '12px 16px', fontSize: '14px', color: colors.text, fontWeight: '500' }}>{producto.codi}</td>
+                                <td style={{ padding: '12px 16px', fontSize: '14px', color: colors.text }}>{producto.descripcio}</td>
+                                <td style={{ padding: '12px 16px', fontSize: '14px', color: colors.text, textAlign: 'right', fontWeight: '600' }}>{formatCurrency(producto.importe.total)}</td>
+                                <td style={{ padding: '12px 16px', fontSize: '14px', color: colors.text, textAlign: 'right', fontWeight: '600' }}>{producto.cantidad.total.toLocaleString()}</td>
+                                <td style={{ padding: '12px 16px', fontSize: '14px', color: colors.text, textAlign: 'right' }}>{formatCurrency(q1)}</td>
+                                <td style={{ padding: '12px 16px', fontSize: '14px', color: colors.text, textAlign: 'right' }}>{formatCurrency(q2)}</td>
+                                <td style={{ padding: '12px 16px', fontSize: '14px', color: colors.text, textAlign: 'right' }}>{formatCurrency(q3)}</td>
+                                <td style={{ padding: '12px 16px', fontSize: '14px', color: colors.text, textAlign: 'right' }}>{formatCurrency(q4)}</td>
+                              </tr>
+                            );
+                          })}
                         </tbody>
                       </table>
                     </div>
+                    
                     <div style={{ marginTop: '12px', fontSize: '14px', color: colors.textSecondary }}>
-                      Mostrando {filteredProductos.length} de {idoniProductosData.productosArray.length} productos
-                    </div>
-                  </div>
-
-                  {/* Gráfico de top 10 productos por ventas */}
-                  <div style={{ background: colors.surface, borderRadius: '8px', padding: '20px', marginBottom: '24px' }}>
-                    <h4 style={{ margin: '0 0 16px 0', color: colors.text, fontSize: '16', fontWeight: 600 }}>
-                      Top 10 Productos por Ventas
-                    </h4>
-                    <div style={{ height: '400px' }}>
-                      <Bar
-                        data={{
-                          labels: idoniProductosAnalytics.top10PorVentas.map(p => 
-                            p.descripcio.length > 30 ? p.descripcio.substring(0, 30) + '...' : p.descripcio
-                          ),
-                          datasets: [
-                            {
-                              label: 'Ventas (€)',
-                              data: idoniProductosAnalytics.top10PorVentas.map(p => p.totalVendaImport),
-                              backgroundColor: colors.primary,
-                              borderColor: colors.primary,
-                              borderWidth: 1,
-                              borderRadius: 4,
-                            }
-                          ]
-                        }}
-                        options={{
-                          responsive: true,
-                          maintainAspectRatio: false,
-                          plugins: {
-                            legend: {
-                              position: 'top',
-                              labels: {
-                                color: colors.text,
-                                usePointStyle: true,
-                                pointStyle: 'circle',
-                                padding: 20
-                              }
-                            },
-                            tooltip: {
-                              mode: 'index',
-                              intersect: false,
-                              backgroundColor: colors.background,
-                              titleColor: colors.text,
-                              bodyColor: colors.text,
-                              borderColor: colors.border,
-                              borderWidth: 1,
-                              titleFont: {
-                                size: 16,
-                                weight: 'bold'
-                              },
-                              bodyFont: {
-                                size: 14,
-                                weight: 'bold'
-                              },
-                              padding: 12,
-                              callbacks: {
-                                title: function(context) {
-                                  if (!context || !context.dataIndex === undefined) {
-                                    return '';
-                                  }
-                                  const producto = idoniProductosAnalytics.top10PorVentas[context.dataIndex];
-                                  if (!producto) {
-                                    return '';
-                                  }
-                                  return producto.descripcio || '';
-                                },
-                                label: function(context) {
-                                  if (!context || !context.dataIndex === undefined) {
-                                    return [];
-                                  }
-                                  const producto = idoniProductosAnalytics.top10PorVentas[context.dataIndex];
-                                  if (!producto) {
-                                    return [];
-                                  }
-                                  
-                                  const margenPorcentual = producto.totalCostImport > 0 ? 
-                                    ((producto.totalMargeImport / producto.totalCostImport) * 100).toFixed(1) : 0;
-                                  
-                                  return [
-                                    `Ventas: ${formatCurrency(context.parsed.y)}`,
-                                    `Unidades: ${producto.totalUnit.toLocaleString()}`,
-                                    `Kilos: ${producto.totalKgs.toFixed(2)}`,
-                                    `Margen: ${formatCurrency(producto.totalMargeImport)} (${margenPorcentual}%)`,
-                                    `Código: ${producto.codi}`,
-                                    `PVP: ${formatCurrency(producto.pvpIndividual)}`,
-                                    `Costo: ${formatCurrency(producto.costIndividual)}`
-                                  ];
-                                }
-                              }
-                            }
-                          },
-                          scales: {
-                            y: {
-                              beginAtZero: true,
-                              grid: {
-                                color: colors.border
-                              },
-                              ticks: {
-                                color: colors.textSecondary,
-                                callback: function(value) {
-                                  return formatCurrency(value);
-                                }
-                              }
-                            },
-                            x: {
-                              grid: {
-                                color: colors.border
-                              },
-                              ticks: {
-                                color: colors.textSecondary,
-                                maxRotation: 45
-                              }
-                            }
-                          }
-                        }}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Gráfico de top 10 productos por margen */}
-                  <div style={{ background: colors.surface, borderRadius: '8px', padding: '20px', marginBottom: '24px' }}>
-                    <h4 style={{ margin: '0 0 16px 0', color: colors.text, fontSize: '16', fontWeight: 600 }}>
-                      Top 10 Productos por Margen
-                    </h4>
-                    <div style={{ height: '400px' }}>
-                      <Bar
-                        data={{
-                          labels: idoniProductosAnalytics.top10PorMargen.map(p => 
-                            p.descripcio.length > 30 ? p.descripcio.substring(0, 30) + '...' : p.descripcio
-                          ),
-                          datasets: [
-                            {
-                              label: 'Margen (€)',
-                              data: idoniProductosAnalytics.top10PorMargen.map(p => p.totalMargeImport),
-                              backgroundColor: colors.warning,
-                              borderColor: colors.warning,
-                              borderWidth: 1,
-                              borderRadius: 4,
-                            }
-                          ]
-                        }}
-                        options={{
-                          responsive: true,
-                          maintainAspectRatio: false,
-                          plugins: {
-                            legend: {
-                              position: 'top',
-                              labels: {
-                                color: colors.text,
-                                usePointStyle: true,
-                                pointStyle: 'circle',
-                                padding: 20
-                              }
-                            },
-                            tooltip: {
-                              mode: 'index',
-                              intersect: false,
-                              backgroundColor: colors.background,
-                              titleColor: colors.text,
-                              bodyColor: colors.text,
-                              borderColor: colors.border,
-                              borderWidth: 1,
-                              titleFont: {
-                                size: 16,
-                                weight: 'bold'
-                              },
-                              bodyFont: {
-                                size: 14,
-                                weight: 'bold'
-                              },
-                              padding: 12,
-                              callbacks: {
-                                title: function(context) {
-                                  if (!context || !context.dataIndex === undefined) {
-                                    return '';
-                                  }
-                                  const producto = idoniProductosAnalytics.top10PorMargen[context.dataIndex];
-                                  if (!producto) {
-                                    return '';
-                                  }
-                                  return producto.descripcio || '';
-                                },
-                                label: function(context) {
-                                  if (!context || !context.dataIndex === undefined) {
-                                    return [];
-                                  }
-                                  const producto = idoniProductosAnalytics.top10PorMargen[context.dataIndex];
-                                  if (!producto) {
-                                    return [];
-                                  }
-                                  
-                                  const margenPorcentual = producto.totalCostImport > 0 ? 
-                                    ((producto.totalMargeImport / producto.totalCostImport) * 100).toFixed(1) : 0;
-                                  
-                                  return [
-                                    `Margen: ${formatCurrency(context.parsed.y)} (${margenPorcentual}%)`,
-                                    `Ventas: ${formatCurrency(producto.totalVendaImport)}`,
-                                    `Unidades: ${producto.totalUnit.toLocaleString()}`,
-                                    `Kilos: ${producto.totalKgs.toFixed(2)}`,
-                                    `Código: ${producto.codi}`,
-                                    `PVP: ${formatCurrency(producto.pvpIndividual)}`,
-                                    `Costo: ${formatCurrency(producto.costIndividual)}`
-                                  ];
-                                }
-                              }
-                            }
-                          },
-                          scales: {
-                            y: {
-                              beginAtZero: true,
-                              grid: {
-                                color: colors.border
-                              },
-                              ticks: {
-                                color: colors.textSecondary,
-                                callback: function(value) {
-                                  return formatCurrency(value);
-                                }
-                              }
-                            },
-                            x: {
-                              grid: {
-                                color: colors.border
-                              },
-                              ticks: {
-                                color: colors.textSecondary,
-                                maxRotation: 45
-                              }
-                            }
-                          }
-                        }}
-                      />
+                      Mostrando {filteredProductosNuevoFormato.length} de {idoniProductosData.productosArray.length} productos
                     </div>
                   </div>
                 </div>
@@ -5985,6 +6897,19 @@ const AnalyticsPage = () => {
                                                 }}>
                                                   Estado
                                                 </th>
+                                                {canHideInvoices() && (
+                                                  <th style={{ 
+                                                    borderBottom: `1px solid ${colors.border}`, 
+                                                    padding: '8px 12px', 
+                                                    textAlign: 'center', 
+                                                    color: colors.primary, 
+                                                    fontWeight: 600, 
+                                                    background: colors.card,
+                                                    fontSize: '12px'
+                                                  }}>
+                                                    Acciones
+                                                  </th>
+                                                )}
                                               </tr>
                                             </thead>
                                             <tbody>
@@ -6052,6 +6977,41 @@ const AnalyticsPage = () => {
                                                       {isPending(invoice, columnIndices) ? 'Pendiente' : 'Pagada'}
                                                     </span>
                                                   </td>
+                                                  {canHideInvoices() && (
+                                                    <td style={{ 
+                                                      borderBottom: `1px solid ${colors.border}`, 
+                                                      padding: '8px 12px', 
+                                                      textAlign: 'center',
+                                                      color: colors.text,
+                                                      fontSize: '12px'
+                                                    }}>
+                                                      <button
+                                                        onClick={(e) => {
+                                                          e.stopPropagation();
+                                                          openHideModal(invoice);
+                                                        }}
+                                                        style={{
+                                                          background: colors.error,
+                                                          color: 'white',
+                                                          border: 'none',
+                                                          borderRadius: '4px',
+                                                          padding: '4px 8px',
+                                                          fontSize: '11px',
+                                                          cursor: 'pointer',
+                                                          transition: 'all 0.2s ease',
+                                                          fontWeight: '500'
+                                                        }}
+                                                        onMouseEnter={(e) => {
+                                                          e.target.style.background = colors.error + 'DD';
+                                                        }}
+                                                        onMouseLeave={(e) => {
+                                                          e.target.style.background = colors.error;
+                                                        }}
+                                                      >
+                                                        Ocultar
+                                                      </button>
+                                                    </td>
+                                                  )}
                                                 </tr>
                                               ))}
                                             </tbody>
@@ -6075,6 +7035,184 @@ const AnalyticsPage = () => {
           </div>
         </motion.div>
       )}
+      </AnimatePresence>
+
+      {/* Modal para ocultar factura */}
+      <AnimatePresence>
+        {showHideModal && selectedInvoiceForHide && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: 'rgba(0, 0, 0, 0.5)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 1000
+            }}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              style={{
+                background: colors.background,
+                border: `1px solid ${colors.border}`,
+                borderRadius: 12,
+                padding: '24px',
+                maxWidth: '500px',
+                width: '90%',
+                maxHeight: '80vh',
+                overflowY: 'auto'
+              }}
+            >
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: '20px'
+              }}>
+                <h3 style={{ margin: 0, color: colors.text, fontSize: 18, fontWeight: 600 }}>
+                  Ocultar Factura
+                </h3>
+                <button
+                  onClick={closeHideModal}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: colors.textSecondary,
+                    cursor: 'pointer',
+                    padding: '4px'
+                  }}
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div style={{ marginBottom: '20px' }}>
+                <div style={{
+                  background: colors.surface,
+                  border: `1px solid ${colors.border}`,
+                  borderRadius: 8,
+                  padding: '16px',
+                  marginBottom: '16px'
+                }}>
+                  <div style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginBottom: '8px'
+                  }}>
+                    <span style={{ color: colors.text, fontWeight: 600 }}>
+                      {selectedInvoiceForHide[columnIndices.invoiceNumber] || 'Sin número'}
+                    </span>
+                    <span style={{ color: colors.textSecondary, fontSize: 14 }}>
+                      {formatDate(selectedInvoiceForHide[columnIndices.date])}
+                    </span>
+                  </div>
+                  <div style={{ color: colors.text, marginBottom: '4px' }}>
+                    {selectedInvoiceForHide[columnIndices.provider]}
+                  </div>
+                  <div style={{ color: colors.textSecondary, fontSize: 14 }}>
+                    {selectedInvoiceForHide[columnIndices.description] || 'Sin descripción'}
+                  </div>
+                  <div style={{ color: colors.text, fontWeight: 600, marginTop: '8px' }}>
+                    {formatCurrency(parseFloat(selectedInvoiceForHide[columnIndices.total]) || 0)}
+                  </div>
+                </div>
+
+                <div>
+                  <label style={{
+                    display: 'block',
+                    color: colors.text,
+                    fontSize: 14,
+                    fontWeight: 600,
+                    marginBottom: '8px'
+                  }}>
+                    Rol afectado: <strong>Manager</strong>
+                  </label>
+                </div>
+
+                <div>
+                  <label style={{
+                    display: 'block',
+                    color: colors.text,
+                    fontSize: 14,
+                    fontWeight: 600,
+                    marginBottom: '8px'
+                  }}>
+                    Razón para ocultar (opcional)
+                  </label>
+                  <textarea
+                    value={hideReason}
+                    onChange={(e) => setHideReason(e.target.value)}
+                    placeholder="Explica por qué ocultas esta factura..."
+                    style={{
+                      width: '100%',
+                      minHeight: '80px',
+                      padding: '12px',
+                      border: `1px solid ${colors.border}`,
+                      borderRadius: 8,
+                      fontSize: 14,
+                      color: colors.text,
+                      background: colors.background,
+                      outline: 'none',
+                      resize: 'vertical'
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div style={{
+                display: 'flex',
+                gap: '12px',
+                justifyContent: 'flex-end'
+              }}>
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={closeHideModal}
+                  style={{
+                    background: 'transparent',
+                    color: colors.text,
+                    border: `1px solid ${colors.border}`,
+                    borderRadius: 8,
+                    padding: '10px 20px',
+                    fontSize: 14,
+                    fontWeight: 500,
+                    cursor: 'pointer'
+                  }}
+                >
+                  Cancelar
+                </motion.button>
+                
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => hideInvoice(selectedInvoiceForHide, hideReason)}
+                  style={{
+                    background: colors.error,
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: 8,
+                    padding: '10px 20px',
+                    fontSize: 14,
+                    fontWeight: 500,
+                    cursor: 'pointer'
+                  }}
+                >
+                  Ocultar Factura
+                </motion.button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
       </AnimatePresence>
 
       {/* Componente de alerta */}
