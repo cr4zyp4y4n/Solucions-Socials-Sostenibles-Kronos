@@ -30,3 +30,4 @@ SELECT
     with_check
 FROM pg_policies 
 WHERE tablename IN ('idoni_ventas_productos_importe', 'idoni_ventas_productos_cantidad');
+

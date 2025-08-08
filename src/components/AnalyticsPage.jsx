@@ -5562,34 +5562,70 @@ const AnalyticsPage = () => {
                     </h4>
                         <div style={{ height: '300px' }}>
                       <Bar
-                        data={{
+                                                    data={{
                               labels: idoniProductosAnalytics.top10PorImporte.map(p => p.codi),
                               datasets: [{
                                 label: 'Importe Total (€)',
                                 data: idoniProductosAnalytics.top10PorImporte.map(p => p.importe.total),
-                              backgroundColor: colors.primary,
-                              borderColor: colors.primary,
+                                backgroundColor: colors.primary,
+                                borderColor: colors.primary,
                                 borderWidth: 1
                               }]
-                        }}
+                            }}
                         options={{
                           responsive: true,
                           maintainAspectRatio: false,
                           plugins: {
                             legend: {
                                   display: false
-                            }
-                          },
-                          scales: {
-                            y: {
-                              beginAtZero: true,
-                              ticks: {
-                                callback: function(value) {
-                                  return formatCurrency(value);
+                            },
+                            tooltip: {
+                              mode: 'index',
+                              intersect: false,
+                              backgroundColor: colors.background,
+                              titleColor: colors.text,
+                              bodyColor: colors.text,
+                              borderColor: colors.border,
+                              borderWidth: 1,
+                              titleFont: {
+                                size: 14,
+                                weight: 'bold'
+                              },
+                              bodyFont: {
+                                size: 14,
+                                weight: 'bold'
+                              },
+                              padding: 12,
+                              callbacks: {
+                                title: function(context) {
+                                  const producto = idoniProductosAnalytics.top10PorImporte[context[0].dataIndex];
+                                  return `${producto.codi} - ${producto.descripcio}`;
+                                },
+                                label: function(context) {
+                                  return `${context.dataset.label}: ${formatCurrency(context.parsed.y)}`;
                                 }
                               }
                             }
-                          }
+                          },
+                                                        scales: {
+                                y: {
+                                  beginAtZero: true,
+                                  ticks: {
+                                    callback: function(value) {
+                                      return formatCurrency(value);
+                                    }
+                                  }
+                                },
+                                x: {
+                                  display: true,
+                                  ticks: {
+                                    color: colors.textSecondary,
+                                    font: {
+                                      size: 12
+                                    }
+                                  }
+                                }
+                              }
                         }}
                       />
                     </div>
@@ -5604,34 +5640,70 @@ const AnalyticsPage = () => {
                     </h4>
                         <div style={{ height: '300px' }}>
                       <Bar
-                        data={{
+                                                    data={{
                               labels: idoniProductosAnalytics.top10PorCantidad.map(p => p.codi),
                               datasets: [{
                                 label: 'Cantidad Total',
                                 data: idoniProductosAnalytics.top10PorCantidad.map(p => p.cantidad.total),
-                                backgroundColor: colors.info,
-                                borderColor: colors.info,
+                                backgroundColor: colors.warning,
+                                borderColor: colors.warning,
                                 borderWidth: 1
                               }]
-                        }}
+                            }}
                         options={{
                           responsive: true,
                           maintainAspectRatio: false,
                           plugins: {
                             legend: {
                                   display: false
+                            },
+                            tooltip: {
+                              mode: 'index',
+                              intersect: false,
+                              backgroundColor: colors.background,
+                              titleColor: colors.text,
+                              bodyColor: colors.text,
+                              borderColor: colors.border,
+                              borderWidth: 1,
+                              titleFont: {
+                                size: 14,
+                                weight: 'bold'
+                              },
+                              bodyFont: {
+                                size: 14,
+                                weight: 'bold'
+                              },
+                              padding: 12,
+                              callbacks: {
+                                title: function(context) {
+                                  const producto = idoniProductosAnalytics.top10PorCantidad[context[0].dataIndex];
+                                  return `${producto.codi} - ${producto.descripcio}`;
+                                },
+                                label: function(context) {
+                                  return `${context.dataset.label}: ${context.parsed.y.toLocaleString()}`;
+                                }
+                              }
                             }
                           },
-                          scales: {
-                            y: {
-                              beginAtZero: true,
-                              ticks: {
-                                callback: function(value) {
+                                                        scales: {
+                                y: {
+                                  beginAtZero: true,
+                                  ticks: {
+                                    callback: function(value) {
                                       return value.toLocaleString();
                                     }
                                   }
-                            }
-                          }
+                                },
+                                x: {
+                                  display: true,
+                                  ticks: {
+                                    color: colors.textSecondary,
+                                    font: {
+                                      size: 12
+                                    }
+                                  }
+                                }
+                              }
                         }}
                       />
                         </div>
