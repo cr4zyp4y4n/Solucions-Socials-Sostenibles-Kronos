@@ -5563,7 +5563,7 @@ const AnalyticsPage = () => {
                         <div style={{ height: '300px' }}>
                       <Bar
                                                     data={{
-                              labels: idoniProductosAnalytics.top10PorImporte.map(p => p.codi),
+                              labels: idoniProductosAnalytics.top10PorImporte.map(p => `${p.codi} - ${p.descripcio.length > 20 ? p.descripcio.substring(0, 20) + '...' : p.descripcio}`),
                               datasets: [{
                                 label: 'Importe Total (€)',
                                 data: idoniProductosAnalytics.top10PorImporte.map(p => p.importe.total),
@@ -5578,33 +5578,6 @@ const AnalyticsPage = () => {
                           plugins: {
                             legend: {
                                   display: false
-                            },
-                            tooltip: {
-                              mode: 'index',
-                              intersect: false,
-                              backgroundColor: colors.background,
-                              titleColor: colors.text,
-                              bodyColor: colors.text,
-                              borderColor: colors.border,
-                              borderWidth: 1,
-                              titleFont: {
-                                size: 14,
-                                weight: 'bold'
-                              },
-                              bodyFont: {
-                                size: 14,
-                                weight: 'bold'
-                              },
-                              padding: 12,
-                              callbacks: {
-                                title: function(context) {
-                                  const producto = idoniProductosAnalytics.top10PorImporte[context[0].dataIndex];
-                                  return `${producto.codi} - ${producto.descripcio}`;
-                                },
-                                label: function(context) {
-                                  return `${context.dataset.label}: ${formatCurrency(context.parsed.y)}`;
-                                }
-                              }
                             }
                           },
                                                         scales: {
@@ -5617,12 +5590,9 @@ const AnalyticsPage = () => {
                                   }
                                 },
                                 x: {
-                                  display: true,
                                   ticks: {
-                                    color: colors.textSecondary,
-                                    font: {
-                                      size: 12
-                                    }
+                                    maxRotation: 90,
+                                    minRotation: 90
                                   }
                                 }
                               }
@@ -5641,7 +5611,7 @@ const AnalyticsPage = () => {
                         <div style={{ height: '300px' }}>
                       <Bar
                                                     data={{
-                              labels: idoniProductosAnalytics.top10PorCantidad.map(p => p.codi),
+                              labels: idoniProductosAnalytics.top10PorCantidad.map(p => `${p.codi} - ${p.descripcio.length > 20 ? p.descripcio.substring(0, 20) + '...' : p.descripcio}`),
                               datasets: [{
                                 label: 'Cantidad Total',
                                 data: idoniProductosAnalytics.top10PorCantidad.map(p => p.cantidad.total),
@@ -5656,33 +5626,6 @@ const AnalyticsPage = () => {
                           plugins: {
                             legend: {
                                   display: false
-                            },
-                            tooltip: {
-                              mode: 'index',
-                              intersect: false,
-                              backgroundColor: colors.background,
-                              titleColor: colors.text,
-                              bodyColor: colors.text,
-                              borderColor: colors.border,
-                              borderWidth: 1,
-                              titleFont: {
-                                size: 14,
-                                weight: 'bold'
-                              },
-                              bodyFont: {
-                                size: 14,
-                                weight: 'bold'
-                              },
-                              padding: 12,
-                              callbacks: {
-                                title: function(context) {
-                                  const producto = idoniProductosAnalytics.top10PorCantidad[context[0].dataIndex];
-                                  return `${producto.codi} - ${producto.descripcio}`;
-                                },
-                                label: function(context) {
-                                  return `${context.dataset.label}: ${context.parsed.y.toLocaleString()}`;
-                                }
-                              }
                             }
                           },
                                                         scales: {
@@ -5695,12 +5638,9 @@ const AnalyticsPage = () => {
                                   }
                                 },
                                 x: {
-                                  display: true,
                                   ticks: {
-                                    color: colors.textSecondary,
-                                    font: {
-                                      size: 12
-                                    }
+                                    maxRotation: 90,
+                                    minRotation: 90
                                   }
                                 }
                               }
