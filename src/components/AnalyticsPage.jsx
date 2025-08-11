@@ -5680,31 +5680,36 @@ const AnalyticsPage = () => {
                     <div style={{
                       maxHeight: '500px',
                       overflowY: 'auto',
+                      overflowX: 'auto',
                       border: `1px solid ${colors.border}`,
                       borderRadius: '8px',
-                      backgroundColor: colors.card
+                      backgroundColor: colors.card,
+                      width: '1150px',
                     }}>
-                      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                      <table style={{ width: '100%', minWidth: '100%', borderCollapse: 'collapse' }}>
                         <thead style={{ position: 'sticky', top: 0, backgroundColor: colors.card, zIndex: 1 }}>
                           <tr style={{ borderBottom: `1px solid ${colors.border}` }}>
                             <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: '600', color: colors.text, fontSize: '14px', minWidth: '120px' }}>Código</th>
                             <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: '600', color: colors.text, fontSize: '14px', minWidth: '200px' }}>Descripción</th>
                             <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: '600', color: colors.text, fontSize: '14px', minWidth: '120px' }}>Total Importe</th>
                             <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: '600', color: colors.text, fontSize: '14px', minWidth: '120px' }}>Total Cantidad</th>
-                            <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: '600', color: colors.text, fontSize: '14px', minWidth: '80px' }}>Q1</th>
-                            <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: '600', color: colors.text, fontSize: '14px', minWidth: '80px' }}>Q2</th>
-                            <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: '600', color: colors.text, fontSize: '14px', minWidth: '80px' }}>Q3</th>
-                            <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: '600', color: colors.text, fontSize: '14px', minWidth: '80px' }}>Q4</th>
+                            <th style={{ padding: '8px 12px', textAlign: 'right', fontWeight: '600', color: colors.text, fontSize: '13px', minWidth: '70px' }}>Gener</th>
+                            <th style={{ padding: '8px 12px', textAlign: 'right', fontWeight: '600', color: colors.text, fontSize: '13px', minWidth: '70px' }}>Febrer</th>
+                            <th style={{ padding: '8px 12px', textAlign: 'right', fontWeight: '600', color: colors.text, fontSize: '13px', minWidth: '70px' }}>Març</th>
+                            <th style={{ padding: '8px 12px', textAlign: 'right', fontWeight: '600', color: colors.text, fontSize: '13px', minWidth: '70px' }}>Abril</th>
+                            <th style={{ padding: '8px 12px', textAlign: 'right', fontWeight: '600', color: colors.text, fontSize: '13px', minWidth: '70px' }}>Maig</th>
+                            <th style={{ padding: '8px 12px', textAlign: 'right', fontWeight: '600', color: colors.text, fontSize: '13px', minWidth: '70px' }}>Juny</th>
+                            <th style={{ padding: '8px 12px', textAlign: 'right', fontWeight: '600', color: colors.text, fontSize: '13px', minWidth: '70px' }}>Juliol</th>
+                            <th style={{ padding: '8px 12px', textAlign: 'right', fontWeight: '600', color: colors.text, fontSize: '13px', minWidth: '70px' }}>Agost</th>
+                            <th style={{ padding: '8px 12px', textAlign: 'right', fontWeight: '600', color: colors.text, fontSize: '13px', minWidth: '70px' }}>Setembre</th>
+                            <th style={{ padding: '8px 12px', textAlign: 'right', fontWeight: '600', color: colors.text, fontSize: '13px', minWidth: '70px' }}>Octubre</th>
+                            <th style={{ padding: '8px 12px', textAlign: 'right', fontWeight: '600', color: colors.text, fontSize: '13px', minWidth: '70px' }}>Novembre</th>
+                            <th style={{ padding: '8px 12px', textAlign: 'right', fontWeight: '600', color: colors.text, fontSize: '13px', minWidth: '70px' }}>Desembre</th>
+
                           </tr>
                         </thead>
                         <tbody>
                           {filteredProductosNuevoFormato.map((producto, index) => {
-                            // Calcular totales por trimestre
-                            const q1 = producto.importe.gener + producto.importe.febrer + producto.importe.marc;
-                            const q2 = producto.importe.abril + producto.importe.maig + producto.importe.juny;
-                            const q3 = producto.importe.juliol + producto.importe.agost + producto.importe.setembre;
-                            const q4 = producto.importe.octubre + producto.importe.novembre + producto.importe.desembre;
-                            
                             return (
                               <tr key={producto.codi} style={{ 
                                 borderBottom: `1px solid ${colors.border}`,
@@ -5714,10 +5719,18 @@ const AnalyticsPage = () => {
                                 <td style={{ padding: '12px 16px', fontSize: '14px', color: colors.text }}>{producto.descripcio}</td>
                                 <td style={{ padding: '12px 16px', fontSize: '14px', color: colors.text, textAlign: 'right', fontWeight: '600' }}>{formatCurrency(producto.importe.total)}</td>
                                 <td style={{ padding: '12px 16px', fontSize: '14px', color: colors.text, textAlign: 'right', fontWeight: '600' }}>{producto.cantidad.total.toLocaleString()}</td>
-                                <td style={{ padding: '12px 16px', fontSize: '14px', color: colors.text, textAlign: 'right' }}>{formatCurrency(q1)}</td>
-                                <td style={{ padding: '12px 16px', fontSize: '14px', color: colors.text, textAlign: 'right' }}>{formatCurrency(q2)}</td>
-                                <td style={{ padding: '12px 16px', fontSize: '14px', color: colors.text, textAlign: 'right' }}>{formatCurrency(q3)}</td>
-                                <td style={{ padding: '12px 16px', fontSize: '14px', color: colors.text, textAlign: 'right' }}>{formatCurrency(q4)}</td>
+                                <td style={{ padding: '8px 12px', fontSize: '13px', color: colors.text, textAlign: 'right' }}>{formatCurrency(producto.importe.gener)}</td>
+                                <td style={{ padding: '8px 12px', fontSize: '13px', color: colors.text, textAlign: 'right' }}>{formatCurrency(producto.importe.febrer)}</td>
+                                <td style={{ padding: '8px 12px', fontSize: '13px', color: colors.text, textAlign: 'right' }}>{formatCurrency(producto.importe.marc)}</td>
+                                <td style={{ padding: '8px 12px', fontSize: '13px', color: colors.text, textAlign: 'right' }}>{formatCurrency(producto.importe.abril)}</td>
+                                <td style={{ padding: '8px 12px', fontSize: '13px', color: colors.text, textAlign: 'right' }}>{formatCurrency(producto.importe.maig)}</td>
+                                <td style={{ padding: '8px 12px', fontSize: '13px', color: colors.text, textAlign: 'right' }}>{formatCurrency(producto.importe.juny)}</td>
+                                <td style={{ padding: '8px 12px', fontSize: '13px', color: colors.text, textAlign: 'right' }}>{formatCurrency(producto.importe.juliol)}</td>
+                                <td style={{ padding: '8px 12px', fontSize: '13px', color: colors.text, textAlign: 'right' }}>{formatCurrency(producto.importe.agost)}</td>
+                                <td style={{ padding: '8px 12px', fontSize: '13px', color: colors.text, textAlign: 'right' }}>{formatCurrency(producto.importe.setembre)}</td>
+                                <td style={{ padding: '8px 12px', fontSize: '13px', color: colors.text, textAlign: 'right' }}>{formatCurrency(producto.importe.octubre)}</td>
+                                <td style={{ padding: '8px 12px', fontSize: '13px', color: colors.text, textAlign: 'right' }}>{formatCurrency(producto.importe.novembre)}</td>
+                                <td style={{ padding: '8px 12px', fontSize: '13px', color: colors.text, textAlign: 'right' }}>{formatCurrency(producto.importe.desembre)}</td>
                               </tr>
                             );
                           })}
