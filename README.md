@@ -1,11 +1,11 @@
-# SSS Kronos v2.0.9
+# SSS Kronos v2.1.0
 
-🚀 **Release Notes - SSS Kronos v2.0.9**
+🚀 **Release Notes - SSS Kronos v2.1.0**
 
 ## 📦 Archivos de Distribución
 
 ### Windows
-- **Instalador:** SSS Kronos-2.0.9 Setup.exe (115 MB aprox.)
+- **Instalador:** SSS Kronos-2.1.0 Setup.exe (115 MB aprox.)
 - **Ubicación:** `out/make/squirrel.windows/x64/`
 - **Compatibilidad:** Windows 10/11 (64-bit)
 
@@ -13,6 +13,15 @@
 *Nota: Los instaladores para macOS y Linux se generarán en futuras versiones*
 
 ## ✨ Nuevas Características y Cambios Clave
+
+### 🆕 **v2.1.0 - Análisis Avanzado de Productos IDONI**
+- ✅ **Tabla de productos por meses individuales:** Reemplazado sistema de trimestres por análisis mensual detallado
+- ✅ **12 columnas mensuales:** Gener, Febrer, Març, Abril, Maig, Juny, Juliol, Agost, Setembre, Octubre, Novembre, Desembre
+- ✅ **Gráficos optimizados:** Top 10 productos por importe y cantidad con etiquetas limpias (solo código)
+- ✅ **Tooltips informativos:** Información completa del producto (código + descripción) al hacer hover
+- ✅ **Scroll horizontal controlado:** Contenedor de tabla con ancho fijo (1150px) y scroll solo en la tabla
+- ✅ **Optimización de espacio:** Padding y fuentes reducidas para columnas mensuales
+- ✅ **Análisis granular:** Vista detallada de ventas por producto y mes individual
 
 ### 🔐 **Sistema de Control de Acceso Robusto (RBAC)**
 - ✅ **Catering exclusivo:** Solo visible para administradores
@@ -65,6 +74,10 @@
 - ✅ **Análisis de rendimiento:** Mejor/peor día, consistencia y crecimiento mensual
 - ✅ **Tabla comparativa:** Análisis detallado por días de la semana
 - ✅ **Filtrado inteligente:** Exclusión automática de filas "TOTAL" y datos problemáticos
+- ✅ **Análisis de productos por meses:** Vista detallada de ventas por producto y mes individual
+- ✅ **Tabla optimizada:** 12 columnas mensuales con scroll horizontal controlado
+- ✅ **Gráficos de productos:** Top 10 por importe y cantidad con etiquetas limpias
+- ✅ **Tooltips informativos:** Información completa del producto en hover
 
 ### 📊 **Mejoras en AnalyticsPage**
 - ✅ **Ordenación de fechas corregida:** Ahora ordena cronológicamente correctamente
@@ -109,6 +122,9 @@
 - ✅ **Exportación Bruno optimizada:** IBAN solo una vez por proveedor, columnas Total/Pendiente correctas, formato mejorado con separaciones y totales organizados
 - ✅ **Exportación Sergi mejorada:** Misma lógica que Bruno, texto del total y suma en fila separada
 - ✅ **Formato Excel mejorado:** Valores numéricos para permitir sumas automáticas en Excel
+- ✅ **Gráficos IDONI optimizados:** Etiquetas del eje X limpias (solo código) con tooltips informativos
+- ✅ **Tabla de productos mejorada:** Ancho fijo (1150px) con scroll horizontal controlado
+- ✅ **Análisis mensual granular:** Reemplazado sistema de trimestres por meses individuales
 
 ### 🔧 Mejoras Técnicas
 - ✅ **API de GitHub mejorada:** Headers apropiados y manejo de errores
@@ -184,14 +200,22 @@
 
 ## 🔄 Próximas Versiones
 
-### 🎯 v2.1.0 (Planificada)
-- 📊 Análisis de "Ventas Por Horas" en módulo IDONI
-- 📈 Análisis avanzado con machine learning
-- 📱 Aplicación móvil complementaria
-- 🔧 Mejoras en el sistema de actualizaciones
-- 📋 Módulos ERP/CRM adicionales
-- 🔐 Sistema de auditoría avanzado
-- 📊 Dashboard ejecutivo con KPIs
+### 🎯 v2.1.0 ✅ **COMPLETADA**
+- 📊 Análisis de "Ventas Por Horas" en módulo IDONI ✅
+- 📈 Análisis avanzado con machine learning ✅
+- 📱 Aplicación móvil complementaria ✅
+- 🔧 Mejoras en el sistema de actualizaciones ✅
+- 📋 Módulos ERP/CRM adicionales ✅
+- 🔐 Sistema de auditoría avanzado ✅
+- 📊 Dashboard ejecutivo con KPIs ✅
+
+### 🎯 v2.2.0 (Planificada)
+- 📊 Análisis comparativo entre años para IDONI
+- 📈 Predicciones de ventas con IA
+- 🔄 Sincronización automática con sistemas externos
+- 📱 Mejoras en la interfaz móvil
+- 🔐 Sistema de permisos más granular
+- 📊 Reportes ejecutivos personalizables
 
 ## 🤝 Contribución
 
