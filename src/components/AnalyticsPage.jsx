@@ -1562,7 +1562,41 @@ const AnalyticsPage = () => {
         indices.pending = index;
       }
       if (headerLower.includes('estat') || headerLower.includes('estado')) {
-        indices.estat = index;
+        indices.status = index;
+        indices.estat = index; // Mantener compatibilidad
+      }
+      if (headerLower.includes('venciment') || headerLower.includes('vencimiento') || headerLower.includes('due')) {
+        indices.dueDate = index;
+      }
+      if (headerLower.includes('iva') || headerLower.includes('vat')) {
+        indices.vat = index;
+      }
+      if (headerLower.includes('retención') || headerLower.includes('retencio') || headerLower.includes('retention')) {
+        indices.retention = index;
+      }
+      if (headerLower.includes('empleados') || headerLower.includes('employees')) {
+        indices.employees = index;
+      }
+      if (headerLower.includes('equipos') || headerLower.includes('equipment') || headerLower.includes('rec. de eq.')) {
+        indices.equipment = index;
+      }
+      if (headerLower.includes('data de pagament') || headerLower.includes('payment date') || headerLower.includes('pago')) {
+        indices.paymentDate = index;
+      }
+      if (headerLower.includes('tags') || headerLower.includes('etiquetas')) {
+        indices.tags = index;
+      }
+      if (headerLower.includes('projecte') || headerLower.includes('proyecto') || headerLower.includes('project')) {
+        indices.project = index;
+      }
+      if (headerLower.includes('holded id') || headerLower.includes('holded_id')) {
+        indices.holdedId = index;
+      }
+      if (headerLower.includes('contacto') || headerLower.includes('contact')) {
+        indices.contact = index;
+      }
+      if (headerLower.includes('tipo') || headerLower.includes('type')) {
+        indices.type = index;
       }
     });
     return indices;
@@ -4010,70 +4044,132 @@ const AnalyticsPage = () => {
 
   // Función para descargar datos de la vista Bruno
   const downloadBrunoData = () => {
-    if (!brunoData || brunoData.length === 0) {
+    // Usar los datos procesados que se muestran en la vista, no los datos sin procesar
+    const dataToExport = baseData; // Usar baseData que es lo que realmente se muestra
+    
+    if (!dataToExport || dataToExport.length === 0) {
       showAlertMessage('No hay datos para descargar', 'error');
       return;
     }
 
+    // Debug: Mostrar información sobre los datos que se van a exportar
+    console.log('🔍 Debug exportación Bruno:');
+    console.log('- Dataset seleccionado:', selectedDataset);
+    console.log('- Headers actuales:', currentHeaders);
+    console.log('- Índices de columnas:', columnIndices);
+    console.log('- Primer registro de datos:', dataToExport[0]);
+    console.log('- Total registros:', dataToExport.length);
+
     try {
       // Crear workbook
       const wb = XLSX.utils.book_new();
-      const fileName = `Vista_Bruno_Facturas_${new Date().toISOString().split('T')[0]}.xlsx`;
+      const datasetName = selectedDataset === 'solucions' ? 'Solucions Socials' : 'Menjar D\'Hort';
+      const fileName = `Vista_Bruno_${datasetName}_${new Date().toISOString().split('T')[0]}.xlsx`;
 
-      // Preparar datos para Excel
-      const excelData = brunoData.map(row => ({
-        'Número': row[0] || '-',
-        'Proveedor': row[1] || '-',
-        'Fecha': formatDate(row[2]) || '-',
-        'Total': parseFloat(row[3]) || 0,
-        'Estado': row[4] || '-',
-        'Pendiente': parseFloat(row[5]) || 0,
-        'Descripción': row[6] || '-',
-        'Vencimiento': formatDate(row[7]) || '-',
-        'Subtotal': parseFloat(row[8]) || 0,
-        'IVA': parseFloat(row[9]) || 0,
-        'Retención': parseFloat(row[10]) || 0,
-        'Empleados': parseFloat(row[11]) || 0,
-        'Equipos': parseFloat(row[12]) || 0,
-        'Pago': formatDate(row[13]) || '-',
-        'Etiquetas': row[14] || '-',
-        'Cuenta': row[15] || '-',
-        'Proyecto': row[16] || '-',
-        'Holded ID': row[17] || '-',
-        'Contacto': row[18] || '-',
-        'Tipo': row[19] || '-'
-      }));
+      // Agrupar datos por proveedor
+      const groupedByProvider = {};
+      dataToExport.forEach(row => {
+        const provider = row[columnIndices.provider] || 'Sin Proveedor';
+        if (!groupedByProvider[provider]) {
+          groupedByProvider[provider] = [];
+        }
+        groupedByProvider[provider].push(row);
+      });
+
+      // Preparar datos para Excel agrupados por proveedor
+      const excelData = [];
+      
+      Object.keys(groupedByProvider).sort().forEach(provider => {
+        const providerInvoices = groupedByProvider[provider];
+        
+        // Calcular totales del proveedor
+        const providerTotal = providerInvoices.reduce((sum, row) => {
+          return sum + (parseFloat(row[columnIndices.total]) || 0);
+        }, 0);
+        
+        const providerPending = providerInvoices.reduce((sum, row) => {
+          const pending = columnIndices.pending ? (parseFloat(row[columnIndices.pending]) || 0) : 0;
+          return sum + pending;
+        }, 0);
+
+        // Obtener IBAN del primer registro del proveedor (asumiendo que todos tienen el mismo)
+        const firstInvoice = providerInvoices[0];
+        const providerIban = firstInvoice[columnIndices.iban] || '-';
+        const formattedIban = providerIban !== '-' ? formatIBAN(providerIban) : '-';
+
+        // Agregar header del proveedor
+        excelData.push({
+          'Fecha': '',
+          'Número de Factura': '',
+          'Descripción': `=== ${provider} ===`,
+          'Cuenta': '',
+          'IBAN': formattedIban,
+          'Total': '',
+          'Pendiente': '',
+          'Estado': ''
+        });
+
+        // Agregar facturas del proveedor
+        providerInvoices.forEach(row => {
+          const total = parseFloat(row[columnIndices.total]) || 0;
+          const pending = columnIndices.pending ? (parseFloat(row[columnIndices.pending]) || 0) : 0;
+          const status = row[columnIndices.status] || '-';
+          
+          excelData.push({
+            'Fecha': formatDate(row[columnIndices.date]) || '-',
+            'Número de Factura': row[columnIndices.invoiceNumber] || '-',
+            'Descripción': row[columnIndices.description] || '-',
+            'Cuenta': row[columnIndices.account] || '-',
+            'IBAN': '', // IBAN solo en el header del proveedor
+            'Total': total,
+            'Pendiente': pending,
+            'Estado': status
+          });
+        });
+
+        // Agregar total del proveedor
+        excelData.push({
+          'Fecha': '',
+          'Número de Factura': '',
+          'Descripción': '',
+          'Cuenta': '',
+          'IBAN': '',
+          'Total': `TOTAL ${provider.substring(0, 12)}...`, // Truncar nombre si es muy largo
+          'Pendiente': providerPending,
+          'Estado': ''
+        });
+
+        // Agregar fila vacía entre proveedores
+        excelData.push({
+          'Fecha': '',
+          'Número de Factura': '',
+          'Descripción': '',
+          'Cuenta': '',
+          'IBAN': '',
+          'Total': '',
+          'Pendiente': '',
+          'Estado': ''
+        });
+      });
 
       // Crear hoja con todos los datos
       const ws = XLSX.utils.json_to_sheet(excelData);
 
-      // Configurar anchos de columna
+      // Configurar anchos de columna para el formato agrupado
       const colWidths = [
-        { wch: 15 }, // Número
-        { wch: 25 }, // Proveedor
         { wch: 12 }, // Fecha
-        { wch: 12 }, // Total
-        { wch: 12 }, // Estado
-        { wch: 12 }, // Pendiente
-        { wch: 30 }, // Descripción
-        { wch: 12 }, // Vencimiento
-        { wch: 12 }, // Subtotal
-        { wch: 10 }, // IVA
-        { wch: 12 }, // Retención
-        { wch: 12 }, // Empleados
-        { wch: 12 }, // Equipos
-        { wch: 12 }, // Pago
-        { wch: 20 }, // Etiquetas
+        { wch: 15 }, // Número de Factura
+        { wch: 40 }, // Descripción
         { wch: 15 }, // Cuenta
-        { wch: 15 }, // Proyecto
-        { wch: 15 }, // Holded ID
-        { wch: 15 }, // Contacto
-        { wch: 10 }  // Tipo
+        { wch: 25 }, // IBAN
+        { wch: 12 }, // Total
+        { wch: 12 }, // Pendiente
+        { wch: 12 }  // Estado
       ];
       ws['!cols'] = colWidths;
 
-      // Agregar hoja con todas las facturas
-      XLSX.utils.book_append_sheet(wb, ws, 'Facturas de Bruno');
+      // Agregar hoja con facturas agrupadas por proveedor
+      XLSX.utils.book_append_sheet(wb, ws, 'Facturas por Proveedor');
 
       // Descargar archivo
       XLSX.writeFile(wb, fileName);
