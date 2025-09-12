@@ -57,6 +57,7 @@ const AnalyticsPage = () => {
     idoni: { headers: [], data: [], loading: false }
   });
   const [loading, setLoading] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState('Cargando datos...');
   const [error, setError] = useState('');
 
   const [selectedDataset, setSelectedDataset] = useState('solucions');
@@ -97,8 +98,7 @@ const AnalyticsPage = () => {
   const [productosNuevoFormatoSearchTerm, setProductosNuevoFormatoSearchTerm] = useState('');
 
   // Estados para visibilidad de facturas
-  const [solucionsInvoicesData, setSolucionsInvoicesData] = useState([]);
-  const [loadingSolucionsInvoices, setLoadingSolucionsInvoices] = useState(false);
+  // Los datos de Solucions se manejan a través de supabaseData.solucions
 
   
   // Estados para modal de ocultar factura
@@ -181,9 +181,8 @@ const AnalyticsPage = () => {
 
   // Cargar datos desde Holded al montar el componente
   useEffect(() => {
-    loadDataFromHolded();
+    loadDataFromHolded(); // Carga datos de Solucions y Menjar
     loadBrunoData(); // Cargar datos de Bruno
-    loadSolucionsData(); // Cargar datos de Solucions
   }, []);
 
   // Cerrar dropdown de meses cuando se hace clic fuera
@@ -203,9 +202,8 @@ const AnalyticsPage = () => {
   // Verificar si necesita actualización cuando se monta el componente
   useEffect(() => {
     if (needsUpdate('analytics')) {
-      loadDataFromHolded();
+      loadDataFromHolded(); // Carga datos de Solucions y Menjar
       loadBrunoData(); // Cargar datos de Bruno
-      loadSolucionsData(); // Cargar datos de Solucions
       markTabUpdated('analytics');
     }
   }, []);
@@ -213,9 +211,8 @@ const AnalyticsPage = () => {
   // Escuchar cambios en shouldReloadHolded para recargar datos
   useEffect(() => {
     if (shouldReloadHolded) {
-      loadDataFromHolded();
+      loadDataFromHolded(); // Carga datos de Solucions y Menjar
       loadBrunoData(); // Cargar datos de Bruno
-      loadSolucionsData(); // Cargar datos de Solucions
       setShouldReloadHolded(false);
     }
   }, [shouldReloadHolded]);
@@ -224,7 +221,9 @@ const AnalyticsPage = () => {
 
   // Función para cargar datos desde Holded con filtrado de visibilidad
   const loadDataFromHolded = async () => {
+    console.log('🔄 Cargando datos de Holded...');
     setLoading(true);
+    setLoadingMessage('Conectando con Holded...');
     setError('');
 
     try {
@@ -232,6 +231,8 @@ const AnalyticsPage = () => {
       const userRole = user?.user_metadata?.role || 'user';
       
       // Cargar datos para ambas empresas en paralelo
+      console.log('📊 Cargando datos de Solucions y Menjar...');
+      setLoadingMessage('Descargando facturas de Solucions y Menjar...');
       const [solucionsPurchases, menjarPurchases] = await Promise.all([
         // Cargar datos de Solucions Socials
         holdedApi.getAllPendingAndOverduePurchases('solucions').catch(error => {
@@ -246,22 +247,24 @@ const AnalyticsPage = () => {
       ]);
 
       // Procesar datos de cada empresa
+      setLoadingMessage('Procesando datos de facturas...');
       const processedSolucions = processHoldedPurchases(solucionsPurchases);
       const processedMenjar = processHoldedPurchases(menjarPurchases);
 
       // Enriquecer datos con IBAN de contactos
+      setLoadingMessage('Obteniendo información de contactos...');
       const enrichedSolucionsData = await enrichDataWithContactIban(processedSolucions.data, 'solucions');
       const enrichedMenjarData = await enrichDataWithContactIban(processedMenjar.data, 'menjar');
 
       // Sincronizar datos de Holded con las tablas de facturas
+      setLoadingMessage('Sincronizando con base de datos...');
       // Usar los datos originales de Holded (objetos), no los arrays procesados
       const allHoldedData = [...solucionsPurchases, ...menjarPurchases];
       
       // Sincronizar con bruno_invoices (para la vista de Bruno)
       await brunoInvoicesService.syncHoldedData(allHoldedData);
       
-      // Sincronizar con solucions_invoices (para la vista de Solucions)
-      await solucionsInvoicesService.syncHoldedData(solucionsPurchases);
+      // NOTA: Los datos de Solucions se cargan directamente desde Holded, no desde Supabase
 
       // Actualizar el estado con datos separados
       setSupabaseData({
@@ -286,6 +289,7 @@ const AnalyticsPage = () => {
       setError('Error al cargar los datos de Holded');
       console.error('Error en loadDataFromHolded:', error);
     } finally {
+      console.log('✅ Datos de Holded cargados correctamente');
       setLoading(false);
     }
   };
@@ -294,7 +298,9 @@ const AnalyticsPage = () => {
   // Función para cargar datos de Bruno desde la nueva tabla
   const loadBrunoData = async () => {
     try {
+      console.log('🔄 Cargando datos de Bruno...');
       setLoading(true);
+      setLoadingMessage('Cargando datos de Bruno...');
       
       // Obtener facturas de Bruno según el rol del usuario
       let { data: brunoInvoices, error } = user?.user_metadata?.role === 'manager' 
@@ -306,7 +312,7 @@ const AnalyticsPage = () => {
         return;
       }
 
-      console.log('📊 Datos de Bruno cargados:', brunoInvoices?.length || 0, 'facturas');
+      // Datos de Bruno cargados
       
       // Convertir datos al formato esperado por el componente
       const processedData = brunoInvoices?.map(invoice => [
@@ -332,8 +338,8 @@ const AnalyticsPage = () => {
         invoice.document_type
       ]) || [];
 
-      setGeneralData(processedData);
-      setBrunoData(processedData);
+      // Datos de Bruno procesados
+      console.log('✅ Datos de Bruno cargados correctamente');
       
     } catch (error) {
       console.error('Error cargando datos de Bruno:', error);
@@ -342,55 +348,8 @@ const AnalyticsPage = () => {
     }
   };
 
-  // Función para cargar datos de Solucions desde la nueva tabla
-  const loadSolucionsData = async () => {
-    try {
-      setLoadingSolucionsInvoices(true);
-      
-      // Obtener facturas de Solucions según el rol del usuario
-      let { data: solucionsInvoices, error } = user?.user_metadata?.role === 'manager' 
-        ? await solucionsInvoicesService.getVisibleInvoices()
-        : await solucionsInvoicesService.getAllInvoices();
-      
-      if (error) {
-        console.error('Error cargando datos de Solucions:', error);
-        return;
-      }
-
-      console.log('📊 Datos de Solucions cargados:', solucionsInvoices?.length || 0, 'facturas');
-      
-      // Convertir datos al formato esperado por el componente
-      const processedData = solucionsInvoices?.map(invoice => [
-        invoice.invoice_number,
-        invoice.provider,
-        invoice.issue_date,
-        invoice.total,
-        invoice.status,
-        invoice.pending,
-        invoice.description,
-        invoice.due_date,
-        invoice.subtotal,
-        invoice.vat,
-        invoice.retention,
-        invoice.employees,
-        invoice.equipment_recovery,
-        invoice.payment_date,
-        invoice.tags,
-        invoice.account,
-        invoice.project,
-        invoice.holded_id,
-        invoice.holded_contact_id,
-        invoice.document_type
-      ]) || [];
-
-      setSolucionsInvoicesData(processedData);
-      
-    } catch (error) {
-      console.error('Error cargando datos de Solucions:', error);
-    } finally {
-      setLoadingSolucionsInvoices(false);
-    }
-  };
+  // Los datos de Solucions se cargan directamente en loadDataFromHolded()
+  // No necesitamos una función separada
 
   // Función para cargar datos de IDONI desde Supabase
   const loadIdoniData = async () => {
@@ -1440,9 +1399,8 @@ const AnalyticsPage = () => {
           await loadIdoniData();
         } else if (newDataset === 'bruno') {
           await loadBrunoData();
-        } else if (newDataset === 'solucions') {
-          await loadSolucionsData();
         }
+        // Los datos de Solucions y Menjar se cargan automáticamente en loadDataFromHolded()
         
         // Limpiar filtros al cambiar de dataset
         setSelectedProvider('');
@@ -1457,7 +1415,7 @@ const AnalyticsPage = () => {
 
   // Obtener los datos y headers del dataset seleccionado (desde Supabase)
   const currentHeaders = selectedDataset === 'solucions' 
-    ? ['Número', 'Proveedor', 'Fecha', 'Total', 'Estado', 'Pendiente', 'Descripción', 'Vencimiento', 'Subtotal', 'IVA', 'Retención', 'Empleados', 'Equipos', 'Pago', 'Etiquetas', 'Cuenta', 'Proyecto', 'Holded ID', 'Contacto', 'Tipo']
+    ? supabaseData.solucions.headers
     : selectedDataset === 'menjar'
     ? supabaseData.menjar.headers
     : selectedDataset === 'bruno'
@@ -1466,7 +1424,7 @@ const AnalyticsPage = () => {
   
   // Datos base sin filtrar
   const baseData = selectedDataset === 'solucions' 
-    ? solucionsInvoicesData
+    ? supabaseData.solucions.data
     : selectedDataset === 'menjar'
     ? supabaseData.menjar.data
     : selectedDataset === 'bruno'
@@ -2292,7 +2250,7 @@ const AnalyticsPage = () => {
         return false;
       }
 
-      console.log('Intentando ocultar factura:', invoice);
+      // Ocultando factura
 
       // Encontrar la factura en brunoData por número de factura
       const brunoInvoice = brunoData.find(row => row[0] === invoice[0]); // Comparar por número de factura
@@ -4053,12 +4011,10 @@ const AnalyticsPage = () => {
     }
 
     // Debug: Mostrar información sobre los datos que se van a exportar
-    console.log('🔍 Debug exportación Bruno:');
-    console.log('- Dataset seleccionado:', selectedDataset);
-    console.log('- Headers actuales:', currentHeaders);
-    console.log('- Índices de columnas:', columnIndices);
-    console.log('- Primer registro de datos:', dataToExport[0]);
-    console.log('- Total registros:', dataToExport.length);
+    // Debug exportación Bruno (solo en desarrollo)
+    if (process.env.NODE_ENV === 'development') {
+      console.log('🔍 Exportando Bruno:', dataToExport.length, 'registros');
+    }
 
     try {
       // Crear workbook
@@ -4082,89 +4038,78 @@ const AnalyticsPage = () => {
       Object.keys(groupedByProvider).sort().forEach(provider => {
         const providerInvoices = groupedByProvider[provider];
         
-        // Calcular totales del proveedor
-        const providerTotal = providerInvoices.reduce((sum, row) => {
-          return sum + (parseFloat(row[columnIndices.total]) || 0);
-        }, 0);
-        
-        const providerPending = providerInvoices.reduce((sum, row) => {
+        // Calcular total del valor a pagar del proveedor
+        const providerValorAPagar = providerInvoices.reduce((sum, row) => {
+          const total = parseFloat(row[columnIndices.total]) || 0;
           const pending = columnIndices.pending ? (parseFloat(row[columnIndices.pending]) || 0) : 0;
-          return sum + pending;
+          // Para facturas pendientes, usar el monto pendiente en lugar del total
+          const valorAPagar = pending > 0 ? pending : total;
+          return sum + valorAPagar;
         }, 0);
+
 
         // Obtener IBAN del primer registro del proveedor (asumiendo que todos tienen el mismo)
         const firstInvoice = providerInvoices[0];
         const providerIban = firstInvoice[columnIndices.iban] || '-';
         const formattedIban = providerIban !== '-' ? formatIBAN(providerIban) : '-';
 
-        // Agregar header del proveedor
+        // Truncar nombre del proveedor si es muy largo (máximo 30 caracteres)
+        const shortProviderName = provider.length > 30 ? provider.substring(0, 27) + '...' : provider;
+        
+        // Agregar header del proveedor con mejor formato
         excelData.push({
           'Fecha': '',
+          'Proveedor': `📋 ${shortProviderName}`,
           'Número de Factura': '',
-          'Descripción': `=== ${provider} ===`,
-          'Cuenta': '',
-          'IBAN': formattedIban,
-          'Total': '',
-          'Pendiente': '',
-          'Estado': ''
+          'Valor a Pagar': '',
+          'IBAN': formattedIban
         });
 
         // Agregar facturas del proveedor
         providerInvoices.forEach(row => {
           const total = parseFloat(row[columnIndices.total]) || 0;
           const pending = columnIndices.pending ? (parseFloat(row[columnIndices.pending]) || 0) : 0;
-          const status = row[columnIndices.status] || '-';
+          // Para facturas pendientes, usar el monto pendiente en lugar del total
+          const valorAPagar = pending > 0 ? pending : total;
           
           excelData.push({
             'Fecha': formatDate(row[columnIndices.date]) || '-',
+            'Proveedor': row[columnIndices.provider] || '-',
             'Número de Factura': row[columnIndices.invoiceNumber] || '-',
-            'Descripción': row[columnIndices.description] || '-',
-            'Cuenta': row[columnIndices.account] || '-',
-            'IBAN': '', // IBAN solo en el header del proveedor
-            'Total': total,
-            'Pendiente': pending,
-            'Estado': status
+            'Valor a Pagar': valorAPagar,
+            'IBAN': '' // IBAN solo en el header del proveedor
           });
         });
 
-        // Agregar total del proveedor
+        // Agregar total del proveedor con mejor formato
         excelData.push({
           'Fecha': '',
-          'Número de Factura': '',
-          'Descripción': '',
-          'Cuenta': '',
-          'IBAN': '',
-          'Total': `TOTAL ${provider.substring(0, 12)}...`, // Truncar nombre si es muy largo
-          'Pendiente': providerPending,
-          'Estado': ''
+          'Proveedor': '',
+          'Número de Factura': 'TOTAL:',
+          'Valor a Pagar': providerValorAPagar,
+          'IBAN': formattedIban
         });
 
-        // Agregar fila vacía entre proveedores
+        // Agregar separador visual entre proveedores
         excelData.push({
-          'Fecha': '',
-          'Número de Factura': '',
-          'Descripción': '',
-          'Cuenta': '',
-          'IBAN': '',
-          'Total': '',
-          'Pendiente': '',
-          'Estado': ''
+          'Fecha': '─'.repeat(10),
+          'Proveedor': '─'.repeat(30),
+          'Número de Factura': '─'.repeat(15),
+          'Valor a Pagar': '─'.repeat(12),
+          'IBAN': '─'.repeat(20)
         });
       });
 
       // Crear hoja con todos los datos
       const ws = XLSX.utils.json_to_sheet(excelData);
 
-      // Configurar anchos de columna para el formato agrupado
+      // Configurar anchos de columna optimizados
       const colWidths = [
         { wch: 12 }, // Fecha
-        { wch: 15 }, // Número de Factura
-        { wch: 40 }, // Descripción
-        { wch: 15 }, // Cuenta
-        { wch: 25 }, // IBAN
-        { wch: 12 }, // Total
-        { wch: 12 }, // Pendiente
-        { wch: 12 }  // Estado
+        { wch: 35 }, // Proveedor (más ancho para nombres largos)
+        { wch: 20 }, // Número de Factura
+        { wch: 15 }, // Valor a Pagar
+        { wch: 30 }  // IBAN (más ancho para formato con espacios)
       ];
       ws['!cols'] = colWidths;
 
@@ -4677,10 +4622,10 @@ const AnalyticsPage = () => {
               }}
             />
             <div style={{ fontSize: 16, fontWeight: 500, marginBottom: 8 }}>
-              Cargando datos desde la base de datos...
+              {loadingMessage}
             </div>
-            <div style={{ fontSize: 14, color: colors.textSecondary }}>
-              Esto puede tardar unos segundos
+            <div style={{ fontSize: 14, color: colors.textSecondary, textAlign: 'center' }}>
+              Por favor espera mientras se cargan los datos
             </div>
           </motion.div>
         ) : error ? (
@@ -4730,7 +4675,7 @@ const AnalyticsPage = () => {
             transition={{ duration: 0.2, ease: 'easeOut' }}
             style={{ color: colors.textSecondary, fontSize: 18, marginTop: 40 }}
           >
-            No hay datos importados para {selectedDataset === 'solucions' ? 'Solucions Socials' : selectedDataset === 'menjar' ? 'Menjar d\'Hort' : 'IDONI'}. Por favor, importa un archivo Excel en la sección correspondiente.
+            No hay datos disponibles para {selectedDataset === 'solucions' ? 'Solucions Socials' : selectedDataset === 'menjar' ? 'Menjar d\'Hort' : 'IDONI'}. Los datos se cargan automáticamente desde Holded.
           </motion.div>
         ) : selectedDataset === 'idoni' ? (
           // Interfaz específica para IDONI

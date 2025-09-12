@@ -47,7 +47,10 @@ export const solucionsInvoicesService = {
   // Sincronizar datos de Holded con solucions_invoices
   async syncHoldedData(holdedInvoices) {
     try {
-      console.log('🔄 Iniciando sincronización de datos de Holded para Solucions...');
+      // Debug solo en desarrollo
+      if (process.env.NODE_ENV === 'development') {
+        console.log('🔄 Iniciando sincronización de datos de Holded para Solucions...');
+      }
 
       let newInvoices = 0;
       let updatedInvoices = 0;
@@ -100,7 +103,7 @@ export const solucionsInvoicesService = {
             // Contar como nueva o actualizada basándose en si existía antes
             // Por simplicidad, contamos como actualizada
             updatedInvoices++;
-            console.log('🔄 Factura de Solucions procesada:', holdedInvoice.invoice_number);
+            // Factura de Solucions procesada
           }
         } catch (error) {
           console.error('Error procesando factura de Solucions:', error);
@@ -108,7 +111,10 @@ export const solucionsInvoicesService = {
         }
       }
 
-      console.log(`✅ Sincronización de Solucions completada: ${newInvoices} nuevas, ${updatedInvoices} actualizadas, ${errors} errores, ${skippedInvoices} saltadas`);
+      // Debug solo en desarrollo
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`✅ Sincronización de Solucions completada: ${newInvoices} nuevas, ${updatedInvoices} actualizadas, ${errors} errores, ${skippedInvoices} saltadas`);
+      }
 
       return {
         data: { newInvoices, updatedInvoices, errors, skippedInvoices },

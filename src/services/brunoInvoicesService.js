@@ -47,7 +47,7 @@ export const brunoInvoicesService = {
                 // Sincronizar datos de Holded con bruno_invoices
               async syncHoldedData(holdedInvoices) {
                 try {
-                  console.log('🔄 Iniciando sincronización de datos de Holded...');
+                  // Iniciando sincronización de datos de Holded
 
                   let newInvoices = 0;
                   let updatedInvoices = 0;
@@ -100,7 +100,7 @@ export const brunoInvoicesService = {
                         // Contar como nueva o actualizada basándose en si existía antes
                         // Por simplicidad, contamos como actualizada
                         updatedInvoices++;
-                        console.log('🔄 Factura procesada:', holdedInvoice.invoice_number);
+                        // Factura procesada
                       }
         } catch (error) {
           console.error('Error procesando factura:', error);
@@ -108,7 +108,7 @@ export const brunoInvoicesService = {
         }
       }
 
-                        console.log(`✅ Sincronización completada: ${newInvoices} nuevas, ${updatedInvoices} actualizadas, ${errors} errores, ${skippedInvoices} saltadas`);
+                        // Sincronización completada
 
                   return {
                     data: { newInvoices, updatedInvoices, errors, skippedInvoices },

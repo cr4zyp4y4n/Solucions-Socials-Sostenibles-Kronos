@@ -319,7 +319,7 @@ class HoldedApiService {
 
   // Obtener TODAS las compras parcialmente pagadas (todas las páginas)
   async getAllPartiallyPaidPurchasesPages(company = 'solucions') {
-    console.log(`🚀 [Holded API] Iniciando obtención de TODAS las compras parcialmente pagadas para ${company}`);
+    // Iniciando obtención de compras parcialmente pagadas
     
     const allPartiallyPaidPurchases = [];
     let page = 1;
@@ -328,22 +328,22 @@ class HoldedApiService {
 
     while (hasMorePages) {
       try {
-        console.log(`📄 [Holded API] Procesando página ${page} de compras parcialmente pagadas...`);
+        // Procesando página
         const purchases = await this.getPartiallyPaidPurchases(page, limit, company);
         
         if (purchases && purchases.length > 0) {
           allPartiallyPaidPurchases.push(...purchases);
-          console.log(`✅ [Holded API] Página ${page}: ${purchases.length} compras parcialmente pagadas agregadas. Total acumulado: ${allPartiallyPaidPurchases.length}`);
+          // Página procesada
           
           // Si obtenemos menos del límite, significa que es la última página
           if (purchases.length < limit) {
-            console.log(`🏁 [Holded API] Última página alcanzada (${purchases.length} < ${limit})`);
+            // Última página alcanzada
             hasMorePages = false;
           } else {
             page++;
           }
         } else {
-          console.log(`🏁 [Holded API] Página ${page} vacía, finalizando`);
+          // Página vacía, finalizando
           hasMorePages = false;
         }
       } catch (error) {
@@ -352,7 +352,7 @@ class HoldedApiService {
       }
     }
 
-    console.log(`🎯 [Holded API] Total final de compras parcialmente pagadas: ${allPartiallyPaidPurchases.length}`);
+    // Total final procesado
     return allPartiallyPaidPurchases;
   }
 
@@ -658,16 +658,7 @@ class HoldedApiService {
 
   // Función para transformar datos de Holded al formato de nuestra aplicación
   transformHoldedDocumentToInvoice(holdedDocument) {
-    console.log(`🔄 [Holded API] Transformando documento:`, {
-      id: holdedDocument.id,
-      docNumber: holdedDocument.docNumber,
-      contactName: holdedDocument.contactName,
-      total: holdedDocument.total,
-      paid: holdedDocument.paid,
-      status: holdedDocument.status,
-      paymentsPending: holdedDocument.paymentsPending,
-      paymentsTotal: holdedDocument.paymentsTotal
-    });
+    // Transformando documento
     
     // Determinar el canal basándose en el proveedor o tags
     const determineChannel = (provider, tags) => {
@@ -802,14 +793,7 @@ class HoldedApiService {
     
     const finalData = this.validateAndCleanInvoiceData(transformed);
     
-    console.log(`✅ [Holded API] Documento transformado:`, {
-      invoice_number: finalData.invoice_number,
-      provider: finalData.provider,
-      total: finalData.total,
-      paid: finalData.paid,
-      pending: finalData.pending,
-      status: finalData.status
-    });
+    // Documento transformado
     
     return finalData;
   }
@@ -829,10 +813,7 @@ class HoldedApiService {
         index === self.findIndex(d => d.id === doc.id)
       );
 
-      console.log(`📊 [Holded API] Compras pendientes: ${pendingPurchases.length}`);
-      console.log(`📊 [Holded API] Compras parcialmente pagadas: ${partiallyPaidPurchases.length}`);
-      console.log(`📊 [Holded API] Compras vencidas: ${overduePurchases.length}`);
-      console.log(`📊 [Holded API] Total único de documentos: ${uniqueDocuments.length}`);
+      // Resumen de datos procesados
 
       // Obtener todos los contactos de una vez para hacer match por nombre
       const allContacts = await this.getAllContacts(company);
