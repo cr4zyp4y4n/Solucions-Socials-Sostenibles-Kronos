@@ -1,11 +1,11 @@
-# SSS Kronos v2.1.0
+# SSS Kronos v2.1.2
 
-🚀 **Release Notes - SSS Kronos v2.1.0**
+🚀 **Release Notes - SSS Kronos v2.1.2**
 
 ## 📦 Archivos de Distribución
 
 ### Windows
-- **Instalador:** SSS Kronos-2.1.0 Setup.exe (115 MB aprox.)
+- **Instalador:** SSS Kronos-2.1.2 Setup.exe (115 MB aprox.)
 - **Ubicación:** `out/make/squirrel.windows/x64/`
 - **Compatibilidad:** Windows 10/11 (64-bit)
 
@@ -14,7 +14,16 @@
 
 ## ✨ Nuevas Características y Cambios Clave
 
-### 🆕 **v2.1.0 - Análisis Avanzado de Productos IDONI**
+### 🆕 **v2.1.2 - Optimización de Carga y Experiencia de Usuario**
+- ✅ **Feedback visual mejorado:** Mensajes de carga dinámicos durante sincronización con Holded
+- ✅ **Optimización de rendimiento:** Eliminación de logs verbosos que ralentizaban la carga
+- ✅ **Texto actualizado:** Mensajes corregidos para reflejar integración con Holded (no Excel)
+- ✅ **Carga más rápida:** Reducción significativa del tiempo de carga de datos
+- ✅ **Mensajes informativos:** Usuario sabe exactamente qué está pasando durante la carga
+- ✅ **Spinner mejorado:** Indicador de progreso con mensajes específicos por fase
+- ✅ **Corrección de errores:** Solucionados errores de `setGeneralData` y `setBrunoData` no definidos
+
+### 🆕 **v2.1.1 - Análisis Avanzado de Productos IDONI**
 - ✅ **Tabla de productos por meses individuales:** Reemplazado sistema de trimestres por análisis mensual detallado
 - ✅ **12 columnas mensuales:** Gener, Febrer, Març, Abril, Maig, Juny, Juliol, Agost, Setembre, Octubre, Novembre, Desembre
 - ✅ **Gráficos optimizados:** Top 10 productos por importe y cantidad con etiquetas limpias (solo código)
@@ -108,6 +117,17 @@
 - ✅ **Notificaciones inteligentes:** Sistema de notificaciones integrado con Supabase
 
 ### 🐞 Correcciones de Errores
+
+#### **v2.1.2 - Correcciones de Rendimiento y Estabilidad**
+- ✅ **Corregido error `setGeneralData is not defined`:** Eliminada referencia incorrecta a función no definida
+- ✅ **Corregido error `setBrunoData is not defined`:** Eliminada referencia incorrecta a función no definida
+- ✅ **Optimización de logs:** Eliminados cientos de `console.log` que ralentizaban la carga
+- ✅ **Corregido texto desfasado:** Mensajes actualizados para reflejar integración con Holded
+- ✅ **Mejorado feedback de carga:** Usuario ahora ve progreso específico durante sincronización
+- ✅ **Corregida carga de datos Solucions:** Datos ahora se cargan correctamente desde Holded
+- ✅ **Optimizado rendimiento:** Carga de datos significativamente más rápida
+
+#### **v2.1.1 y anteriores - Correcciones Históricas**
 - ✅ **Corregido error de CSP:** Bloqueo de conexiones a GitHub API
 - ✅ **Corregido estado de verificación:** El botón ya no se queda colgado
 - ✅ **Corregida versión mostrada:** Ahora muestra correctamente la versión 2.0.9
@@ -127,6 +147,16 @@
 - ✅ **Análisis mensual granular:** Reemplazado sistema de trimestres por meses individuales
 
 ### 🔧 Mejoras Técnicas
+
+#### **v2.1.2 - Optimizaciones de Rendimiento**
+- ✅ **Logs optimizados:** Eliminación de `console.log` verbosos en servicios API
+- ✅ **Carga asíncrona mejorada:** Mensajes de progreso específicos por fase de carga
+- ✅ **Gestión de estados optimizada:** Corrección de referencias a funciones no definidas
+- ✅ **Feedback visual dinámico:** Sistema de mensajes de carga contextual
+- ✅ **Integración Holded mejorada:** Carga directa sin dependencias de tablas intermedias
+- ✅ **Rendimiento de UI:** Reducción significativa del tiempo de renderizado
+
+#### **v2.1.1 y anteriores - Mejoras Históricas**
 - ✅ **API de GitHub mejorada:** Headers apropiados y manejo de errores
 - ✅ **Comparación de versiones:** Lógica robusta para detectar nuevas versiones
 - ✅ **Mensajes informativos:** Feedback claro sobre el estado de actualizaciones
@@ -157,7 +187,7 @@
 
 ### 📥 Descargar
 1. Ve a la sección Releases de este repositorio
-2. Descarga `SSS Kronos-2.0.9 Setup.exe`
+2. Descarga `SSS Kronos-2.1.2 Setup.exe`
 3. Ejecuta el instalador y sigue las instrucciones
 
 ### ⚡ Primera Ejecución
@@ -200,14 +230,12 @@
 
 ## 🔄 Próximas Versiones
 
-### 🎯 v2.1.0 ✅ **COMPLETADA**
-- 📊 Análisis de "Ventas Por Horas" en módulo IDONI ✅
-- 📈 Análisis avanzado con machine learning ✅
-- 📱 Aplicación móvil complementaria ✅
-- 🔧 Mejoras en el sistema de actualizaciones ✅
-- 📋 Módulos ERP/CRM adicionales ✅
-- 🔐 Sistema de auditoría avanzado ✅
-- 📊 Dashboard ejecutivo con KPIs ✅
+### 🎯 v2.1.2 ✅ **COMPLETADA**
+- ⚡ Optimización de rendimiento y carga de datos ✅
+- 🔄 Feedback visual mejorado durante sincronización ✅
+- 🐞 Corrección de errores críticos de JavaScript ✅
+- 📝 Texto actualizado para reflejar integración con Holded ✅
+- 🚀 Carga significativamente más rápida ✅
 
 ### 🎯 v2.2.0 (Planificada)
 - 📊 Análisis comparativo entre años para IDONI
@@ -217,15 +245,6 @@
 - 🔐 Sistema de permisos más granular
 - 📊 Reportes ejecutivos personalizables
 
-## 🤝 Contribución
-
-¿Quieres contribuir al desarrollo de SSS Kronos?
-
-1. Fork este repositorio
-2. Crea una rama para tu feature
-3. Desarrolla tu funcionalidad
-4. Prueba exhaustivamente
-5. Crea un Pull Request
 
 ## 📄 Licencia
 
