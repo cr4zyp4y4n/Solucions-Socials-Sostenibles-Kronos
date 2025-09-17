@@ -38,6 +38,7 @@ import AuditLog from './AuditLog';
 import HoldedTest from './HoldedTest';
 import ProvidersContacts from './ProvidersContacts';
 import CateringApp from './catering/CateringApp';
+import SubvencionesPage from './SubvencionesPage';
 
 
 // Componente visual de acceso denegado reutilizable
@@ -349,6 +350,7 @@ const Layout = () => {
   const menuItems = [
     { key: 'home', label: 'Inicio', path: '/home', icon: Home },
     { key: 'analytics', label: 'Análisis', path: '/analytics', icon: BarChart2 },
+    { key: 'subvenciones', label: 'Subvenciones', path: '/subvenciones', icon: FileText },
     { key: 'contacts', label: 'Contactos', path: '/contacts', icon: CreditCard },
     { key: 'settings', label: 'Configuración', path: '/settings', icon: Settings },
   ];
@@ -385,6 +387,8 @@ const Layout = () => {
         return <ProvidersContacts />;
       case 'analytics':
         return <AnalyticsPage />;
+      case 'subvenciones':
+        return <SubvencionesPage />;
       case 'settings':
         return <SettingsPage />;
       case 'users':
