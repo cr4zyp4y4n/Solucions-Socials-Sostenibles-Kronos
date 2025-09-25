@@ -14,7 +14,23 @@ import {
   ChevronRight,
   Building,
   User,
-  Upload
+  Upload,
+  Info,
+  CreditCard,
+  Briefcase,
+  BarChart3,
+  FileCheck,
+  Layers,
+  MessageSquare,
+  Edit3,
+  Trash2,
+  Save,
+  X,
+  Plus,
+  Pencil,
+  Trash,
+  UserPlus,
+  Settings
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import subvencionesService from '../services/subvencionesService';
@@ -26,12 +42,19 @@ const SubvencionesPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedEstado, setSelectedEstado] = useState('todos');
-  const [selectedImputacion, setSelectedImputacion] = useState('todos');
+  const [selectedEstado, setSelectedEstado] = useState('Todas');
+  const [selectedImputacion, setSelectedImputacion] = useState('Todas');
+  const [selectedFase, setSelectedFase] = useState('Todas');
   const [selectedSubvencion, setSelectedSubvencion] = useState(null);
   const [showDetails, setShowDetails] = useState(false);
   const [csvFile, setCsvFile] = useState(null);
   const [showUploadModal, setShowUploadModal] = useState(false);
+  const [newComentario, setNewComentario] = useState('');
+  const [editingComentario, setEditingComentario] = useState(null);
+  const [comentarioEditText, setComentarioEditText] = useState('');
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingSubvencion, setEditingSubvencion] = useState(null);
+  const [showNewSubvencionModal, setShowNewSubvencionModal] = useState(false);
 
   // Estados de subvenciones
   const estados = {
@@ -48,14 +71,16 @@ const SubvencionesPage = () => {
     loadSubvencionesData();
   }, []);
 
-  const loadSubvencionesData = async () => {
+  const loadSubvencionesData = () => {
     try {
       setLoading(true);
       setError('');
 
-      // Cargar datos del servicio
+      // Cargar datos desde memoria
       const data = subvencionesService.getSubvencionesData();
       setSubvencionesData(data);
+      
+      console.log('📊 Datos cargados desde memoria:', data.length, 'subvenciones');
     } catch (error) {
       console.error('Error cargando datos de subvenciones:', error);
       setError('Error al cargar los datos de subvenciones');
@@ -67,11 +92,11 @@ const SubvencionesPage = () => {
   // Manejar carga de archivo CSV
   const handleFileUpload = (event) => {
     const file = event.target.files[0];
-    if (file && file.type === 'text/csv') {
+    if (file && (file.type === 'text/csv' || file.name.endsWith('.csv'))) {
       setCsvFile(file);
       setShowUploadModal(true);
     } else {
-      alert('Por favor selecciona un archivo CSV válido');
+      setError('Por favor, selecciona un archivo CSV válido');
     }
   };
 
@@ -84,16 +109,25 @@ const SubvencionesPage = () => {
       setError('');
 
       const reader = new FileReader();
-      reader.onload = (e) => {
+      reader.onload = async (e) => {
         try {
           const csvData = e.target.result;
-          const processedData = subvencionesService.processCSVData(csvData);
-          setSubvencionesData(processedData);
+          
+          // Procesar CSV y guardar en memoria
+          const results = subvencionesService.processCSVData(csvData);
+          
+          // Recargar datos desde memoria
+          loadSubvencionesData();
+          
           setShowUploadModal(false);
           setCsvFile(null);
+          
+          if (process.env.NODE_ENV === 'development') {
+            console.log('📊 Sincronización completada:', results);
+          }
         } catch (error) {
           console.error('Error procesando CSV:', error);
-          setError('Error al procesar el archivo CSV');
+          setError('Error al procesar el archivo CSV y sincronizar con la base de datos');
         } finally {
           setLoading(false);
         }
@@ -106,14 +140,222 @@ const SubvencionesPage = () => {
     }
   };
 
+  // ===== FUNCIONES DE COMENTARIOS =====
+
+  // Añadir comentario
+  const handleAddComentario = async () => {
+    if (!newComentario.trim() || !selectedSubvencion) return;
+
+    try {
+      setLoading(true);
+      const comentarioData = await subvencionesService.addComentario(selectedSubvencion.id, newComentario.trim());
+      
+      // Actualizar la subvención seleccionada
+      setSelectedSubvencion(prev => ({
+        ...prev,
+        comentarios: [comentarioData, ...(prev.comentarios || [])]
+      }));
+      
+      setNewComentario('');
+    } catch (error) {
+      console.error('Error añadiendo comentario:', error);
+      setError('Error al añadir el comentario');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Editar comentario
+  const handleEditComentario = (comentario) => {
+    setEditingComentario(comentario.id);
+    setComentarioEditText(comentario.comentario);
+  };
+
+  // Guardar comentario editado
+  const handleSaveComentario = async () => {
+    if (!comentarioEditText.trim() || !editingComentario) return;
+
+    try {
+      setLoading(true);
+      const comentarioData = await subvencionesService.updateComentario(editingComentario, comentarioEditText.trim());
+      
+      // Actualizar la subvención seleccionada
+      setSelectedSubvencion(prev => ({
+        ...prev,
+        comentarios: prev.comentarios.map(c => 
+          c.id === editingComentario ? comentarioData : c
+        )
+      }));
+      
+      setEditingComentario(null);
+      setComentarioEditText('');
+    } catch (error) {
+      console.error('Error actualizando comentario:', error);
+      setError('Error al actualizar el comentario');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Cancelar edición de comentario
+  const handleCancelEditComentario = () => {
+    setEditingComentario(null);
+    setComentarioEditText('');
+  };
+
+  // Eliminar comentario
+  const handleDeleteComentario = async (comentarioId) => {
+    if (!confirm('¿Estás seguro de que quieres eliminar este comentario?')) return;
+
+    try {
+      setLoading(true);
+      await subvencionesService.deleteComentario(comentarioId);
+      
+      // Actualizar la subvención seleccionada
+      setSelectedSubvencion(prev => ({
+        ...prev,
+        comentarios: prev.comentarios.filter(c => c.id !== comentarioId)
+      }));
+    } catch (error) {
+      console.error('Error eliminando comentario:', error);
+      setError('Error al eliminar el comentario');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ===== FUNCIONES DE EDICIÓN DE SUBVENCIONES =====
+
+  // Abrir modal de edición
+  const handleEditSubvencion = (subvencion) => {
+    setEditingSubvencion({ ...subvencion });
+    setShowEditModal(true);
+  };
+
+  // Abrir modal de nueva subvención
+  const handleNewSubvencion = () => {
+    setEditingSubvencion({
+      id: null,
+      nombre: '',
+      proyecto: '',
+      imputacion: '',
+      expediente: '',
+      codigo: '',
+      modalidad: '',
+      fechaAdjudicacion: '',
+      importeSolicitado: 0,
+      importeOtorgado: 0,
+      periodo: '',
+      socL1Acomp: 0,
+      socL2Contrat: 0,
+      primerAbono: 0,
+      fechaPrimerAbono: '',
+      segundoAbono: 0,
+      fechaSegundoAbono: '',
+      saldoPendiente: 0,
+      saldoPendienteTexto: '',
+      previsionPago: '',
+      fechaJustificacion: '',
+      revisadoGestoria: false,
+      estado: '',
+      holdedAsentamiento: '',
+      importesPorCobrar: 0
+    });
+    setShowNewSubvencionModal(true);
+  };
+
+  // Guardar cambios de subvención
+  const handleSaveSubvencion = async () => {
+    if (!editingSubvencion) return;
+
+    try {
+      setLoading(true);
+      
+      const subvencionData = {
+        nombre: editingSubvencion.nombre,
+        proyecto: editingSubvencion.proyecto || editingSubvencion.organismo,
+        imputacion: editingSubvencion.imputacion,
+        expediente: editingSubvencion.expediente,
+        codigo_subvencion: editingSubvencion.codigo,
+        modalidad: editingSubvencion.modalidad,
+        fecha_adjudicacion: editingSubvencion.fechaAdjudicacion,
+        importe_solicitado: editingSubvencion.importeSolicitado,
+        importe_otorgado: editingSubvencion.importeOtorgado || editingSubvencion.importe_otorgado,
+        periodo_ejecucion: editingSubvencion.periodo || editingSubvencion.periodo_ejecucion,
+        soc_l1_acompanamiento: editingSubvencion.socL1Acomp,
+        soc_l2_contratacion: editingSubvencion.socL2Contrat,
+        primer_abono: editingSubvencion.primerAbono || editingSubvencion.primer_abono,
+        fecha_primer_abono: editingSubvencion.fechaPrimerAbono,
+        segundo_abono: editingSubvencion.segundoAbono,
+        fecha_segundo_abono: editingSubvencion.fechaSegundoAbono,
+        saldo_pendiente: editingSubvencion.saldoPendiente || editingSubvencion.saldo_pendiente,
+        saldo_pendiente_texto: editingSubvencion.saldoPendienteTexto || editingSubvencion.saldo_pendiente_texto,
+        prevision_pago_total: editingSubvencion.previsionPago,
+        fecha_justificacion: editingSubvencion.fechaJustificacion,
+        revisado_gestoria: editingSubvencion.revisadoGestoria,
+        estado: editingSubvencion.estado,
+        holded_asentamiento: editingSubvencion.holdedAsentamiento,
+        importes_por_cobrar: editingSubvencion.importesPorCobrar
+      };
+
+      if (editingSubvencion.id) {
+        // Actualizar subvención existente
+        await subvencionesService.updateSubvencion(editingSubvencion.id, subvencionData);
+      } else {
+        // Crear nueva subvención
+        await subvencionesService.createSubvencion(subvencionData);
+      }
+
+      // Recargar datos
+      await loadSubvencionesData();
+      
+      // Cerrar modales
+      setShowEditModal(false);
+      setShowNewSubvencionModal(false);
+      setEditingSubvencion(null);
+      
+    } catch (error) {
+      console.error('Error guardando subvención:', error);
+      setError('Error al guardar la subvención');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Eliminar subvención
+  const handleDeleteSubvencion = async (subvencionId) => {
+    if (!confirm('¿Estás seguro de que quieres eliminar esta subvención? Esta acción no se puede deshacer.')) return;
+
+    try {
+      setLoading(true);
+      await subvencionesService.deleteSubvencion(subvencionId);
+      
+      // Recargar datos
+      await loadSubvencionesData();
+      
+      // Cerrar modal de detalles si estaba abierto
+      if (selectedSubvencion && selectedSubvencion.id === subvencionId) {
+        setShowDetails(false);
+        setSelectedSubvencion(null);
+      }
+      
+    } catch (error) {
+      console.error('Error eliminando subvención:', error);
+      setError('Error al eliminar la subvención');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Filtrar datos usando el servicio
   const filteredData = useMemo(() => {
     return subvencionesService.filterSubvenciones({
       searchTerm,
       estado: selectedEstado,
-      imputacion: selectedImputacion
+      imputacion: selectedImputacion,
+      fase: selectedFase
     });
-  }, [subvencionesData, searchTerm, selectedEstado, selectedImputacion]);
+  }, [subvencionesData, searchTerm, selectedEstado, selectedImputacion, selectedFase]);
 
   // Obtener estados únicos
   const estadosUnicos = useMemo(() => {
@@ -152,6 +394,12 @@ const SubvencionesPage = () => {
       return 'Sin fecha';
     }
     return dateString;
+  };
+
+  // Obtener fases activas de una subvención usando el servicio
+  const getFasesActivas = (fasesProyecto) => {
+    const fasesAnalizadas = subvencionesService.analizarFasesProyecto(fasesProyecto);
+    return fasesAnalizadas.map(fase => fase.numero);
   };
 
   // Exportar a Excel usando el servicio
@@ -308,7 +556,7 @@ const SubvencionesPage = () => {
                 backgroundColor: colors.surface
               }}
             >
-              <option value="todos">Todos los estados</option>
+              <option value="Todas">Todos los estados</option>
               {estadosUnicos.map(estado => (
                 <option key={estado} value={estado}>
                   {estados[estado]?.label || estado}
@@ -335,7 +583,7 @@ const SubvencionesPage = () => {
                 backgroundColor: colors.surface
               }}
             >
-              <option value="todos">Todas las imputaciones</option>
+              <option value="Todas">Todas las imputaciones</option>
               {imputacionesUnicas.map(imputacion => (
                 <option key={imputacion} value={imputacion}>
                   {imputacion}
@@ -344,8 +592,39 @@ const SubvencionesPage = () => {
             </select>
           </div>
 
+          {/* Filtro por fase */}
+          <div>
+            <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', color: colors.text, marginBottom: '8px' }}>
+              Fase del Proyecto
+            </label>
+            <select
+              value={selectedFase}
+              onChange={(e) => setSelectedFase(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '12px',
+                border: `1px solid ${colors.border}`,
+                borderRadius: '8px',
+                fontSize: '14px',
+                outline: 'none',
+                backgroundColor: colors.surface
+              }}
+            >
+              <option value="Todas">Todas las fases</option>
+              <option value="sin-fases">Sin fases activas</option>
+              <option value="1">Fase 1</option>
+              <option value="2">Fase 2</option>
+              <option value="3">Fase 3</option>
+              <option value="4">Fase 4</option>
+              <option value="5">Fase 5</option>
+              <option value="6">Fase 6</option>
+              <option value="7">Fase 7</option>
+              <option value="8">Fase 8</option>
+            </select>
+          </div>
+
           {/* Botones de acción */}
-          <div style={{ display: 'flex', gap: '12px' }}>
+          <div style={{ display: 'flex', gap: '16px' }}>
             <label style={{
               display: 'flex',
               alignItems: 'center',
@@ -368,6 +647,25 @@ const SubvencionesPage = () => {
                 style={{ display: 'none' }}
               />
             </label>
+            <button
+              onClick={handleNewSubvencion}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                padding: '12px 16px',
+                backgroundColor: colors.primary,
+                color: 'white',
+                border: 'none',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                fontSize: '14px',
+                fontWeight: '500',
+                gap: '8px'
+              }}
+            >
+              <UserPlus size={16} />
+              Nueva Subvención
+            </button>
             <button
               onClick={exportToExcel}
               style={{
@@ -403,7 +701,8 @@ const SubvencionesPage = () => {
           padding: '20px',
           borderRadius: '12px',
           boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
-          textAlign: 'center'
+          textAlign: 'center',
+          userSelect: 'none'
         }}>
           <div style={{ fontSize: '24px', fontWeight: '700', color: colors.primary, marginBottom: '4px' }}>
             {totales.totalSubvenciones}
@@ -417,7 +716,8 @@ const SubvencionesPage = () => {
           padding: '20px',
           borderRadius: '12px',
           boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
-          textAlign: 'center'
+          textAlign: 'center',
+          userSelect: 'none'
         }}>
           <div style={{ fontSize: '24px', fontWeight: '700', color: colors.success, marginBottom: '4px' }}>
             {formatCurrency(totales.totalOtorgado)}
@@ -431,7 +731,8 @@ const SubvencionesPage = () => {
           padding: '20px',
           borderRadius: '12px',
           boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
-          textAlign: 'center'
+          textAlign: 'center',
+          userSelect: 'none'
         }}>
           <div style={{ fontSize: '24px', fontWeight: '700', color: colors.warning, marginBottom: '4px' }}>
             {formatCurrency(totales.totalPendiente)}
@@ -475,24 +776,20 @@ const SubvencionesPage = () => {
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.3, delay: index * 0.1 }}
+                  whileHover={{ backgroundColor: colors.hover || 'rgba(64,64,64,0.7)' }}
+                  whileTap={{ scale: 0.98 }}
                   style={{
                     padding: '20px',
                     borderBottom: index < filteredData.length - 1 ? `1px solid ${colors.border}` : 'none',
                     cursor: 'pointer',
-                    transition: 'background-color 0.2s'
-                  }}
-                  onMouseEnter={(e) => {
-                    e.target.style.backgroundColor = colors.background;
-                  }}
-                  onMouseLeave={(e) => {
-                    e.target.style.backgroundColor = 'transparent';
+                    userSelect: 'none'
                   }}
                   onClick={() => showSubvencionDetails(subvencion)}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <div style={{ flex: 1 }}>
                       <div style={{ display: 'flex', alignItems: 'center', marginBottom: '8px' }}>
-                        <h3 style={{ fontSize: '18px', fontWeight: '600', color: colors.text, margin: 0, marginRight: '12px' }}>
+                        <h3 style={{ fontSize: '18px', fontWeight: '600', color: colors.text, margin: 0, marginRight: '12px', userSelect: 'none' }}>
                           {subvencion.nombre}
                         </h3>
                         <div style={{
@@ -504,23 +801,48 @@ const SubvencionesPage = () => {
                           gap: '4px'
                         }}>
                           <EstadoIcon size={14} color={estadoInfo.color} />
-                          <span style={{ fontSize: '12px', fontWeight: '500', color: estadoInfo.color }}>
+                          <span style={{ fontSize: '12px', fontWeight: '500', color: estadoInfo.color, userSelect: 'none' }}>
                             {estadoInfo.label}
                           </span>
                         </div>
                       </div>
-                      <p style={{ fontSize: '14px', color: colors.textSecondary, margin: '0 0 8px 0' }}>
+                      <p style={{ fontSize: '14px', color: colors.textSecondary, margin: '0 0 8px 0', userSelect: 'none' }}>
                         {subvencion.proyecto}
                       </p>
-                      <div style={{ display: 'flex', gap: '24px', fontSize: '14px', color: colors.textSecondary }}>
+                      <div style={{ display: 'flex', gap: '24px', fontSize: '14px', color: colors.textSecondary, userSelect: 'none' }}>
                         <span><Building size={14} style={{ marginRight: '4px' }} />{subvencion.imputacion}</span>
                         <span><Calendar size={14} style={{ marginRight: '4px' }} />{subvencion.periodo}</span>
                         <span><Euro size={14} style={{ marginRight: '4px' }} />{formatCurrency(subvencion.importeOtorgado)}</span>
                       </div>
+                      
+                      {/* Indicador de Fases Activas */}
+                      {(() => {
+                        const fasesActivas = getFasesActivas(subvencion.fasesProyecto);
+                        if (fasesActivas.length > 0) {
+                          return (
+                            <div style={{ 
+                              display: 'flex', 
+                              alignItems: 'center', 
+                              gap: '8px', 
+                              marginTop: '8px',
+                              padding: '6px 12px',
+                              backgroundColor: colors.primary + '15',
+                              borderRadius: '6px',
+                              width: 'fit-content'
+                            }}>
+                              <Layers size={14} color={colors.primary} />
+                              <span style={{ fontSize: '12px', fontWeight: '500', color: colors.primary }}>
+                                Fases: {fasesActivas.join(', ')}
+                              </span>
+                            </div>
+                          );
+                        }
+                        return null;
+                      })()}
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
                       <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontSize: '16px', fontWeight: '600', color: colors.text }}>
+                        <div style={{ fontSize: '16px', fontWeight: '600', color: colors.text, userSelect: 'none' }}>
                           {subvencion.saldoPendienteTexto && 
                            (subvencion.saldoPendienteTexto.includes('PEND') || 
                             subvencion.saldoPendienteTexto.includes('GESTIONAR') ||
@@ -529,11 +851,73 @@ const SubvencionesPage = () => {
                             subvencion.saldoPendienteTexto : 
                             formatCurrency(subvencion.saldoPendiente)}
                         </div>
-                        <div style={{ fontSize: '12px', color: colors.textSecondary }}>
+                        <div style={{ fontSize: '12px', color: colors.textSecondary, userSelect: 'none' }}>
                           Saldo pendiente
                         </div>
                       </div>
-                      <ChevronRight size={20} color={colors.textSecondary} />
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleEditSubvencion(subvencion);
+                          }}
+                          style={{
+                            padding: '8px',
+                            backgroundColor: 'transparent',
+                            color: colors.primary,
+                            border: `1px solid ${colors.primary}`,
+                            borderRadius: '6px',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            fontSize: '12px',
+                            transition: 'all 0.2s ease'
+                          }}
+                          onMouseEnter={(e) => {
+                            e.target.style.backgroundColor = colors.primary;
+                            e.target.style.color = 'white';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.target.style.backgroundColor = 'transparent';
+                            e.target.style.color = colors.primary;
+                          }}
+                        >
+                          <Pencil size={14} />
+                          Editar
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteSubvencion(subvencion.id);
+                          }}
+                          style={{
+                            padding: '8px',
+                            backgroundColor: 'transparent',
+                            color: colors.error,
+                            border: `1px solid ${colors.error}`,
+                            borderRadius: '6px',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            fontSize: '12px',
+                            transition: 'all 0.2s ease'
+                          }}
+                          onMouseEnter={(e) => {
+                            e.target.style.backgroundColor = colors.error;
+                            e.target.style.color = 'white';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.target.style.backgroundColor = 'transparent';
+                            e.target.style.color = colors.error;
+                          }}
+                        >
+                          <Trash size={14} />
+                          Eliminar
+                        </button>
+                        <ChevronRight size={20} color={colors.textSecondary} />
+                      </div>
                     </div>
                   </div>
                 </motion.div>
@@ -566,9 +950,9 @@ const SubvencionesPage = () => {
               backgroundColor: colors.surface,
               borderRadius: '12px',
               padding: '24px',
-              maxWidth: '600px',
+              maxWidth: '800px',
               width: '100%',
-              maxHeight: '80vh',
+              maxHeight: '90vh',
               overflow: 'auto',
               boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)'
             }}
@@ -594,8 +978,11 @@ const SubvencionesPage = () => {
             <div style={{ display: 'grid', gap: '20px' }}>
               {/* Información Básica */}
               <div style={{ padding: '16px', backgroundColor: colors.background, borderRadius: '8px' }}>
-                <h3 style={{ fontSize: '16px', fontWeight: '600', color: colors.text, margin: '0 0 16px 0' }}>📋 Información Básica</h3>
-                <div style={{ display: 'grid', gap: '12px' }}>
+                <h3 style={{ fontSize: '16px', fontWeight: '600', color: colors.text, margin: '0 0 16px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <FileCheck size={18} color={colors.primary} />
+                  Información Básica
+                </h3>
+                <div style={{ display: 'grid', gap: '16px' }}>
                   <div>
                     <label style={{ fontSize: '14px', fontWeight: '500', color: colors.text, marginBottom: '4px' }}>Subvención</label>
                     <div style={{ fontSize: '16px', color: colors.textSecondary }}>{selectedSubvencion.nombre}</div>
@@ -606,7 +993,7 @@ const SubvencionesPage = () => {
                     <div style={{ fontSize: '16px', color: colors.textSecondary }}>{selectedSubvencion.proyecto}</div>
                   </div>
                   
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                     <div>
                       <label style={{ fontSize: '14px', fontWeight: '500', color: colors.text, marginBottom: '4px' }}>Imputación</label>
                       <div style={{ fontSize: '16px', color: colors.textSecondary }}>{selectedSubvencion.imputacion}</div>
@@ -617,7 +1004,7 @@ const SubvencionesPage = () => {
                     </div>
                   </div>
                   
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                     <div>
                       <label style={{ fontSize: '14px', fontWeight: '500', color: colors.text, marginBottom: '4px' }}>Código Subvención</label>
                       <div style={{ fontSize: '16px', color: colors.textSecondary }}>{selectedSubvencion.codigo || 'N/A'}</div>
@@ -644,9 +1031,12 @@ const SubvencionesPage = () => {
               
               {/* Información Financiera */}
               <div style={{ padding: '16px', backgroundColor: colors.background, borderRadius: '8px' }}>
-                <h3 style={{ fontSize: '16px', fontWeight: '600', color: colors.text, margin: '0 0 16px 0' }}>💰 Información Financiera</h3>
-                <div style={{ display: 'grid', gap: '12px' }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <h3 style={{ fontSize: '16px', fontWeight: '600', color: colors.text, margin: '0 0 16px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Euro size={18} color={colors.success} />
+                  Información Financiera
+                </h3>
+                <div style={{ display: 'grid', gap: '16px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                     <div>
                       <label style={{ fontSize: '14px', fontWeight: '500', color: colors.text, marginBottom: '4px' }}>Importe Solicitado</label>
                       <div style={{ fontSize: '16px', fontWeight: '600', color: colors.text }}>
@@ -684,8 +1074,11 @@ const SubvencionesPage = () => {
               
               {/* Abonos */}
               <div style={{ padding: '16px', backgroundColor: colors.background, borderRadius: '8px' }}>
-                <h3 style={{ fontSize: '16px', fontWeight: '600', color: colors.text, margin: '0 0 16px 0' }}>💳 Abonos</h3>
-                <div style={{ display: 'grid', gap: '12px' }}>
+                <h3 style={{ fontSize: '16px', fontWeight: '600', color: colors.text, margin: '0 0 16px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <CreditCard size={18} color={colors.primary} />
+                  Abonos
+                </h3>
+                <div style={{ display: 'grid', gap: '16px' }}>
                   {/* Primer Abono */}
                   <div style={{
                     padding: '12px',
@@ -701,7 +1094,8 @@ const SubvencionesPage = () => {
                     </div>
                     {selectedSubvencion.fechaPrimerAbono && (
                       <div style={{ fontSize: '12px', color: colors.textSecondary }}>
-                        📅 {selectedSubvencion.fechaPrimerAbono}
+                        <Calendar size={14} style={{ marginRight: '4px' }} />
+                        {selectedSubvencion.fechaPrimerAbono}
                       </div>
                     )}
                   </div>
@@ -722,7 +1116,8 @@ const SubvencionesPage = () => {
                       </div>
                       {selectedSubvencion.fechaSegundoAbono && (
                         <div style={{ fontSize: '12px', color: colors.textSecondary }}>
-                          📅 {selectedSubvencion.fechaSegundoAbono}
+                          <Calendar size={14} style={{ marginRight: '4px' }} />
+                          {selectedSubvencion.fechaSegundoAbono}
                         </div>
                       )}
                     </div>
@@ -731,11 +1126,14 @@ const SubvencionesPage = () => {
               </div>
 
               {/* SOC L1 y L2 (solo si existen) */}
-              {(selectedSubvencion.socL1Acomp > 0 || selectedSubvencion.socL2Contrat > 0) && (
+              {(selectedSubvencion.socL1Acomp || selectedSubvencion.socL2Contrat) && (
                 <div style={{ padding: '16px', backgroundColor: colors.background, borderRadius: '8px' }}>
-                  <h3 style={{ fontSize: '16px', fontWeight: '600', color: colors.text, margin: '0 0 16px 0' }}>🏢 SOC - Líneas de Financiación</h3>
-                  <div style={{ display: 'grid', gap: '12px' }}>
-                    {selectedSubvencion.socL1Acomp > 0 && (
+                  <h3 style={{ fontSize: '16px', fontWeight: '600', color: colors.text, margin: '0 0 16px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Briefcase size={18} color={colors.primary} />
+                    SOC - Líneas de Financiación
+                  </h3>
+                  <div style={{ display: 'grid', gap: '16px' }}>
+                    {selectedSubvencion.socL1Acomp && (
                       <div style={{
                         padding: '12px',
                         backgroundColor: colors.surface,
@@ -745,13 +1143,13 @@ const SubvencionesPage = () => {
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                           <span style={{ fontSize: '14px', fontWeight: '500', color: colors.text }}>SOC: L1 Acompañamiento</span>
                           <span style={{ fontSize: '16px', fontWeight: '600', color: colors.primary }}>
-                            {formatCurrency(selectedSubvencion.socL1Acomp)}
+                            {selectedSubvencion.socL1Acomp}
                           </span>
                         </div>
                       </div>
                     )}
                     
-                    {selectedSubvencion.socL2Contrat > 0 && (
+                    {selectedSubvencion.socL2Contrat && (
                       <div style={{
                         padding: '12px',
                         backgroundColor: colors.surface,
@@ -761,7 +1159,7 @@ const SubvencionesPage = () => {
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                           <span style={{ fontSize: '14px', fontWeight: '500', color: colors.text }}>SOC: L2 Contratación Trabajo</span>
                           <span style={{ fontSize: '16px', fontWeight: '600', color: colors.secondary }}>
-                            {formatCurrency(selectedSubvencion.socL2Contrat)}
+                            {selectedSubvencion.socL2Contrat}
                           </span>
                         </div>
                       </div>
@@ -776,36 +1174,46 @@ const SubvencionesPage = () => {
                 selectedSubvencion.fasesProyecto.fase5 || selectedSubvencion.fasesProyecto.fase6 ||
                 selectedSubvencion.fasesProyecto.fase7 || selectedSubvencion.fasesProyecto.fase8) && (
                 <div style={{ padding: '16px', backgroundColor: colors.background, borderRadius: '8px' }}>
-                  <h3 style={{ fontSize: '16px', fontWeight: '600', color: colors.text, margin: '0 0 16px 0' }}>📋 Fases del Proyecto</h3>
+                  <h3 style={{ fontSize: '16px', fontWeight: '600', color: colors.text, margin: '0 0 16px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <FileCheck size={18} color={colors.primary} />
+                    Fases del Proyecto
+                  </h3>
                   <div style={{ display: 'grid', gap: '8px' }}>
-                    {Object.entries(selectedSubvencion.fasesProyecto).map(([fase, valor], index) => {
-                      if (!valor || valor === '') return null;
-                      return (
-                        <div key={fase} style={{
-                          padding: '8px 12px',
-                          backgroundColor: colors.surface,
-                          borderRadius: '6px',
-                          border: `1px solid ${colors.border}`
+                    {(() => {
+                      const fasesAnalizadas = subvencionesService.analizarFasesProyecto(selectedSubvencion.fasesProyecto);
+                      return fasesAnalizadas.map((fase, index) => (
+                        <div key={fase.campo} style={{
+                          padding: '12px 16px',
+                          backgroundColor: colors.success + '15',
+                          borderRadius: '8px',
+                          border: `2px solid ${colors.success}`,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '16px'
                         }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span style={{ fontSize: '14px', fontWeight: '500', color: colors.text }}>
-                              Fase {index + 1}
-                            </span>
-                            <span style={{ fontSize: '14px', color: colors.textSecondary }}>
-                              {valor}
-                            </span>
+                          <CheckCircle size={18} color={colors.success} />
+                          <div>
+                            <div style={{ fontSize: '16px', fontWeight: '600', color: colors.text }}>
+                              {fase.nombre}
+                            </div>
+                            <div style={{ fontSize: '12px', color: colors.textSecondary }}>
+                              Campo: {fase.campo} | Contenido: {fase.contenido}
+                            </div>
                           </div>
                         </div>
-                      );
-                    })}
+                      ));
+                    })()}
                   </div>
                 </div>
               )}
               
               {/* Estado y Seguimiento */}
               <div style={{ padding: '16px', backgroundColor: colors.background, borderRadius: '8px' }}>
-                <h3 style={{ fontSize: '16px', fontWeight: '600', color: colors.text, margin: '0 0 16px 0' }}>📊 Estado y Seguimiento</h3>
-                <div style={{ display: 'grid', gap: '12px' }}>
+                <h3 style={{ fontSize: '16px', fontWeight: '600', color: colors.text, margin: '0 0 16px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <BarChart3 size={18} color={colors.primary} />
+                  Estado y Seguimiento
+                </h3>
+                <div style={{ display: 'grid', gap: '16px' }}>
                   <div>
                     <label style={{ fontSize: '14px', fontWeight: '500', color: colors.text, marginBottom: '4px' }}>Estado</label>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -846,6 +1254,203 @@ const SubvencionesPage = () => {
                     </div>
                   </div>
                   
+                </div>
+              </div>
+
+              {/* Comentarios */}
+              <div style={{ padding: '16px', backgroundColor: colors.background, borderRadius: '8px' }}>
+                <h3 style={{ fontSize: '16px', fontWeight: '600', color: colors.text, margin: '0 0 16px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <MessageSquare size={18} color={colors.primary} />
+                  Comentarios
+                </h3>
+                
+                {/* Formulario para añadir comentario */}
+                <div style={{ marginBottom: '20px' }}>
+                  <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+                    <textarea
+                      value={newComentario}
+                      onChange={(e) => setNewComentario(e.target.value)}
+                      placeholder="Añadir un comentario sobre esta subvención..."
+                      style={{
+                        flex: 1,
+                        padding: '12px',
+                        border: `1px solid ${colors.border}`,
+                        borderRadius: '8px',
+                        backgroundColor: colors.surface,
+                        color: colors.text,
+                        fontSize: '14px',
+                        resize: 'vertical',
+                        minHeight: '80px',
+                        fontFamily: 'inherit'
+                      }}
+                    />
+                    <button
+                      onClick={handleAddComentario}
+                      disabled={!newComentario.trim() || loading}
+                      style={{
+                        padding: '12px 16px',
+                        backgroundColor: colors.primary,
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '8px',
+                        cursor: newComentario.trim() && !loading ? 'pointer' : 'not-allowed',
+                        opacity: newComentario.trim() && !loading ? 1 : 0.5,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        fontSize: '14px',
+                        fontWeight: '500'
+                      }}
+                    >
+                      <Plus size={16} />
+                      Añadir
+                    </button>
+                  </div>
+                </div>
+
+                {/* Lista de comentarios */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  {selectedSubvencion.comentarios && selectedSubvencion.comentarios.length > 0 ? (
+                    selectedSubvencion.comentarios.map((comentario) => (
+                      <div key={comentario.id} style={{
+                        padding: '12px',
+                        backgroundColor: colors.surface,
+                        border: `1px solid ${colors.border}`,
+                        borderRadius: '8px',
+                        borderLeft: `4px solid ${colors.primary}`
+                      }}>
+                        {editingComentario === comentario.id ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                            <textarea
+                              value={comentarioEditText}
+                              onChange={(e) => setComentarioEditText(e.target.value)}
+                              style={{
+                                width: '100%',
+                                padding: '8px',
+                                border: `1px solid ${colors.border}`,
+                                borderRadius: '6px',
+                                backgroundColor: colors.background,
+                                color: colors.text,
+                                fontSize: '14px',
+                                resize: 'vertical',
+                                minHeight: '60px',
+                                fontFamily: 'inherit'
+                              }}
+                            />
+                            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                              <button
+                                onClick={handleSaveComentario}
+                                disabled={!comentarioEditText.trim() || loading}
+                                style={{
+                                  padding: '6px 12px',
+                                  backgroundColor: colors.success,
+                                  color: 'white',
+                                  border: 'none',
+                                  borderRadius: '6px',
+                                  cursor: comentarioEditText.trim() && !loading ? 'pointer' : 'not-allowed',
+                                  opacity: comentarioEditText.trim() && !loading ? 1 : 0.5,
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  fontSize: '12px'
+                                }}
+                              >
+                                <Save size={14} />
+                                Guardar
+                              </button>
+                              <button
+                                onClick={handleCancelEditComentario}
+                                style={{
+                                  padding: '6px 12px',
+                                  backgroundColor: colors.textSecondary,
+                                  color: 'white',
+                                  border: 'none',
+                                  borderRadius: '6px',
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  fontSize: '12px'
+                                }}
+                              >
+                                <X size={14} />
+                                Cancelar
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div>
+                            <div style={{ fontSize: '14px', color: colors.text, lineHeight: '1.5', marginBottom: '8px' }}>
+                              {comentario.comentario}
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <div style={{ fontSize: '12px', color: colors.textSecondary }}>
+                                {new Date(comentario.fecha_creacion).toLocaleString('es-ES', {
+                                  year: 'numeric',
+                                  month: 'short',
+                                  day: 'numeric',
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                })}
+                                {comentario.created_by_user && (
+                                  <span style={{ marginLeft: '8px' }}>
+                                    • {comentario.created_by_user.email}
+                                  </span>
+                                )}
+                              </div>
+                              <div style={{ display: 'flex', gap: '4px' }}>
+                                <button
+                                  onClick={() => handleEditComentario(comentario)}
+                                  style={{
+                                    padding: '4px 8px',
+                                    backgroundColor: 'transparent',
+                                    color: colors.primary,
+                                    border: `1px solid ${colors.primary}`,
+                                    borderRadius: '4px',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    fontSize: '12px'
+                                  }}
+                                >
+                                  <Edit3 size={12} />
+                                  Editar
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteComentario(comentario.id)}
+                                  style={{
+                                    padding: '4px 8px',
+                                    backgroundColor: 'transparent',
+                                    color: colors.error,
+                                    border: `1px solid ${colors.error}`,
+                                    borderRadius: '4px',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    fontSize: '12px'
+                                  }}
+                                >
+                                  <Trash2 size={12} />
+                                  Eliminar
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))
+                  ) : (
+                    <div style={{
+                      textAlign: 'center',
+                      padding: '20px',
+                      color: colors.textSecondary,
+                      fontSize: '14px'
+                    }}>
+                      No hay comentarios aún. ¡Sé el primero en añadir uno!
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -906,7 +1511,7 @@ const SubvencionesPage = () => {
               </div>
             </div>
 
-            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+            <div style={{ display: 'flex', gap: '16px', justifyContent: 'flex-end' }}>
               <button
                 onClick={() => {
                   setShowUploadModal(false);
@@ -940,6 +1545,675 @@ const SubvencionesPage = () => {
                 }}
               >
                 Procesar Archivo
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Modal de edición de subvención */}
+      {(showEditModal || showNewSubvencionModal) && editingSubvencion && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000,
+          padding: '20px'
+        }}>
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.9 }}
+            style={{
+              backgroundColor: colors.surface,
+              borderRadius: '12px',
+              padding: '24px',
+              maxWidth: '600px',
+              width: '100%',
+              maxHeight: '90vh',
+              overflow: 'auto',
+              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
+              <h2 style={{ fontSize: '20px', fontWeight: '600', color: colors.text, margin: 0 }}>
+                {showNewSubvencionModal ? 'Nueva Subvención' : 'Editar Subvención'}
+              </h2>
+              <button
+                onClick={() => {
+                  setShowEditModal(false);
+                  setShowNewSubvencionModal(false);
+                  setEditingSubvencion(null);
+                }}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  fontSize: '24px',
+                  cursor: 'pointer',
+                  color: colors.textSecondary
+                }}
+              >
+                ×
+              </button>
+            </div>
+
+            <div style={{ display: 'grid', gap: '20px' }}>
+              {/* Información Básica */}
+              <div style={{ padding: '16px', backgroundColor: colors.background, borderRadius: '8px' }}>
+                <h3 style={{ fontSize: '16px', fontWeight: '600', color: colors.text, margin: '0 0 16px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <CheckCircle size={18} color={colors.primary} />
+                  Información Básica
+                </h3>
+                <div style={{ display: 'grid', gap: '16px' }}>
+                  <div>
+                    <label style={{ fontSize: '14px', fontWeight: '500', color: colors.text, marginBottom: '6px', display: 'block' }}>
+                      Nombre de la Subvención *
+                    </label>
+                    <input
+                      type="text"
+                      value={editingSubvencion.nombre || ''}
+                      onChange={(e) => setEditingSubvencion(prev => ({ ...prev, nombre: e.target.value }))}
+                      style={{
+                        width: '100%',
+                        padding: '12px',
+                        border: `1px solid ${colors.border}`,
+                        borderRadius: '8px',
+                        backgroundColor: colors.surface,
+                        color: colors.text,
+                        fontSize: '14px'
+                      }}
+                      placeholder="Ej: IMPULSEM 2022-2023"
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: '14px', fontWeight: '500', color: colors.text, marginBottom: '6px', display: 'block' }}>
+                      Proyecto/Organismo
+                    </label>
+                    <input
+                      type="text"
+                      value={editingSubvencion.proyecto || editingSubvencion.organismo || ''}
+                      onChange={(e) => setEditingSubvencion(prev => ({ ...prev, proyecto: e.target.value, organismo: e.target.value }))}
+                      style={{
+                        width: '100%',
+                        padding: '12px',
+                        border: `1px solid ${colors.border}`,
+                        borderRadius: '8px',
+                        backgroundColor: colors.surface,
+                        color: colors.text,
+                        fontSize: '14px'
+                      }}
+                      placeholder="Ej: Generalitat de Catalunya"
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: '14px', fontWeight: '500', color: colors.text, marginBottom: '6px', display: 'block' }}>
+                      Imputación
+                    </label>
+                    <input
+                      type="text"
+                      value={editingSubvencion.imputacion || ''}
+                      onChange={(e) => setEditingSubvencion(prev => ({ ...prev, imputacion: e.target.value }))}
+                      style={{
+                        width: '100%',
+                        padding: '12px',
+                        border: `1px solid ${colors.border}`,
+                        borderRadius: '8px',
+                        backgroundColor: colors.surface,
+                        color: colors.text,
+                        fontSize: '14px'
+                      }}
+                      placeholder="Ej: 2024"
+                    />
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                    <div>
+                      <label style={{ fontSize: '14px', fontWeight: '500', color: colors.text, marginBottom: '6px', display: 'block' }}>
+                        Número de Expediente
+                      </label>
+                      <input
+                        type="text"
+                        value={editingSubvencion.expediente || ''}
+                        onChange={(e) => setEditingSubvencion(prev => ({ ...prev, expediente: e.target.value }))}
+                        style={{
+                          width: '100%',
+                          padding: '12px',
+                          border: `1px solid ${colors.border}`,
+                          borderRadius: '8px',
+                          backgroundColor: colors.surface,
+                          color: colors.text,
+                          fontSize: '14px',
+                          boxSizing: 'border-box'
+                        }}
+                        placeholder="Ej: EXP-2024-001"
+                      />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '14px', fontWeight: '500', color: colors.text, marginBottom: '6px', display: 'block' }}>
+                        Código de Subvención
+                      </label>
+                      <input
+                        type="text"
+                        value={editingSubvencion.codigo || ''}
+                        onChange={(e) => setEditingSubvencion(prev => ({ ...prev, codigo: e.target.value }))}
+                        style={{
+                          width: '100%',
+                          padding: '12px',
+                          border: `1px solid ${colors.border}`,
+                          borderRadius: '8px',
+                          backgroundColor: colors.surface,
+                          color: colors.text,
+                          fontSize: '14px',
+                          boxSizing: 'border-box'
+                        }}
+                        placeholder="Ej: SUB-2024-001"
+                      />
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                    <div>
+                      <label style={{ fontSize: '14px', fontWeight: '500', color: colors.text, marginBottom: '6px', display: 'block' }}>
+                        Modalidad
+                      </label>
+                      <input
+                        type="text"
+                        value={editingSubvencion.modalidad || ''}
+                        onChange={(e) => setEditingSubvencion(prev => ({ ...prev, modalidad: e.target.value }))}
+                        style={{
+                          width: '100%',
+                          padding: '12px',
+                          border: `1px solid ${colors.border}`,
+                          borderRadius: '8px',
+                          backgroundColor: colors.surface,
+                          color: colors.text,
+                          fontSize: '14px',
+                          boxSizing: 'border-box'
+                        }}
+                        placeholder="Ej: Línea de ayudas"
+                      />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '14px', fontWeight: '500', color: colors.text, marginBottom: '6px', display: 'block' }}>
+                        Fecha de Adjudicación
+                      </label>
+                      <input
+                        type="date"
+                        value={editingSubvencion.fechaAdjudicacion || ''}
+                        onChange={(e) => setEditingSubvencion(prev => ({ ...prev, fechaAdjudicacion: e.target.value }))}
+                        style={{
+                          width: '100%',
+                          padding: '12px',
+                          border: `1px solid ${colors.border}`,
+                          borderRadius: '8px',
+                          backgroundColor: colors.surface,
+                          color: colors.text,
+                          fontSize: '14px',
+                          boxSizing: 'border-box'
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: '14px', fontWeight: '500', color: colors.text, marginBottom: '6px', display: 'block' }}>
+                      Período de Ejecución
+                    </label>
+                    <input
+                      type="text"
+                      value={editingSubvencion.periodo || editingSubvencion.periodo_ejecucion || ''}
+                      onChange={(e) => setEditingSubvencion(prev => ({ ...prev, periodo: e.target.value, periodo_ejecucion: e.target.value }))}
+                      style={{
+                        width: '100%',
+                        padding: '12px',
+                        border: `1px solid ${colors.border}`,
+                        borderRadius: '8px',
+                        backgroundColor: colors.surface,
+                        color: colors.text,
+                        fontSize: '14px'
+                      }}
+                      placeholder="Ej: 2022-2023"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Información Financiera */}
+              <div style={{ padding: '16px', backgroundColor: colors.background, borderRadius: '8px' }}>
+                <h3 style={{ fontSize: '16px', fontWeight: '600', color: colors.text, margin: '0 0 16px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Euro size={18} color={colors.primary} />
+                  Información Financiera
+                </h3>
+                <div style={{ display: 'grid', gap: '16px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                    <div>
+                      <label style={{ fontSize: '14px', fontWeight: '500', color: colors.text, marginBottom: '6px', display: 'block' }}>
+                        Importe Solicitado (€)
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={editingSubvencion.importeSolicitado || ''}
+                        onChange={(e) => setEditingSubvencion(prev => ({ ...prev, importeSolicitado: parseFloat(e.target.value) || 0 }))}
+                        style={{
+                          width: '100%',
+                          padding: '12px',
+                          border: `1px solid ${colors.border}`,
+                          borderRadius: '8px',
+                          backgroundColor: colors.surface,
+                          color: colors.text,
+                          fontSize: '14px',
+                          boxSizing: 'border-box'
+                        }}
+                        placeholder="0.00"
+                      />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '14px', fontWeight: '500', color: colors.text, marginBottom: '6px', display: 'block' }}>
+                        Importe Otorgado (€)
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={editingSubvencion.importeOtorgado || editingSubvencion.importe_otorgado || ''}
+                        onChange={(e) => setEditingSubvencion(prev => ({ ...prev, importeOtorgado: parseFloat(e.target.value) || 0, importe_otorgado: parseFloat(e.target.value) || 0 }))}
+                        style={{
+                          width: '100%',
+                          padding: '12px',
+                          border: `1px solid ${colors.border}`,
+                          borderRadius: '8px',
+                          backgroundColor: colors.surface,
+                          color: colors.text,
+                          fontSize: '14px',
+                          boxSizing: 'border-box'
+                        }}
+                        placeholder="0.00"
+                      />
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                    <div>
+                      <label style={{ fontSize: '14px', fontWeight: '500', color: colors.text, marginBottom: '6px', display: 'block' }}>
+                        SOC L1 Acompañamiento
+                      </label>
+                      <input
+                        type="text"
+                        value={editingSubvencion.socL1Acomp || ''}
+                        onChange={(e) => setEditingSubvencion(prev => ({ ...prev, socL1Acomp: e.target.value }))}
+                        style={{
+                          width: '100%',
+                          padding: '12px',
+                          border: `1px solid ${colors.border}`,
+                          borderRadius: '8px',
+                          backgroundColor: colors.surface,
+                          color: colors.text,
+                          fontSize: '14px',
+                          boxSizing: 'border-box'
+                        }}
+                        placeholder="Ej: 16.800,00€ (80%) SALDO 4.200,00€ (20%)"
+                      />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '14px', fontWeight: '500', color: colors.text, marginBottom: '6px', display: 'block' }}>
+                        SOC L2 Contratación
+                      </label>
+                      <input
+                        type="text"
+                        value={editingSubvencion.socL2Contrat || ''}
+                        onChange={(e) => setEditingSubvencion(prev => ({ ...prev, socL2Contrat: e.target.value }))}
+                        style={{
+                          width: '100%',
+                          padding: '12px',
+                          border: `1px solid ${colors.border}`,
+                          borderRadius: '8px',
+                          backgroundColor: colors.surface,
+                          color: colors.text,
+                          fontSize: '14px',
+                          boxSizing: 'border-box'
+                        }}
+                        placeholder="Ej: 16.800,00€ (80%) SALDO 4.200,00€ (20%)"
+                      />
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                    <div>
+                      <label style={{ fontSize: '14px', fontWeight: '500', color: colors.text, marginBottom: '6px', display: 'block' }}>
+                        Saldo Pendiente (€)
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={editingSubvencion.saldoPendiente || editingSubvencion.saldo_pendiente || ''}
+                        onChange={(e) => setEditingSubvencion(prev => ({ ...prev, saldoPendiente: parseFloat(e.target.value) || 0, saldo_pendiente: parseFloat(e.target.value) || 0 }))}
+                        style={{
+                          width: '100%',
+                          padding: '12px',
+                          border: `1px solid ${colors.border}`,
+                          borderRadius: '8px',
+                          backgroundColor: colors.surface,
+                          color: colors.text,
+                          fontSize: '14px',
+                          boxSizing: 'border-box'
+                        }}
+                        placeholder="0.00"
+                      />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '14px', fontWeight: '500', color: colors.text, marginBottom: '6px', display: 'block' }}>
+                        Importes por Cobrar (€)
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={editingSubvencion.importesPorCobrar || ''}
+                        onChange={(e) => setEditingSubvencion(prev => ({ ...prev, importesPorCobrar: parseFloat(e.target.value) || 0 }))}
+                        style={{
+                          width: '100%',
+                          padding: '12px',
+                          border: `1px solid ${colors.border}`,
+                          borderRadius: '8px',
+                          backgroundColor: colors.surface,
+                          color: colors.text,
+                          fontSize: '14px',
+                          boxSizing: 'border-box'
+                        }}
+                        placeholder="0.00"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: '14px', fontWeight: '500', color: colors.text, marginBottom: '6px', display: 'block' }}>
+                      Saldo Pendiente (Texto)
+                    </label>
+                    <input
+                      type="text"
+                      value={editingSubvencion.saldoPendienteTexto || editingSubvencion.saldo_pendiente_texto || ''}
+                      onChange={(e) => setEditingSubvencion(prev => ({ ...prev, saldoPendienteTexto: e.target.value, saldo_pendiente_texto: e.target.value }))}
+                      style={{
+                        width: '100%',
+                        padding: '12px',
+                        border: `1px solid ${colors.border}`,
+                        borderRadius: '8px',
+                        backgroundColor: colors.surface,
+                        color: colors.text,
+                        fontSize: '14px'
+                      }}
+                      placeholder="Ej: PEND. GESTIONAR SUBV (17/02/2025)"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Abonos */}
+              <div style={{ padding: '16px', backgroundColor: colors.background, borderRadius: '8px' }}>
+                <h3 style={{ fontSize: '16px', fontWeight: '600', color: colors.text, margin: '0 0 16px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <FileText size={18} color={colors.primary} />
+                  Abonos
+                </h3>
+                <div style={{ display: 'grid', gap: '16px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                    <div>
+                      <label style={{ fontSize: '14px', fontWeight: '500', color: colors.text, marginBottom: '6px', display: 'block' }}>
+                        Primer Abono (€)
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={editingSubvencion.primerAbono || editingSubvencion.primer_abono || ''}
+                        onChange={(e) => setEditingSubvencion(prev => ({ ...prev, primerAbono: parseFloat(e.target.value) || 0, primer_abono: parseFloat(e.target.value) || 0 }))}
+                        style={{
+                          width: '100%',
+                          padding: '12px',
+                          border: `1px solid ${colors.border}`,
+                          borderRadius: '8px',
+                          backgroundColor: colors.surface,
+                          color: colors.text,
+                          fontSize: '14px',
+                          boxSizing: 'border-box'
+                        }}
+                        placeholder="0.00"
+                      />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '14px', fontWeight: '500', color: colors.text, marginBottom: '6px', display: 'block' }}>
+                        Fecha Primer Abono
+                      </label>
+                      <input
+                        type="date"
+                        value={editingSubvencion.fechaPrimerAbono || ''}
+                        onChange={(e) => setEditingSubvencion(prev => ({ ...prev, fechaPrimerAbono: e.target.value }))}
+                        style={{
+                          width: '100%',
+                          padding: '12px',
+                          border: `1px solid ${colors.border}`,
+                          borderRadius: '8px',
+                          backgroundColor: colors.surface,
+                          color: colors.text,
+                          fontSize: '14px',
+                          boxSizing: 'border-box'
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                    <div>
+                      <label style={{ fontSize: '14px', fontWeight: '500', color: colors.text, marginBottom: '6px', display: 'block' }}>
+                        Segundo Abono (€)
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={editingSubvencion.segundoAbono || ''}
+                        onChange={(e) => setEditingSubvencion(prev => ({ ...prev, segundoAbono: parseFloat(e.target.value) || 0 }))}
+                        style={{
+                          width: '100%',
+                          padding: '12px',
+                          border: `1px solid ${colors.border}`,
+                          borderRadius: '8px',
+                          backgroundColor: colors.surface,
+                          color: colors.text,
+                          fontSize: '14px',
+                          boxSizing: 'border-box'
+                        }}
+                        placeholder="0.00"
+                      />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '14px', fontWeight: '500', color: colors.text, marginBottom: '6px', display: 'block' }}>
+                        Fecha Segundo Abono
+                      </label>
+                      <input
+                        type="date"
+                        value={editingSubvencion.fechaSegundoAbono || ''}
+                        onChange={(e) => setEditingSubvencion(prev => ({ ...prev, fechaSegundoAbono: e.target.value }))}
+                        style={{
+                          width: '100%',
+                          padding: '12px',
+                          border: `1px solid ${colors.border}`,
+                          borderRadius: '8px',
+                          backgroundColor: colors.surface,
+                          color: colors.text,
+                          fontSize: '14px',
+                          boxSizing: 'border-box'
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Información Adicional */}
+              <div style={{ padding: '16px', backgroundColor: colors.background, borderRadius: '8px' }}>
+                <h3 style={{ fontSize: '16px', fontWeight: '600', color: colors.text, margin: '0 0 16px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Settings size={18} color={colors.primary} />
+                  Información Adicional
+                </h3>
+                <div style={{ display: 'grid', gap: '16px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                    <div>
+                      <label style={{ fontSize: '14px', fontWeight: '500', color: colors.text, marginBottom: '6px', display: 'block' }}>
+                        Previsión Pago Total
+                      </label>
+                      <input
+                        type="text"
+                        value={editingSubvencion.previsionPago || ''}
+                        onChange={(e) => setEditingSubvencion(prev => ({ ...prev, previsionPago: e.target.value }))}
+                        style={{
+                          width: '100%',
+                          padding: '12px',
+                          border: `1px solid ${colors.border}`,
+                          borderRadius: '8px',
+                          backgroundColor: colors.surface,
+                          color: colors.text,
+                          fontSize: '14px',
+                          boxSizing: 'border-box'
+                        }}
+                        placeholder="Ej: Q2 2024"
+                      />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '14px', fontWeight: '500', color: colors.text, marginBottom: '6px', display: 'block' }}>
+                        Fecha de Justificación
+                      </label>
+                      <input
+                        type="date"
+                        value={editingSubvencion.fechaJustificacion || ''}
+                        onChange={(e) => setEditingSubvencion(prev => ({ ...prev, fechaJustificacion: e.target.value }))}
+                        style={{
+                          width: '100%',
+                          padding: '12px',
+                          border: `1px solid ${colors.border}`,
+                          borderRadius: '8px',
+                          backgroundColor: colors.surface,
+                          color: colors.text,
+                          fontSize: '14px',
+                          boxSizing: 'border-box'
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                    <div>
+                      <label style={{ fontSize: '14px', fontWeight: '500', color: colors.text, marginBottom: '6px', display: 'block' }}>
+                        Revisado por Gestoría
+                      </label>
+                      <select
+                        value={editingSubvencion.revisadoGestoria ? 'si' : 'no'}
+                        onChange={(e) => setEditingSubvencion(prev => ({ ...prev, revisadoGestoria: e.target.value === 'si' }))}
+                        style={{
+                          width: '100%',
+                          padding: '12px',
+                          border: `1px solid ${colors.border}`,
+                          borderRadius: '8px',
+                          backgroundColor: colors.surface,
+                          color: colors.text,
+                          fontSize: '14px'
+                        }}
+                      >
+                        <option value="no">No</option>
+                        <option value="si">Sí</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '14px', fontWeight: '500', color: colors.text, marginBottom: '6px', display: 'block' }}>
+                        Estado
+                      </label>
+                      <select
+                        value={editingSubvencion.estado || ''}
+                        onChange={(e) => setEditingSubvencion(prev => ({ ...prev, estado: e.target.value }))}
+                        style={{
+                          width: '100%',
+                          padding: '12px',
+                          border: `1px solid ${colors.border}`,
+                          borderRadius: '8px',
+                          backgroundColor: colors.surface,
+                          color: colors.text,
+                          fontSize: '14px'
+                        }}
+                      >
+                        <option value="">Seleccionar estado</option>
+                        <option value="CERRADA">Cerrada</option>
+                        <option value="CERRAD PDTE INGRESO DEL SALDO">Cerrada - Pendiente Ingreso</option>
+                        <option value="CERRADA PDTE APROBACIÓN FINAL">Cerrada - Pendiente Aprobación</option>
+                        <option value="VIGENTE">Vigente</option>
+                        <option value="POR DEFINIR">Por Definir</option>
+                        <option value="CERRADA DESDE EL PROVEE">Cerrada - Proveedor</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: '14px', fontWeight: '500', color: colors.text, marginBottom: '6px', display: 'block' }}>
+                      Holded Asentamiento
+                    </label>
+                    <input
+                      type="text"
+                      value={editingSubvencion.holdedAsentamiento || ''}
+                      onChange={(e) => setEditingSubvencion(prev => ({ ...prev, holdedAsentamiento: e.target.value }))}
+                      style={{
+                        width: '100%',
+                        padding: '12px',
+                        border: `1px solid ${colors.border}`,
+                        borderRadius: '8px',
+                        backgroundColor: colors.surface,
+                        color: colors.text,
+                        fontSize: '14px'
+                      }}
+                      placeholder="Ej: Asentado"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '16px', justifyContent: 'flex-end', marginTop: '24px' }}>
+              <button
+                onClick={() => {
+                  setShowEditModal(false);
+                  setShowNewSubvencionModal(false);
+                  setEditingSubvencion(null);
+                }}
+                style={{
+                  padding: '12px 24px',
+                  backgroundColor: 'transparent',
+                  color: colors.textSecondary,
+                  border: `1px solid ${colors.border}`,
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: '500'
+                }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleSaveSubvencion}
+                disabled={!editingSubvencion.nombre.trim() || loading}
+                style={{
+                  padding: '12px 24px',
+                  backgroundColor: editingSubvencion.nombre.trim() && !loading ? colors.primary : colors.border,
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: editingSubvencion.nombre.trim() && !loading ? 'pointer' : 'not-allowed',
+                  fontSize: '14px',
+                  fontWeight: '500'
+                }}
+              >
+                {loading ? 'Guardando...' : (showNewSubvencionModal ? 'Crear' : 'Guardar')}
               </button>
             </div>
           </motion.div>

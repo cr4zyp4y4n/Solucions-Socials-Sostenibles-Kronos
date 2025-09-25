@@ -5,280 +5,364 @@ class SubvencionesService {
     this.subvencionesData = [];
   }
 
-  // Procesar datos CSV de subvenciones
+  // Procesar CSV y guardar en memoria (NO en Supabase)
   processCSVData(csvData) {
     try {
+      console.log('📋 Procesando CSV de subvenciones...');
+      
       // Convertir CSV a JSON
       const workbook = XLSX.read(csvData, { type: 'string' });
       const sheetName = workbook.SheetNames[0];
       const worksheet = workbook.Sheets[sheetName];
       const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
 
-      // Encontrar la fila que contiene los nombres de las subvenciones
-      let subvencionesRowIndex = -1;
-      let subvencionesNames = [];
-      let subvencionesColumns = []; // Array de índices de columnas donde están las subvenciones
+      // Encontrar la fila de SUBVENCIÓN (fila 8, índice 7)
+      const subvencionesRow = jsonData[7]; // Fila 8
+      const subvencionesNames = [];
+      const subvencionesColumns = [];
 
-      for (let i = 0; i < jsonData.length; i++) {
-        const row = jsonData[i];
-        if (row && row[0] === 'SUBVENCIÓN') {
-          subvencionesRowIndex = i;
-          
-          // Encontrar todas las columnas que tienen nombres de subvenciones
-          for (let j = 1; j < row.length; j++) {
-            if (row[j] && row[j].trim() !== '') {
-              subvencionesNames.push(row[j].trim());
-              subvencionesColumns.push(j);
-            }
-          }
-          break;
+      // Encontrar todas las columnas con nombres de subvenciones
+      for (let j = 1; j < subvencionesRow.length; j++) {
+        if (subvencionesRow[j] && subvencionesRow[j].trim() !== '') {
+          subvencionesNames.push(subvencionesRow[j].trim());
+          subvencionesColumns.push(j);
         }
       }
 
-      if (subvencionesRowIndex === -1) {
-        throw new Error('No se encontró la fila de subvenciones');
-      }
-
-      // Mapear los índices de las filas de datos (cada fila es un campo)
-      const dataFields = [
-        'SUBVENCIÓN',           // fila 8
-        'PROYECTO',             // fila 9
-        'IMPUTACIÓN',           // fila 10
-        'No. EXPEDIENTE',       // fila 11
-        'COD. SUBVENCIÓN -ORDEN', // fila 12
-        'MODALIDAD',            // fila 13
-        'FECHA FINAL ADJUDICACIÓN', // fila 14
-        'IMPORTE SOLICITADO',   // fila 15
-        'PERIODO DE EJECUCIÓN', // fila 16
-        'IMPORTE OTORGADO',     // fila 17
-        'SOC: L1 ACOMP',        // fila 18
-        'SOC: L2 CONTRAT. TRABAJ', // fila 19
-        '1r ABONO',             // fila 20
-        'FECHA/CTA',            // fila 21
-        '2o ABONO',             // fila 22
-        'FECHA/CTA',            // fila 23
-        'FASE DEL PROYECTO 1',  // fila 24
-        'FASE DEL PROYECTO 2',  // fila 25
-        'FASE DEL PROYECTO 3',  // fila 26
-        'FASE DEL PROYECTO 4',  // fila 27
-        'FASE DEL PROYECTO 5',  // fila 28
-        'FASE DEL PROYECTO 6',  // fila 29
-        'FASE DEL PROYECTO 7',  // fila 30
-        'FASE DEL PROYECTO 8',  // fila 31
-        'SALDO PDTE DE ABONO',  // fila 33
-        'PREVISIÓN PAGO TOTAL', // fila 34
-        'FECHA JUSTIFICACIÓN',  // fila 35
-        'REV. GESTORIA',        // fila 41
-        'ESTADO',               // fila 48
-        'HOLDED ASENTAM.',      // fila 56
-        'IMPORTES POR COBRAR'   // fila 57
-      ];
-
-      // Mapear índices específicos basados en la estructura real del CSV
-      const fieldIndices = {
-        'SUBVENCIÓN': subvencionesRowIndex,           // fila 8
-        'PROYECTO': subvencionesRowIndex + 1,         // fila 9
-        'IMPUTACIÓN': subvencionesRowIndex + 2,       // fila 10
-        'No. EXPEDIENTE': subvencionesRowIndex + 3,   // fila 11
-        'COD. SUBVENCIÓN -ORDEN': subvencionesRowIndex + 4, // fila 12
-        'MODALIDAD': subvencionesRowIndex + 5,        // fila 13
-        'FECHA FINAL ADJUDICACIÓN': subvencionesRowIndex + 6, // fila 14
-        'IMPORTE SOLICITADO': subvencionesRowIndex + 7, // fila 15
-        'PERIODO DE EJECUCIÓN': subvencionesRowIndex + 8, // fila 16
-        'IMPORTE OTORGADO': subvencionesRowIndex + 9,  // fila 17
-        'SOC: L1 ACOMP': subvencionesRowIndex + 10,    // fila 18
-        'SOC: L2 CONTRAT. TRABAJ': subvencionesRowIndex + 11, // fila 19
-        '1r ABONO': subvencionesRowIndex + 12,         // fila 20
-        'FECHA/CTA': subvencionesRowIndex + 13,        // fila 21
-        '2o ABONO': subvencionesRowIndex + 14,         // fila 22
-        'FECHA/CTA': subvencionesRowIndex + 15,        // fila 23
-        'FASE DEL PROYECTO 1': subvencionesRowIndex + 16, // fila 24
-        'FASE DEL PROYECTO 2': subvencionesRowIndex + 17, // fila 25
-        'FASE DEL PROYECTO 3': subvencionesRowIndex + 18, // fila 26
-        'FASE DEL PROYECTO 4': subvencionesRowIndex + 19, // fila 27
-        'FASE DEL PROYECTO 5': subvencionesRowIndex + 20, // fila 28
-        'FASE DEL PROYECTO 6': subvencionesRowIndex + 21, // fila 29
-        'FASE DEL PROYECTO 7': subvencionesRowIndex + 22, // fila 30
-        'FASE DEL PROYECTO 8': subvencionesRowIndex + 23, // fila 31
-        'SALDO PDTE DE ABONO': subvencionesRowIndex + 25, // fila 33 (hay una fila vacía en 32)
-        'PREVISIÓN PAGO TOTAL': subvencionesRowIndex + 26, // fila 34
-        'FECHA JUSTIFICACIÓN': subvencionesRowIndex + 27, // fila 35
-        'REV. GESTORIA': subvencionesRowIndex + 33,     // fila 41 (hay varias filas de datos adicionales)
-        'ESTADO': subvencionesRowIndex + 40            // fila 48
-      };
+      console.log(`✅ Encontradas ${subvencionesNames.length} subvenciones`);
 
       // Procesar cada subvención
-      const processedSubvenciones = [];
-
-      console.log('🔍 Procesando subvenciones:', subvencionesNames);
-      console.log('📊 Columnas de subvenciones:', subvencionesColumns);
-      console.log('📊 Índices de campos:', fieldIndices);
-
-      subvencionesNames.forEach((subvencionName, index) => {
-        if (!subvencionName || subvencionName.trim() === '') return;
-        
-        const columnIndex = subvencionesColumns[index]; // Usar el índice real de la columna
-
-        const subvencionData = {
-          id: index + 1,
-          nombre: subvencionName.trim(),
-          proyecto: this.getFieldValue(jsonData, fieldIndices['PROYECTO'], columnIndex),
-          imputacion: this.getFieldValue(jsonData, fieldIndices['IMPUTACIÓN'], columnIndex),
-          expediente: this.getFieldValue(jsonData, fieldIndices['No. EXPEDIENTE'], columnIndex),
-          codigo: this.getFieldValue(jsonData, fieldIndices['COD. SUBVENCIÓN -ORDEN'], columnIndex),
-          modalidad: this.getFieldValue(jsonData, fieldIndices['MODALIDAD'], columnIndex),
-          fechaAdjudicacion: this.getFieldValue(jsonData, fieldIndices['FECHA FINAL ADJUDICACIÓN'], columnIndex),
-          importeSolicitado: this.parseCurrency(this.getFieldValue(jsonData, fieldIndices['IMPORTE SOLICITADO'], columnIndex)),
-          periodo: this.getFieldValue(jsonData, fieldIndices['PERIODO DE EJECUCIÓN'], columnIndex),
-          importeOtorgado: this.parseCurrency(this.getFieldValue(jsonData, fieldIndices['IMPORTE OTORGADO'], columnIndex)),
-          socL1Acomp: this.parseCurrency(this.getFieldValue(jsonData, fieldIndices['SOC: L1 ACOMP'], columnIndex)),
-          socL2Contrat: this.parseCurrency(this.getFieldValue(jsonData, fieldIndices['SOC: L2 CONTRAT. TRABAJ'], columnIndex)),
-          primerAbono: this.parseCurrency(this.getFieldValue(jsonData, fieldIndices['1r ABONO'], columnIndex)),
-          fechaPrimerAbono: this.getFieldValue(jsonData, fieldIndices['FECHA/CTA'], columnIndex),
-          segundoAbono: this.parseCurrency(this.getFieldValue(jsonData, fieldIndices['2o ABONO'], columnIndex)),
-          fechaSegundoAbono: this.getFieldValue(jsonData, fieldIndices['FECHA/CTA'], columnIndex),
-          fasesProyecto: {
-            fase1: this.getFieldValue(jsonData, fieldIndices['FASE DEL PROYECTO 1'], columnIndex),
-            fase2: this.getFieldValue(jsonData, fieldIndices['FASE DEL PROYECTO 2'], columnIndex),
-            fase3: this.getFieldValue(jsonData, fieldIndices['FASE DEL PROYECTO 3'], columnIndex),
-            fase4: this.getFieldValue(jsonData, fieldIndices['FASE DEL PROYECTO 4'], columnIndex),
-            fase5: this.getFieldValue(jsonData, fieldIndices['FASE DEL PROYECTO 5'], columnIndex),
-            fase6: this.getFieldValue(jsonData, fieldIndices['FASE DEL PROYECTO 6'], columnIndex),
-            fase7: this.getFieldValue(jsonData, fieldIndices['FASE DEL PROYECTO 7'], columnIndex),
-            fase8: this.getFieldValue(jsonData, fieldIndices['FASE DEL PROYECTO 8'], columnIndex)
-          },
-          saldoPendiente: this.parseCurrency(this.getFieldValue(jsonData, fieldIndices['SALDO PDTE DE ABONO'], columnIndex)),
-          saldoPendienteTexto: this.getFieldValue(jsonData, fieldIndices['SALDO PDTE DE ABONO'], columnIndex),
-          previsionPago: this.getFieldValue(jsonData, fieldIndices['PREVISIÓN PAGO TOTAL'], columnIndex),
-          fechaJustificacion: this.getFieldValue(jsonData, fieldIndices['FECHA JUSTIFICACIÓN'], columnIndex),
-          revisadoGestoria: this.getFieldValue(jsonData, fieldIndices['REV. GESTORIA'], columnIndex),
-          estado: this.getFieldValue(jsonData, fieldIndices['ESTADO'], columnIndex),
-          holdedAsentamiento: this.getFieldValue(jsonData, fieldIndices['HOLDED ASENTAM.'], columnIndex),
-          importesPorCobrar: this.parseCurrency(this.getFieldValue(jsonData, fieldIndices['IMPORTES POR COBRAR'], columnIndex))
-        };
-
-        // Log de depuración para campos específicos
-        if (index < 5) { // Solo para las primeras 5 subvenciones
-          console.log(`📋 ${subvencionName} (Columna ${columnIndex}):`, {
-            periodo: subvencionData.periodo,
-            importeOtorgado: subvencionData.importeOtorgado,
-            primerAbono: subvencionData.primerAbono,
-            saldoPendiente: subvencionData.saldoPendiente
-          });
-        }
-
-        // Limpiar datos vacíos o nulos
-        Object.keys(subvencionData).forEach(key => {
-          if (subvencionData[key] === '' || subvencionData[key] === null || subvencionData[key] === undefined) {
-            if (typeof subvencionData[key] === 'number') {
-              subvencionData[key] = 0;
-            } else {
-              subvencionData[key] = '';
-            }
-          }
-        });
-
-        processedSubvenciones.push(subvencionData);
+      const processedSubvenciones = subvencionesNames.map((subvencionName, index) => {
+        const columnIndex = subvencionesColumns[index];
+        return this.processSubvencionData(jsonData, columnIndex, subvencionName);
       });
 
+      // Guardar en memoria
       this.subvencionesData = processedSubvenciones;
+      console.log('💾 Datos guardados en memoria');
+      
       return processedSubvenciones;
 
     } catch (error) {
-      console.error('Error procesando datos CSV de subvenciones:', error);
+      console.error('❌ Error procesando CSV:', error);
       throw error;
     }
   }
 
-  // Obtener valor de un campo específico
-  getFieldValue(data, rowIndex, colIndex) {
-    if (!data || rowIndex >= data.length || !data[rowIndex] || colIndex >= data[rowIndex].length) {
-      return '';
-    }
-    return data[rowIndex][colIndex] || '';
+  // Procesar datos de una subvención específica
+  processSubvencionData(jsonData, columnIndex, subvencionName) {
+    // Mapeo de filas del CSV
+    const rowMap = {
+      proyecto: 8,           // Fila 9
+      imputacion: 9,         // Fila 10
+      expediente: 10,        // Fila 11
+      codigo: 11,            // Fila 12
+      modalidad: 12,         // Fila 13
+      fechaAdjudicacion: 13, // Fila 14
+      importeSolicitado: 14, // Fila 15
+      periodo: 15,           // Fila 16
+      importeOtorgado: 16,   // Fila 17
+      socL1Acomp: 17,        // Fila 18
+      socL2Contrat: 18,      // Fila 19
+      primerAbono: 19,       // Fila 20
+      fechaPrimerAbono: 20,  // Fila 21
+      segundoAbono: 21,      // Fila 22
+      fechaSegundoAbono: 22, // Fila 23
+      fase1: 23,             // Fila 24
+      fase2: 24,             // Fila 25
+      fase3: 25,             // Fila 26
+      fase4: 26,             // Fila 27
+      fase5: 27,             // Fila 28
+      fase6: 28,             // Fila 29
+      fase7: 29,             // Fila 30
+      fase8: 30,             // Fila 31
+      saldoPendiente: 32,    // Fila 33
+      previsionPago: 33,     // Fila 34
+      fechaJustificacion: 34, // Fila 35
+      revisadoGestoria: 40,  // Fila 41
+      estado: 47,            // Fila 48
+      holdedAsentamiento: 55, // Fila 56
+      importesPorCobrar: 56  // Fila 57
+    };
+
+    const subvencionData = {
+      id: `subvencion_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      nombre: subvencionName.trim()
+    };
+
+    // Procesar cada campo
+    Object.entries(rowMap).forEach(([field, rowIndex]) => {
+      const value = this.getFieldValue(jsonData, rowIndex, columnIndex);
+      subvencionData[field] = this.processFieldValue(value, field);
+    });
+
+    // Procesar fases del proyecto
+    subvencionData.fasesProyecto = {
+      fase1: subvencionData.fase1,
+      fase2: subvencionData.fase2,
+      fase3: subvencionData.fase3,
+      fase4: subvencionData.fase4,
+      fase5: subvencionData.fase5,
+      fase6: subvencionData.fase6,
+      fase7: subvencionData.fase7,
+      fase8: subvencionData.fase8
+    };
+
+    // Log para depuración
+    console.log(`📋 ${subvencionName}:`, {
+      importeOtorgado: subvencionData.importeOtorgado,
+      importeSolicitado: subvencionData.importeSolicitado,
+      primerAbono: subvencionData.primerAbono,
+      segundoAbono: subvencionData.segundoAbono,
+      saldoPendiente: subvencionData.saldoPendiente,
+      fechaPrimerAbono: subvencionData.fechaPrimerAbono,
+      fechaSegundoAbono: subvencionData.fechaSegundoAbono,
+      estado: subvencionData.estado
+    });
+
+    return subvencionData;
   }
 
-  // Parsear moneda a número
+  // Obtener valor del campo
+  getFieldValue(jsonData, rowIndex, columnIndex) {
+    if (rowIndex < 0 || rowIndex >= jsonData.length) return '';
+    if (columnIndex < 0 || columnIndex >= jsonData[rowIndex].length) return '';
+    return jsonData[rowIndex][columnIndex] || '';
+  }
+
+  // Procesar valor del campo
+  processFieldValue(value, fieldName) {
+    if (!value || value === '') return null;
+
+    // Campos de líneas de financiación SOC (mantener como texto completo)
+    const socFields = ['socL1Acomp', 'socL2Contrat'];
+    if (socFields.includes(fieldName)) {
+      return this.parseSOCText(value);
+    }
+
+    // Campos numéricos
+    const numericFields = [
+      'importeSolicitado', 'importeOtorgado', 'primerAbono', 'segundoAbono', 
+      'saldoPendiente', 'importesPorCobrar'
+    ];
+
+    if (numericFields.includes(fieldName)) {
+      return this.parseCurrency(value);
+    }
+
+    // Campos de fecha
+    const dateFields = ['fechaAdjudicacion', 'fechaPrimerAbono', 'fechaSegundoAbono', 'fechaJustificacion'];
+    if (dateFields.includes(fieldName)) {
+      return this.parseDate(value);
+    }
+
+    // Campos de texto
+    return value.toString().trim();
+  }
+
+  // Parsear línea de financiación SOC (mantener como texto completo)
+  parseSOCText(value) {
+    if (!value || value === '') return null;
+    
+    const str = value.toString().trim();
+    
+    // Si contiene texto descriptivo sin información útil, devolver null
+    if (str.includes('PEND.') || str.includes('SIN FECHA') || 
+        str.includes('POR DEFINIR') || str.includes('GESTIONAR')) {
+      return null;
+    }
+    
+    // Limpiar espacios extra pero mantener el formato completo
+    return str.replace(/\s+/g, ' ').trim();
+  }
+
+
+  // Parsear moneda
   parseCurrency(value) {
     if (!value || value === '') return 0;
     
-    // Convertir a string para asegurar que tenemos un string
-    const stringValue = value.toString();
+    const str = value.toString().trim();
     
-    // Si contiene texto descriptivo (como "PEND. GESTIONAR"), devolver 0
-    if (stringValue.includes('PEND') || stringValue.includes('GESTIONAR') || 
-        stringValue.includes('SIN FECHA') || stringValue.includes('POR DEFINIR') ||
-        stringValue.includes('ACLARAR') || stringValue.includes('CORRESP')) {
+    // Si contiene texto descriptivo, devolver 0
+    if (str.includes('PEND.') || str.includes('ESTIMADOS') || 
+        str.includes('SIN FECHA') || str.includes('POR DEFINIR') || str.includes('GESTIONAR')) {
       return 0;
     }
     
-    // Remover caracteres no numéricos excepto comas y puntos
-    const cleanValue = stringValue.replace(/[^\d,.-]/g, '');
+    // Remover símbolos de moneda y espacios
+    let cleanValue = str.replace(/[€$]/g, '').replace(/\s/g, '');
     
-    // Si no hay números después de limpiar, devolver 0
-    if (!cleanValue || cleanValue === '') return 0;
+    // Caso especial: si es un número que parece haber sido mal interpretado por Excel
+    // (ej: 37.70428 cuando debería ser 37.704,28)
+    if (typeof value === 'number' && cleanValue.includes('.') && !cleanValue.includes(',')) {
+      // Si el número tiene más de 2 decimales, probablemente sea un error de Excel
+      const parts = cleanValue.split('.');
+      if (parts.length === 2 && parts[1].length > 2) {
+        // Convertir de formato inglés mal interpretado a español
+        // 37.70428 -> 37704.28
+        const integerPart = parts[0];
+        const decimalPart = parts[1];
+        const correctDecimal = decimalPart.slice(-2); // últimos 2 dígitos
+        const correctInteger = integerPart + decimalPart.slice(0, -2); // resto como entero
+        cleanValue = correctInteger + '.' + correctDecimal;
+      }
+    }
     
     // Detectar si es formato español (1.234,56) o inglés (1,234.56)
-    const hasCommaDecimal = cleanValue.includes(',') && cleanValue.split(',')[1] && cleanValue.split(',')[1].length <= 2;
-    const hasDotDecimal = cleanValue.includes('.') && cleanValue.split('.')[1] && cleanValue.split('.')[1].length <= 2;
+    const hasComma = cleanValue.includes(',');
+    const hasDot = cleanValue.includes('.');
     
-    let normalizedValue;
-    
-    if (hasCommaDecimal) {
-      // Formato español: 1.234,56 -> 1234.56
-      normalizedValue = cleanValue.replace(/\./g, '').replace(',', '.');
-    } else if (hasDotDecimal) {
-      // Formato inglés: 1,234.56 -> 1234.56
-      normalizedValue = cleanValue.replace(/,/g, '');
-    } else {
-      // Sin decimales claros, asumir formato español
-      normalizedValue = cleanValue.replace(/\./g, '').replace(',', '.');
+    if (hasComma && hasDot) {
+      // Formato mixto: determinar cuál es el separador decimal
+      const lastComma = cleanValue.lastIndexOf(',');
+      const lastDot = cleanValue.lastIndexOf('.');
+      
+      if (lastComma > lastDot) {
+        // Formato español: 1.234,56 o 37.704,28
+        // El separador decimal es la coma, los puntos son separadores de miles
+        cleanValue = cleanValue.replace(/\./g, '').replace(',', '.');
+      } else {
+        // Formato inglés: 1,234.56
+        cleanValue = cleanValue.replace(/,/g, '');
+      }
+    } else if (hasComma && !hasDot) {
+      // Solo comas: podría ser español (1234,56) o inglés (1,234)
+      const parts = cleanValue.split(',');
+      if (parts.length === 2 && parts[1].length <= 2) {
+        // Formato español: 1234,56
+        cleanValue = cleanValue.replace(',', '.');
+      } else {
+        // Formato inglés: 1,234
+        cleanValue = cleanValue.replace(/,/g, '');
+      }
+    } else if (hasDot && !hasComma) {
+      // Solo puntos: podría ser decimal (1234.56) o miles (1.234)
+      const parts = cleanValue.split('.');
+      if (parts.length === 2 && parts[1].length <= 2) {
+        // Formato decimal: 1234.56
+        // No hacer nada
+      } else {
+        // Formato de miles: 1.234
+        cleanValue = cleanValue.replace(/\./g, '');
+      }
     }
     
-    const parsed = parseFloat(normalizedValue);
-    
-    // Log de depuración para valores problemáticos
-    if (value && value !== '' && (parsed < 1000 || stringValue.includes('.'))) {
-      console.log(`💰 Parseando: "${stringValue}" -> "${cleanValue}" -> "${normalizedValue}" -> ${parsed}`);
-    }
-    
+    const parsed = parseFloat(cleanValue);
     return isNaN(parsed) ? 0 : parsed;
   }
 
-  // Obtener datos procesados
+  // Parsear fecha (preservando información adicional como cuentas bancarias)
+  parseDate(value) {
+    if (!value || value === '') return null;
+    
+    const str = value.toString().trim();
+    
+    // Si contiene texto descriptivo sin fecha, devolver null
+    if (str.includes('PENDIENTE') || str.includes('SIN FECHA') || str.includes('POR DEFINIR') || 
+        str.includes('GESTIONAR') || str.includes('ESTIMADOS')) {
+      return null;
+    }
+    
+    const dateFormats = [
+      /(\d{4})-(\d{1,2})-(\d{1,2})/,   // YYYY-MM-DD
+      /(\d{1,2})\/(\d{1,2})\/(\d{4})/, // DD/MM/YYYY
+      /(\d{1,2})\/(\d{1,2})\/(\d{2})/, // DD/MM/YY
+      /(\d{1,2})-(\d{1,2})-(\d{4})/,   // DD-MM-YYYY
+      /(\d{1,2})\.(\d{1,2})\.(\d{4})/, // DD.MM.YYYY
+      /(\d{1,2})\/(\d{1,2})/,          // DD/MM (asumir año actual)
+    ];
+    
+    for (const format of dateFormats) {
+      const match = str.match(format);
+      if (match) {
+        if (format === dateFormats[0]) {
+          // YYYY-MM-DD - devolver tal como está
+          return str;
+        } else if (format === dateFormats[1] || format === dateFormats[3] || format === dateFormats[4]) {
+          // DD/MM/YYYY, DD-MM-YYYY, DD.MM.YYYY - preservar texto adicional
+          const [, day, month, year] = match;
+          const datePart = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+          const additionalInfo = str.substring(match[0].length).trim();
+          return additionalInfo ? `${datePart} ${additionalInfo}` : datePart;
+        } else if (format === dateFormats[2]) {
+          // DD/MM/YY - preservar texto adicional
+          const [, day, month, year] = match;
+          const fullYear = year.length === 2 ? `20${year}` : year;
+          const datePart = `${fullYear}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+          const additionalInfo = str.substring(match[0].length).trim();
+          return additionalInfo ? `${datePart} ${additionalInfo}` : datePart;
+        } else if (format === dateFormats[5]) {
+          // DD/MM - asumir año actual y preservar texto adicional
+          const [, day, month] = match;
+          const currentYear = new Date().getFullYear();
+          const datePart = `${currentYear}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+          const additionalInfo = str.substring(match[0].length).trim();
+          return additionalInfo ? `${datePart} ${additionalInfo}` : datePart;
+        }
+      }
+    }
+    
+    return null;
+  }
+
+  // Obtener datos actuales
   getSubvencionesData() {
     return this.subvencionesData;
   }
 
-  // Filtrar subvenciones por criterios
-  filterSubvenciones(filters) {
+  // Filtrar subvenciones
+  filterSubvenciones({ searchTerm, estado, imputacion, fase, sortBy }) {
     let filtered = [...this.subvencionesData];
 
-    if (filters.searchTerm) {
-      const searchLower = filters.searchTerm.toLowerCase();
-      filtered = filtered.filter(subvencion => {
-        const nombre = (subvencion.nombre || '').toString().toLowerCase();
-        const proyecto = (subvencion.proyecto || '').toString().toLowerCase();
-        const expediente = (subvencion.expediente || '').toString().toLowerCase();
-        
-        return nombre.includes(searchLower) ||
-               proyecto.includes(searchLower) ||
-               expediente.includes(searchLower);
-      });
+    // Filtro por término de búsqueda
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase();
+      filtered = filtered.filter(subvencion => 
+        subvencion.nombre.toLowerCase().includes(term) ||
+        subvencion.proyecto?.toLowerCase().includes(term) ||
+        subvencion.expediente?.toLowerCase().includes(term) ||
+        subvencion.codigo?.toLowerCase().includes(term)
+      );
     }
 
-    if (filters.estado && filters.estado !== 'todos') {
-      filtered = filtered.filter(subvencion => (subvencion.estado || '') === filters.estado);
+    // Filtro por estado
+    if (estado && estado !== 'Todas') {
+      filtered = filtered.filter(subvencion => subvencion.estado === estado);
     }
 
-    if (filters.imputacion && filters.imputacion !== 'todos') {
-      filtered = filtered.filter(subvencion => (subvencion.imputacion || '') === filters.imputacion);
+    // Filtro por imputación
+    if (imputacion && imputacion !== 'Todas') {
+      filtered = filtered.filter(subvencion => subvencion.imputacion === imputacion);
     }
 
-    if (filters.año) {
-      filtered = filtered.filter(subvencion => {
-        const periodo = (subvencion.periodo || '').toString();
-        return periodo.includes(filters.año);
+    // Filtro por fase
+    if (fase && fase !== 'Todas') {
+      if (fase === 'sin-fases') {
+        filtered = filtered.filter(subvencion => {
+          const fases = subvencion.fasesProyecto || {};
+          return !Object.values(fases).some(faseValue => faseValue && faseValue !== 'X' && faseValue.trim() !== '');
+        });
+      } else {
+        filtered = filtered.filter(subvencion => {
+          const fases = subvencion.fasesProyecto || {};
+          return fases[`fase${fase}`] && fases[`fase${fase}`] !== 'X' && fases[`fase${fase}`].trim() !== '';
+        });
+      }
+    }
+
+    // Ordenamiento
+    if (sortBy) {
+      filtered.sort((a, b) => {
+        switch (sortBy) {
+          case 'nombre':
+            return a.nombre.localeCompare(b.nombre);
+          case 'importe':
+            return (b.importeOtorgado || 0) - (a.importeOtorgado || 0);
+          case 'fecha':
+            return new Date(b.fechaCreacion) - new Date(a.fechaCreacion);
+          default:
+            return 0;
+        }
       });
     }
 
@@ -287,41 +371,75 @@ class SubvencionesService {
 
   // Obtener estadísticas
   getEstadisticas() {
-    const total = this.subvencionesData.length;
-    const totalOtorgado = this.subvencionesData.reduce((sum, s) => sum + s.importeOtorgado, 0);
-    const totalPendiente = this.subvencionesData.reduce((sum, s) => sum + s.saldoPendiente, 0);
-    const totalPorCobrar = this.subvencionesData.reduce((sum, s) => sum + s.importesPorCobrar, 0);
+    const totalOtorgado = this.subvencionesData.reduce((sum, subvencion) => 
+      sum + (subvencion.importeOtorgado || 0), 0
+    );
 
-    const estados = {};
-    this.subvencionesData.forEach(subvencion => {
-      const estado = subvencion.estado || 'Sin estado';
-      estados[estado] = (estados[estado] || 0) + 1;
-    });
+    const totalSolicitado = this.subvencionesData.reduce((sum, subvencion) => 
+      sum + (subvencion.importeSolicitado || 0), 0
+    );
 
-    const imputaciones = {};
-    this.subvencionesData.forEach(subvencion => {
-      const imputacion = subvencion.imputacion || 'Sin imputación';
-      imputaciones[imputacion] = (imputaciones[imputacion] || 0) + 1;
-    });
+    const totalAbonado = this.subvencionesData.reduce((sum, subvencion) => 
+      sum + (subvencion.primerAbono || 0) + (subvencion.segundoAbono || 0), 0
+    );
+
+    const totalPendiente = totalOtorgado - totalAbonado;
 
     return {
-      total,
       totalOtorgado,
+      totalSolicitado,
+      totalAbonado,
       totalPendiente,
-      totalPorCobrar,
-      estados,
-      imputaciones
+      total: this.subvencionesData.length,
+      totalSubvenciones: this.subvencionesData.length
     };
   }
 
+  // Analizar fases del proyecto
+  analizarFasesProyecto(fasesProyecto) {
+    if (!fasesProyecto) return [];
+
+    const nombresFases = {
+      1: 'Fase 1 - Inicio del Proyecto',
+      2: 'Fase 2 - Desarrollo',
+      3: 'Fase 3 - Implementación',
+      4: 'Fase 4 - Ejecución',
+      5: 'Fase 5 - Seguimiento',
+      6: 'Fase 6 - Evaluación',
+      7: 'Fase 7 - Finalización',
+      8: 'Fase 8 - Cierre'
+    };
+
+    const fases = [];
+    for (let i = 1; i <= 8; i++) {
+      const fase = fasesProyecto[`fase${i}`];
+      
+      // Verificar si es una fase activa
+      if (fase && fase.trim() !== '') {
+        // Si es "X" o contiene "Fase" en el texto, es una fase activa
+        if (fase === 'X' || fase.toLowerCase().includes('fase')) {
+          fases.push({
+            numero: i,
+            campo: `fase${i}`,
+            nombre: nombresFases[i] || `Fase ${i}`,
+            contenido: fase,
+            activa: true
+          });
+        }
+        // Si contiene "OK" o fechas, no es una fase activa, es información de seguimiento
+        // (no se incluye en las fases activas)
+      }
+    }
+
+    return fases;
+  }
+
   // Exportar a Excel
-  exportToExcel(subvenciones = null) {
-    const dataToExport = subvenciones || this.subvencionesData;
-    
+  exportToExcel(data) {
     const wb = XLSX.utils.book_new();
     
-    const excelData = dataToExport.map(subvencion => ({
-      'Subvención': subvencion.nombre,
+    const exportData = data.map(subvencion => ({
+      'Nombre': subvencion.nombre,
       'Proyecto': subvencion.proyecto,
       'Imputación': subvencion.imputacion,
       'Expediente': subvencion.expediente,
@@ -329,8 +447,8 @@ class SubvencionesService {
       'Modalidad': subvencion.modalidad,
       'Fecha Adjudicación': subvencion.fechaAdjudicacion,
       'Importe Solicitado': subvencion.importeSolicitado,
-      'Período': subvencion.periodo,
       'Importe Otorgado': subvencion.importeOtorgado,
+      'Período Ejecución': subvencion.periodo,
       'SOC L1 Acompañamiento': subvencion.socL1Acomp,
       'SOC L2 Contratación': subvencion.socL2Contrat,
       'Primer Abono': subvencion.primerAbono,
@@ -346,39 +464,22 @@ class SubvencionesService {
       'Importes por Cobrar': subvencion.importesPorCobrar
     }));
 
-    const ws = XLSX.utils.json_to_sheet(excelData);
-    
-    // Ajustar anchos de columna
-    const colWidths = [
-      { wch: 30 }, // Subvención
-      { wch: 50 }, // Proyecto
-      { wch: 15 }, // Imputación
-      { wch: 25 }, // Expediente
-      { wch: 20 }, // Código
-      { wch: 20 }, // Modalidad
-      { wch: 20 }, // Fecha Adjudicación
-      { wch: 15 }, // Importe Solicitado
-      { wch: 25 }, // Período
-      { wch: 15 }, // Importe Otorgado
-      { wch: 20 }, // SOC L1 Acompañamiento
-      { wch: 20 }, // SOC L2 Contratación
-      { wch: 15 }, // Primer Abono
-      { wch: 20 }, // Fecha Primer Abono
-      { wch: 15 }, // Segundo Abono
-      { wch: 20 }, // Fecha Segundo Abono
-      { wch: 15 }, // Saldo Pendiente
-      { wch: 20 }, // Previsión Pago
-      { wch: 25 }, // Fecha Justificación
-      { wch: 20 }, // Revisado Gestoría
-      { wch: 25 }, // Estado
-      { wch: 20 }, // Holded Asentamiento
-      { wch: 20 }  // Importes por Cobrar
-    ];
-    ws['!cols'] = colWidths;
-
+    const ws = XLSX.utils.json_to_sheet(exportData);
     XLSX.utils.book_append_sheet(wb, ws, 'Subvenciones');
     
     return wb;
+  }
+
+  // Obtener opciones de filtros
+  getFiltros() {
+    const estados = [...new Set(this.subvencionesData.map(s => s.estado).filter(Boolean))];
+    const imputaciones = [...new Set(this.subvencionesData.map(s => s.imputacion).filter(Boolean))];
+    
+    return {
+      estados: ['Todas', ...estados],
+      imputaciones: ['Todas', ...imputaciones],
+      fases: ['Todas', '1', '2', '3', '4', '5', '6', '7', '8']
+    };
   }
 }
 

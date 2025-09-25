@@ -1,6 +1,6 @@
-# SSS Kronos v2.1.2
+# SSS Kronos v2.2.0
 
-🚀 **Release Notes - SSS Kronos v2.1.2**
+🚀 **Release Notes - SSS Kronos v2.2.0**
 
 ## 📦 Archivos de Distribución
 
@@ -13,6 +13,15 @@
 *Nota: Los instaladores para macOS y Linux se generarán en futuras versiones*
 
 ## ✨ Nuevas Características y Cambios Clave
+
+### 🆕 **v2.2.0 - Sistema de Subvenciones con Base de Datos**
+- ✅ **Nueva sección de Subvenciones:** Gestión completa de subvenciones con interfaz moderna
+- ✅ **Integración con Supabase:** Almacenamiento persistente de datos de subvenciones
+- ✅ **Sistema de comentarios:** Añadir, editar y eliminar comentarios por subvención
+- ✅ **Importación CSV:** Sincronización automática de datos CSV con la base de datos
+- ✅ **Filtros avanzados:** Búsqueda por nombre, estado, imputación y fase del proyecto
+- ✅ **Detección de fases:** Análisis inteligente de fases del proyecto con indicadores visuales
+- ✅ **Temas claro/oscuro:** Soporte completo para ambos modos de visualización
 
 ### 🆕 **v2.1.2 - Optimización de Carga y Experiencia de Usuario**
 - ✅ **Feedback visual mejorado:** Mensajes de carga dinámicos durante sincronización con Holded
