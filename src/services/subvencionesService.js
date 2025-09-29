@@ -311,7 +311,7 @@ class SubvencionesService {
   }
 
   // Filtrar subvenciones
-  filterSubvenciones({ searchTerm, estado, imputacion, fase, sortBy }) {
+  filterSubvenciones({ searchTerm, estado, imputacion, modalidad, proyecto, fase, sortBy }) {
     let filtered = [...this.subvencionesData];
 
     // Filtro por término de búsqueda
@@ -321,7 +321,8 @@ class SubvencionesService {
         subvencion.nombre.toLowerCase().includes(term) ||
         subvencion.proyecto?.toLowerCase().includes(term) ||
         subvencion.expediente?.toLowerCase().includes(term) ||
-        subvencion.codigo?.toLowerCase().includes(term)
+        subvencion.codigo?.toLowerCase().includes(term) ||
+        subvencion.modalidad?.toLowerCase().includes(term)
       );
     }
 
@@ -335,17 +336,27 @@ class SubvencionesService {
       filtered = filtered.filter(subvencion => subvencion.imputacion === imputacion);
     }
 
+    // Filtro por modalidad
+    if (modalidad && modalidad !== 'Todas') {
+      filtered = filtered.filter(subvencion => subvencion.modalidad === modalidad);
+    }
+
+    // Filtro por proyecto
+    if (proyecto && proyecto !== 'Todas') {
+      filtered = filtered.filter(subvencion => subvencion.proyecto === proyecto);
+    }
+
     // Filtro por fase
     if (fase && fase !== 'Todas') {
       if (fase === 'sin-fases') {
         filtered = filtered.filter(subvencion => {
-          const fases = subvencion.fasesProyecto || {};
-          return !Object.values(fases).some(faseValue => faseValue && faseValue !== 'X' && faseValue.trim() !== '');
+          const fases = this.analizarFasesProyecto(subvencion);
+          return fases.length === 0;
         });
       } else {
         filtered = filtered.filter(subvencion => {
-          const fases = subvencion.fasesProyecto || {};
-          return fases[`fase${fase}`] && fases[`fase${fase}`] !== 'X' && fases[`fase${fase}`].trim() !== '';
+          const fases = this.analizarFasesProyecto(subvencion);
+          return fases.some(f => f.numero.toString() === fase);
         });
       }
     }
@@ -474,11 +485,24 @@ class SubvencionesService {
   getFiltros() {
     const estados = [...new Set(this.subvencionesData.map(s => s.estado).filter(Boolean))];
     const imputaciones = [...new Set(this.subvencionesData.map(s => s.imputacion).filter(Boolean))];
+    const modalidades = [...new Set(this.subvencionesData.map(s => s.modalidad).filter(Boolean))];
+    const proyectos = [...new Set(this.subvencionesData.map(s => s.proyecto).filter(Boolean))];
+    
+    // Obtener fases activas de todas las subvenciones
+    const fasesActivas = new Set();
+    this.subvencionesData.forEach(subvencion => {
+      const fases = this.analizarFasesProyecto(subvencion);
+      fases.forEach(fase => {
+        fasesActivas.add(fase.numero.toString());
+      });
+    });
     
     return {
-      estados: ['Todas', ...estados],
-      imputaciones: ['Todas', ...imputaciones],
-      fases: ['Todas', '1', '2', '3', '4', '5', '6', '7', '8']
+      estados: ['Todas', ...estados.sort()],
+      imputaciones: ['Todas', ...imputaciones.sort()],
+      modalidades: ['Todas', ...modalidades.sort()],
+      proyectos: ['Todas', ...proyectos.sort()],
+      fases: ['Todas', 'sin-fases', ...Array.from(fasesActivas).sort()]
     };
   }
 }

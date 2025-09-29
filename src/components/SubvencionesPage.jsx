@@ -42,7 +42,6 @@ const SubvencionesPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedEstado, setSelectedEstado] = useState('Todas');
   const [selectedImputacion, setSelectedImputacion] = useState('Todas');
   const [selectedFase, setSelectedFase] = useState('Todas');
   const [selectedSubvencion, setSelectedSubvencion] = useState(null);
@@ -351,22 +350,14 @@ const SubvencionesPage = () => {
   const filteredData = useMemo(() => {
     return subvencionesService.filterSubvenciones({
       searchTerm,
-      estado: selectedEstado,
       imputacion: selectedImputacion,
       fase: selectedFase
     });
-  }, [subvencionesData, searchTerm, selectedEstado, selectedImputacion, selectedFase]);
+  }, [subvencionesData, searchTerm, selectedImputacion, selectedFase]);
 
-  // Obtener estados únicos
-  const estadosUnicos = useMemo(() => {
-    const estados = [...new Set(subvencionesData.map(s => s.estado))];
-    return estados.filter(estado => estado && estado.trim() !== '');
-  }, [subvencionesData]);
-
-  // Obtener imputaciones únicas
-  const imputacionesUnicas = useMemo(() => {
-    const imputaciones = [...new Set(subvencionesData.map(s => s.imputacion))];
-    return imputaciones.filter(imputacion => imputacion && imputacion.trim() !== '');
+  // Obtener opciones de filtros usando el servicio
+  const filtros = useMemo(() => {
+    return subvencionesService.getFiltros();
   }, [subvencionesData]);
 
   // Calcular totales usando el servicio
@@ -512,9 +503,10 @@ const SubvencionesPage = () => {
         boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
         marginBottom: '24px'
       }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: '16px', alignItems: 'end' }}>
+        {/* Filtros simplificados */}
+        <div style={{ display: 'flex', gap: '20px', alignItems: 'end', marginBottom: '20px', width: '100%' }}>
           {/* Búsqueda */}
-          <div>
+          <div style={{ flex: '2', minWidth: '250px' }}>
             <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', color: colors.text, marginBottom: '8px' }}>
               Buscar
             </label>
@@ -532,20 +524,22 @@ const SubvencionesPage = () => {
                   borderRadius: '8px',
                   fontSize: '14px',
                   outline: 'none',
-                  backgroundColor: colors.surface
+                  backgroundColor: colors.surface,
+                  color: colors.text,
+                  boxSizing: 'border-box'
                 }}
               />
             </div>
           </div>
 
-          {/* Filtro por estado */}
-          <div>
+          {/* Filtro por fases */}
+          <div style={{ flex: '1', minWidth: '200px' }}>
             <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', color: colors.text, marginBottom: '8px' }}>
-              Estado
+              Fases del Proyecto
             </label>
             <select
-              value={selectedEstado}
-              onChange={(e) => setSelectedEstado(e.target.value)}
+              value={selectedFase}
+              onChange={(e) => setSelectedFase(e.target.value)}
               style={{
                 width: '100%',
                 padding: '12px',
@@ -553,20 +547,23 @@ const SubvencionesPage = () => {
                 borderRadius: '8px',
                 fontSize: '14px',
                 outline: 'none',
-                backgroundColor: colors.surface
+                backgroundColor: colors.surface,
+                color: colors.text,
+                boxSizing: 'border-box'
               }}
             >
-              <option value="Todas">Todos los estados</option>
-              {estadosUnicos.map(estado => (
-                <option key={estado} value={estado}>
-                  {estados[estado]?.label || estado}
+              {filtros.fases.map(fase => (
+                <option key={fase} value={fase}>
+                  {fase === 'Todas' ? 'Todas las fases' : 
+                   fase === 'sin-fases' ? 'Sin fases activas' : 
+                   `Fase ${fase}`}
                 </option>
               ))}
             </select>
           </div>
 
           {/* Filtro por imputación */}
-          <div>
+          <div style={{ flex: '1', minWidth: '200px' }}>
             <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', color: colors.text, marginBottom: '8px' }}>
               Imputación
             </label>
@@ -580,11 +577,12 @@ const SubvencionesPage = () => {
                 borderRadius: '8px',
                 fontSize: '14px',
                 outline: 'none',
-                backgroundColor: colors.surface
+                backgroundColor: colors.surface,
+                color: colors.text,
+                boxSizing: 'border-box'
               }}
             >
-              <option value="Todas">Todas las imputaciones</option>
-              {imputacionesUnicas.map(imputacion => (
+              {filtros.imputaciones.map(imputacion => (
                 <option key={imputacion} value={imputacion}>
                   {imputacion}
                 </option>
@@ -592,40 +590,59 @@ const SubvencionesPage = () => {
             </select>
           </div>
 
-          {/* Filtro por fase */}
-          <div>
-            <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', color: colors.text, marginBottom: '8px' }}>
-              Fase del Proyecto
-            </label>
-            <select
-              value={selectedFase}
-              onChange={(e) => setSelectedFase(e.target.value)}
+          {/* Botón Limpiar Filtros */}
+          <div style={{ flexShrink: 0 }}>
+            <button
+              onClick={() => {
+                setSelectedImputacion('Todas');
+                setSelectedFase('Todas');
+                setSearchTerm('');
+              }}
               style={{
-                width: '100%',
-                padding: '12px',
-                border: `1px solid ${colors.border}`,
+                padding: '12px 24px',
+                backgroundColor: colors.primary,
+                color: 'white',
+                border: 'none',
                 borderRadius: '8px',
                 fontSize: '14px',
-                outline: 'none',
-                backgroundColor: colors.surface
+                fontWeight: '500',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease',
+                whiteSpace: 'nowrap'
               }}
             >
-              <option value="Todas">Todas las fases</option>
-              <option value="sin-fases">Sin fases activas</option>
-              <option value="1">Fase 1</option>
-              <option value="2">Fase 2</option>
-              <option value="3">Fase 3</option>
-              <option value="4">Fase 4</option>
-              <option value="5">Fase 5</option>
-              <option value="6">Fase 6</option>
-              <option value="7">Fase 7</option>
-              <option value="8">Fase 8</option>
-            </select>
+              Limpiar Filtros
+            </button>
           </div>
+        </div>
 
-          {/* Botones de acción */}
-          <div style={{ display: 'flex', gap: '16px' }}>
-            <label style={{
+        {/* Botones de acción */}
+        <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+          <label style={{
+            display: 'flex',
+            alignItems: 'center',
+            padding: '12px 16px',
+            backgroundColor: colors.primary,
+            color: 'white',
+            border: 'none',
+            borderRadius: '8px',
+            cursor: 'pointer',
+            fontSize: '14px',
+            fontWeight: '500',
+            gap: '8px'
+          }}>
+            <Upload size={16} />
+            Cargar CSV
+            <input
+              type="file"
+              accept=".csv"
+              onChange={handleFileUpload}
+              style={{ display: 'none' }}
+            />
+          </label>
+          <button
+            onClick={handleNewSubvencion}
+            style={{
               display: 'flex',
               alignItems: 'center',
               padding: '12px 16px',
@@ -637,55 +654,30 @@ const SubvencionesPage = () => {
               fontSize: '14px',
               fontWeight: '500',
               gap: '8px'
-            }}>
-              <Upload size={16} />
-              Cargar CSV
-              <input
-                type="file"
-                accept=".csv"
-                onChange={handleFileUpload}
-                style={{ display: 'none' }}
-              />
-            </label>
-            <button
-              onClick={handleNewSubvencion}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                padding: '12px 16px',
-                backgroundColor: colors.primary,
-                color: 'white',
-                border: 'none',
-                borderRadius: '8px',
-                cursor: 'pointer',
-                fontSize: '14px',
-                fontWeight: '500',
-                gap: '8px'
-              }}
-            >
-              <UserPlus size={16} />
-              Nueva Subvención
-            </button>
-            <button
-              onClick={exportToExcel}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                padding: '12px 16px',
-                backgroundColor: colors.success,
-                color: 'white',
-                border: 'none',
-                borderRadius: '8px',
-                cursor: 'pointer',
-                fontSize: '14px',
-                fontWeight: '500',
-                gap: '8px'
-              }}
-            >
-              <Download size={16} />
-              Exportar
-            </button>
-          </div>
+            }}
+          >
+            <UserPlus size={16} />
+            Nueva Subvención
+          </button>
+          <button
+            onClick={exportToExcel}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              padding: '12px 16px',
+              backgroundColor: colors.success,
+              color: 'white',
+              border: 'none',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              fontSize: '14px',
+              fontWeight: '500',
+              gap: '8px'
+            }}
+          >
+            <Download size={16} />
+            Exportar
+          </button>
         </div>
       </div>
 
