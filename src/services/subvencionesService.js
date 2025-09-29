@@ -51,38 +51,38 @@ class SubvencionesService {
 
   // Procesar datos de una subvención específica
   processSubvencionData(jsonData, columnIndex, subvencionName) {
-    // Mapeo de filas del CSV
+    // Mapeo de filas del CSV (actualizado para el nuevo formato)
     const rowMap = {
-      proyecto: 8,           // Fila 9
-      imputacion: 9,         // Fila 10
-      expediente: 10,        // Fila 11
-      codigo: 11,            // Fila 12
-      modalidad: 12,         // Fila 13
-      fechaAdjudicacion: 13, // Fila 14
-      importeSolicitado: 14, // Fila 15
-      periodo: 15,           // Fila 16
-      importeOtorgado: 16,   // Fila 17
-      socL1Acomp: 17,        // Fila 18
-      socL2Contrat: 18,      // Fila 19
-      primerAbono: 19,       // Fila 20
-      fechaPrimerAbono: 20,  // Fila 21
-      segundoAbono: 21,      // Fila 22
-      fechaSegundoAbono: 22, // Fila 23
-      fase1: 23,             // Fila 24
-      fase2: 24,             // Fila 25
-      fase3: 25,             // Fila 26
-      fase4: 26,             // Fila 27
-      fase5: 27,             // Fila 28
-      fase6: 28,             // Fila 29
-      fase7: 29,             // Fila 30
-      fase8: 30,             // Fila 31
-      saldoPendiente: 32,    // Fila 33
-      previsionPago: 33,     // Fila 34
-      fechaJustificacion: 34, // Fila 35
-      revisadoGestoria: 40,  // Fila 41
-      estado: 47,            // Fila 48
-      holdedAsentamiento: 55, // Fila 56
-      importesPorCobrar: 56  // Fila 57
+      proyecto: 8,           // Fila 9 - PROYECTO
+      imputacion: 9,         // Fila 10 - IMPUTACIÓN
+      expediente: 10,        // Fila 11 - No. EXPEDIENTE
+      codigo: 11,            // Fila 12 - COD. SUBVENCIÓN
+      modalidad: 12,         // Fila 13 - MODALIDAD
+      fechaAdjudicacion: 13, // Fila 14 - FECHA PRESENTACIÓN
+      importeSolicitado: 14, // Fila 15 - IMPORTE SOLICITADO
+      periodo: 15,           // Fila 16 - PERIODO DE EJECUCIÓN
+      importeOtorgado: 16,   // Fila 17 - IMPORTE OTORGADO
+      socL1Acomp: 17,        // Fila 18 - SOC: L1 ACOMP
+      socL2Contrat: 18,      // Fila 19 - SOC: L2 CONTRAT. TRABAJ
+      primerAbono: 20,       // Fila 21 - 1r ABONO
+      fechaPrimerAbono: 21,  // Fila 22 - FECHA/CTA
+      segundoAbono: 22,      // Fila 23 - 2o ABONO
+      fechaSegundoAbono: 23, // Fila 24 - FECHA/CTA (segundo abono)
+      fase1: 24,             // Fila 25 - FASE DEL PROYECTO 1
+      fase2: 25,             // Fila 26 - FASE DEL PROYECTO 2
+      fase3: 26,             // Fila 27 - FASE DEL PROYECTO 3
+      fase4: 27,             // Fila 28 - FASE DEL PROYECTO 4
+      fase5: 28,             // Fila 29 - FASE DEL PROYECTO 5
+      fase6: 29,             // Fila 30 - FASE DEL PROYECTO 6
+      fase7: 30,             // Fila 31 - FASE DEL PROYECTO 7
+      fase8: 31,             // Fila 32 - FASE DEL PROYECTO 8
+      saldoPendiente: 33,    // Fila 34 - SALDO PDTE DE ABONO
+      previsionPago: 34,     // Fila 35 - PREVISIÓN PAGO TOTAL
+      fechaJustificacion: 35, // Fila 36 - FECHA JUSTIFICACIÓN
+      revisadoGestoria: 41,  // Fila 42 - REV. GESTORIA
+      estado: 54,            // Fila 55 - ESTADO
+      holdedAsentamiento: 65, // Fila 66 - HOLDED ASENTAM.
+      importesPorCobrar: 66  // Fila 67 - IMPORTES POR COBRAR
     };
 
     const subvencionData = {
