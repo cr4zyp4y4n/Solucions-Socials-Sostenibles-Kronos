@@ -446,6 +446,21 @@ const AnalyticsPage = () => {
       const hourlyData = processIdoniHourlyData(ventasHoras);
       const hourlyAnalytics = calculateIdoniHourlyAnalytics(hourlyData);
 
+      // Debug: Comparar totales de ventas diarias vs ventas por horas
+      if (process.env.NODE_ENV === 'development') {
+        const totalDiarias = ventasDiarias
+          .filter(v => v.c_ven !== 0) // Filtrar totales igual que en getFilteredIdoniData
+          .reduce((sum, v) => sum + (parseFloat(v.import) || 0), 0);
+        const totalHoras = hourlyData?.totalVentas || 0;
+        
+        console.log('🔍 COMPARACIÓN DE TOTALES IDONI:');
+        console.log('📊 Ventas Diarias (tabla resumen):', totalDiarias.toFixed(2), '€');
+        console.log('⏰ Ventas por Horas (tickets individuales):', totalHoras.toFixed(2), '€');
+        console.log('📉 Diferencia:', (totalDiarias - totalHoras).toFixed(2), '€');
+        console.log('📈 Registros Ventas Diarias:', ventasDiarias.filter(v => v.c_ven !== 0).length);
+        console.log('🎫 Registros Ventas por Horas:', ventasHoras.length);
+      }
+
       // Procesar datos de ventas de productos (nuevo formato)
       const productosData = (ventasProductosImporte.length > 0 || ventasProductosCantidad.length > 0) 
         ? processIdoniProductosNuevoFormato(ventasProductosImporte, ventasProductosCantidad) 
@@ -2425,6 +2440,18 @@ const AnalyticsPage = () => {
       { nombre: '08:00-09:00', inicio: 8, fin: 9, ventas: 0, tickets: 0, tipo: 'correccion' }
     ];
 
+    // Calcular fechas mínima y máxima
+    let minFecha = null;
+    let maxFecha = null;
+    
+    ventasHoras.forEach(venta => {
+      if (venta.data) {
+        const fecha = new Date(venta.data);
+        if (!minFecha || fecha < minFecha) minFecha = fecha;
+        if (!maxFecha || fecha > maxFecha) maxFecha = fecha;
+      }
+    });
+
     // Procesar cada venta por hora - SUMAR TODO SIN FILTROS
     let totalProcesado = 0;
     let registrosProcesados = 0;
@@ -2469,7 +2496,9 @@ const AnalyticsPage = () => {
     return {
       franjasArray: franjas,
       totalVentas: franjas.reduce((sum, f) => sum + f.ventas, 0),
-      totalTickets: franjas.reduce((sum, f) => sum + f.tickets, 0)
+      totalTickets: franjas.reduce((sum, f) => sum + f.tickets, 0),
+      minFecha: minFecha,
+      maxFecha: maxFecha
     };
   };
 
@@ -4062,7 +4091,7 @@ const AnalyticsPage = () => {
           'Proveedor': `📋 ${shortProviderName}`,
           'Número de Factura': '',
           'Valor a Pagar': '',
-          'IBAN': formattedIban
+          'IBAN': '' // IBAN solo en el total
         });
 
         // Agregar facturas del proveedor
@@ -4079,6 +4108,15 @@ const AnalyticsPage = () => {
             'Valor a Pagar': valorAPagar,
             'IBAN': '' // IBAN solo en el header del proveedor
           });
+        });
+
+        // Agregar fila en blanco antes del total
+        excelData.push({
+          'Fecha': '',
+          'Proveedor': '',
+          'Número de Factura': '',
+          'Valor a Pagar': '',
+          'IBAN': ''
         });
 
         // Agregar total del proveedor con mejor formato
@@ -4102,6 +4140,47 @@ const AnalyticsPage = () => {
 
       // Crear hoja con todos los datos
       const ws = XLSX.utils.json_to_sheet(excelData);
+
+      // Aplicar formato a las celdas de totales (negrita y fondo amarillo)
+      let currentRow = 1; // Empezar desde la fila 1 (después del header)
+      
+      Object.keys(groupedByProvider).sort().forEach(provider => {
+        const providerInvoices = groupedByProvider[provider];
+        // Saltar filas de facturas + fila en blanco + fila de total
+        currentRow += providerInvoices.length + 2;
+        
+        // Aplicar formato a la fila de total
+        const totalRow = currentRow;
+        
+        // Formato para "TOTAL:" (columna C)
+        const totalCell = XLSX.utils.encode_cell({ r: totalRow, c: 2 });
+        if (!ws[totalCell]) ws[totalCell] = { v: 'TOTAL:' };
+        ws[totalCell].s = {
+          font: { bold: true },
+          fill: { fgColor: { rgb: 'FFFF00' } }
+        };
+        
+        // Formato para valor total (columna D)
+        const valueCell = XLSX.utils.encode_cell({ r: totalRow, c: 3 });
+        if (ws[valueCell]) {
+          ws[valueCell].s = {
+            font: { bold: true },
+            fill: { fgColor: { rgb: 'FFFF00' } }
+          };
+        }
+        
+        // Formato para IBAN (columna E)
+        const ibanCell = XLSX.utils.encode_cell({ r: totalRow, c: 4 });
+        if (ws[ibanCell]) {
+          ws[ibanCell].s = {
+            font: { bold: true },
+            fill: { fgColor: { rgb: 'FFFF00' } }
+          };
+        }
+        
+        // Saltar fila de separador
+        currentRow += 1;
+      });
 
       // Configurar anchos de columna optimizados
       const colWidths = [
@@ -5790,7 +5869,9 @@ const AnalyticsPage = () => {
               {idoniHourlyData && idoniHourlyAnalytics && (
                 <div style={{ marginTop: '24px' }}>
                   <h3 style={{ margin: '0 0 16px 0', color: colors.text, fontSize: 18, fontWeight: 600 }}>
-                    Análisis de Ventas por Franjas Horarias (Enero-Julio)
+                    Análisis de Ventas por Franjas Horarias {idoniHourlyData.minFecha && idoniHourlyData.maxFecha ? 
+                      `(${idoniHourlyData.minFecha.toLocaleDateString('es-ES', { month: 'short', year: 'numeric' })} - ${idoniHourlyData.maxFecha.toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' })})` : 
+                      ''}
                   </h3>
 
                   

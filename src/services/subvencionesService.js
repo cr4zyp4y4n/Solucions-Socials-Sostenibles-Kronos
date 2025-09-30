@@ -1,4 +1,5 @@
 import * as XLSX from 'xlsx';
+import { supabase } from '../config/supabase';
 
 class SubvencionesService {
   constructor() {
@@ -23,13 +24,24 @@ class SubvencionesService {
 
       // Encontrar todas las columnas con nombres de subvenciones
       for (let j = 1; j < subvencionesRow.length; j++) {
-        if (subvencionesRow[j] && subvencionesRow[j].trim() !== '') {
-          subvencionesNames.push(subvencionesRow[j].trim());
-          subvencionesColumns.push(j);
+        const cellValue = subvencionesRow[j];
+        if (cellValue !== null && cellValue !== undefined && cellValue !== '') {
+          // Convertir a string si no lo es
+          const strValue = String(cellValue).trim();
+          // Filtrar valores vacíos, puntos solos, guiones, etc.
+          if (strValue !== '' && 
+              strValue !== '.' && 
+              strValue !== '-' && 
+              strValue !== '--' &&
+              strValue.length > 1) {
+            subvencionesNames.push(strValue);
+            subvencionesColumns.push(j);
+          }
         }
       }
 
-      console.log(`✅ Encontradas ${subvencionesNames.length} subvenciones`);
+      console.log(`✅ Encontradas ${subvencionesNames.length} subvenciones en el CSV`);
+      console.log('📝 Nombres encontrados:', subvencionesNames);
 
       // Procesar cada subvención
       const processedSubvenciones = subvencionesNames.map((subvencionName, index) => {
@@ -37,11 +49,31 @@ class SubvencionesService {
         return this.processSubvencionData(jsonData, columnIndex, subvencionName);
       });
 
+      console.log(`🔄 Procesadas ${processedSubvenciones.length} subvenciones`);
+
+      // Filtrar subvenciones inválidas (nombres demasiado cortos o inválidos)
+      const invalidSubvenciones = [];
+      const validSubvenciones = processedSubvenciones.filter(sub => {
+        const isValid = sub.nombre && 
+               sub.nombre.trim().length > 1 && 
+               sub.nombre.trim() !== '.' && 
+               sub.nombre.trim() !== '-';
+        
+        if (!isValid) {
+          invalidSubvenciones.push(sub.nombre);
+        }
+        return isValid;
+      });
+
+      if (invalidSubvenciones.length > 0) {
+        console.warn('⚠️ Subvenciones filtradas por ser inválidas:', invalidSubvenciones);
+      }
+
       // Guardar en memoria
-      this.subvencionesData = processedSubvenciones;
-      console.log('💾 Datos guardados en memoria');
+      this.subvencionesData = validSubvenciones;
+      console.log(`💾 ${validSubvenciones.length} subvenciones válidas guardadas en memoria`);
       
-      return processedSubvenciones;
+      return validSubvenciones;
 
     } catch (error) {
       console.error('❌ Error procesando CSV:', error);
@@ -134,6 +166,18 @@ class SubvencionesService {
   processFieldValue(value, fieldName) {
     if (!value || value === '') return null;
 
+    // Campos de fases del proyecto (convertir X a boolean)
+    const faseFields = ['fase1', 'fase2', 'fase3', 'fase4', 'fase5', 'fase6', 'fase7', 'fase8'];
+    if (faseFields.includes(fieldName)) {
+      const str = value.toString().trim().toUpperCase();
+      // Si es solo "X", convertir a true (fase activa)
+      if (str === 'X') return true;
+      // Si está vacío, null o guión, devolver false
+      if (str === '' || str === '-' || str === '--') return false;
+      // Si tiene cualquier otro contenido, guardarlo como texto
+      return value.toString().trim();
+    }
+
     // Campos de líneas de financiación SOC (mantener como texto completo)
     const socFields = ['socL1Acomp', 'socL2Contrat'];
     if (socFields.includes(fieldName)) {
@@ -184,13 +228,23 @@ class SubvencionesService {
     const str = value.toString().trim();
     
     // Si contiene texto descriptivo, devolver 0
-    if (str.includes('PEND.') || str.includes('ESTIMADOS') || 
-        str.includes('SIN FECHA') || str.includes('POR DEFINIR') || str.includes('GESTIONAR')) {
+    if (str.includes('PEND') || str.includes('ESTIMADOS') || 
+        str.includes('SIN FECHA') || str.includes('POR DEFINIR') || 
+        str.includes('GESTIONAR') || str.includes('SALDO') || 
+        str.includes('%') || str.includes('SOLO')) {
       return 0;
     }
     
+    // Si el valor tiene paréntesis o porcentajes, extraer solo el primer número
+    // Ej: "9.523,65€ (80%) SALDO 2.380.91 (20%)" -> "9.523,65"
+    let extractedValue = str;
+    if (str.includes('(') || str.includes('%')) {
+      // Extraer solo la parte antes del primer paréntesis
+      extractedValue = str.split('(')[0].trim();
+    }
+    
     // Remover símbolos de moneda y espacios
-    let cleanValue = str.replace(/[€$]/g, '').replace(/\s/g, '');
+    let cleanValue = extractedValue.replace(/[€$]/g, '').replace(/\s/g, '');
     
     // Caso especial: si es un número que parece haber sido mal interpretado por Excel
     // (ej: 37.70428 cuando debería ser 37.704,28)
@@ -411,14 +465,14 @@ class SubvencionesService {
     if (!fasesProyecto) return [];
 
     const nombresFases = {
-      1: 'Fase 1 - Inicio del Proyecto',
-      2: 'Fase 2 - Desarrollo',
-      3: 'Fase 3 - Implementación',
-      4: 'Fase 4 - Ejecución',
-      5: 'Fase 5 - Seguimiento',
-      6: 'Fase 6 - Evaluación',
-      7: 'Fase 7 - Finalización',
-      8: 'Fase 8 - Cierre'
+      1: 'Fase 1',
+      2: 'Fase 2',
+      3: 'Fase 3',
+      4: 'Fase 4',
+      5: 'Fase 5',
+      6: 'Fase 6',
+      7: 'Fase 7',
+      8: 'Fase 8'
     };
 
     const fases = [];
@@ -426,19 +480,18 @@ class SubvencionesService {
       const fase = fasesProyecto[`fase${i}`];
       
       // Verificar si es una fase activa
-      if (fase && fase.trim() !== '') {
-        // Si es "X" o contiene "Fase" en el texto, es una fase activa
-        if (fase === 'X' || fase.toLowerCase().includes('fase')) {
-          fases.push({
-            numero: i,
-            campo: `fase${i}`,
-            nombre: nombresFases[i] || `Fase ${i}`,
-            contenido: fase,
-            activa: true
-          });
-        }
-        // Si contiene "OK" o fechas, no es una fase activa, es información de seguimiento
-        // (no se incluye en las fases activas)
+      // Puede ser boolean (true), texto con contenido, o "X"
+      const isBoolean = typeof fase === 'boolean';
+      const isActive = isBoolean ? fase : (fase && fase.toString().trim() !== '' && fase.toString().trim().toUpperCase() !== 'X');
+      
+      if (fase === true || isActive) {
+        fases.push({
+          numero: i,
+          campo: `fase${i}`,
+          nombre: nombresFases[i] || `Fase ${i}`,
+          contenido: isBoolean ? 'Activa' : (fase.toString().trim() === 'X' ? 'Activa' : fase),
+          activa: true
+        });
       }
     }
 
@@ -504,6 +557,262 @@ class SubvencionesService {
       proyectos: ['Todas', ...proyectos.sort()],
       fases: ['Todas', 'sin-fases', ...Array.from(fasesActivas).sort()]
     };
+  }
+
+  // ===== FUNCIONES DE SUPABASE =====
+
+  // Cargar datos desde Supabase
+  async loadFromSupabase() {
+    try {
+      console.log('📥 Cargando datos desde Supabase...');
+      
+      const { data, error } = await supabase
+        .from('subvenciones')
+        .select('*')
+        .order('nombre', { ascending: true });
+
+      if (error) {
+        console.error('Error cargando datos de Supabase:', error);
+        throw error;
+      }
+
+      // Convertir formato de Supabase al formato interno
+      const formattedData = data.map(sub => this.formatSupabaseToInternal(sub));
+      
+      // Guardar en memoria también para compatibilidad
+      this.subvencionesData = formattedData;
+      
+      console.log(`✅ ${formattedData.length} subvenciones cargadas desde Supabase`);
+      return formattedData;
+    } catch (error) {
+      console.error('Error en loadFromSupabase:', error);
+      throw error;
+    }
+  }
+
+  // Convertir formato de Supabase al formato interno
+  formatSupabaseToInternal(supabaseRecord) {
+    return {
+      id: supabaseRecord.id,
+      nombre: supabaseRecord.nombre || '',
+      proyecto: supabaseRecord.proyecto || '',
+      imputacion: supabaseRecord.imputacion || '',
+      expediente: supabaseRecord.expediente || '',
+      codigo: supabaseRecord.codigo_subvencion || '',
+      modalidad: supabaseRecord.modalidad || '',
+      fechaAdjudicacion: supabaseRecord.fecha_adjudicacion || '',
+      importeSolicitado: supabaseRecord.importe_solicitado || 0,
+      importeOtorgado: supabaseRecord.importe_otorgado || 0,
+      periodo: supabaseRecord.periodo_ejecucion || '',
+      socL1Acomp: supabaseRecord.soc_l1_acompanamiento || 0,
+      socL2Contrat: supabaseRecord.soc_l2_contratacion || 0,
+      primerAbono: supabaseRecord.primer_abono || 0,
+      fechaPrimerAbono: supabaseRecord.fecha_primer_abono || '',
+      segundoAbono: supabaseRecord.segundo_abono || 0,
+      fechaSegundoAbono: supabaseRecord.fecha_segundo_abono || '',
+      saldoPendiente: supabaseRecord.saldo_pendiente || 0,
+      saldoPendienteTexto: supabaseRecord.saldo_pendiente_texto || '',
+      previsionPago: supabaseRecord.prevision_pago_total || '',
+      fechaJustificacion: supabaseRecord.fecha_justificacion || '',
+      revisadoGestoria: supabaseRecord.revisado_gestoria || '',
+      estado: supabaseRecord.estado || '',
+      holdedAsentamiento: supabaseRecord.holded_asentamiento || '',
+      importesPorCobrar: supabaseRecord.importes_por_cobrar || 0,
+      fasesProyecto: {
+        fase1: supabaseRecord.fase_proyecto_1 || false,
+        fase2: supabaseRecord.fase_proyecto_2 || false,
+        fase3: supabaseRecord.fase_proyecto_3 || false,
+        fase4: supabaseRecord.fase_proyecto_4 || false,
+        fase5: supabaseRecord.fase_proyecto_5 || false,
+        fase6: supabaseRecord.fase_proyecto_6 || false,
+        fase7: supabaseRecord.fase_proyecto_7 || false,
+        fase8: supabaseRecord.fase_proyecto_8 || false
+      }
+    };
+  }
+
+  // Convertir formato interno al formato de Supabase
+  formatInternalToSupabase(internalData) {
+    // Función auxiliar para limpiar valores numéricos
+    const cleanNumeric = (value) => {
+      if (value === null || value === undefined || value === '') return 0;
+      if (typeof value === 'number') return value;
+      
+      const str = value.toString().trim();
+      
+      // Si es texto descriptivo, devolver 0
+      if (str.includes('PEND') || str.includes('ESTIMADOS') || 
+          str.includes('SIN FECHA') || str.includes('POR DEFINIR') || 
+          str.includes('GESTIONAR') || str.includes('SALDO') || 
+          str.includes('%') || str.includes('SOLO')) {
+        return 0;
+      }
+      
+      // Si el valor tiene paréntesis o porcentajes, extraer solo el primer número
+      let extractedValue = str;
+      if (str.includes('(') || str.includes('%')) {
+        extractedValue = str.split('(')[0].trim();
+      }
+      
+      // Remover símbolos de moneda y espacios
+      let cleanValue = extractedValue.replace(/[€$]/g, '').replace(/\s/g, '');
+      
+      // Convertir formato español a punto decimal
+      if (cleanValue.includes(',')) {
+        cleanValue = cleanValue.replace(/\./g, '').replace(',', '.');
+      }
+      
+      const parsed = parseFloat(cleanValue);
+      return isNaN(parsed) ? 0 : parsed;
+    };
+
+    return {
+      nombre: internalData.nombre || '',
+      proyecto: internalData.proyecto || '',
+      imputacion: internalData.imputacion || '',
+      expediente: internalData.expediente || '',
+      codigo_subvencion: internalData.codigo || '',
+      modalidad: internalData.modalidad || '',
+      fecha_adjudicacion: internalData.fechaAdjudicacion || null,
+      importe_solicitado: cleanNumeric(internalData.importeSolicitado),
+      importe_otorgado: cleanNumeric(internalData.importeOtorgado),
+      periodo_ejecucion: internalData.periodo || '',
+      soc_l1_acompanamiento: cleanNumeric(internalData.socL1Acomp),
+      soc_l2_contratacion: cleanNumeric(internalData.socL2Contrat),
+      primer_abono: cleanNumeric(internalData.primerAbono),
+      fecha_primer_abono: internalData.fechaPrimerAbono || '',
+      segundo_abono: cleanNumeric(internalData.segundoAbono),
+      fecha_segundo_abono: internalData.fechaSegundoAbono || '',
+      fase_proyecto_1: internalData.fasesProyecto?.fase1 || null,
+      fase_proyecto_2: internalData.fasesProyecto?.fase2 || null,
+      fase_proyecto_3: internalData.fasesProyecto?.fase3 || null,
+      fase_proyecto_4: internalData.fasesProyecto?.fase4 || null,
+      fase_proyecto_5: internalData.fasesProyecto?.fase5 || null,
+      fase_proyecto_6: internalData.fasesProyecto?.fase6 || null,
+      fase_proyecto_7: internalData.fasesProyecto?.fase7 || null,
+      fase_proyecto_8: internalData.fasesProyecto?.fase8 || null,
+      saldo_pendiente: cleanNumeric(internalData.saldoPendiente),
+      saldo_pendiente_texto: internalData.saldoPendienteTexto || '',
+      prevision_pago_total: internalData.previsionPago || '',
+      fecha_justificacion: internalData.fechaJustificacion || '',
+      revisado_gestoria: internalData.revisadoGestoria || '',
+      estado: internalData.estado || '',
+      holded_asentamiento: internalData.holdedAsentamiento || '',
+      importes_por_cobrar: cleanNumeric(internalData.importesPorCobrar)
+    };
+  }
+
+  // Sincronizar datos procesados del CSV a Supabase
+  async syncToSupabase(processedData) {
+    try {
+      console.log('🔄 Sincronizando datos con Supabase...');
+      
+      const results = {
+        created: 0,
+        updated: 0,
+        errors: 0
+      };
+
+      // Primero, eliminar todas las subvenciones existentes
+      const { error: deleteError } = await supabase
+        .from('subvenciones')
+        .delete()
+        .neq('id', '00000000-0000-0000-0000-000000000000');
+
+      if (deleteError) {
+        console.warn('⚠️ Error eliminando subvenciones existentes:', deleteError);
+      } else {
+        console.log('🗑️ Subvenciones anteriores eliminadas');
+      }
+
+      // Insertar todas las subvenciones del CSV
+      for (const subvencion of processedData) {
+        try {
+          const supabaseData = this.formatInternalToSupabase(subvencion);
+          
+          const { data, error: insertError } = await supabase
+            .from('subvenciones')
+            .insert([supabaseData])
+            .select();
+
+          if (insertError) {
+            console.error(`❌ Error insertando ${subvencion.nombre}:`, insertError);
+            console.error('📋 Datos que causaron el error:', supabaseData);
+            console.error('📋 Mensaje del error:', insertError.message);
+            results.errors++;
+          } else {
+            results.created++;
+          }
+        } catch (error) {
+          console.error(`❌ Error procesando ${subvencion.nombre}:`, error);
+          results.errors++;
+        }
+      }
+
+      console.log(`✅ Sincronización completada: ${results.created} creadas, ${results.errors} errores`);
+      return results;
+    } catch (error) {
+      console.error('Error en syncToSupabase:', error);
+      throw error;
+    }
+  }
+
+  // Crear nueva subvención
+  async createSubvencion(subvencionData) {
+    try {
+      const supabaseData = this.formatInternalToSupabase(subvencionData);
+      
+      const { data, error } = await supabase
+        .from('subvenciones')
+        .insert([supabaseData])
+        .select()
+        .single();
+
+      if (error) throw error;
+      
+      return this.formatSupabaseToInternal(data);
+    } catch (error) {
+      console.error('Error creando subvención:', error);
+      throw error;
+    }
+  }
+
+  // Actualizar subvención existente
+  async updateSubvencion(subvencionId, subvencionData) {
+    try {
+      const supabaseData = this.formatInternalToSupabase(subvencionData);
+      
+      const { data, error } = await supabase
+        .from('subvenciones')
+        .update(supabaseData)
+        .eq('id', subvencionId)
+        .select()
+        .single();
+
+      if (error) throw error;
+      
+      return this.formatSupabaseToInternal(data);
+    } catch (error) {
+      console.error('Error actualizando subvención:', error);
+      throw error;
+    }
+  }
+
+  // Eliminar subvención
+  async deleteSubvencion(subvencionId) {
+    try {
+      const { error } = await supabase
+        .from('subvenciones')
+        .delete()
+        .eq('id', subvencionId);
+
+      if (error) throw error;
+      
+      return true;
+    } catch (error) {
+      console.error('Error eliminando subvención:', error);
+      throw error;
+    }
   }
 }
 
