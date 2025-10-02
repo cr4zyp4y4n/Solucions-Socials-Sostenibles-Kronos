@@ -34,6 +34,7 @@ import SettingsPage from './SettingsPage';
 import OnboardingPage from './OnboardingPage';
 import UserProfile from './UserProfile';
 import UserManagement from './UserManagement';
+import AdminPanel from './AdminPanel';
 import AuditLog from './AuditLog';
 import HoldedTest from './HoldedTest';
 import ProvidersContacts from './ProvidersContacts';
@@ -82,18 +83,37 @@ const Layout = () => {
   useEffect(() => {
     const fetchUserProfile = async () => {
       if (user?.id) {
+        console.log('🔍 DEBUG: Verificando perfil del usuario...');
+        console.log('🆔 User ID:', user.id);
+        console.log('📧 User Email:', user.email);
+        console.log('📋 User Metadata:', user.user_metadata);
+        
         const { data, error } = await supabase
           .from('user_profiles')
           .select('name, role, onboarding_completed')
           .eq('id', user.id)
           .single();
+          
+        console.log('🗄️ Respuesta de Supabase:');
+        console.log('  - Data:', data);
+        console.log('  - Error:', error);
+        
         if (!error && data) {
+          console.log('✅ Perfil cargado correctamente:');
+          console.log('  - Nombre:', data.name);
+          console.log('  - Rol desde DB:', data.role);
+          console.log('  - Onboarding completado:', data.onboarding_completed);
+          
           setUserProfile(data);
           
           // Mostrar onboarding automáticamente si es un usuario nuevo
           if (!data.onboarding_completed) {
             setShowOnboarding(true);
           }
+        } else if (error) {
+          console.error('❌ Error al cargar perfil:', error.message);
+          console.error('   Código de error:', error.code);
+          console.error('   Detalles:', error.details);
         }
       }
     };
@@ -102,6 +122,16 @@ const Layout = () => {
 
   // Verificar si el usuario es administrador
   const isAdmin = userProfile?.role === 'admin';
+  
+  // DEBUG: Log de verificación de admin
+  useEffect(() => {
+    if (userProfile) {
+      console.log('🔐 DEBUG: Verificación de permisos:');
+      console.log('  - userProfile.role:', userProfile.role);
+      console.log('  - isAdmin:', isAdmin);
+      console.log('  - userProfile completo:', userProfile);
+    }
+  }, [userProfile, isAdmin]);
 
   // Limpiar eventId cuando se navega a otra sección
   useEffect(() => {
@@ -395,7 +425,7 @@ const Layout = () => {
         if (!isAdmin) {
           return <AccessDenied message="Solo los administradores pueden acceder a la gestión de usuarios." />;
         }
-        return <UserManagement />;
+        return <AdminPanel />;
       case 'audit':
         if (!isAdmin) {
           return <AccessDenied message="Solo los administradores pueden acceder a la auditoría." />;
