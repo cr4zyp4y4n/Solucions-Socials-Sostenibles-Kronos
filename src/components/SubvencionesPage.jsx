@@ -79,13 +79,22 @@ const SubvencionItem = memo(({
             <div style={{
               display: 'flex',
               alignItems: 'center',
-              padding: '4px 8px',
-              backgroundColor: estadoInfo.color + '20',
-              borderRadius: '6px',
-              gap: '4px'
+              padding: '6px 12px',
+              backgroundColor: estadoInfo.bgColor || estadoInfo.color + '20',
+              border: `1px solid ${estadoInfo.borderColor || estadoInfo.color}`,
+              borderRadius: '8px',
+              gap: '6px',
+              boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
+              transition: 'all 0.2s ease'
             }}>
               <EstadoIcon size={14} color={estadoInfo.color} />
-              <span style={{ fontSize: '12px', fontWeight: '500', color: estadoInfo.color, userSelect: 'none' }}>
+              <span style={{ 
+                fontSize: '12px', 
+                fontWeight: '600', 
+                color: estadoInfo.color, 
+                userSelect: 'none',
+                letterSpacing: '0.025em'
+              }}>
                 {estadoInfo.label}
               </span>
             </div>
@@ -214,16 +223,17 @@ const SubvencionesPage = () => {
   const [error, setError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   
-  // Debug: Log cuando cambia subvencionesData
-  useEffect(() => {
-    console.log('🔥 subvencionesData CAMBIÓ:', {
-      cantidad: subvencionesData.length,
-      primerElemento: subvencionesData[0]?.nombre,
-      todosLosNombres: subvencionesData.map(s => s.nombre)
-    });
-  }, [subvencionesData]);
+  // Debug: Log cuando cambia subvencionesData (comentado para producción)
+  // useEffect(() => {
+  //   console.log('🔥 subvencionesData CAMBIÓ:', {
+  //     cantidad: subvencionesData.length,
+  //     primerElemento: subvencionesData[0]?.nombre,
+  //     todosLosNombres: subvencionesData.map(s => s.nombre)
+  //   });
+  // }, [subvencionesData]);
   const [selectedImputacion, setSelectedImputacion] = useState('Todas');
   const [selectedFase, setSelectedFase] = useState('Todas');
+  const [selectedAño, setSelectedAño] = useState('Todos');
   const [selectedSubvencion, setSelectedSubvencion] = useState(null);
   const [showDetails, setShowDetails] = useState(false);
   const [csvFile, setCsvFile] = useState(null);
@@ -234,15 +244,111 @@ const SubvencionesPage = () => {
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingSubvencion, setEditingSubvencion] = useState(null);
   const [showNewSubvencionModal, setShowNewSubvencionModal] = useState(false);
+  const [showSaveFiltersModal, setShowSaveFiltersModal] = useState(false);
+  const [savedFilters, setSavedFilters] = useState([]);
+  const [filterName, setFilterName] = useState('');
 
-  // Estados de subvenciones
+  // Estados de subvenciones mejorados
   const estados = {
-    'CERRADA': { color: colors.success, icon: CheckCircle, label: 'Cerrada' },
-    'CERRAD PDTE INGRESO DEL SALDO': { color: colors.warning, icon: Clock, label: 'Cerrada - Pendiente Ingreso' },
-    'CERRADA PDTE APROBACIÓN FINAL': { color: colors.warning, icon: Clock, label: 'Cerrada - Pendiente Aprobación' },
-    'VIGENTE': { color: colors.primary, icon: CheckCircle, label: 'Vigente' },
-    'POR DEFINIR': { color: colors.textSecondary, icon: AlertCircle, label: 'Por Definir' },
-    'CERRADA DESDE EL PROVEE': { color: colors.success, icon: CheckCircle, label: 'Cerrada - Proveedor' }
+    'CERRADA': { 
+      color: '#10b981', 
+      icon: CheckCircle, 
+      label: 'Cerrada',
+      bgColor: '#10b98120',
+      borderColor: '#10b981'
+    },
+    'CERRAD PDTE INGRESO DEL SALDO': { 
+      color: '#f59e0b', 
+      icon: Clock, 
+      label: 'Pendiente Ingreso',
+      bgColor: '#f59e0b20',
+      borderColor: '#f59e0b'
+    },
+    'CERRADA PDTE APROBACIÓN FINAL': { 
+      color: '#8b5cf6', 
+      icon: FileCheck, 
+      label: 'Pendiente Aprobación',
+      bgColor: '#8b5cf620',
+      borderColor: '#8b5cf6'
+    },
+    'VIGENTE': { 
+      color: '#3b82f6', 
+      icon: CheckCircle, 
+      label: 'Vigente',
+      bgColor: '#3b82f620',
+      borderColor: '#3b82f6'
+    },
+    'POR DEFINIR': { 
+      color: '#6b7280', 
+      icon: AlertCircle, 
+      label: 'Por Definir',
+      bgColor: '#6b728020',
+      borderColor: '#6b7280'
+    },
+    'CERRADA DESDE EL PROVEE': { 
+      color: '#059669', 
+      icon: CheckCircle, 
+      label: 'Cerrada - Proveedor',
+      bgColor: '#05966920',
+      borderColor: '#059669'
+    }
+  };
+
+  // Cargar filtros guardados desde localStorage
+  useEffect(() => {
+    const saved = localStorage.getItem('subvenciones_saved_filters');
+    if (saved) {
+      try {
+        setSavedFilters(JSON.parse(saved));
+      } catch (error) {
+        console.error('Error cargando filtros guardados:', error);
+      }
+    }
+  }, []);
+
+  // Guardar filtros en localStorage
+  const saveFiltersToStorage = useCallback((filters) => {
+    localStorage.setItem('subvenciones_saved_filters', JSON.stringify(filters));
+  }, []);
+
+  // Guardar filtros actuales
+  const handleSaveCurrentFilters = () => {
+    if (!filterName.trim()) return;
+    
+    const currentFilters = {
+      id: Date.now().toString(),
+      name: filterName.trim(),
+      searchTerm,
+      selectedImputacion,
+      selectedFase,
+      selectedAño,
+      selectedEntity,
+      createdAt: new Date().toISOString()
+    };
+    
+    const newSavedFilters = [...savedFilters, currentFilters];
+    setSavedFilters(newSavedFilters);
+    saveFiltersToStorage(newSavedFilters);
+    setFilterName('');
+    setShowSaveFiltersModal(false);
+  };
+
+  // Cargar filtros guardados
+  const handleLoadSavedFilters = (savedFilter) => {
+    setSearchTerm(savedFilter.searchTerm || '');
+    setSelectedImputacion(savedFilter.selectedImputacion || 'Todas');
+    setSelectedFase(savedFilter.selectedFase || 'Todas');
+    setSelectedAño(savedFilter.selectedAño || 'Todos');
+    if (savedFilter.selectedEntity && savedFilter.selectedEntity !== selectedEntity) {
+      setSelectedEntity(savedFilter.selectedEntity);
+    }
+  };
+
+  // Eliminar filtros guardados
+  const handleDeleteSavedFilters = (filterId) => {
+    const newSavedFilters = savedFilters.filter(f => f.id !== filterId);
+    setSavedFilters(newSavedFilters);
+    saveFiltersToStorage(newSavedFilters);
   };
 
   // Cargar datos de subvenciones
@@ -272,6 +378,15 @@ const SubvencionesPage = () => {
       console.log('💾 Actualizando subvencionesData con:', data.length, 'elementos');
       setSubvencionesData(data);
       
+      // Sincronizar datos con el servicio correspondiente
+      if (selectedEntity === 'MENJAR_DHORT') {
+        menjarDhortService.setData(data);
+        console.log('🔄 Datos sincronizados con menjarDhortService');
+      } else {
+        subvencionesService.setData(data);
+        console.log('🔄 Datos sincronizados con subvencionesService');
+      }
+      
       // Verificar que se actualizó
       console.log('✅ subvencionesData debería tener ahora:', data.length, 'elementos');
       
@@ -300,6 +415,7 @@ const SubvencionesPage = () => {
     setSearchTerm('');
     setSelectedFase('Todas');
     setSelectedImputacion('Todas');
+    setSelectedAño('Todos');
     setShowDetails(false);
     setSelectedSubvencion(null);
     setCsvFile(null);
@@ -575,38 +691,69 @@ const SubvencionesPage = () => {
 
   // Filtrar datos usando el servicio correcto
   const filteredData = useMemo(() => {
-    console.log('🔍 Filtrando datos con:', {
-      entidad: selectedEntity,
-      datosOriginales: subvencionesData.length,
-      servicio: selectedEntity === 'MENJAR_DHORT' ? 'menjarDhortService' : 'subvencionesService'
-    });
-    
     // Usar el servicio correcto según la entidad
-    const service = selectedEntity === 'MENJAR_DHORT' ? menjarDhortService : subvencionesService;
-    return service.filterSubvenciones({
-      searchTerm,
-      imputacion: selectedImputacion,
-      fase: selectedFase
-    });
-  }, [subvencionesData, searchTerm, selectedImputacion, selectedFase, selectedEntity]);
+    if (selectedEntity === 'MENJAR_DHORT') {
+      return menjarDhortService.filterSubvenciones({
+        searchTerm,
+        imputacion: selectedImputacion,
+        fase: selectedFase,
+        año: selectedAño
+      });
+    } else {
+      return subvencionesService.filterSubvenciones({
+        searchTerm,
+        imputacion: selectedImputacion,
+        fase: selectedFase,
+        año: selectedAño
+      });
+    }
+  }, [subvencionesData, searchTerm, selectedImputacion, selectedFase, selectedAño, selectedEntity]);
 
   // Obtener opciones de filtros usando el servicio correcto
   const filtros = useMemo(() => {
-    const service = selectedEntity === 'MENJAR_DHORT' ? menjarDhortService : subvencionesService;
-    return service.getFiltros();
+    if (selectedEntity === 'MENJAR_DHORT') {
+      return menjarDhortService.getFiltros();
+    } else {
+      return subvencionesService.getFiltros();
+    }
   }, [subvencionesData, selectedEntity]);
 
   // Calcular totales usando el servicio correcto
   const totales = useMemo(() => {
-    const service = selectedEntity === 'MENJAR_DHORT' ? menjarDhortService : subvencionesService;
-    const stats = service.getEstadisticas();
-    return {
-      totalOtorgado: stats.totalOtorgado,
-      totalPendiente: stats.totalPendiente,
-      totalSubvenciones: stats.total,
-      totalPorCobrar: stats.totalPorCobrar
-    };
+    if (selectedEntity === 'MENJAR_DHORT') {
+      const stats = menjarDhortService.getEstadisticas();
+      return {
+        totalOtorgado: stats.totalOtorgado,
+        totalPendiente: stats.totalPendiente,
+        totalSubvenciones: stats.total,
+        totalPorCobrar: stats.totalPorCobrar
+      };
+    } else {
+      const stats = subvencionesService.getEstadisticas();
+      return {
+        totalOtorgado: stats.totalOtorgado,
+        totalPendiente: stats.totalPendiente,
+        totalSubvenciones: stats.total,
+        totalPorCobrar: stats.totalPorCobrar
+      };
+    }
   }, [subvencionesData, selectedEntity]);
+
+  // Calcular totales de los datos filtrados
+  const totalesFiltrados = useMemo(() => {
+    const totalOtorgado = filteredData.reduce((sum, subvencion) => 
+      sum + (subvencion.importeOtorgado || 0), 0
+    );
+    
+    const totalPendiente = filteredData.reduce((sum, subvencion) => 
+      sum + (subvencion.saldoPendiente || 0), 0
+    );
+
+    return {
+      totalOtorgado,
+      totalPendiente
+    };
+  }, [filteredData]);
 
   // Formatear moneda
   const formatCurrency = (amount) => {
@@ -892,9 +1039,7 @@ const SubvencionesPage = () => {
             >
               {filtros.fases.map(fase => (
                 <option key={fase} value={fase}>
-                  {fase === 'Todas' ? 'Todas las fases' : 
-                   fase === 'sin-fases' ? 'Sin fases activas' : 
-                   `Fase ${fase}`}
+                  {fase === 'Todas' ? 'Todas las fases' : `Fase ${fase}`}
                 </option>
               ))}
             </select>
@@ -928,59 +1073,219 @@ const SubvencionesPage = () => {
             </select>
           </div>
 
-          {/* Botón Limpiar Filtros */}
-          <div style={{ flexShrink: 0 }}>
-            <button
-              onClick={() => {
-                setSelectedImputacion('Todas');
-                setSelectedFase('Todas');
-                setSearchTerm('');
-              }}
+          {/* Filtro por año */}
+          <div style={{ flex: '1', minWidth: '200px' }}>
+            <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', color: colors.text, marginBottom: '8px' }}>
+              Año
+            </label>
+            <select
+              value={selectedAño}
+              onChange={(e) => setSelectedAño(e.target.value)}
               style={{
-                padding: '12px 24px',
-                backgroundColor: colors.primary,
-                color: 'white',
-                border: 'none',
+                width: '100%',
+                padding: '12px',
+                border: `1px solid ${colors.border}`,
                 borderRadius: '8px',
                 fontSize: '14px',
-                fontWeight: '500',
-                cursor: 'pointer',
-                transition: 'all 0.2s ease',
-                whiteSpace: 'nowrap'
+                outline: 'none',
+                backgroundColor: colors.surface,
+                color: colors.text,
+                boxSizing: 'border-box'
               }}
             >
-              Limpiar Filtros
-            </button>
+              {filtros.años?.map(año => (
+                <option key={año} value={año}>
+                  {año}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Botón Limpiar Filtros Inteligente */}
+          <div style={{ flexShrink: 0 }}>
+            {(() => {
+              const filtrosActivos = [
+                searchTerm && 'búsqueda',
+                selectedImputacion !== 'Todas' && 'imputación',
+                selectedFase !== 'Todas' && 'fase',
+                selectedAño !== 'Todos' && 'año'
+              ].filter(Boolean);
+              
+              const tieneFiltros = filtrosActivos.length > 0;
+              
+              return (
+                <button
+                  onClick={() => {
+                    setSelectedImputacion('Todas');
+                    setSelectedFase('Todas');
+                    setSelectedAño('Todos');
+                    setSearchTerm('');
+                  }}
+                  disabled={!tieneFiltros}
+                  style={{
+                    padding: '12px 20px',
+                    backgroundColor: tieneFiltros ? colors.warning : colors.border,
+                    color: tieneFiltros ? 'white' : colors.textSecondary,
+                    border: 'none',
+                    borderRadius: '8px',
+                    fontSize: '14px',
+                    fontWeight: '500',
+                    cursor: tieneFiltros ? 'pointer' : 'not-allowed',
+                    transition: 'all 0.2s ease',
+                    whiteSpace: 'nowrap',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    opacity: tieneFiltros ? 1 : 0.6
+                  }}
+                >
+                  <X size={16} />
+                  {tieneFiltros 
+                    ? `Limpiar ${filtrosActivos.length} filtro${filtrosActivos.length > 1 ? 's' : ''}`
+                    : 'Sin filtros activos'
+                  }
+                </button>
+              );
+            })()}
           </div>
         </div>
 
-        {/* Botones de acción */}
-        <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-          <label style={{
-            display: 'flex',
-            alignItems: 'center',
-            padding: '12px 16px',
-            backgroundColor: colors.primary,
-            color: 'white',
-            border: 'none',
-            borderRadius: '8px',
-            cursor: 'pointer',
-            fontSize: '14px',
-            fontWeight: '500',
-            gap: '8px'
-          }}>
-            <Upload size={16} />
-            Cargar CSV
-            <input
-              type="file"
-              accept=".csv"
-              onChange={handleFileUpload}
-              style={{ display: 'none' }}
-            />
-          </label>
-          <button
-            onClick={handleNewSubvencion}
-            style={{
+        {/* Filtros activos y botones de acción */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '20px' }}>
+          {/* Filtros activos */}
+          {(selectedImputacion !== 'Todas' || selectedFase !== 'Todas' || selectedAño !== 'Todos' || searchTerm) && (
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: '14px', fontWeight: '500', color: colors.text, marginBottom: '8px' }}>
+                Filtros activos:
+              </div>
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                {searchTerm && (
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '6px 12px',
+                    backgroundColor: colors.primary + '15',
+                    border: `1px solid ${colors.primary}`,
+                    borderRadius: '20px',
+                    fontSize: '12px',
+                    color: colors.primary
+                  }}>
+                    <Search size={12} />
+                    "{searchTerm}"
+                    <button
+                      onClick={() => setSearchTerm('')}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: colors.primary,
+                        cursor: 'pointer',
+                        padding: '0',
+                        fontSize: '14px',
+                        fontWeight: 'bold'
+                      }}
+                    >
+                      ×
+                    </button>
+                  </div>
+                )}
+                {selectedImputacion !== 'Todas' && (
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '6px 12px',
+                    backgroundColor: colors.success + '15',
+                    border: `1px solid ${colors.success}`,
+                    borderRadius: '20px',
+                    fontSize: '12px',
+                    color: colors.success
+                  }}>
+                    <Building size={12} />
+                    {selectedImputacion}
+                    <button
+                      onClick={() => setSelectedImputacion('Todas')}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: colors.success,
+                        cursor: 'pointer',
+                        padding: '0',
+                        fontSize: '14px',
+                        fontWeight: 'bold'
+                      }}
+                    >
+                      ×
+                    </button>
+                  </div>
+                )}
+                {selectedFase !== 'Todas' && (
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '6px 12px',
+                    backgroundColor: colors.warning + '15',
+                    border: `1px solid ${colors.warning}`,
+                    borderRadius: '20px',
+                    fontSize: '12px',
+                    color: colors.warning
+                  }}>
+                    <Layers size={12} />
+                    Fase {selectedFase}
+                    <button
+                      onClick={() => setSelectedFase('Todas')}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: colors.warning,
+                        cursor: 'pointer',
+                        padding: '0',
+                        fontSize: '14px',
+                        fontWeight: 'bold'
+                      }}
+                    >
+                      ×
+                    </button>
+                  </div>
+                )}
+                {selectedAño !== 'Todos' && (
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '6px 12px',
+                    backgroundColor: colors.secondary + '15',
+                    border: `1px solid ${colors.secondary}`,
+                    borderRadius: '20px',
+                    fontSize: '12px',
+                    color: colors.secondary
+                  }}>
+                    <Calendar size={12} />
+                    {selectedAño}
+                    <button
+                      onClick={() => setSelectedAño('Todos')}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: colors.secondary,
+                        cursor: 'pointer',
+                        padding: '0',
+                        fontSize: '14px',
+                        fontWeight: 'bold'
+                      }}
+                    >
+                      ×
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Botones de acción - siempre visibles */}
+          <div style={{ display: 'flex', gap: '12px', flexShrink: 0 }}>
+            <label style={{
               display: 'flex',
               alignItems: 'center',
               padding: '12px 16px',
@@ -992,85 +1297,329 @@ const SubvencionesPage = () => {
               fontSize: '14px',
               fontWeight: '500',
               gap: '8px'
-            }}
-          >
-            <UserPlus size={16} />
-            Nueva Subvención
-          </button>
+            }}>
+              <Upload size={16} />
+              Cargar CSV
+              <input
+                type="file"
+                accept=".csv"
+                onChange={handleFileUpload}
+                style={{ display: 'none' }}
+              />
+            </label>
+            <button
+              onClick={handleNewSubvencion}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                padding: '12px 16px',
+                backgroundColor: colors.primary,
+                color: 'white',
+                border: 'none',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                fontSize: '14px',
+                fontWeight: '500',
+                gap: '8px'
+              }}
+            >
+              <UserPlus size={16} />
+              Nueva Subvención
+            </button>
+            <button
+              onClick={exportToExcel}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                padding: '12px 16px',
+                backgroundColor: colors.success,
+                color: 'white',
+                border: 'none',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                fontSize: '14px',
+                fontWeight: '500',
+                gap: '8px'
+              }}
+            >
+              <Download size={16} />
+              Exportar
+            </button>
+          </div>
+        </div>
+
+        {/* Botones de gestión de filtros */}
+        <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '12px' }}>
           <button
-            onClick={exportToExcel}
+            onClick={() => setShowSaveFiltersModal(true)}
+            disabled={!(selectedImputacion !== 'Todas' || selectedFase !== 'Todas' || selectedAño !== 'Todos' || searchTerm)}
             style={{
               display: 'flex',
               alignItems: 'center',
-              padding: '12px 16px',
-              backgroundColor: colors.success,
-              color: 'white',
+              padding: '8px 12px',
+              backgroundColor: (selectedImputacion !== 'Todas' || selectedFase !== 'Todas' || selectedAño !== 'Todos' || searchTerm) ? colors.secondary : colors.border,
+              color: (selectedImputacion !== 'Todas' || selectedFase !== 'Todas' || selectedAño !== 'Todos' || searchTerm) ? 'white' : colors.textSecondary,
               border: 'none',
-              borderRadius: '8px',
-              cursor: 'pointer',
-              fontSize: '14px',
+              borderRadius: '6px',
+              cursor: (selectedImputacion !== 'Todas' || selectedFase !== 'Todas' || selectedAño !== 'Todos' || searchTerm) ? 'pointer' : 'not-allowed',
+              fontSize: '12px',
               fontWeight: '500',
-              gap: '8px'
+              gap: '6px',
+              opacity: (selectedImputacion !== 'Todas' || selectedFase !== 'Todas' || selectedAño !== 'Todos' || searchTerm) ? 1 : 0.6
             }}
           >
-            <Download size={16} />
-            Exportar
+            <Save size={14} />
+            Guardar Filtros
           </button>
+          {savedFilters.length > 0 && (
+            <div style={{ position: 'relative' }}>
+              <button
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  padding: '8px 12px',
+                  backgroundColor: colors.primary,
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontSize: '12px',
+                  fontWeight: '500',
+                  gap: '6px'
+                }}
+                onMouseEnter={(e) => {
+                  e.target.nextSibling.style.display = 'block';
+                }}
+                onMouseLeave={(e) => {
+                  e.target.nextSibling.style.display = 'none';
+                }}
+              >
+                <Settings size={14} />
+                Filtros Guardados ({savedFilters.length})
+              </button>
+              <div
+                style={{
+                  display: 'none',
+                  position: 'absolute',
+                  top: '100%',
+                  right: 0,
+                  backgroundColor: colors.surface,
+                  border: `1px solid ${colors.border}`,
+                  borderRadius: '8px',
+                  boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+                  zIndex: 1000,
+                  minWidth: '200px',
+                  padding: '8px 0'
+                }}
+                onMouseEnter={(e) => {
+                  e.target.style.display = 'block';
+                }}
+                onMouseLeave={(e) => {
+                  e.target.style.display = 'none';
+                }}
+              >
+                {savedFilters.map((filter) => (
+                  <div key={filter.id} style={{
+                    padding: '8px 12px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    borderBottom: `1px solid ${colors.border}`
+                  }}
+                  onMouseEnter={(e) => {
+                    e.target.style.backgroundColor = colors.background;
+                  }}
+                  onMouseLeave={(e) => {
+                    e.target.style.backgroundColor = 'transparent';
+                  }}
+                  >
+                    <div onClick={() => handleLoadSavedFilters(filter)} style={{ flex: 1 }}>
+                      <div style={{ fontSize: '13px', fontWeight: '500', color: colors.text }}>
+                        {filter.name}
+                      </div>
+                      <div style={{ fontSize: '11px', color: colors.textSecondary }}>
+                        {new Date(filter.createdAt).toLocaleDateString('es-ES')}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleDeleteSavedFilters(filter.id)}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: colors.error,
+                        cursor: 'pointer',
+                        padding: '4px',
+                        borderRadius: '4px'
+                      }}
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Totales */}
+      {/* Estadísticas Dinámicas */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
         gap: '16px',
         marginBottom: '24px'
       }}>
+        {/* Total Subvenciones */}
         <div style={{
           backgroundColor: colors.surface,
           padding: '20px',
           borderRadius: '12px',
           boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
           textAlign: 'center',
-          userSelect: 'none'
+          userSelect: 'none',
+          position: 'relative',
+          overflow: 'hidden'
         }}>
-          <div style={{ fontSize: '24px', fontWeight: '700', color: colors.primary, marginBottom: '4px' }}>
-            {totales.totalSubvenciones}
+          <div style={{
+            position: 'absolute',
+            top: '12px',
+            right: '12px',
+            opacity: 0.1
+          }}>
+            <FileText size={24} color={colors.primary} />
           </div>
-          <div style={{ fontSize: '14px', color: colors.textSecondary }}>
-            Total Subvenciones
+          <div style={{ fontSize: '28px', fontWeight: '700', color: colors.primary, marginBottom: '6px' }}>
+            {filteredData.length}
           </div>
+          <div style={{ fontSize: '14px', color: colors.textSecondary, marginBottom: '4px' }}>
+            {filteredData.length === totales.totalSubvenciones ? 'Total Subvenciones' : 'Subvenciones Filtradas'}
+          </div>
+          {filteredData.length !== totales.totalSubvenciones && (
+            <div style={{ 
+              fontSize: '12px', 
+              color: colors.textSecondary, 
+              marginTop: '4px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '4px'
+            }}>
+              <span>de {totales.totalSubvenciones} totales</span>
+              <span style={{
+                backgroundColor: colors.primary + '20',
+                color: colors.primary,
+                padding: '2px 6px',
+                borderRadius: '10px',
+                fontSize: '10px',
+                fontWeight: '600'
+              }}>
+                {Math.round((filteredData.length / totales.totalSubvenciones) * 100)}%
+              </span>
+            </div>
+          )}
         </div>
+
+        {/* Total Otorgado */}
         <div style={{
           backgroundColor: colors.surface,
           padding: '20px',
           borderRadius: '12px',
           boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
           textAlign: 'center',
-          userSelect: 'none'
+          userSelect: 'none',
+          position: 'relative',
+          overflow: 'hidden'
         }}>
-          <div style={{ fontSize: '24px', fontWeight: '700', color: colors.success, marginBottom: '4px' }}>
-            {formatCurrency(totales.totalOtorgado)}
+          <div style={{
+            position: 'absolute',
+            top: '12px',
+            right: '12px',
+            opacity: 0.1
+          }}>
+            <Euro size={24} color={colors.success} />
           </div>
-          <div style={{ fontSize: '14px', color: colors.textSecondary }}>
-            Total Otorgado
+          <div style={{ fontSize: '24px', fontWeight: '700', color: colors.success, marginBottom: '6px' }}>
+            {formatCurrency(totalesFiltrados.totalOtorgado)}
           </div>
+          <div style={{ fontSize: '14px', color: colors.textSecondary, marginBottom: '4px' }}>
+            {filteredData.length === totales.totalSubvenciones ? 'Total Otorgado' : 'Total Otorgado (Filtrado)'}
+          </div>
+          {filteredData.length !== totales.totalSubvenciones && (
+            <div style={{ 
+              fontSize: '12px', 
+              color: colors.textSecondary, 
+              marginTop: '4px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '4px'
+            }}>
+              <span>de {formatCurrency(totales.totalOtorgado)} total</span>
+              <span style={{
+                backgroundColor: colors.success + '20',
+                color: colors.success,
+                padding: '2px 6px',
+                borderRadius: '10px',
+                fontSize: '10px',
+                fontWeight: '600'
+              }}>
+                {Math.round((totalesFiltrados.totalOtorgado / totales.totalOtorgado) * 100)}%
+              </span>
+            </div>
+          )}
         </div>
+
+        {/* Saldo Pendiente */}
         <div style={{
           backgroundColor: colors.surface,
           padding: '20px',
           borderRadius: '12px',
           boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
           textAlign: 'center',
-          userSelect: 'none'
+          userSelect: 'none',
+          position: 'relative',
+          overflow: 'hidden'
         }}>
-          <div style={{ fontSize: '24px', fontWeight: '700', color: colors.warning, marginBottom: '4px' }}>
-            {formatCurrency(totales.totalPendiente)}
+          <div style={{
+            position: 'absolute',
+            top: '12px',
+            right: '12px',
+            opacity: 0.1
+          }}>
+            <Clock size={24} color={colors.warning} />
           </div>
-          <div style={{ fontSize: '14px', color: colors.textSecondary }}>
-            Saldo Pendiente
+          <div style={{ fontSize: '24px', fontWeight: '700', color: colors.warning, marginBottom: '6px' }}>
+            {formatCurrency(totalesFiltrados.totalPendiente)}
           </div>
+          <div style={{ fontSize: '14px', color: colors.textSecondary, marginBottom: '4px' }}>
+            {filteredData.length === totales.totalSubvenciones ? 'Saldo Pendiente' : 'Saldo Pendiente (Filtrado)'}
+          </div>
+          {filteredData.length !== totales.totalSubvenciones && (
+            <div style={{ 
+              fontSize: '12px', 
+              color: colors.textSecondary, 
+              marginTop: '4px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '4px'
+            }}>
+              <span>de {formatCurrency(totales.totalPendiente)} total</span>
+              <span style={{
+                backgroundColor: colors.warning + '20',
+                color: colors.warning,
+                padding: '2px 6px',
+                borderRadius: '10px',
+                fontSize: '10px',
+                fontWeight: '600'
+              }}>
+                {Math.round((totalesFiltrados.totalPendiente / totales.totalPendiente) * 100)}%
+              </span>
+            </div>
+          )}
         </div>
+
       </div>
 
       {/* Lista de subvenciones */}
@@ -1438,17 +1987,37 @@ const SubvencionesPage = () => {
                 <div style={{ display: 'grid', gap: '16px' }}>
                   <div>
                     <label style={{ fontSize: '14px', fontWeight: '500', color: colors.text, marginBottom: '4px' }}>Estado</label>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                       {(() => {
-                        const estadoInfo = estados[selectedSubvencion.estado] || { color: colors.textSecondary, icon: AlertCircle, label: selectedSubvencion.estado };
+                        const estadoInfo = estados[selectedSubvencion.estado] || { 
+                          color: colors.textSecondary, 
+                          icon: AlertCircle, 
+                          label: selectedSubvencion.estado,
+                          bgColor: colors.textSecondary + '20',
+                          borderColor: colors.textSecondary
+                        };
                         const EstadoIcon = estadoInfo.icon;
                         return (
-                          <>
+                          <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            padding: '8px 16px',
+                            backgroundColor: estadoInfo.bgColor || estadoInfo.color + '20',
+                            border: `1px solid ${estadoInfo.borderColor || estadoInfo.color}`,
+                            borderRadius: '8px',
+                            gap: '8px',
+                            boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
+                          }}>
                             <EstadoIcon size={16} color={estadoInfo.color} />
-                            <span style={{ fontSize: '16px', color: estadoInfo.color, fontWeight: '500' }}>
+                            <span style={{ 
+                              fontSize: '14px', 
+                              color: estadoInfo.color, 
+                              fontWeight: '600',
+                              letterSpacing: '0.025em'
+                            }}>
                               {estadoInfo.label}
                             </span>
-                          </>
+                          </div>
                         );
                       })()}
                     </div>
@@ -2560,6 +3129,123 @@ const SubvencionesPage = () => {
                 }}
               >
                 {loading ? 'Guardando...' : (showNewSubvencionModal ? 'Crear' : 'Guardar')}
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Modal para guardar filtros */}
+      {showSaveFiltersModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000,
+          padding: '20px'
+        }}>
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.9 }}
+            style={{
+              backgroundColor: colors.surface,
+              borderRadius: '12px',
+              padding: '24px',
+              maxWidth: '400px',
+              width: '100%',
+              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)'
+            }}
+          >
+            <div style={{ marginBottom: '20px' }}>
+              <h3 style={{ fontSize: '18px', fontWeight: '600', color: colors.text, margin: '0 0 8px 0' }}>
+                Guardar Filtros Actuales
+              </h3>
+              <p style={{ fontSize: '14px', color: colors.textSecondary, margin: 0 }}>
+                Guarda la configuración actual de filtros para usarla más tarde.
+              </p>
+            </div>
+            
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', color: colors.text, marginBottom: '8px' }}>
+                Nombre del filtro
+              </label>
+              <input
+                type="text"
+                value={filterName}
+                onChange={(e) => setFilterName(e.target.value)}
+                placeholder="Ej: Filtro 2024, Subvenciones Activas..."
+                style={{
+                  width: '100%',
+                  padding: '12px',
+                  border: `1px solid ${colors.border}`,
+                  borderRadius: '8px',
+                  backgroundColor: colors.surface,
+                  color: colors.text,
+                  fontSize: '14px',
+                  boxSizing: 'border-box'
+                }}
+                onKeyPress={(e) => {
+                  if (e.key === 'Enter') {
+                    handleSaveCurrentFilters();
+                  }
+                }}
+              />
+            </div>
+
+            <div style={{ marginBottom: '20px', padding: '12px', backgroundColor: colors.background, borderRadius: '8px' }}>
+              <div style={{ fontSize: '12px', fontWeight: '500', color: colors.text, marginBottom: '8px' }}>
+                Filtros que se guardarán:
+              </div>
+              <div style={{ fontSize: '12px', color: colors.textSecondary }}>
+                {searchTerm && <div>• Búsqueda: "{searchTerm}"</div>}
+                {selectedImputacion !== 'Todas' && <div>• Imputación: {selectedImputacion}</div>}
+                {selectedFase !== 'Todas' && <div>• Fase: {selectedFase}</div>}
+                {selectedAño !== 'Todos' && <div>• Año: {selectedAño}</div>}
+                <div>• Entidad: {selectedEntity === 'MENJAR_DHORT' ? 'Menjar d\'Hort' : 'EI SSS'}</div>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '16px', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => {
+                  setShowSaveFiltersModal(false);
+                  setFilterName('');
+                }}
+                style={{
+                  padding: '10px 20px',
+                  backgroundColor: 'transparent',
+                  color: colors.textSecondary,
+                  border: `1px solid ${colors.border}`,
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: '500'
+                }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleSaveCurrentFilters}
+                disabled={!filterName.trim()}
+                style={{
+                  padding: '10px 20px',
+                  backgroundColor: filterName.trim() ? colors.primary : colors.border,
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: filterName.trim() ? 'pointer' : 'not-allowed',
+                  fontSize: '14px',
+                  fontWeight: '500'
+                }}
+              >
+                Guardar
               </button>
             </div>
           </motion.div>

@@ -569,12 +569,15 @@ const AdminPanel = () => {
         marginBottom: '24px',
         border: `1px solid ${colors.border}`
       }}>
-        <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: '20px', alignItems: 'end', marginBottom: '20px', width: '100%' }}>
           {/* Búsqueda */}
-          <div style={{ flex: '1 1 300px' }}>
+          <div style={{ flex: '2', minWidth: '250px' }}>
+            <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', color: colors.text, marginBottom: '8px' }}>
+              Buscar
+            </label>
             <div style={{ position: 'relative' }}>
               <Search 
-                size={18} 
+                size={20} 
                 color={colors.textSecondary} 
                 style={{ 
                   position: 'absolute', 
@@ -590,20 +593,24 @@ const AdminPanel = () => {
                 onChange={(e) => setSearchTerm(e.target.value)}
                 style={{
                   width: '100%',
-                  padding: '12px 12px 12px 40px',
+                  padding: '12px 12px 12px 44px',
                   border: `1px solid ${colors.border}`,
                   borderRadius: '8px',
                   fontSize: '14px',
                   color: colors.text,
-                  backgroundColor: colors.background,
-                  outline: 'none'
+                  backgroundColor: colors.surface,
+                  outline: 'none',
+                  boxSizing: 'border-box'
                 }}
               />
             </div>
           </div>
 
           {/* Filtro por rol */}
-          <div style={{ flex: '0 1 200px' }}>
+          <div style={{ flex: '1', minWidth: '200px' }}>
+            <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', color: colors.text, marginBottom: '8px' }}>
+              Rol
+            </label>
             <select
               value={filterRole}
               onChange={(e) => setFilterRole(e.target.value)}
@@ -614,8 +621,9 @@ const AdminPanel = () => {
                 borderRadius: '8px',
                 fontSize: '14px',
                 color: colors.text,
-                backgroundColor: colors.background,
-                outline: 'none'
+                backgroundColor: colors.surface,
+                outline: 'none',
+                boxSizing: 'border-box'
               }}
             >
               <option value="all">Todos los roles</option>
@@ -627,7 +635,10 @@ const AdminPanel = () => {
           </div>
 
           {/* Filtro por estado */}
-          <div style={{ flex: '0 1 200px' }}>
+          <div style={{ flex: '1', minWidth: '200px' }}>
+            <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', color: colors.text, marginBottom: '8px' }}>
+              Estado
+            </label>
             <select
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value)}
@@ -638,14 +649,40 @@ const AdminPanel = () => {
                 borderRadius: '8px',
                 fontSize: '14px',
                 color: colors.text,
-                backgroundColor: colors.background,
-                outline: 'none'
+                backgroundColor: colors.surface,
+                outline: 'none',
+                boxSizing: 'border-box'
               }}
             >
               <option value="all">Todos los estados</option>
               <option value="active">Activos</option>
               <option value="inactive">Inactivos</option>
             </select>
+          </div>
+
+          {/* Botón Limpiar Filtros */}
+          <div style={{ flexShrink: 0 }}>
+            <button
+              onClick={() => {
+                setFilterRole('all');
+                setFilterStatus('all');
+                setSearchTerm('');
+              }}
+              style={{
+                padding: '12px 24px',
+                backgroundColor: colors.primary,
+                color: 'white',
+                border: 'none',
+                borderRadius: '8px',
+                fontSize: '14px',
+                fontWeight: '500',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease',
+                whiteSpace: 'nowrap'
+              }}
+            >
+              Limpiar Filtros
+            </button>
           </div>
         </div>
 

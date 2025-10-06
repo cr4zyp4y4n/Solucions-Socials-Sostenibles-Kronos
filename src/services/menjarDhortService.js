@@ -388,7 +388,7 @@ function formatInternalToSupabase(internal) {
 /**
  * Filtra subvenciones según criterios
  */
-export function filterSubvenciones({ searchTerm = '', imputacion = 'Todas', fase = 'Todas' }) {
+export function filterSubvenciones({ searchTerm = '', imputacion = 'Todas', fase = 'Todas', año = 'Todos' }) {
   let filtered = [...cachedData];
 
   // Filtrar por término de búsqueda
@@ -407,13 +407,18 @@ export function filterSubvenciones({ searchTerm = '', imputacion = 'Todas', fase
   }
 
   // Filtrar por fase (usando faseProyecto)
-  if (fase !== 'Todas' && fase !== 'sin-fases') {
+  if (fase !== 'Todas') {
     filtered = filtered.filter(sub => {
       if (!sub.faseProyecto) return false;
       return sub.faseProyecto.includes(`FASE ${fase}`);
     });
-  } else if (fase === 'sin-fases') {
-    filtered = filtered.filter(sub => !sub.faseProyecto || sub.faseProyecto.trim() === '');
+  }
+
+  // Filtrar por año
+  if (año !== 'Todos') {
+    filtered = filtered.filter(sub => {
+      return isSubvencionActiveInYear(sub.periodoEjecucion, año);
+    });
   }
 
   return filtered;
@@ -425,20 +430,13 @@ export function filterSubvenciones({ searchTerm = '', imputacion = 'Todas', fase
 export function getFiltros() {
   const imputaciones = [...new Set(cachedData.map(s => s.imputacion).filter(Boolean))];
   
-  // Extraer fases del campo faseProyecto
-  const fases = new Set();
-  cachedData.forEach(sub => {
-    if (sub.faseProyecto) {
-      const match = sub.faseProyecto.match(/FASE (\d+)/);
-      if (match) {
-        fases.add(match[1]);
-      }
-    }
-  });
-
+  // Obtener años disponibles
+  const años = getAvailableYears();
+  
   return {
     imputaciones: ['Todas', ...imputaciones.sort()],
-    fases: ['Todas', ...Array.from(fases).sort(), 'sin-fases']
+    fases: ['Todas', '1', '2', '3', '4', '5', '6', '7', '8'],
+    años: años
   };
 }
 
@@ -466,6 +464,109 @@ export function getEstadisticas() {
     totalPendiente,
     totalPorCobrar
   };
+}
+
+// ============================================================================
+// FUNCIONES DE AÑOS
+// ============================================================================
+
+/**
+ * Verifica si una subvención está activa en un año específico
+ * @param {string} periodo - Período de ejecución (ej: "01/11/2023 - 30/11/2024")
+ * @param {string} año - Año a verificar (ej: "2023")
+ * @returns {boolean}
+ */
+function isSubvencionActiveInYear(periodo, año) {
+  if (!periodo || !año) return false;
+  
+  // Si el período contiene el año directamente
+  if (periodo.includes(año)) return true;
+  
+  // Intentar parsear fechas de inicio y fin
+  const partes = periodo.split(' - ');
+  if (partes.length === 2) {
+    const fechaInicio = parseDate(partes[0].trim());
+    const fechaFin = parseDate(partes[1].trim());
+    
+    if (fechaInicio && fechaFin) {
+      const añoInicio = fechaInicio.getFullYear();
+      const añoFin = fechaFin.getFullYear();
+      const añoNum = parseInt(año);
+      
+      // La subvención está activa si el año está entre inicio y fin
+      return añoNum >= añoInicio && añoNum <= añoFin;
+    }
+  }
+  
+  // Si no se puede parsear, verificar si contiene el año como texto
+  return periodo.includes(año);
+}
+
+/**
+ * Obtiene todos los años disponibles en las subvenciones
+ * @returns {Array} Array de años ordenados
+ */
+function getAvailableYears() {
+  const años = new Set();
+  
+  cachedData.forEach(subvencion => {
+    if (subvencion.periodoEjecucion) {
+      // Extraer años del período
+      const añosEnPeriodo = extractYearsFromPeriod(subvencion.periodoEjecucion);
+      añosEnPeriodo.forEach(año => años.add(año));
+    }
+  });
+  
+  // Convertir a array y ordenar
+  const añosArray = Array.from(años).map(año => año.toString()).sort((a, b) => b - a);
+  return ['Todos', ...añosArray];
+}
+
+/**
+ * Extrae todos los años de un período
+ * @param {string} periodo - Período de ejecución
+ * @returns {Array} Array de años
+ */
+function extractYearsFromPeriod(periodo) {
+  const años = new Set();
+  
+  // Buscar años de 4 dígitos en el período
+  const añoRegex = /\b(20\d{2})\b/g;
+  let match;
+  
+  while ((match = añoRegex.exec(periodo)) !== null) {
+    años.add(match[1]);
+  }
+  
+  return Array.from(años);
+}
+
+/**
+ * Parsea una fecha en formato DD/MM/YYYY o YYYY-MM-DD
+ * @param {string} dateStr - String de fecha
+ * @returns {Date|null}
+ */
+function parseDate(dateStr) {
+  if (!dateStr) return null;
+  
+  // Formato DD/MM/YYYY
+  if (dateStr.includes('/')) {
+    const partes = dateStr.split('/');
+    if (partes.length === 3) {
+      const dia = parseInt(partes[0]);
+      const mes = parseInt(partes[1]) - 1; // Los meses en JS van de 0-11
+      const año = parseInt(partes[2]);
+      return new Date(año, mes, dia);
+    }
+  }
+  
+  // Formato YYYY-MM-DD
+  if (dateStr.includes('-')) {
+    const fecha = new Date(dateStr);
+    return isNaN(fecha.getTime()) ? null : fecha;
+  }
+  
+  return null;
 }
 
 // La función setData ya se declara arriba, solo necesitamos asegurarnos de que

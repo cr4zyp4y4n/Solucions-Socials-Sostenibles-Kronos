@@ -364,8 +364,13 @@ class SubvencionesService {
     return this.subvencionesData;
   }
 
+  // Establecer datos (para sincronización)
+  setData(data) {
+    this.subvencionesData = data;
+  }
+
   // Filtrar subvenciones
-  filterSubvenciones({ searchTerm, estado, imputacion, modalidad, proyecto, fase, sortBy }) {
+  filterSubvenciones({ searchTerm, estado, imputacion, modalidad, proyecto, fase, año, sortBy }) {
     let filtered = [...this.subvencionesData];
 
     // Filtro por término de búsqueda
@@ -402,17 +407,17 @@ class SubvencionesService {
 
     // Filtro por fase
     if (fase && fase !== 'Todas') {
-      if (fase === 'sin-fases') {
-        filtered = filtered.filter(subvencion => {
-          const fases = this.analizarFasesProyecto(subvencion);
-          return fases.length === 0;
-        });
-      } else {
-        filtered = filtered.filter(subvencion => {
-          const fases = this.analizarFasesProyecto(subvencion);
-          return fases.some(f => f.numero.toString() === fase);
-        });
-      }
+      filtered = filtered.filter(subvencion => {
+        const fases = this.analizarFasesProyecto(subvencion.fasesProyecto);
+        return fases.some(f => f.numero.toString() === fase);
+      });
+    }
+
+    // Filtro por año
+    if (año && año !== 'Todos') {
+      filtered = filtered.filter(subvencion => {
+        return this.isSubvencionActiveInYear(subvencion.periodo, año);
+      });
     }
 
     // Ordenamiento
@@ -491,9 +496,10 @@ class SubvencionesService {
       // Verificar si es una fase activa
       // Puede ser boolean (true), texto con contenido, o "X"
       const isBoolean = typeof fase === 'boolean';
-      const isActive = isBoolean ? fase : (fase && fase.toString().trim() !== '' && fase.toString().trim().toUpperCase() !== 'X');
+      const faseStr = fase ? fase.toString().trim().toUpperCase() : '';
+      const isActive = isBoolean ? fase : (faseStr === 'X' || (faseStr !== '' && faseStr !== '-'));
       
-      if (fase === true || isActive) {
+      if (isActive) {
         fases.push({
           numero: i,
           campo: `fase${i}`,
@@ -550,22 +556,118 @@ class SubvencionesService {
     const modalidades = [...new Set(this.subvencionesData.map(s => s.modalidad).filter(Boolean))];
     const proyectos = [...new Set(this.subvencionesData.map(s => s.proyecto).filter(Boolean))];
     
-    // Obtener fases activas de todas las subvenciones
-    const fasesActivas = new Set();
-    this.subvencionesData.forEach(subvencion => {
-      const fases = this.analizarFasesProyecto(subvencion);
-      fases.forEach(fase => {
-        fasesActivas.add(fase.numero.toString());
-      });
-    });
+    // Obtener años disponibles
+    const años = this.getAvailableYears();
     
     return {
       estados: ['Todas', ...estados.sort()],
       imputaciones: ['Todas', ...imputaciones.sort()],
       modalidades: ['Todas', ...modalidades.sort()],
       proyectos: ['Todas', ...proyectos.sort()],
-      fases: ['Todas', 'sin-fases', ...Array.from(fasesActivas).sort()]
+      fases: ['Todas', '1', '2', '3', '4', '5', '6', '7', '8'],
+      años: años
     };
+  }
+
+  // ===== FUNCIONES DE AÑOS =====
+
+  /**
+   * Verifica si una subvención está activa en un año específico
+   * @param {string} periodo - Período de ejecución (ej: "01/11/2023 - 30/11/2024")
+   * @param {string} año - Año a verificar (ej: "2023")
+   * @returns {boolean}
+   */
+  isSubvencionActiveInYear(periodo, año) {
+    if (!periodo || !año) return false;
+    
+    // Si el período contiene el año directamente
+    if (periodo.includes(año)) return true;
+    
+    // Intentar parsear fechas de inicio y fin
+    const partes = periodo.split(' - ');
+    if (partes.length === 2) {
+      const fechaInicio = this.parseDate(partes[0].trim());
+      const fechaFin = this.parseDate(partes[1].trim());
+      
+      if (fechaInicio && fechaFin) {
+        const añoInicio = fechaInicio.getFullYear();
+        const añoFin = fechaFin.getFullYear();
+        const añoNum = parseInt(año);
+        
+        // La subvención está activa si el año está entre inicio y fin
+        return añoNum >= añoInicio && añoNum <= añoFin;
+      }
+    }
+    
+    // Si no se puede parsear, verificar si contiene el año como texto
+    return periodo.includes(año);
+  }
+
+  /**
+   * Obtiene todos los años disponibles en las subvenciones
+   * @returns {Array} Array de años ordenados
+   */
+  getAvailableYears() {
+    const años = new Set();
+    
+    this.subvencionesData.forEach(subvencion => {
+      if (subvencion.periodo) {
+        // Extraer años del período
+        const añosEnPeriodo = this.extractYearsFromPeriod(subvencion.periodo);
+        añosEnPeriodo.forEach(año => años.add(año));
+      }
+    });
+    
+    // Convertir a array y ordenar
+    const añosArray = Array.from(años).map(año => año.toString()).sort((a, b) => b - a);
+    return ['Todos', ...añosArray];
+  }
+
+  /**
+   * Extrae todos los años de un período
+   * @param {string} periodo - Período de ejecución
+   * @returns {Array} Array de años
+   */
+  extractYearsFromPeriod(periodo) {
+    const años = new Set();
+    
+    // Buscar años de 4 dígitos en el período
+    const añoRegex = /\b(20\d{2})\b/g;
+    let match;
+    
+    while ((match = añoRegex.exec(periodo)) !== null) {
+      años.add(match[1]);
+    }
+    
+    return Array.from(años);
+  }
+
+  /**
+   * Parsea una fecha en formato DD/MM/YYYY o YYYY-MM-DD
+   * @param {string} dateStr - String de fecha
+   * @returns {Date|null}
+   */
+  parseDate(dateStr) {
+    if (!dateStr) return null;
+    
+    // Formato DD/MM/YYYY
+    if (dateStr.includes('/')) {
+      const partes = dateStr.split('/');
+      if (partes.length === 3) {
+        const dia = parseInt(partes[0]);
+        const mes = parseInt(partes[1]) - 1; // Los meses en JS van de 0-11
+        const año = parseInt(partes[2]);
+        return new Date(año, mes, dia);
+      }
+    }
+    
+    // Formato YYYY-MM-DD
+    if (dateStr.includes('-')) {
+      const fecha = new Date(dateStr);
+      return isNaN(fecha.getTime()) ? null : fecha;
+    }
+    
+    return null;
   }
 
   // ===== FUNCIONES DE SUPABASE =====
