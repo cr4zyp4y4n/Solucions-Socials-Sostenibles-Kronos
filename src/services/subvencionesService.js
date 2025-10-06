@@ -448,13 +448,22 @@ class SubvencionesService {
       sum + (subvencion.primerAbono || 0) + (subvencion.segundoAbono || 0), 0
     );
 
-    const totalPendiente = totalOtorgado - totalAbonado;
+    // Usar el saldoPendiente directamente del CSV en lugar de calcularlo
+    const totalPendiente = this.subvencionesData.reduce((sum, subvencion) => 
+      sum + (subvencion.saldoPendiente || 0), 0
+    );
+
+    // También calcular total por cobrar desde el campo importesPorCobrar
+    const totalPorCobrar = this.subvencionesData.reduce((sum, subvencion) => 
+      sum + (subvencion.importesPorCobrar || 0), 0
+    );
 
     return {
       totalOtorgado,
       totalSolicitado,
       totalAbonado,
       totalPendiente,
+      totalPorCobrar,
       total: this.subvencionesData.length,
       totalSubvenciones: this.subvencionesData.length
     };

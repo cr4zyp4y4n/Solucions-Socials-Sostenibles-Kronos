@@ -34,6 +34,7 @@ import {
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import subvencionesService from '../services/subvencionesService';
+import * as menjarDhortService from '../services/menjarDhortService';
 import { useTheme } from './ThemeContext';
 
 // Componente memoizado para cada item de subvención
@@ -51,7 +52,8 @@ const SubvencionItem = memo(({
 }) => {
   const estadoInfo = estados[subvencion.estado] || { color: colors.textSecondary, icon: AlertCircle, label: subvencion.estado };
   const EstadoIcon = estadoInfo.icon;
-  const fasesActivas = getFasesActivas(subvencion.fasesProyecto);
+  // Pasar fasesProyecto o faseProyecto según la entidad
+  const fasesActivas = getFasesActivas(subvencion.fasesProyecto || subvencion.faseProyecto);
 
   return (
     <motion.div
@@ -203,10 +205,23 @@ SubvencionItem.displayName = 'SubvencionItem';
 
 const SubvencionesPage = () => {
   const { colors, isDarkMode } = useTheme();
+  
+  // Estado para selección de entidad
+  const [selectedEntity, setSelectedEntity] = useState('EI_SSS'); // 'EI_SSS' o 'MENJAR_DHORT'
+  
   const [subvencionesData, setSubvencionesData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
+  
+  // Debug: Log cuando cambia subvencionesData
+  useEffect(() => {
+    console.log('🔥 subvencionesData CAMBIÓ:', {
+      cantidad: subvencionesData.length,
+      primerElemento: subvencionesData[0]?.nombre,
+      todosLosNombres: subvencionesData.map(s => s.nombre)
+    });
+  }, [subvencionesData]);
   const [selectedImputacion, setSelectedImputacion] = useState('Todas');
   const [selectedFase, setSelectedFase] = useState('Todas');
   const [selectedSubvencion, setSelectedSubvencion] = useState(null);
@@ -231,27 +246,67 @@ const SubvencionesPage = () => {
   };
 
   // Cargar datos de subvenciones
-  useEffect(() => {
-    loadSubvencionesData();
-  }, []);
-
-  const loadSubvencionesData = async () => {
+  const loadSubvencionesData = useCallback(async () => {
+    console.log('🔄🔄🔄 loadSubvencionesData LLAMADO - selectedEntity:', selectedEntity);
+    
     try {
       setLoading(true);
-      setError('');
+      setError(''); // Limpiar errores anteriores
+      
+      console.log('🧹 Limpiando subvencionesData...');
+      setSubvencionesData([]); // Limpiar datos anteriores inmediatamente
 
-      // Cargar datos desde Supabase
-      const data = await subvencionesService.loadFromSupabase();
+      // Cargar datos desde Supabase usando el servicio correspondiente
+      const service = selectedEntity === 'MENJAR_DHORT' ? menjarDhortService : subvencionesService;
+      
+      console.log('🔄 Servicio seleccionado:', selectedEntity === 'MENJAR_DHORT' ? 'menjarDhortService' : 'subvencionesService');
+      
+      const data = await service.loadFromSupabase();
+      
+      console.log('📦 Datos recibidos del servicio:', {
+        cantidad: data.length,
+        primerElemento: data[0],
+        servicioUsado: selectedEntity === 'MENJAR_DHORT' ? 'Menjar d\'Hort' : 'EI SSS'
+      });
+      
+      console.log('💾 Actualizando subvencionesData con:', data.length, 'elementos');
       setSubvencionesData(data);
       
-      console.log('📊 Datos cargados desde Supabase:', data.length, 'subvenciones');
+      // Verificar que se actualizó
+      console.log('✅ subvencionesData debería tener ahora:', data.length, 'elementos');
+      
+      const entityName = selectedEntity === 'MENJAR_DHORT' ? 'Menjar d\'Hort' : 'EI SSS';
+      console.log(`📊 Datos cargados desde Supabase (${entityName}):`, data.length, 'subvenciones');
+      
+      // Si no hay datos, solo logear (no mostrar error)
+      if (data.length === 0) {
+        console.log(`ℹ️ No hay datos para ${entityName}. Esperando importación de CSV.`);
+      }
     } catch (error) {
-      console.error('Error cargando datos de subvenciones:', error);
-      setError('Error al cargar los datos de subvenciones desde la base de datos');
+      console.error('❌ Error cargando datos de subvenciones:', error);
+      // Solo mostrar error si realmente hay un error de conexión/BD
+      setError('Error al conectar con la base de datos. Por favor, recarga la página.');
+      setSubvencionesData([]); // Limpiar en caso de error también
     } finally {
       setLoading(false);
+      console.log('🏁 loadSubvencionesData FINALIZADO');
     }
-  };
+  }, [selectedEntity]);
+
+  useEffect(() => {
+    console.log('🔄 useEffect triggered - selectedEntity:', selectedEntity);
+    
+    // Limpiar estados al cambiar de entidad
+    setSearchTerm('');
+    setSelectedFase('Todas');
+    setSelectedImputacion('Todas');
+    setShowDetails(false);
+    setSelectedSubvencion(null);
+    setCsvFile(null);
+    
+    // Cargar datos de la nueva entidad
+    loadSubvencionesData();
+  }, [selectedEntity, loadSubvencionesData]);
 
   // Manejar carga de archivo CSV
   const handleFileUpload = (event) => {
@@ -276,10 +331,26 @@ const SubvencionesPage = () => {
       reader.onload = async (e) => {
         try {
           const csvData = e.target.result;
+          const service = selectedEntity === 'MENJAR_DHORT' ? menjarDhortService : subvencionesService;
           
-          // Procesar CSV y subir a Supabase
-          const processedData = subvencionesService.processCSVData(csvData);
-          const results = await subvencionesService.syncToSupabase(processedData);
+          console.log('🔄 Procesando CSV para entidad:', selectedEntity);
+          
+          // Procesar CSV según el tipo de entidad
+          let processedData;
+          if (selectedEntity === 'MENJAR_DHORT') {
+            // Para Menjar d'Hort usa el parser horizontal
+            processedData = service.processHorizontalCSV(csvData);
+          } else {
+            // Para EI SSS usa el parser normal
+            processedData = service.processCSVData(csvData);
+          }
+          
+          console.log('📋 Datos procesados:', processedData.length);
+          
+          // Subir a Supabase
+          const results = await service.syncToSupabase(processedData);
+          
+          console.log('✅ Resultados de sync:', results);
           
           // Recargar datos desde Supabase
           await loadSubvencionesData();
@@ -287,7 +358,8 @@ const SubvencionesPage = () => {
           setShowUploadModal(false);
           setCsvFile(null);
           
-          console.log(`✅ Sincronización completada: ${results.created} creadas, ${results.updated} actualizadas, ${results.errors} errores`);
+          const entityName = selectedEntity === 'MENJAR_DHORT' ? 'Menjar d\'Hort' : 'EI SSS';
+          console.log(`✅ Sincronización completada (${entityName}): ${results.createdCount || results.created} creadas, ${results.errorCount || results.errors} errores`);
         } catch (error) {
           console.error('Error procesando CSV:', error);
           setError('Error al procesar el archivo CSV y sincronizar con la base de datos');
@@ -496,30 +568,45 @@ const SubvencionesPage = () => {
     }
   }, [selectedSubvencion]);
 
-  // Filtrar datos usando el servicio
+  // Obtener servicio actual según entidad
+  const currentService = useMemo(() => {
+    return selectedEntity === 'MENJAR_DHORT' ? menjarDhortService : subvencionesService;
+  }, [selectedEntity]);
+
+  // Filtrar datos usando el servicio correcto
   const filteredData = useMemo(() => {
-    return subvencionesService.filterSubvenciones({
+    console.log('🔍 Filtrando datos con:', {
+      entidad: selectedEntity,
+      datosOriginales: subvencionesData.length,
+      servicio: selectedEntity === 'MENJAR_DHORT' ? 'menjarDhortService' : 'subvencionesService'
+    });
+    
+    // Usar el servicio correcto según la entidad
+    const service = selectedEntity === 'MENJAR_DHORT' ? menjarDhortService : subvencionesService;
+    return service.filterSubvenciones({
       searchTerm,
       imputacion: selectedImputacion,
       fase: selectedFase
     });
-  }, [subvencionesData, searchTerm, selectedImputacion, selectedFase]);
+  }, [subvencionesData, searchTerm, selectedImputacion, selectedFase, selectedEntity]);
 
-  // Obtener opciones de filtros usando el servicio
+  // Obtener opciones de filtros usando el servicio correcto
   const filtros = useMemo(() => {
-    return subvencionesService.getFiltros();
-  }, [subvencionesData]);
+    const service = selectedEntity === 'MENJAR_DHORT' ? menjarDhortService : subvencionesService;
+    return service.getFiltros();
+  }, [subvencionesData, selectedEntity]);
 
-  // Calcular totales usando el servicio
+  // Calcular totales usando el servicio correcto
   const totales = useMemo(() => {
-    const stats = subvencionesService.getEstadisticas();
+    const service = selectedEntity === 'MENJAR_DHORT' ? menjarDhortService : subvencionesService;
+    const stats = service.getEstadisticas();
     return {
       totalOtorgado: stats.totalOtorgado,
       totalPendiente: stats.totalPendiente,
       totalSubvenciones: stats.total,
       totalPorCobrar: stats.totalPorCobrar
     };
-  }, [subvencionesData]);
+  }, [subvencionesData, selectedEntity]);
 
   // Formatear moneda
   const formatCurrency = (amount) => {
@@ -539,8 +626,19 @@ const SubvencionesPage = () => {
 
   // Obtener fases activas de una subvención usando el servicio
   const getFasesActivas = useCallback((fasesProyecto) => {
-    const fasesAnalizadas = subvencionesService.analizarFasesProyecto(fasesProyecto);
-    return fasesAnalizadas.map(fase => fase.numero);
+    // Si es un string (Menjar d'Hort), extraer el número de fase
+    if (typeof fasesProyecto === 'string') {
+      const match = fasesProyecto.match(/FASE (\d+)/);
+      return match ? [match[1]] : [];
+    }
+    
+    // Si es un objeto (EI SSS), usar el servicio
+    if (fasesProyecto && typeof fasesProyecto === 'object') {
+      const fasesAnalizadas = subvencionesService.analizarFasesProyecto(fasesProyecto);
+      return fasesAnalizadas.map(fase => fase.numero);
+    }
+    
+    return [];
   }, []);
 
   // Exportar a Excel usando el servicio
@@ -634,14 +732,104 @@ const SubvencionesPage = () => {
     <div style={{ padding: '24px', backgroundColor: colors.background, minHeight: '100vh' }}>
       {/* Header */}
       <div style={{ marginBottom: '32px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', marginBottom: '16px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', marginBottom: '24px' }}>
           <FileText size={32} color={colors.primary} style={{ marginRight: '12px' }} />
           <h1 style={{ fontSize: '28px', fontWeight: '700', color: colors.text, margin: 0 }}>
             Subvenciones
           </h1>
         </div>
+        
+        {/* Selector de Entidad - Estilo Analytics */}
+        <div style={{ marginBottom: '28px' }}>
+          <h3 style={{ 
+            margin: '0 0 20px 0', 
+            color: colors.text, 
+            fontSize: '20px', 
+            fontWeight: '600' 
+          }}>
+            Seleccionar Entidad
+          </h3>
+          <div style={{
+            display: 'flex',
+            gap: '18px',
+            flexWrap: 'wrap',
+          }}>
+            {/* EI SSS SCCL */}
+            <motion.div
+              whileHover={{ scale: 1.04, boxShadow: selectedEntity === 'EI_SSS' ? `0 4px 16px 0 ${colors.primary}33` : `0 2px 8px 0 ${colors.primary}22` }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => setSelectedEntity('EI_SSS')}
+              style={{
+                minWidth: 200,
+                flex: '1 1 200px',
+                background: colors.card || colors.surface,
+                borderRadius: 12,
+                boxShadow: selectedEntity === 'EI_SSS' ? `0 4px 16px 0 ${colors.primary}33` : `0 2px 8px 0 rgba(0,0,0,0.04)`,
+                border: selectedEntity === 'EI_SSS' ? `2.5px solid ${colors.primary}` : `1.5px solid ${colors.border}`,
+                color: selectedEntity === 'EI_SSS' ? colors.primary : colors.text,
+                cursor: loading ? 'not-allowed' : 'pointer',
+                padding: '22px 18px',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'flex-start',
+                justifyContent: 'center',
+                transition: 'all 0.18s',
+                fontWeight: selectedEntity === 'EI_SSS' ? 600 : 400,
+                fontSize: 16,
+                outline: selectedEntity === 'EI_SSS' ? `2px solid ${colors.primary}` : 'none',
+                position: 'relative',
+                opacity: loading ? 0.6 : 1
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+                <Building size={24} />
+                <span style={{ fontSize: '18px', fontWeight: '600' }}>EI SSS SCCL</span>
+              </div>
+              <span style={{ fontSize: '13px', color: colors.textSecondary, marginTop: '4px' }}>
+                Solucions Socials · Estructura i Serveis
+              </span>
+            </motion.div>
+
+            {/* Menjar d'Hort */}
+            <motion.div
+              whileHover={{ scale: 1.04, boxShadow: selectedEntity === 'MENJAR_DHORT' ? `0 4px 16px 0 ${colors.primary}33` : `0 2px 8px 0 ${colors.primary}22` }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => setSelectedEntity('MENJAR_DHORT')}
+              style={{
+                minWidth: 200,
+                flex: '1 1 200px',
+                background: colors.card || colors.surface,
+                borderRadius: 12,
+                boxShadow: selectedEntity === 'MENJAR_DHORT' ? `0 4px 16px 0 ${colors.primary}33` : `0 2px 8px 0 rgba(0,0,0,0.04)`,
+                border: selectedEntity === 'MENJAR_DHORT' ? `2.5px solid ${colors.primary}` : `1.5px solid ${colors.border}`,
+                color: selectedEntity === 'MENJAR_DHORT' ? colors.primary : colors.text,
+                cursor: loading ? 'not-allowed' : 'pointer',
+                padding: '22px 18px',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'flex-start',
+                justifyContent: 'center',
+                transition: 'all 0.18s',
+                fontWeight: selectedEntity === 'MENJAR_DHORT' ? 600 : 400,
+                fontSize: 16,
+                outline: selectedEntity === 'MENJAR_DHORT' ? `2px solid ${colors.primary}` : 'none',
+                position: 'relative',
+                opacity: loading ? 0.6 : 1
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+                <Building size={24} />
+                <span style={{ fontSize: '18px', fontWeight: '600' }}>Menjar d'Hort</span>
+              </div>
+              <span style={{ fontSize: '13px', color: colors.textSecondary, marginTop: '4px' }}>
+                Cooperativa d'alimentació ecològica
+              </span>
+            </motion.div>
+          </div>
+        </div>
+        
         <p style={{ fontSize: '16px', color: colors.textSecondary, margin: 0 }}>
-          Gestión y seguimiento de subvenciones de entidades públicas
+          Gestión y seguimiento de subvenciones de {selectedEntity === 'MENJAR_DHORT' ? 'Menjar d\'Hort SCCL' : 'EI SSS SCCL'}
         </p>
       </div>
 
@@ -900,10 +1088,16 @@ const SubvencionesPage = () => {
           }}>
             <FileText size={48} color={colors.border} style={{ marginBottom: '16px' }} />
             <div style={{ fontSize: '16px', fontWeight: '500', marginBottom: '8px' }}>
-              No se encontraron subvenciones
+              {subvencionesData.length === 0 
+                ? `No hay subvenciones para ${selectedEntity === 'MENJAR_DHORT' ? 'Menjar d\'Hort' : 'EI SSS'}`
+                : 'No se encontraron subvenciones'
+              }
             </div>
             <div style={{ fontSize: '14px' }}>
-              Intenta ajustar los filtros de búsqueda
+              {subvencionesData.length === 0
+                ? 'Importa un archivo CSV para comenzar'
+                : 'Intenta ajustar los filtros de búsqueda'
+              }
             </div>
           </div>
         ) : (
@@ -1169,10 +1363,11 @@ const SubvencionesPage = () => {
               )}
 
               {/* Fases del Proyecto (solo si hay alguna fase) */}
-              {(selectedSubvencion.fasesProyecto.fase1 || selectedSubvencion.fasesProyecto.fase2 || 
-                selectedSubvencion.fasesProyecto.fase3 || selectedSubvencion.fasesProyecto.fase4 ||
-                selectedSubvencion.fasesProyecto.fase5 || selectedSubvencion.fasesProyecto.fase6 ||
-                selectedSubvencion.fasesProyecto.fase7 || selectedSubvencion.fasesProyecto.fase8) && (
+              {(selectedSubvencion.fasesProyecto?.fase1 || selectedSubvencion.fasesProyecto?.fase2 || 
+                selectedSubvencion.fasesProyecto?.fase3 || selectedSubvencion.fasesProyecto?.fase4 ||
+                selectedSubvencion.fasesProyecto?.fase5 || selectedSubvencion.fasesProyecto?.fase6 ||
+                selectedSubvencion.fasesProyecto?.fase7 || selectedSubvencion.fasesProyecto?.fase8 ||
+                selectedSubvencion.faseProyecto) && (
                 <div style={{ padding: '16px', backgroundColor: colors.background, borderRadius: '8px' }}>
                   <h3 style={{ fontSize: '16px', fontWeight: '600', color: colors.text, margin: '0 0 16px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <FileCheck size={18} color={colors.primary} />
@@ -1180,28 +1375,55 @@ const SubvencionesPage = () => {
                   </h3>
                   <div style={{ display: 'grid', gap: '8px' }}>
                     {(() => {
-                      const fasesAnalizadas = subvencionesService.analizarFasesProyecto(selectedSubvencion.fasesProyecto);
-                      return fasesAnalizadas.map((fase, index) => (
-                        <div key={fase.campo} style={{
-                          padding: '12px 16px',
-                          backgroundColor: colors.success + '15',
-                          borderRadius: '8px',
-                          border: `2px solid ${colors.success}`,
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '16px'
-                        }}>
-                          <CheckCircle size={18} color={colors.success} />
-                          <div>
-                            <div style={{ fontSize: '16px', fontWeight: '600', color: colors.text }}>
-                              {fase.nombre}
-                            </div>
-                            <div style={{ fontSize: '12px', color: colors.textSecondary }}>
-                              Campo: {fase.campo} | Contenido: {fase.contenido}
+                      // Para Menjar d'Hort (faseProyecto es un string simple)
+                      if (selectedSubvencion.faseProyecto && typeof selectedSubvencion.faseProyecto === 'string') {
+                        return (
+                          <div style={{
+                            padding: '12px 16px',
+                            backgroundColor: colors.success + '15',
+                            borderRadius: '8px',
+                            border: `2px solid ${colors.success}`,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '16px'
+                          }}>
+                            <CheckCircle size={18} color={colors.success} />
+                            <div>
+                              <div style={{ fontSize: '16px', fontWeight: '600', color: colors.text }}>
+                                {selectedSubvencion.faseProyecto}
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      ));
+                        );
+                      }
+                      
+                      // Para EI SSS (fasesProyecto es un objeto con fase1, fase2, etc.)
+                      if (selectedSubvencion.fasesProyecto) {
+                        const fasesAnalizadas = subvencionesService.analizarFasesProyecto(selectedSubvencion.fasesProyecto);
+                        return fasesAnalizadas.map((fase, index) => (
+                          <div key={fase.campo} style={{
+                            padding: '12px 16px',
+                            backgroundColor: colors.success + '15',
+                            borderRadius: '8px',
+                            border: `2px solid ${colors.success}`,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '16px'
+                          }}>
+                            <CheckCircle size={18} color={colors.success} />
+                            <div>
+                              <div style={{ fontSize: '16px', fontWeight: '600', color: colors.text }}>
+                                {fase.nombre}
+                              </div>
+                              <div style={{ fontSize: '12px', color: colors.textSecondary }}>
+                                Campo: {fase.campo} | Contenido: {fase.contenido}
+                              </div>
+                            </div>
+                          </div>
+                        ));
+                      }
+                      
+                      return null;
                     })()}
                   </div>
                 </div>
@@ -2188,12 +2410,63 @@ const SubvencionesPage = () => {
                     Fases del Proyecto
                   </h3>
                   <p style={{ fontSize: '13px', color: colors.textSecondary, margin: '4px 0 0 0' }}>
-                    Haz clic en las fases para activarlas o desactivarlas
+                    {editingSubvencion.faseProyecto !== undefined 
+                      ? 'Selecciona una fase' 
+                      : 'Haz clic en las fases para activarlas o desactivarlas'}
                   </p>
                 </div>
                 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '12px' }}>
                   {[1, 2, 3, 4, 5, 6, 7, 8].map(num => {
+                    // Manejar Menjar d'Hort (faseProyecto como string)
+                    if (editingSubvencion.faseProyecto !== undefined) {
+                      const currentFase = editingSubvencion.faseProyecto || '';
+                      const isActive = currentFase.includes(`FASE ${num}`);
+                      
+                      return (
+                        <div 
+                          key={num} 
+                          style={{ 
+                            padding: '12px 16px',
+                            backgroundColor: isActive ? (colors.success + '15') : colors.surface,
+                            border: `2px solid ${isActive ? colors.success : colors.border}`,
+                            borderRadius: '8px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '12px',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s ease'
+                          }}
+                          onClick={() => {
+                            setEditingSubvencion(prev => ({
+                              ...prev,
+                              faseProyecto: `FASE ${num}`
+                            }));
+                          }}
+                        >
+                          <div style={{
+                            width: '20px',
+                            height: '20px',
+                            borderRadius: '4px',
+                            border: `2px solid ${isActive ? colors.success : colors.border}`,
+                            backgroundColor: isActive ? colors.success : 'transparent',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            flexShrink: 0
+                          }}>
+                            {isActive && <CheckCircle size={14} color="white" />}
+                          </div>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontSize: '14px', fontWeight: '500', color: colors.text }}>
+                              Fase {num}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }
+                    
+                    // Manejar EI SSS (fasesProyecto como objeto)
                     const faseValue = editingSubvencion.fasesProyecto?.[`fase${num}`];
                     const isBoolean = typeof faseValue === 'boolean';
                     const isActive = isBoolean ? faseValue : (faseValue && faseValue !== 'X' && faseValue !== 'x' && faseValue.trim() !== '');
