@@ -1,11 +1,11 @@
-# SSS Kronos v2.2.0
+# SSS Kronos v2.1.4
 
-🚀 **Release Notes - SSS Kronos v2.2.0**
+🚀 **Release Notes - SSS Kronos v2.1.4**
 
 ## 📦 Archivos de Distribución
 
 ### Windows
-- **Instalador:** SSS Kronos-2.1.2 Setup.exe (115 MB aprox.)
+- **Instalador:** SSS Kronos-2.1.4 Setup.exe (120 MB aprox.)
 - **Ubicación:** `out/make/squirrel.windows/x64/`
 - **Compatibilidad:** Windows 10/11 (64-bit)
 
@@ -14,7 +14,17 @@
 
 ## ✨ Nuevas Características y Cambios Clave
 
-### 🆕 **v2.2.0 - Sistema de Subvenciones con Base de Datos**
+### 🆕 **v2.1.4 - Sistema de Subvenciones Multi-Entidad y Panel de Administración**
+- ✅ **Sistema de entidades múltiples:** Soporte para EI SSS SCCL y Menjar d'Hort SCCL
+- ✅ **Panel de administración completo:** Gestión avanzada de usuarios con control total
+- ✅ **Onboarding actualizado:** Guía completa de todas las funcionalidades con advertencia BETA
+- ✅ **Gestión de fases mejorada:** Sistema de edición intuitivo para ambas entidades
+- ✅ **Corrección de errores críticos:** Solucionados problemas de RLS y sincronización de datos
+- ✅ **Interfaz de selección de entidad:** Botones estilo Analytics para cambiar entre entidades
+- ✅ **Cálculos financieros precisos:** Saldos pendientes y totales corregidos
+- ✅ **Soporte CSV horizontal:** Procesamiento de archivos CSV en formato horizontal (Menjar d'Hort)
+
+### 🆕 **v2.1.3 - Sistema de Subvenciones con Base de Datos**
 - ✅ **Nueva sección de Subvenciones:** Gestión completa de subvenciones con interfaz moderna
 - ✅ **Integración con Supabase:** Almacenamiento persistente de datos de subvenciones
 - ✅ **Sistema de comentarios:** Añadir, editar y eliminar comentarios por subvención
@@ -127,6 +137,21 @@
 
 ### 🐞 Correcciones de Errores
 
+#### **v2.1.4 - Correcciones Críticas de Sistema**
+- ✅ **Corregido error de RLS infinito:** Solucionada recursión infinita en políticas de Supabase
+- ✅ **Corregido error `fase1` undefined:** Manejo correcto de fases para Menjar d'Hort
+- ✅ **Corregida sincronización de entidades:** Datos se muestran correctamente al cambiar entre entidades
+- ✅ **Corregido modal de edición de fases:** Fases se marcan correctamente para ambas entidades
+- ✅ **Corregidos cálculos de saldos:** Saldos pendientes calculados correctamente
+- ✅ **Corregido problema de permisos admin:** Administradores pueden acceder al panel correctamente
+- ✅ **Corregida carga de datos:** `useMemo` y `useCallback` actualizados para re-cálculo correcto
+
+#### **v2.1.3 - Correcciones de Subvenciones**
+- ✅ **Corregido parsing de moneda:** Manejo de formatos como "34.564,30 €" y "PDTE"
+- ✅ **Corregido procesamiento de fases:** Conversión de "X" a boolean y manejo de texto
+- ✅ **Corregido formato de fechas:** Campos de abono como texto en lugar de fecha
+- ✅ **Corregida importación CSV:** Sincronización correcta con base de datos
+
 #### **v2.1.2 - Correcciones de Rendimiento y Estabilidad**
 - ✅ **Corregido error `setGeneralData is not defined`:** Eliminada referencia incorrecta a función no definida
 - ✅ **Corregido error `setBrunoData is not defined`:** Eliminada referencia incorrecta a función no definida
@@ -156,6 +181,22 @@
 - ✅ **Análisis mensual granular:** Reemplazado sistema de trimestres por meses individuales
 
 ### 🔧 Mejoras Técnicas
+
+#### **v2.1.4 - Arquitectura Multi-Entidad y Base de Datos**
+- ✅ **Servicios especializados:** `subvencionesService.js` y `menjarDhortService.js` para cada entidad
+- ✅ **Procesamiento CSV horizontal:** Transposición de datos para formato Menjar d'Hort
+- ✅ **Función SQL `is_admin()`:** Solución a recursión infinita en RLS con `SECURITY DEFINER`
+- ✅ **Gestión de estado React optimizada:** `useMemo` y `useCallback` con dependencias correctas
+- ✅ **Sistema de caché inteligente:** Datos en memoria para ambas entidades
+- ✅ **Modal de edición adaptativo:** Manejo de fases como objeto (EI SSS) y string (Menjar d'Hort)
+- ✅ **Base de datos dual:** Tablas `subvenciones` y `subvenciones_menjar_dhort` especializadas
+
+#### **v2.1.3 - Sistema de Subvenciones**
+- ✅ **Parsing de moneda avanzado:** Manejo de formatos europeos, porcentajes y texto descriptivo
+- ✅ **Conversión de fases:** Sistema híbrido boolean/texto para máxima flexibilidad
+- ✅ **Integración Supabase completa:** CRUD operations con RLS policies
+- ✅ **Análisis de fases inteligente:** Detección automática de fases activas
+- ✅ **Sistema de comentarios:** Persistencia y gestión de comentarios por subvención
 
 #### **v2.1.2 - Optimizaciones de Rendimiento**
 - ✅ **Logs optimizados:** Eliminación de `console.log` verbosos en servicios API
@@ -196,7 +237,7 @@
 
 ### 📥 Descargar
 1. Ve a la sección Releases de este repositorio
-2. Descarga `SSS Kronos-2.1.2 Setup.exe`
+2. Descarga `SSS Kronos-2.1.4 Setup.exe`
 3. Ejecuta el instalador y sigue las instrucciones
 
 ### ⚡ Primera Ejecución
@@ -239,12 +280,21 @@
 
 ## 🔄 Próximas Versiones
 
-### 🎯 v2.1.2 ✅ **COMPLETADA**
-- ⚡ Optimización de rendimiento y carga de datos ✅
-- 🔄 Feedback visual mejorado durante sincronización ✅
-- 🐞 Corrección de errores críticos de JavaScript ✅
-- 📝 Texto actualizado para reflejar integración con Holded ✅
-- 🚀 Carga significativamente más rápida ✅
+### 🎯 v2.1.4 ✅ **COMPLETADA**
+- 🏢 Sistema de entidades múltiples (EI SSS + Menjar d'Hort) ✅
+- 👥 Panel de administración completo ✅
+- 📚 Onboarding actualizado con advertencia BETA ✅
+- 🔧 Corrección de errores críticos de RLS ✅
+- 💰 Cálculos financieros precisos ✅
+- 📊 Interfaz de selección de entidad ✅
+
+### 🎯 v2.1.3 ✅ **COMPLETADA**
+- 📊 Sistema de subvenciones con base de datos ✅
+- 💾 Integración completa con Supabase ✅
+- 📝 Sistema de comentarios ✅
+- 📁 Importación CSV automática ✅
+- 🔍 Filtros avanzados ✅
+- 🎨 Temas claro/oscuro ✅
 
 ### 🎯 v2.2.0 (Planificada)
 - 📊 Análisis comparativo entre años para IDONI
@@ -253,6 +303,7 @@
 - 📱 Mejoras en la interfaz móvil
 - 🔐 Sistema de permisos más granular
 - 📊 Reportes ejecutivos personalizables
+- 🏢 Soporte para más entidades de subvenciones
 
 
 ## 📄 Licencia
