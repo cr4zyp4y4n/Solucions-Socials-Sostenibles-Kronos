@@ -40,6 +40,7 @@ import HoldedTest from './HoldedTest';
 import ProvidersContacts from './ProvidersContacts';
 import CateringApp from './catering/CateringApp';
 import SubvencionesPage from './SubvencionesPage';
+import EmpleadosPage from './EmpleadosPage';
 
 
 // Componente visual de acceso denegado reutilizable
@@ -381,6 +382,7 @@ const Layout = () => {
     { key: 'home', label: 'Inicio', path: '/home', icon: Home },
     { key: 'analytics', label: 'Análisis', path: '/analytics', icon: BarChart2 },
     { key: 'subvenciones', label: 'Subvenciones', path: '/subvenciones', icon: FileText },
+    { key: 'empleados', label: 'Empleados', path: '/empleados', icon: Users },
     { key: 'contacts', label: 'Contactos', path: '/contacts', icon: CreditCard },
     { key: 'settings', label: 'Configuración', path: '/settings', icon: Settings },
   ];
@@ -389,7 +391,7 @@ const Layout = () => {
   if (isAdmin) {
     menuItems.splice(1, 0, { key: 'catering', label: 'Catering', path: '/catering', icon: Coffee });
     menuItems.push(
-      { key: 'users', label: 'Usuarios', path: '/users', icon: Users },
+      { key: 'users', label: 'Usuarios', path: '/users', icon: Shield },
       { key: 'audit', label: 'Auditoría', path: '/audit', icon: Activity }
     );
   }
@@ -419,6 +421,8 @@ const Layout = () => {
         return <AnalyticsPage />;
       case 'subvenciones':
         return <SubvencionesPage />;
+      case 'empleados':
+        return <EmpleadosPage />;
       case 'settings':
         return <SettingsPage />;
       case 'users':
