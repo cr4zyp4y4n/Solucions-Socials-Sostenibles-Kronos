@@ -41,6 +41,7 @@ import ProvidersContacts from './ProvidersContacts';
 import CateringApp from './catering/CateringApp';
 import SubvencionesPage from './SubvencionesPage';
 import EmpleadosPage from './EmpleadosPage';
+import HojaRutaPage from './HojaRutaPage';
 
 
 // Componente visual de acceso denegado reutilizable
@@ -383,6 +384,7 @@ const Layout = () => {
     { key: 'analytics', label: 'Análisis', path: '/analytics', icon: BarChart2 },
     { key: 'subvenciones', label: 'Subvenciones', path: '/subvenciones', icon: FileText },
     { key: 'empleados', label: 'Empleados', path: '/empleados', icon: Users },
+    { key: 'hoja-ruta', label: 'Hoja de Ruta', path: '/hoja-ruta', icon: Calendar },
     { key: 'contacts', label: 'Contactos', path: '/contacts', icon: CreditCard },
     { key: 'settings', label: 'Configuración', path: '/settings', icon: Settings },
   ];
@@ -423,6 +425,8 @@ const Layout = () => {
         return <SubvencionesPage />;
       case 'empleados':
         return <EmpleadosPage />;
+      case 'hoja-ruta':
+        return <HojaRutaPage />;
       case 'settings':
         return <SettingsPage />;
       case 'users':

@@ -1,11 +1,11 @@
-# SSS Kronos v2.1.4
+# SSS Kronos v2.1.5
 
-🚀 **Release Notes - SSS Kronos v2.1.4**
+🚀 **Release Notes - SSS Kronos v2.1.5**
 
 ## 📦 Archivos de Distribución
 
 ### Windows
-- **Instalador:** SSS Kronos-2.1.4 Setup.exe (120 MB aprox.)
+- **Instalador:** SSS Kronos-2.1.5 Setup.exe (125 MB aprox.)
 - **Ubicación:** `out/make/squirrel.windows/x64/`
 - **Compatibilidad:** Windows 10/11 (64-bit)
 
@@ -13,6 +13,18 @@
 *Nota: Los instaladores para macOS y Linux se generarán en futuras versiones*
 
 ## ✨ Nuevas Características y Cambios Clave
+
+### 🆕 **v2.1.5 - Sección de Empleados y Mejoras en Subvenciones**
+- ✅ **Nueva sección de Empleados:** Gestión completa de empleados desde Holded API
+- ✅ **Integración Holded Team API:** Consulta directa de datos de empleados de ambas empresas
+- ✅ **Export para Subvención L2:** Generación automática de Excel con formato específico para subvenciones
+- ✅ **Selector de entidad mejorado:** Interfaz consistente entre Subvenciones y Empleados
+- ✅ **Modal de detalles completo:** Visualización de toda la información laboral y personal
+- ✅ **Filtros avanzados:** Búsqueda por nombre, email, DNI, puesto y filtro por estado
+- ✅ **Estadísticas en tiempo real:** Contadores de empleados activos, inactivos y departamentos
+- ✅ **Spinner minimalista:** Indicador de carga consistente con el resto de la aplicación
+- ✅ **Modo oscuro/claro:** Soporte completo para ambos temas
+- ✅ **Campos para subvenciones:** Preparación de datos específicos para gestiones de subvenciones
 
 ### 🆕 **v2.1.4 - Sistema de Subvenciones Multi-Entidad y Panel de Administración**
 - ✅ **Sistema de entidades múltiples:** Soporte para EI SSS SCCL y Menjar d'Hort SCCL
@@ -23,6 +35,16 @@
 - ✅ **Interfaz de selección de entidad:** Botones estilo Analytics para cambiar entre entidades
 - ✅ **Cálculos financieros precisos:** Saldos pendientes y totales corregidos
 - ✅ **Soporte CSV horizontal:** Procesamiento de archivos CSV en formato horizontal (Menjar d'Hort)
+
+### 🔧 **Mejoras en Sección de Subvenciones (v2.1.5)**
+- ✅ **Filtros mejorados:** Layout corregido sin superposición de elementos
+- ✅ **Filtros guardados:** Sistema de guardado y carga de filtros personalizados
+- ✅ **Estadísticas dinámicas:** Totales que se actualizan con filtros aplicados
+- ✅ **Etiquetas de estado mejoradas:** Colores distintivos y iconos para mejor identificación
+- ✅ **Botón limpiar filtros inteligente:** Solo aparece cuando hay filtros activos
+- ✅ **Chips de filtros activos:** Visualización clara de filtros aplicados con opción de eliminar
+- ✅ **Filtro por año:** Nueva funcionalidad para filtrar subvenciones por año específico
+- ✅ **Corrección de fases:** Manejo correcto de fases para ambas entidades (objeto vs string)
 
 ### 🆕 **v2.1.3 - Sistema de Subvenciones con Base de Datos**
 - ✅ **Nueva sección de Subvenciones:** Gestión completa de subvenciones con interfaz moderna
@@ -86,12 +108,25 @@
 - ✅ **Logs detallados:** Para diagnóstico y debugging avanzado
 - ✅ **Función de prueba:** Botón específico para testear facturas parcialmente pagadas
 
+### 👥 **Nueva Sección de Empleados (v2.1.5)**
+- ✅ **Integración Holded Team API:** Consulta directa de empleados desde Holded
+- ✅ **Dual empresa:** Soporte para EI SSS SCCL y Menjar d'Hort SCCL
+- ✅ **Información completa:** Datos personales, laborales, bancarios y de contacto
+- ✅ **Export para subvenciones:** Excel específico para gestiones de subvención L2
+- ✅ **Modal de detalles:** Visualización completa de información por empleado
+- ✅ **Filtros avanzados:** Búsqueda por múltiples criterios y filtro por estado
+- ✅ **Estadísticas dinámicas:** Contadores en tiempo real de empleados activos/inactivos
+- ✅ **Interfaz consistente:** Selector de entidad igual que Subvenciones
+- ✅ **Campos específicos:** Preparación de datos para subvenciones (colectivo, jornada, etc.)
+
 ### 🎨 **Mejoras de Experiencia de Usuario**
 - ✅ **Botones de analytics:** No aparecen hasta cargar datos completamente
 - ✅ **Versión dinámica:** Configuración muestra versión actual del app automáticamente
 - ✅ **Botón de prueba integrado:** Para facturas parcialmente pagadas en configuración
 - ✅ **Columna "Monto":** En lugar de "Total" para mayor claridad
 - ✅ **Interfaz responsiva:** Mejor manejo de estados de carga
+- ✅ **Spinner minimalista:** Indicador de carga consistente en todas las secciones
+- ✅ **Filtros sin superposición:** Layout mejorado para búsquedas y filtros
 
 ### 🏪 **Módulo IDONI - Análisis de Ventas de Tienda**
 - ✅ **Carga de datos Excel:** Subida de archivos "Ventas Diarias" y "Ventas por Horas"
