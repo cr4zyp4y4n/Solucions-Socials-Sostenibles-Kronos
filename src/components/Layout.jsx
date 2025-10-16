@@ -42,6 +42,7 @@ import CateringApp from './catering/CateringApp';
 import SubvencionesPage from './SubvencionesPage';
 import EmpleadosPage from './EmpleadosPage';
 import HojaRutaPage from './HojaRutaPage';
+import SociosPage from './SociosPage';
 
 
 // Componente visual de acceso denegado reutilizable
@@ -385,6 +386,7 @@ const Layout = () => {
     { key: 'subvenciones', label: 'Subvenciones', path: '/subvenciones', icon: FileText },
     { key: 'empleados', label: 'Empleados', path: '/empleados', icon: Users },
     { key: 'hoja-ruta', label: 'Hoja de Ruta', path: '/hoja-ruta', icon: Calendar },
+    { key: 'socios', label: 'Socios IDONI', path: '/socios', icon: Users },
     { key: 'contacts', label: 'Contactos', path: '/contacts', icon: CreditCard },
     { key: 'settings', label: 'Configuración', path: '/settings', icon: Settings },
   ];
@@ -427,6 +429,8 @@ const Layout = () => {
         return <EmpleadosPage />;
       case 'hoja-ruta':
         return <HojaRutaPage />;
+      case 'socios':
+        return <SociosPage />;
       case 'settings':
         return <SettingsPage />;
       case 'users':

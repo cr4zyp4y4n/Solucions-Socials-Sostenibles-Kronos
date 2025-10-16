@@ -1,11 +1,11 @@
-# SSS Kronos v2.1.5
+# SSS Kronos v2.1.6
 
-🚀 **Release Notes - SSS Kronos v2.1.5**
+🚀 **Release Notes - SSS Kronos v2.1.6**
 
 ## 📦 Archivos de Distribución
 
 ### Windows
-- **Instalador:** SSS Kronos-2.1.5 Setup.exe (125 MB aprox.)
+- **Instalador:** SSS Kronos-2.1.6 Setup.exe (130 MB aprox.)
 - **Ubicación:** `out/make/squirrel.windows/x64/`
 - **Compatibilidad:** Windows 10/11 (64-bit)
 
@@ -13,6 +13,32 @@
 *Nota: Los instaladores para macOS y Linux se generarán en futuras versiones*
 
 ## ✨ Nuevas Características y Cambios Clave
+
+### 🆕 **v2.1.6 - Carnets de Socio Interactivos y Gestión Completa**
+- ✅ **Nueva sección Socios IDONI:** Gestión completa de socios de la agrobotiga
+- ✅ **Carnets interactivos:** Visualización de carnets con ambas caras y animación 3D
+- ✅ **Importación desde CSV:** Carga masiva de socios con fechas originales preservadas
+- ✅ **Impresión directa:** Botón para imprimir carnets con datos ya rellenados
+- ✅ **Descarga de imágenes:** Generación de imágenes PNG de alta calidad para impresión
+- ✅ **Base de datos Supabase:** Almacenamiento seguro con IDs únicos de 5 dígitos
+- ✅ **Gestión CRUD completa:** Crear, editar, eliminar y buscar socios
+- ✅ **Modal de confirmación personalizado:** Reemplazo del confirm() nativo por diseño consistente
+- ✅ **Lista moderna:** Estilo continuo sin scroll interno, igual que la sección de empleados
+- ✅ **Filtros y búsqueda:** Sistema de búsqueda avanzado con estadísticas en tiempo real
+- ✅ **Roles y permisos:** Control de acceso basado en roles de usuario
+- ✅ **Diseño fiel:** Carnets usando imágenes SVG originales con texto superpuesto
+- ✅ **Animaciones suaves:** Efectos de giro 3D y transiciones profesionales
+
+### 🎫 **Sistema de Carnets de Socio (v2.1.6)**
+- ✅ **Diseño profesional:** Carnets usando imágenes SVG originales de IDONI BonCor
+- ✅ **Datos dinámicos:** Nombre, apellido y número de socio superpuestos automáticamente
+- ✅ **Doble cara:** Frente con datos personales y reverso con beneficios y promociones
+- ✅ **Animación 3D:** Efecto de giro suave entre ambas caras del carnet
+- ✅ **Impresión optimizada:** CSS específico para impresión con ambas caras en una página
+- ✅ **Descarga de imagen:** Generación de PNG de alta calidad para impresión profesional
+- ✅ **Posicionamiento preciso:** Texto superpuesto en las posiciones exactas del diseño original
+- ✅ **Controles intuitivos:** Botones para girar, imprimir, descargar y cerrar
+- ✅ **Responsive:** Adaptable a diferentes tamaños de pantalla
 
 ### 🆕 **v2.1.5 - Sección de Empleados y Mejoras en Subvenciones**
 - ✅ **Nueva sección de Empleados:** Gestión completa de empleados desde Holded API
