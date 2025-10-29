@@ -53,12 +53,6 @@ const SociosPage = () => {
       ['admin', 'administrador', 'jefe', 'tienda'].includes(userRole)
     );
     
-    console.log('🔐 Verificando permisos socios:', {
-      user: user?.name || 'Usuario no detectado',
-      role: userRole || 'Sin rol definido',
-      isAuthenticated,
-      canManage
-    });
     return canManage;
   }, [user]);
 
@@ -567,6 +561,7 @@ const SociosPage = () => {
               animate={{ opacity: 1 }}
               whileHover={{ backgroundColor: colors.hover }}
               whileTap={{ scale: 0.99 }}
+              onClick={() => handleVerCarnet(socio)}
               style={{
                 padding: '20px',
                 borderBottom: index < sociosFiltrados.length - 1 ? `1px solid ${colors.border}` : 'none',
@@ -574,7 +569,8 @@ const SociosPage = () => {
                 justifyContent: 'space-between',
                 alignItems: 'center',
                 cursor: 'pointer',
-                userSelect: 'none'
+                userSelect: 'none',
+                position: 'relative'
               }}
             >
                 <div style={{ flex: 1 }}>
@@ -597,6 +593,19 @@ const SociosPage = () => {
                       fontWeight: 'bold'
                     }}>
                       {socio.nombre.charAt(0)}{socio.apellido.charAt(0)}
+                    </div>
+                    
+                    {/* Indicador visual de click */}
+                    <div style={{
+                      position: 'absolute',
+                      right: '20px',
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      color: colors.textSecondary,
+                      fontSize: '12px',
+                      opacity: 0.6
+                    }}>
+                      <Users size={16} />
                     </div>
                     
                     <div>
@@ -628,6 +637,17 @@ const SociosPage = () => {
                           <span>Socio desde {formatFecha(socio.socio_desde)}</span>
                         </div>
                       </div>
+                      
+                      {/* Indicador de click */}
+                      <div style={{
+                        fontSize: '11px',
+                        color: colors.textSecondary,
+                        opacity: 0.7,
+                        marginTop: '4px',
+                        fontStyle: 'italic'
+                      }}>
+                        Haz clic para ver el carnet
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -640,29 +660,8 @@ const SociosPage = () => {
                   <motion.button
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
-                    onClick={() => handleVerCarnet(socio)}
-                    style={{
-                      backgroundColor: colors.primary + '20',
-                      color: colors.primary,
-                      border: `1px solid ${colors.primary + '30'}`,
-                      borderRadius: '6px',
-                      padding: '8px 12px',
-                      cursor: 'pointer',
-                      fontSize: '12px',
-                      fontWeight: '500',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '4px'
-                    }}
-                  >
-                    <Users size={14} />
-                    Carnet
-                  </motion.button>
-                  
-                  <motion.button
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    onClick={() => {
+                    onClick={(e) => {
+                      e.stopPropagation();
                       setSelectedSocio(socio);
                       setShowEditModal(true);
                     }}
@@ -687,7 +686,10 @@ const SociosPage = () => {
                   <motion.button
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
-                    onClick={() => handleEliminarSocio(socio)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleEliminarSocio(socio);
+                    }}
                     style={{
                       backgroundColor: colors.error + '20',
                       color: colors.error,

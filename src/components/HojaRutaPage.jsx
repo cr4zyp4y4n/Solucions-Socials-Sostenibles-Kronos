@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { 
   Upload, 
@@ -17,19 +17,27 @@ import {
   Coffee,
   Utensils,
   Wine,
-  Trash2
+  Trash2,
+  Pen,
+  CheckCircle2
 } from 'lucide-react';
 import { useTheme } from './ThemeContext';
 import { useAuth } from './AuthContext';
-import hojaRutaService from '../services/hojaRutaService';
+import { useNavigation } from './NavigationContext';
+import hojaRutaService from '../services/hojaRutaSupabaseService';
 import HojaRutaUploadModal from './HojaRutaUploadModal';
 import HojaRutaEditModal from './HojaRutaEditModal';
 import HojaRutaHistoricoModal from './HojaRutaHistoricoModal';
 import HojaRutaViewModal from './HojaRutaViewModal';
+import ChecklistSection from './ChecklistSection';
+import FirmaConfirmModal from './FirmaConfirmModal';
+import PersonalSection from './PersonalSection';
+import EmpleadoDetailModal from './EmpleadoDetailModal';
 
 const HojaRutaPage = () => {
   const { colors, isDark } = useTheme();
   const { user } = useAuth();
+  const { activeSection } = useNavigation();
   const [hojaActual, setHojaActual] = useState(null);
   const [historico, setHistorico] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -38,7 +46,49 @@ const HojaRutaPage = () => {
   const [showEditModal, setShowEditModal] = useState(false);
   const [showHistoricoModal, setShowHistoricoModal] = useState(false);
   const [showViewModal, setShowViewModal] = useState(false);
+  const [showFirmaModal, setShowFirmaModal] = useState(false);
+  const [showEmpleadoModal, setShowEmpleadoModal] = useState(false);
+  const [empleadoSeleccionado, setEmpleadoSeleccionado] = useState(null);
   const [selectedHoja, setSelectedHoja] = useState(null);
+
+  // Función para cargar datos - usando función directa para evitar problemas de inicialización
+  const loadDatos = async () => {
+    try {
+      setLoading(true);
+      
+      // Verificar si hay una hoja seleccionada desde navegación
+      const selectedHojaId = localStorage.getItem('selectedHojaRutaId');
+      if (selectedHojaId) {
+        // Limpiar el localStorage
+        localStorage.removeItem('selectedHojaRutaId');
+        
+        // Cargar la hoja específica
+        const hoja = await hojaRutaService.getHojaRuta(selectedHojaId);
+        if (hoja) {
+          console.log('✅ Hoja cargada desde navegación:', hoja.cliente);
+          setHojaActual(hoja);
+          const historicoData = await hojaRutaService.getHistorico();
+          setHistorico(historicoData);
+          setError(null);
+          setLoading(false);
+          return;
+        }
+      }
+      
+      // Si no hay hoja seleccionada, cargar la última
+      const ultima = await hojaRutaService.getUltimaHojaRuta();
+      const historicoData = await hojaRutaService.getHistorico();
+      
+      setHojaActual(ultima);
+      setHistorico(historicoData);
+      setError(null);
+    } catch (err) {
+      console.error('Error cargando datos:', err);
+      setError('Error al cargar las hojas de ruta');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Verificar si el usuario es jefe
   const isJefe = useMemo(() => {
@@ -48,25 +98,37 @@ const HojaRutaPage = () => {
   // Cargar datos iniciales
   useEffect(() => {
     loadDatos();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const loadDatos = () => {
-    try {
-      const ultima = hojaRutaService.getUltimaHojaRuta();
-      const historicoData = hojaRutaService.getHistorico();
-      
-      setHojaActual(ultima);
-      setHistorico(historicoData);
-      setError(null);
-    } catch (err) {
-      console.error('Error cargando datos:', err);
-      setError('Error al cargar las hojas de ruta');
+  // Verificar cuando se navega a esta sección si hay una hoja seleccionada
+  useEffect(() => {
+    if (activeSection === 'hoja-ruta') {
+      const selectedHojaId = localStorage.getItem('selectedHojaRutaId');
+      if (selectedHojaId) {
+        // Recargar datos para que loadDatos detecte la hoja seleccionada
+        loadDatos();
+      }
     }
-  };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSection]);
 
-  const handleUploadSuccess = (nuevaHoja) => {
+  // Generar checklists automáticas cuando se carga una hoja de ruta
+  useEffect(() => {
+    if (hojaActual) {
+      hojaRutaService.actualizarChecklistElementos(hojaActual.id).then(hojaActualizada => {
+        if (hojaActualizada) {
+          setHojaActual(hojaActualizada);
+        }
+      }).catch(err => {
+        console.error('Error actualizando checklist:', err);
+      });
+    }
+  }, [hojaActual?.id]);
+
+  const handleUploadSuccess = async (nuevaHoja) => {
     setHojaActual(nuevaHoja);
-    loadDatos(); // Recargar datos
+    await loadDatos(); // Recargar datos
     setError(null);
   };
 
@@ -80,11 +142,28 @@ const HojaRutaPage = () => {
     setShowViewModal(true);
   };
 
-  const handleDeleteHoja = (hojaId) => {
+  const handleFirmarHoja = async (firmaData, firmadoPor) => {
+    if (!hojaActual || !user?.id) return;
+    
+    try {
+      const updated = await hojaRutaService.firmarHojaRuta(hojaActual.id, firmaData, firmadoPor);
+      if (updated) {
+        setHojaActual(updated);
+        setError(null);
+      } else {
+        setError('Error al firmar la hoja de ruta');
+      }
+    } catch (err) {
+      console.error('Error firmando hoja:', err);
+      setError('Error al firmar la hoja de ruta');
+    }
+  };
+
+  const handleDeleteHoja = async (hojaId) => {
     if (window.confirm('¿Estás seguro de que quieres eliminar esta hoja de ruta?')) {
       try {
-        hojaRutaService.deleteHojaRuta(hojaId);
-        loadDatos(); // Recargar datos
+        await hojaRutaService.deleteHojaRuta(hojaId);
+        await loadDatos(); // Recargar datos
         setError(null);
       } catch (err) {
         console.error('Error eliminando hoja:', err);
@@ -93,11 +172,57 @@ const HojaRutaPage = () => {
     }
   };
 
-  const handleDeleteCurrentHoja = () => {
+  // Handlers para checklist
+  const handleUpdateChecklist = async (hojaId, tipo, fase, tareaId, completed, assignedTo) => {
+    console.log('🔄 HojaRutaPage - handleUpdateChecklist:', { hojaId, tipo, fase, tareaId, completed, assignedTo });
+    const hojaActualizada = await hojaRutaService.actualizarTareaChecklist(hojaId, tipo, fase, tareaId, completed, assignedTo, user?.id || null);
+    if (hojaActualizada) {
+      console.log('✅ HojaRutaPage - Hoja actualizada, actualizando estado');
+      setHojaActual(hojaActualizada);
+    } else {
+      console.log('❌ HojaRutaPage - No se pudo actualizar la hoja');
+    }
+  };
+
+  const handleCambiarEstado = async (hojaId, nuevoEstado) => {
+    try {
+      const hojaActualizada = await hojaRutaService.cambiarEstadoServicio(hojaId, nuevoEstado);
+      if (hojaActualizada) {
+        setHojaActual(hojaActualizada);
+      }
+    } catch (err) {
+      console.error('Error cambiando estado:', err);
+      setError('Error al cambiar el estado del servicio');
+    }
+  };
+
+  const handleNavigateToEmployee = (empleado) => {
+    console.log('👤 Navegando a empleado:', empleado);
+    setEmpleadoSeleccionado(empleado);
+    setShowEmpleadoModal(true);
+  };
+
+  // Obtener estadísticas del checklist
+  const [estadisticasChecklist, setEstadisticasChecklist] = useState(null);
+
+  useEffect(() => {
+    if (hojaActual) {
+      hojaRutaService.obtenerEstadisticasChecklist(hojaActual.id).then(stats => {
+        setEstadisticasChecklist(stats);
+      }).catch(err => {
+        console.error('Error obteniendo estadísticas:', err);
+        setEstadisticasChecklist(null);
+      });
+    } else {
+      setEstadisticasChecklist(null);
+    }
+  }, [hojaActual]);
+
+  const handleDeleteCurrentHoja = async () => {
     if (hojaActual && window.confirm('¿Estás seguro de que quieres eliminar la hoja de ruta actual?')) {
       try {
-        hojaRutaService.deleteHojaRuta(hojaActual.id);
-        loadDatos(); // Recargar datos
+        await hojaRutaService.deleteHojaRuta(hojaActual.id);
+        await loadDatos(); // Recargar datos
         setError(null);
       } catch (err) {
         console.error('Error eliminando hoja actual:', err);
@@ -149,14 +274,16 @@ const HojaRutaPage = () => {
   return (
     <div style={{ padding: '24px', backgroundColor: colors.background, minHeight: '100vh' }}>
       {/* Header */}
-      <div style={{ 
-        display: 'flex', 
-        justifyContent: 'space-between', 
-        alignItems: 'center',
-        marginBottom: '24px',
-        paddingBottom: '16px',
-        borderBottom: `1px solid ${colors.border}`
-      }}>
+      <div 
+        style={{ 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'center',
+          marginBottom: '24px',
+          paddingBottom: '16px',
+          borderBottom: `1px solid ${colors.border}`
+        }}
+      >
         <div>
           <h1 style={{ 
             fontSize: '28px', 
@@ -227,6 +354,50 @@ const HojaRutaPage = () => {
                 Editar
               </motion.button>
 
+              {/* Botón de Firma */}
+              {hojaActual && !hojaActual.firmaInfo?.firmado && (
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => setShowFirmaModal(true)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '12px 20px',
+                    backgroundColor: colors.primary,
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '8px',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    fontWeight: '500'
+                  }}
+                >
+                  <Pen size={18} />
+                  Firmar Hoja de Ruta
+                </motion.button>
+              )}
+
+              {/* Indicador de firma */}
+              {hojaActual && hojaActual.firmaInfo?.firmado && (
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '12px 20px',
+                  backgroundColor: colors.success + '20',
+                  color: colors.success,
+                  border: `1px solid ${colors.success + '30'}`,
+                  borderRadius: '8px',
+                  fontSize: '14px',
+                  fontWeight: '500'
+                }}>
+                  <CheckCircle2 size={18} />
+                  Firmada por {hojaActual.firmaInfo.firmadoPor}
+                </div>
+              )}
+
               <motion.button
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
@@ -277,9 +448,13 @@ const HojaRutaPage = () => {
 
       {/* Error */}
       {error && (
-        <div style={{
-          backgroundColor: colors.error + '20',
-          border: `1px solid ${colors.error}`,
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -10 }}
+          style={{
+            backgroundColor: colors.error + '20',
+            border: `1px solid ${colors.error}`,
           borderRadius: '8px',
           padding: '16px',
           marginBottom: '24px',
@@ -289,21 +464,31 @@ const HojaRutaPage = () => {
         }}>
           <AlertCircle size={20} color={colors.error} />
           <span style={{ color: colors.error, fontWeight: '500' }}>{error}</span>
-        </div>
+        </motion.div>
       )}
 
       {/* Contenido principal */}
       {hojaActual ? (
-        <div style={{ display: 'flex', gap: '24px' }}>
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.1 }}
+          style={{ display: 'flex', gap: '24px' }}
+        >
           {/* Información principal */}
           <div style={{ flex: 2 }}>
-            <div style={{
-              backgroundColor: colors.surface,
-              borderRadius: '12px',
-              padding: '24px',
-              border: `1px solid ${colors.border}`,
-              marginBottom: '24px'
-            }}>
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.2 }}
+              style={{
+                backgroundColor: colors.surface,
+                borderRadius: '12px',
+                padding: '24px',
+                border: `1px solid ${colors.border}`,
+                marginBottom: '24px'
+              }}
+            >
               <h2 style={{ 
                 fontSize: '20px', 
                 fontWeight: 'bold', 
@@ -435,28 +620,6 @@ const HojaRutaPage = () => {
                     {hojaActual.transportista}
                   </p>
                 </div>
-
-                <div>
-                  <label style={{ 
-                    fontSize: '12px', 
-                    fontWeight: '600', 
-                    color: colors.textSecondary,
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.5px',
-                    marginBottom: '4px',
-                    display: 'block'
-                  }}>
-                    Personal
-                  </label>
-                  <p style={{ 
-                    fontSize: '16px', 
-                    fontWeight: '500', 
-                    color: colors.text,
-                    margin: 0
-                  }}>
-                    {hojaActual.personal}
-                  </p>
-                </div>
               </div>
 
               {/* Contacto y Dirección */}
@@ -511,10 +674,41 @@ const HojaRutaPage = () => {
                   </p>
                 </div>
               </div>
-            </div>
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.3 }}
+            >
+              <PersonalSection 
+                personal={hojaActual.personal}
+                hojaId={hojaActual.id}
+                onNavigateToEmployee={handleNavigateToEmployee}
+                onUpdate={setHojaActual}
+              />
+            </motion.div>
+
+            {/* Checklist Section */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.3 }}
+            >
+              <ChecklistSection 
+                hojaRuta={hojaActual}
+                onUpdateChecklist={handleUpdateChecklist}
+                onCambiarEstado={handleCambiarEstado}
+                estadisticas={estadisticasChecklist}
+              />
+            </motion.div>
 
             {/* Horarios */}
-            <div style={{
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.4 }}
+              style={{
               backgroundColor: colors.surface,
               borderRadius: '12px',
               padding: '24px',
@@ -564,11 +758,15 @@ const HojaRutaPage = () => {
                   </div>
                 ))}
               </div>
-            </div>
+            </motion.div>
 
             {/* Equipamiento */}
             {hojaActual.equipamiento && hojaActual.equipamiento.length > 0 && (
-              <div style={{
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5, delay: 0.5 }}
+                style={{
                 backgroundColor: colors.surface,
                 borderRadius: '12px',
                 padding: '24px',
@@ -590,7 +788,12 @@ const HojaRutaPage = () => {
 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '12px' }}>
                   {hojaActual.equipamiento.map((item, index) => (
-                    <div key={index} style={{
+                    <motion.div
+                      key={index}
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      transition={{ duration: 0.3, delay: 0.5 + index * 0.05 }}
+                      style={{
                       padding: '12px',
                       backgroundColor: colors.background,
                       borderRadius: '8px',
@@ -623,15 +826,19 @@ const HojaRutaPage = () => {
                           {item.notas}
                         </p>
                       )}
-                    </div>
+                    </motion.div>
                   ))}
                 </div>
-              </div>
+              </motion.div>
             )}
 
             {/* Menús */}
             {hojaActual.menus && hojaActual.menus.length > 0 && (
-              <div style={{
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5, delay: 0.6 }}
+                style={{
                 backgroundColor: colors.surface,
                 borderRadius: '12px',
                 padding: '24px',
@@ -720,12 +927,16 @@ const HojaRutaPage = () => {
                     </div>
                   </div>
                 ))}
-              </div>
+              </motion.div>
             )}
 
             {/* Bebidas */}
             {hojaActual.bebidas && hojaActual.bebidas.length > 0 && (
-              <div style={{
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5, delay: 0.7 }}
+                style={{
                 backgroundColor: colors.surface,
                 borderRadius: '12px',
                 padding: '24px',
@@ -747,7 +958,12 @@ const HojaRutaPage = () => {
 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '12px' }}>
                   {hojaActual.bebidas.map((bebida, index) => (
-                    <div key={index} style={{
+                    <motion.div
+                      key={index}
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      transition={{ duration: 0.3, delay: 0.7 + index * 0.05 }}
+                      style={{
                       padding: '12px',
                       backgroundColor: colors.background,
                       borderRadius: '8px',
@@ -779,16 +995,20 @@ const HojaRutaPage = () => {
                           Unidad: {bebida.unidad}
                         </p>
                       )}
-                    </div>
+                    </motion.div>
                   ))}
                 </div>
-              </div>
+              </motion.div>
             )}
           </div>
 
           {/* Sidebar con estadísticas y notas */}
           <div style={{ flex: 1 }}>
-            <div style={{
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.2 }}
+              style={{
               backgroundColor: colors.surface,
               borderRadius: '12px',
               padding: '24px',
@@ -882,11 +1102,15 @@ const HojaRutaPage = () => {
                   </div>
                 </div>
               </div>
-            </div>
+            </motion.div>
 
             {/* Notas importantes */}
             {hojaActual.notas && hojaActual.notas.length > 0 && (
-              <div style={{
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5, delay: 0.3 }}
+                style={{
                 backgroundColor: colors.surface,
                 borderRadius: '12px',
                 padding: '24px',
@@ -924,12 +1148,16 @@ const HojaRutaPage = () => {
                     </div>
                   ))}
                 </div>
-              </div>
+              </motion.div>
             )}
           </div>
-        </div>
+        </motion.div>
       ) : (
-        <div style={{
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+          style={{
           backgroundColor: colors.surface,
           borderRadius: '12px',
           padding: '48px',
@@ -976,7 +1204,7 @@ const HojaRutaPage = () => {
               Subir Primera Hoja de Ruta
             </motion.button>
           )}
-        </div>
+        </motion.div>
       )}
 
       {/* Modales */}
@@ -1006,6 +1234,19 @@ const HojaRutaPage = () => {
         isOpen={showViewModal}
         onClose={() => setShowViewModal(false)}
         hojaRuta={selectedHoja}
+      />
+
+      <FirmaConfirmModal
+        isOpen={showFirmaModal}
+        onClose={() => setShowFirmaModal(false)}
+        hojaRuta={hojaActual}
+        onFirmar={handleFirmarHoja}
+      />
+
+      <EmpleadoDetailModal
+        isOpen={showEmpleadoModal}
+        onClose={() => setShowEmpleadoModal(false)}
+        empleado={empleadoSeleccionado}
       />
     </div>
   );

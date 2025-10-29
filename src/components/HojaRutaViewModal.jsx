@@ -13,7 +13,8 @@ import {
   CheckCircle,
   Coffee,
   Utensils,
-  Wine
+  Wine,
+  Pen
 } from 'lucide-react';
 import { useTheme } from './ThemeContext';
 
@@ -230,6 +231,72 @@ const HojaRutaViewModal = ({
                       {hojaRuta.responsable}
                     </p>
                   </div>
+
+                  {/* Firma del Responsable */}
+                  {hojaRuta.firmaInfo?.firmado && (
+                    <div style={{ gridColumn: '1 / -1' }}>
+                      <label style={{ 
+                        fontSize: '11px', 
+                        fontWeight: '600', 
+                        color: colors.textSecondary,
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.5px',
+                        marginBottom: '8px',
+                        display: 'block'
+                      }}>
+                        Firma Digital del Responsable
+                      </label>
+                      <div style={{
+                        padding: '16px',
+                        border: `2px solid ${colors.success}`,
+                        borderRadius: '8px',
+                        backgroundColor: colors.success + '10',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '16px'
+                      }}>
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          color: colors.success,
+                          fontWeight: '600'
+                        }}>
+                          <CheckCircle size={20} />
+                          <span>FIRMADA</span>
+                        </div>
+                        
+                        <div style={{ flex: 1 }}>
+                          <div style={{
+                            fontSize: '12px',
+                            color: colors.textSecondary,
+                            marginBottom: '4px'
+                          }}>
+                            Firmado por: <strong>{hojaRuta.firmaInfo.firmadoPor}</strong>
+                          </div>
+                          <div style={{
+                            fontSize: '12px',
+                            color: colors.textSecondary
+                          }}>
+                            Fecha: {new Date(hojaRuta.firmaInfo.fechaFirma).toLocaleString('es-ES')}
+                          </div>
+                        </div>
+                        
+                        <img 
+                          src={hojaRuta.firmaInfo.firmaData} 
+                          alt="Firma del responsable"
+                          style={{
+                            maxWidth: '150px',
+                            maxHeight: '50px',
+                            border: `1px solid ${colors.border}`,
+                            borderRadius: '4px',
+                            backgroundColor: 'white',
+                            padding: '4px'
+                          }}
+                        />
+                      </div>
+                    </div>
+                  )}
 
                   <div>
                     <label style={{ 

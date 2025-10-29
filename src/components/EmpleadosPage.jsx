@@ -20,13 +20,45 @@ import {
   AlertCircle,
   CheckCircle,
   Info,
-  FileText
+  FileText,
+  ExternalLink
 } from 'lucide-react';
 import holdedEmployeesService from '../services/holdedEmployeesService';
+import hojaRutaService from '../services/hojaRutaSupabaseService';
 import { useTheme } from './ThemeContext';
+import { useNavigation } from './NavigationContext';
+import { useAuth } from './AuthContext';
+import { supabase } from '../config/supabase';
 
 const EmpleadosPage = () => {
   const { colors } = useTheme();
+  const { navigateTo } = useNavigation();
+  const { user } = useAuth();
+  const [userProfile, setUserProfile] = useState(null);
+  
+  // Cargar perfil del usuario para obtener el rol
+  useEffect(() => {
+    const fetchUserProfile = async () => {
+      if (user?.id) {
+        const { data, error } = await supabase
+          .from('user_profiles')
+          .select('role')
+          .eq('id', user.id)
+          .single();
+          
+        if (!error && data) {
+          setUserProfile(data);
+        }
+      }
+    };
+    fetchUserProfile();
+  }, [user]);
+  
+  // Verificar si el usuario puede ver horas (solo jefes y admins)
+  const canManageHoras = useMemo(() => {
+    const role = userProfile?.role || user?.user_metadata?.role || '';
+    return ['jefe', 'admin', 'administrador'].includes(role.toLowerCase());
+  }, [userProfile, user]);
 
   // Estados
   const [selectedEntity, setSelectedEntity] = useState('EI_SSS');
@@ -37,6 +69,8 @@ const EmpleadosPage = () => {
   const [filterStatus, setFilterStatus] = useState('todos'); // todos, activos, inactivos
   const [selectedEmpleado, setSelectedEmpleado] = useState(null);
   const [showModal, setShowModal] = useState(false);
+  const [historialServicios, setHistorialServicios] = useState([]);
+  const [estadisticasHoras, setEstadisticasHoras] = useState(null);
 
   // Mapeo de entidades a company
   const entityToCompany = {
@@ -70,10 +104,61 @@ const EmpleadosPage = () => {
     }
   }, [selectedEntity]);
 
+  // Cargar histórico de servicios de un empleado
+  const loadHistorialServicios = useCallback(async (empleadoId) => {
+    try {
+      console.log('📋 Cargando histórico para empleado:', empleadoId);
+      const [historial, estadisticas] = await Promise.all([
+        hojaRutaService.obtenerHistorialServicios(empleadoId),
+        hojaRutaService.obtenerEstadisticasHorasEmpleado(empleadoId)
+      ]);
+      
+      console.log('📊 Historial cargado:', historial);
+      console.log('📈 Estadísticas:', estadisticas);
+      
+      setHistorialServicios(historial);
+      setEstadisticasHoras(estadisticas);
+    } catch (error) {
+      console.error('❌ Error cargando histórico:', error);
+      setHistorialServicios([]);
+      setEstadisticasHoras(null);
+    }
+  }, []);
+
   // Cargar empleados al montar y cuando cambia la entidad
   useEffect(() => {
     loadEmpleados();
   }, [loadEmpleados]);
+
+  // Abrir automáticamente el empleado seleccionado desde localStorage (navegación desde hoja de ruta)
+  useEffect(() => {
+    if (empleados.length > 0) {
+      const selectedEmpleadoId = localStorage.getItem('selectedEmpleadoId');
+      if (selectedEmpleadoId) {
+        // Limpiar el localStorage primero para evitar loops
+        localStorage.removeItem('selectedEmpleadoId');
+        
+        // Buscar el empleado por ID
+        const empleadoEncontrado = empleados.find(emp => 
+          String(emp.id) === String(selectedEmpleadoId)
+        );
+        
+        if (empleadoEncontrado) {
+          console.log('🔍 Empleado encontrado desde navegación:', empleadoEncontrado.nombreCompleto);
+          // Abrir el modal del empleado directamente
+          setSelectedEmpleado(empleadoEncontrado);
+          setShowModal(true);
+          
+          // Cargar histórico de servicios
+          if (empleadoEncontrado.id) {
+            loadHistorialServicios(String(empleadoEncontrado.id));
+          }
+        } else {
+          console.warn('⚠️ No se encontró el empleado con ID:', selectedEmpleadoId);
+        }
+      }
+    }
+  }, [empleados, loadHistorialServicios]);
 
   // Filtrar empleados
   const empleadosFiltrados = useMemo(() => {
@@ -101,8 +186,17 @@ const EmpleadosPage = () => {
 
   // Mostrar detalles del empleado
   const showEmpleadoDetails = (empleado) => {
+    console.log('👤 Abriendo detalles del empleado:', empleado.nombreCompleto, 'ID:', empleado.id, 'Tipo:', typeof empleado.id);
     setSelectedEmpleado(empleado);
     setShowModal(true);
+    
+    // Cargar histórico de servicios si el empleado tiene ID
+    if (empleado.id) {
+      console.log('🔍 Llamando loadHistorialServicios con ID:', empleado.id, 'String:', String(empleado.id));
+      loadHistorialServicios(String(empleado.id));
+    } else {
+      console.warn('⚠️ El empleado no tiene ID:', empleado);
+    }
   };
 
   // Cerrar modal
@@ -135,7 +229,12 @@ const EmpleadosPage = () => {
       color: colors.text
     }}>
       {/* Header */}
-      <div style={{ marginBottom: '32px' }}>
+      <motion.div 
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+        style={{ marginBottom: '32px' }}
+      >
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
             <Users size={32} color={colors.primary} />
@@ -174,7 +273,12 @@ const EmpleadosPage = () => {
         </div>
 
         {/* Selector de Entidad - Estilo SubvencionesPage */}
-        <div style={{ marginBottom: '28px' }}>
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.1 }}
+          style={{ marginBottom: '28px' }}
+        >
           <h3 style={{ 
             margin: '0 0 20px 0', 
             color: colors.text, 
@@ -260,84 +364,73 @@ const EmpleadosPage = () => {
               </span>
             </motion.div>
           </div>
-        </div>
+        </motion.div>
         
-        <p style={{ fontSize: '16px', color: colors.textSecondary, margin: '0 0 24px 0' }}>
+        <motion.p 
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.5, delay: 0.15 }}
+          style={{ fontSize: '16px', color: colors.textSecondary, margin: '0 0 24px 0' }}
+        >
           Gestión de empleados de {selectedEntity === 'MENJAR_DHORT' ? 'Menjar d\'Hort SCCL' : 'EI SSS SCCL'}
-        </p>
+        </motion.p>
 
         {/* Estadísticas */}
-        <div style={{
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.2 }}
+          style={{
           display: 'grid',
           gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
           gap: '16px',
           marginBottom: '24px'
-        }}>
-          <div style={{
-            padding: '20px',
-            backgroundColor: colors.surface,
-            borderRadius: '12px',
-            border: `1px solid ${colors.border}`,
-            userSelect: 'none'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
-              <Users size={20} color={colors.primary} />
-              <span style={{ fontSize: '14px', color: colors.textSecondary, fontWeight: '500' }}>Total Empleados</span>
-            </div>
-            <div style={{ fontSize: '28px', fontWeight: '700', color: colors.text }}>{estadisticas.total}</div>
-          </div>
-
-          <div style={{
-            padding: '20px',
-            backgroundColor: colors.surface,
-            borderRadius: '12px',
-            border: `1px solid ${colors.border}`,
-            userSelect: 'none'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
-              <UserCheck size={20} color="#4CAF50" />
-              <span style={{ fontSize: '14px', color: colors.textSecondary, fontWeight: '500' }}>Activos</span>
-            </div>
-            <div style={{ fontSize: '28px', fontWeight: '700', color: colors.text }}>{estadisticas.activos}</div>
-          </div>
-
-          <div style={{
-            padding: '20px',
-            backgroundColor: colors.surface,
-            borderRadius: '12px',
-            border: `1px solid ${colors.border}`,
-            userSelect: 'none'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
-              <UserX size={20} color="#f44336" />
-              <span style={{ fontSize: '14px', color: colors.textSecondary, fontWeight: '500' }}>Inactivos</span>
-            </div>
-            <div style={{ fontSize: '28px', fontWeight: '700', color: colors.text }}>{estadisticas.inactivos}</div>
-          </div>
-
-          <div style={{
-            padding: '20px',
-            backgroundColor: colors.surface,
-            borderRadius: '12px',
-            border: `1px solid ${colors.border}`,
-            userSelect: 'none'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
-              <Briefcase size={20} color={colors.primary} />
-              <span style={{ fontSize: '14px', color: colors.textSecondary, fontWeight: '500' }}>Departamentos</span>
-            </div>
-            <div style={{ fontSize: '28px', fontWeight: '700', color: colors.text }}>{estadisticas.departamentos}</div>
-          </div>
-        </div>
+          }}
+        >
+          {[
+            { label: 'Total Empleados', value: estadisticas.total, icon: Users, color: colors.primary },
+            { label: 'Activos', value: estadisticas.activos, icon: UserCheck, color: '#4CAF50' },
+            { label: 'Inactivos', value: estadisticas.inactivos, icon: UserX, color: '#f44336' },
+            { label: 'Departamentos', value: estadisticas.departamentos, icon: Briefcase, color: colors.primary }
+          ].map((stat, index) => {
+            const Icon = stat.icon;
+            return (
+              <motion.div
+                key={stat.label}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4, delay: 0.25 + index * 0.1 }}
+                style={{
+                  padding: '20px',
+                  backgroundColor: colors.surface,
+                  borderRadius: '12px',
+                  border: `1px solid ${colors.border}`,
+                  userSelect: 'none'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
+                  <Icon size={20} color={stat.color} />
+                  <span style={{ fontSize: '14px', color: colors.textSecondary, fontWeight: '500' }}>{stat.label}</span>
+                </div>
+                <div style={{ fontSize: '28px', fontWeight: '700', color: colors.text }}>{stat.value}</div>
+              </motion.div>
+            );
+          })}
+        </motion.div>
 
         {/* Filtros y Búsqueda */}
-        <div style={{
-          backgroundColor: colors.surface,
-          padding: '20px',
-          borderRadius: '12px',
-          boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
-          marginBottom: '24px'
-        }}>
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.3 }}
+          style={{
+            backgroundColor: colors.surface,
+            padding: '20px',
+            borderRadius: '12px',
+            boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
+            marginBottom: '24px'
+          }}
+        >
           <div style={{ display: 'flex', gap: '20px', alignItems: 'end', marginBottom: '20px', width: '100%' }}>
             {/* Búsqueda */}
             <div style={{ flex: '2', minWidth: '250px' }}>
@@ -510,8 +603,9 @@ const EmpleadosPage = () => {
               </div>
             </div>
           )}
-        </div>
-      </div>
+        </motion.div>
+
+      </motion.div>
 
       {/* Contenido Principal */}
       {loading ? (
@@ -578,17 +672,23 @@ const EmpleadosPage = () => {
           </p>
         </div>
       ) : (
-        <div style={{
-          backgroundColor: colors.surface,
-          borderRadius: '12px',
-          border: `1px solid ${colors.border}`,
-          overflow: 'hidden'
-        }}>
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.4 }}
+          style={{
+            backgroundColor: colors.surface,
+            borderRadius: '12px',
+            border: `1px solid ${colors.border}`,
+            overflow: 'hidden'
+          }}
+        >
           {empleadosFiltrados.map((empleado, index) => (
             <motion.div
               key={empleado.id}
-              initial={false}
-              animate={{ opacity: 1 }}
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.3, delay: 0.5 + index * 0.05 }}
               whileHover={{ backgroundColor: colors.hover }}
               whileTap={{ scale: 0.99 }}
               style={{
@@ -669,7 +769,7 @@ const EmpleadosPage = () => {
               </div>
             </motion.div>
           ))}
-        </div>
+        </motion.div>
       )}
 
       {/* Modal de Detalles */}
@@ -831,6 +931,205 @@ const EmpleadosPage = () => {
                     lineHeight: '1.6'
                   }}>
                     {selectedEmpleado.notas}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Sección de Historial de Servicios */}
+            <div style={{ marginTop: '32px' }}>
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+                marginBottom: '20px',
+                paddingBottom: '12px',
+                borderBottom: `2px solid ${colors.border}`
+              }}>
+                <Calendar size={20} color={colors.primary} />
+                <h3 style={{
+                  fontSize: '18px',
+                  fontWeight: '600',
+                  margin: 0,
+                  color: colors.text
+                }}>
+                  Historial de Servicios
+                </h3>
+              </div>
+
+              {/* Estadísticas - Solo mostrar horas si tiene permisos */}
+              {estadisticasHoras && (
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: canManageHoras ? 'repeat(auto-fit, minmax(150px, 1fr))' : 'repeat(auto-fit, minmax(150px, 1fr))',
+                  gap: '16px',
+                  marginBottom: '24px'
+                }}>
+                  <div style={{
+                    backgroundColor: colors.background,
+                    padding: '16px',
+                    borderRadius: '12px',
+                    border: `1px solid ${colors.border}`,
+                    textAlign: 'center'
+                  }}>
+                    <div style={{
+                      fontSize: '24px',
+                      fontWeight: '700',
+                      color: colors.primary,
+                      marginBottom: '4px'
+                    }}>
+                      {estadisticasHoras.totalServicios}
+                    </div>
+                    <div style={{
+                      fontSize: '12px',
+                      color: colors.textSecondary,
+                      fontWeight: '500'
+                    }}>
+                      Total Servicios
+                    </div>
+                  </div>
+
+                  {/* Total Horas - Solo visible para jefes/admins */}
+                  {canManageHoras && (
+                    <div style={{
+                      backgroundColor: colors.background,
+                      padding: '16px',
+                      borderRadius: '12px',
+                      border: `1px solid ${colors.border}`,
+                      textAlign: 'center'
+                    }}>
+                      <div style={{
+                        fontSize: '24px',
+                        fontWeight: '700',
+                        color: colors.success,
+                        marginBottom: '4px'
+                      }}>
+                        {estadisticasHoras.totalHoras}h
+                      </div>
+                      <div style={{
+                        fontSize: '12px',
+                        color: colors.textSecondary,
+                        fontWeight: '500'
+                      }}>
+                        Total Horas
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Lista de servicios */}
+              {historialServicios.length > 0 ? (
+                <div style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '12px',
+                  maxHeight: '300px',
+                  overflowY: 'auto',
+                  overflowX: 'hidden',
+                  paddingRight: '4px'
+                }}>
+                  {historialServicios.map((servicio, index) => (
+                    <motion.div
+                      key={index}
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: index * 0.1 }}
+                      whileHover={{ 
+                        borderColor: colors.primary,
+                        backgroundColor: colors.hover || `${colors.primary}10`
+                      }}
+                      onClick={async () => {
+                        // Guardar el hojaId en localStorage
+                        if (servicio.hojaId) {
+                          localStorage.setItem('selectedHojaRutaId', servicio.hojaId);
+                        }
+                        // Cerrar el modal si está abierto
+                        setShowModal(false);
+                        // Navegar a la sección de hoja de ruta
+                        // El HojaRutaPage detectará el cambio y cargará la hoja automáticamente
+                        navigateTo('hoja-ruta');
+                      }}
+                      style={{
+                        backgroundColor: colors.background,
+                        padding: '16px',
+                        borderRadius: '12px',
+                        border: `2px solid ${colors.border}`,
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s ease'
+                      }}
+                    >
+                      <div>
+                        <div style={{
+                          fontSize: '16px',
+                          fontWeight: '600',
+                          color: colors.text,
+                          marginBottom: '4px'
+                        }}>
+                          {servicio.cliente}
+                        </div>
+                        <div style={{
+                          fontSize: '14px',
+                          color: colors.textSecondary,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px'
+                        }}>
+                          <Calendar size={14} />
+                          {new Date(servicio.fechaServicio).toLocaleDateString('es-ES')}
+                        </div>
+                      </div>
+
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '16px'
+                      }}>
+                        {/* Horas - Solo visible para jefes/admins */}
+                        {canManageHoras && (
+                          <div style={{
+                            fontSize: '18px',
+                            fontWeight: '600',
+                            color: colors.primary
+                          }}>
+                            {servicio.horas}h
+                          </div>
+                        )}
+
+                        <div style={{
+                          padding: '4px 8px',
+                          borderRadius: '12px',
+                          fontSize: '12px',
+                          fontWeight: '500',
+                          backgroundColor: servicio.estado === 'completado' ? colors.success : colors.warning,
+                          color: 'white'
+                        }}>
+                          {servicio.estado}
+                        </div>
+                        
+                        <ExternalLink 
+                          size={16} 
+                          color={colors.primary}
+                          style={{ marginLeft: '8px' }}
+                        />
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{
+                  textAlign: 'center',
+                  padding: '40px 20px',
+                  color: colors.textSecondary,
+                  fontSize: '14px'
+                }}>
+                  <Calendar size={48} color={colors.textSecondary} style={{ marginBottom: '12px' }} />
+                  <div>No hay servicios registrados</div>
+                  <div style={{ fontSize: '12px', marginTop: '4px' }}>
+                    Los servicios aparecerán aquí cuando se asignen horas en las hojas de ruta
                   </div>
                 </div>
               )}

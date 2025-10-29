@@ -11,10 +11,12 @@ import {
   Phone, 
   Truck,
   AlertCircle,
-  CheckCircle
+  CheckCircle,
+  Pen
 } from 'lucide-react';
 import { useTheme } from './ThemeContext';
 import hojaRutaService from '../services/hojaRutaService';
+import SignaturePad from './SignaturePad';
 
 const HojaRutaEditModal = ({ isOpen, onClose, hojaRuta, onEditSuccess }) => {
   const { colors } = useTheme();
@@ -22,6 +24,7 @@ const HojaRutaEditModal = ({ isOpen, onClose, hojaRuta, onEditSuccess }) => {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(false);
+  const [showSignaturePad, setShowSignaturePad] = useState(false);
 
   // Inicializar datos del formulario
   useEffect(() => {
@@ -34,6 +37,7 @@ const HojaRutaEditModal = ({ isOpen, onClose, hojaRuta, onEditSuccess }) => {
         transportista: hojaRuta.transportista || '',
         personal: hojaRuta.personal || '',
         responsable: hojaRuta.responsable || '',
+        firmaResponsable: hojaRuta.firmaResponsable || '',
         numPersonas: hojaRuta.numPersonas || 0,
         horarios: {
           montaje: hojaRuta.horarios?.montaje || '',
@@ -63,6 +67,18 @@ const HojaRutaEditModal = ({ isOpen, onClose, hojaRuta, onEditSuccess }) => {
         [horario]: value
       }
     }));
+  };
+
+  const handleSignatureSave = (signatureData) => {
+    setFormData(prev => ({
+      ...prev,
+      firmaResponsable: signatureData
+    }));
+    setShowSignaturePad(false);
+  };
+
+  const handleSignatureCancel = () => {
+    setShowSignaturePad(false);
   };
 
   const handleSave = async () => {
@@ -362,6 +378,92 @@ const HojaRutaEditModal = ({ isOpen, onClose, hojaRuta, onEditSuccess }) => {
                   marginBottom: '8px',
                   display: 'block'
                 }}>
+                  Firma del Responsable
+                </label>
+                <div style={{
+                  display: 'flex',
+                  gap: '12px',
+                  alignItems: 'center'
+                }}>
+                  {formData.firmaResponsable ? (
+                    <div style={{
+                      flex: 1,
+                      padding: '12px',
+                      border: `1px solid ${colors.border}`,
+                      borderRadius: '8px',
+                      backgroundColor: colors.surface,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '12px'
+                    }}>
+                      <img 
+                        src={formData.firmaResponsable} 
+                        alt="Firma del responsable"
+                        style={{
+                          maxWidth: '100px',
+                          maxHeight: '40px',
+                          border: `1px solid ${colors.border}`,
+                          borderRadius: '4px',
+                          backgroundColor: 'white'
+                        }}
+                      />
+                      <span style={{
+                        fontSize: '12px',
+                        color: colors.textSecondary,
+                        fontStyle: 'italic'
+                      }}>
+                        Firma guardada
+                      </span>
+                    </div>
+                  ) : (
+                    <div style={{
+                      flex: 1,
+                      padding: '12px',
+                      border: `1px dashed ${colors.border}`,
+                      borderRadius: '8px',
+                      backgroundColor: colors.background,
+                      textAlign: 'center',
+                      color: colors.textSecondary,
+                      fontSize: '14px'
+                    }}>
+                      No hay firma guardada
+                    </div>
+                  )}
+                  
+                  <motion.button
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={() => setShowSignaturePad(true)}
+                    style={{
+                      padding: '12px',
+                      backgroundColor: colors.primary,
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '8px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      fontSize: '14px',
+                      fontWeight: '500'
+                    }}
+                  >
+                    <Pen size={16} />
+                    {formData.firmaResponsable ? 'Cambiar' : 'Firmar'}
+                  </motion.button>
+                </div>
+              </div>
+
+              <div>
+                <label style={{
+                  fontSize: '12px',
+                  fontWeight: '600',
+                  color: colors.textSecondary,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px',
+                  marginBottom: '8px',
+                  display: 'block'
+                }}>
                   Transportista
                 </label>
                 <input
@@ -584,6 +686,44 @@ const HojaRutaEditModal = ({ isOpen, onClose, hojaRuta, onEditSuccess }) => {
           </motion.button>
         </div>
       </motion.div>
+
+      {/* Modal de firma */}
+      {showSignaturePad && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0,0,0,0.7)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 2000,
+            padding: '20px'
+          }}
+        >
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.9, opacity: 0 }}
+            style={{
+              maxWidth: '500px',
+              width: '100%'
+            }}
+          >
+            <SignaturePad
+              onSave={handleSignatureSave}
+              onCancel={handleSignatureCancel}
+              initialSignature={formData.firmaResponsable}
+            />
+          </motion.div>
+        </motion.div>
+      )}
     </motion.div>
   );
 };

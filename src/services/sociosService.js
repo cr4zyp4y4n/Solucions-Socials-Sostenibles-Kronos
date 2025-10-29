@@ -28,11 +28,8 @@ class SociosService {
   // Crear nuevo socio
   async crearSocio(socioData) {
     try {
-      console.log('🔧 Iniciando creación de socio...', socioData);
-      
       // Generar ID único de 5 dígitos
       const idUnico = await this.generarIdUnico();
-      console.log('🆔 ID único generado:', idUnico);
 
       const socio = {
         id_unico: idUnico,
@@ -42,9 +39,6 @@ class SociosService {
         socio_desde: new Date().toISOString().split('T')[0] // Fecha actual en formato YYYY-MM-DD
       };
 
-      console.log('📝 Datos del socio a insertar:', socio);
-      console.log('🔗 Tabla destino:', this.tableName);
-
       const { data, error } = await supabase
         .from(this.tableName)
         .insert([socio])
@@ -53,16 +47,9 @@ class SociosService {
 
       if (error) {
         console.error('❌ Error creando socio:', error);
-        console.error('❌ Detalles del error:', {
-          message: error.message,
-          details: error.details,
-          hint: error.hint,
-          code: error.code
-        });
         throw error;
       }
 
-      console.log('✅ Socio creado exitosamente:', data);
       return data;
     } catch (error) {
       console.error('💥 Error en crearSocio:', error);
@@ -172,8 +159,6 @@ class SociosService {
   // Importar múltiples socios desde CSV
   async importarSocios(sociosData) {
     try {
-      console.log('📥 Iniciando importación de socios...', sociosData.length, 'socios');
-      
       const sociosImportados = [];
       let ultimoId = await this.generarIdUnico() - 1; // Empezar desde el siguiente ID disponible
 
@@ -188,8 +173,6 @@ class SociosService {
           socio_desde: socioData.socio_desde || new Date().toISOString().split('T')[0]
         };
 
-        console.log('📝 Importando socio:', socio);
-
         const { data, error } = await supabase
           .from(this.tableName)
           .insert([socio])
@@ -203,10 +186,8 @@ class SociosService {
         }
 
         sociosImportados.push(data);
-        console.log('✅ Socio importado:', data.nombre, data.apellido);
       }
 
-      console.log('🎉 Importación completada:', sociosImportados.length, 'de', sociosData.length, 'socios');
       return sociosImportados;
     } catch (error) {
       console.error('💥 Error en importarSocios:', error);

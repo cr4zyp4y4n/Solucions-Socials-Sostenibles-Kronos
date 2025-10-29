@@ -86,27 +86,13 @@ const Layout = () => {
   useEffect(() => {
     const fetchUserProfile = async () => {
       if (user?.id) {
-        console.log('🔍 DEBUG: Verificando perfil del usuario...');
-        console.log('🆔 User ID:', user.id);
-        console.log('📧 User Email:', user.email);
-        console.log('📋 User Metadata:', user.user_metadata);
-        
         const { data, error } = await supabase
           .from('user_profiles')
           .select('name, role, onboarding_completed')
           .eq('id', user.id)
           .single();
           
-        console.log('🗄️ Respuesta de Supabase:');
-        console.log('  - Data:', data);
-        console.log('  - Error:', error);
-        
         if (!error && data) {
-          console.log('✅ Perfil cargado correctamente:');
-          console.log('  - Nombre:', data.name);
-          console.log('  - Rol desde DB:', data.role);
-          console.log('  - Onboarding completado:', data.onboarding_completed);
-          
           setUserProfile(data);
           
           // Mostrar onboarding automáticamente si es un usuario nuevo
@@ -115,8 +101,6 @@ const Layout = () => {
           }
         } else if (error) {
           console.error('❌ Error al cargar perfil:', error.message);
-          console.error('   Código de error:', error.code);
-          console.error('   Detalles:', error.details);
         }
       }
     };
@@ -125,16 +109,6 @@ const Layout = () => {
 
   // Verificar si el usuario es administrador
   const isAdmin = userProfile?.role === 'admin';
-  
-  // DEBUG: Log de verificación de admin
-  useEffect(() => {
-    if (userProfile) {
-      console.log('🔐 DEBUG: Verificación de permisos:');
-      console.log('  - userProfile.role:', userProfile.role);
-      console.log('  - isAdmin:', isAdmin);
-      console.log('  - userProfile completo:', userProfile);
-    }
-  }, [userProfile, isAdmin]);
 
   // Limpiar eventId cuando se navega a otra sección
   useEffect(() => {
@@ -297,6 +271,9 @@ const Layout = () => {
 
   const markNotificationAsRead = async (notificationId) => {
     try {
+      // Encontrar la notificación para obtener sus datos
+      const notification = notifications.find(n => n.id === notificationId);
+      
       await supabase
         .from('notifications')
         .update({ read_at: new Date().toISOString() })
@@ -310,6 +287,11 @@ const Layout = () => {
         )
       );
       setUnreadCount(prev => Math.max(0, prev - 1));
+      
+      // Navegar si es una notificación de hoja de ruta
+      if (notification?.data?.navigation_target === 'hoja_ruta') {
+        navigateTo('hoja_ruta');
+      }
     } catch (e) {
       // Error marking notification as read
     }
@@ -816,6 +798,20 @@ const Layout = () => {
                                       {notification.statusLabel}
                                     </div>
                                   )}
+                                  {notification.data?.navigation_target === 'hoja_ruta' && (
+                                    <div style={{
+                                      padding: '2px 8px',
+                                      borderRadius: '12px',
+                                      fontSize: '11px',
+                                      fontWeight: '600',
+                                      color: '#10B981',
+                                      background: '#10B98115',
+                                      border: `1px solid #10B98130`,
+                                      userSelect: 'none'
+                                    }}>
+                                      Hoja de Ruta
+                                    </div>
+                                  )}
                                 </div>
                                 <div style={{
                                   color: colors.textSecondary,
@@ -826,6 +822,34 @@ const Layout = () => {
                                 }}>
                                   {notification.message}
                                 </div>
+                                
+                                {/* Información adicional para notificaciones de hoja de ruta */}
+                                {notification.data?.navigation_target === 'hoja_ruta' && (
+                                  <div style={{
+                                    fontSize: '11px',
+                                    color: colors.textSecondary,
+                                    marginBottom: '6px',
+                                    padding: '6px 8px',
+                                    backgroundColor: colors.background,
+                                    borderRadius: '4px',
+                                    border: `1px solid ${colors.border}`,
+                                    userSelect: 'none'
+                                  }}>
+                                    <div style={{ marginBottom: '2px' }}>
+                                      <strong>Responsable:</strong> {notification.data?.responsable || 'No asignado'}
+                                    </div>
+                                    <div style={{ marginBottom: '2px' }}>
+                                      <strong>Contacto:</strong> {notification.data?.contacto || 'No especificado'}
+                                    </div>
+                                    <div style={{ marginBottom: '2px' }}>
+                                      <strong>Transportista:</strong> {notification.data?.transportista || 'No asignado'}
+                                    </div>
+                                    <div>
+                                      <strong>Personal:</strong> {notification.data?.personal || 'No asignado'}
+                                    </div>
+                                  </div>
+                                )}
+                                
                                 {notification.data?.event_id && (
                                   <motion.div
                                     whileHover={{ backgroundColor: colors.primary + '15' }}

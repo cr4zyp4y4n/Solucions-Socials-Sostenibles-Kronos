@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { Upload, X, FileText, AlertCircle, CheckCircle, Loader } from 'lucide-react';
 import { useTheme } from './ThemeContext';
-import hojaRutaService from '../services/hojaRutaService';
+import hojaRutaService from '../services/hojaRutaSupabaseService';
 
 const HojaRutaUploadModal = ({ isOpen, onClose, onUploadSuccess, userId }) => {
   const { colors } = useTheme();
@@ -97,7 +97,7 @@ const HojaRutaUploadModal = ({ isOpen, onClose, onUploadSuccess, userId }) => {
     setError(null);
 
     try {
-      const nuevaHoja = await hojaRutaService.uploadCSV(selectedFile, userId);
+      const nuevaHoja = await hojaRutaService.uploadFile(selectedFile, userId);
       onUploadSuccess(nuevaHoja);
       onClose();
     } catch (err) {
