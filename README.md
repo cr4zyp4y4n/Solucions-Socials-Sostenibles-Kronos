@@ -1,11 +1,11 @@
-# SSS Kronos v2.1.6
+# SSS Kronos v2.1.7
 
-🚀 **Release Notes - SSS Kronos v2.1.6**
+🚀 **Release Notes - SSS Kronos v2.1.7**
 
 ## 📦 Archivos de Distribución
 
 ### Windows
-- **Instalador:** SSS Kronos-2.1.6 Setup.exe (130 MB aprox.)
+- **Instalador:** SSS Kronos-2.1.7 Setup.exe (130 MB aprox.)
 - **Ubicación:** `out/make/squirrel.windows/x64/`
 - **Compatibilidad:** Windows 10/11 (64-bit)
 
@@ -13,6 +13,25 @@
 *Nota: Los instaladores para macOS y Linux se generarán en futuras versiones*
 
 ## ✨ Nuevas Características y Cambios Clave
+
+### 🆕 **v2.1.7 - Hojas de Ruta en Supabase, Historial y Permisos**
+- ✅ **Base de datos Hojas de Ruta (Supabase):** Tablas creadas para hojas, personal asignado, checklist y relaciones.
+- ✅ **Índice único corregido:** `COALESCE` movido a `CREATE UNIQUE INDEX` para evitar error 42601.
+- ✅ **RLS revisado:** Políticas actualizadas y archivo `rls_policies_hojas_ruta_FIXED.sql` con `DROP POLICY IF EXISTS` y referencias correctas a `hojas_ruta_personal`.
+- ✅ **Servicio Supabase nuevo:** `hojaRutaSupabaseService.js` con métodos para crear, obtener, firmar, checklist, histórico y subida de CSV/Excel.
+- ✅ **Parsing CSV/Excel robusto:** `processCSVStandard` como vía principal y parser flexible como fallback; mejoras en fechas y cliente por defecto (usa nombre de archivo o "Cliente sin nombre").
+- ✅ **Historial de servicios del empleado:** JOIN corregido; muestra servicios y horas reales desde `hojas_ruta_personal`.
+- ✅ **UI Empleados/Modal:** Eliminados "Promedio/Servicio" y "Completados". Se mantienen solo **Total Servicios** y **Total Horas**.
+- ✅ **Navegación cruzada:**
+  - Desde Empleados: clic en servicio abre la **Hoja de Ruta** específica.
+  - Desde Hoja de Ruta (modal empleado): botón **"Ver en Empleados"** abre la sección mostrando ese empleado.
+- ✅ **Animaciones consistentes:** Unificadas en Empleados y Hoja de Ruta; eliminada animación de giro del header en Hoja de Ruta.
+- ✅ **Control de horas por rol (RBAC):** Solo `jefe`/`admin`/`administrador` ven y editan horas; usuarios normales no ven horas en ninguna sección.
+- ✅ **Fuente del rol correcta:** Permisos basados en `user_profiles.role` (no `user.role`).
+- ✅ **Correcciones clave:**
+  - Cierre JSX incorrecto (`</motion.div>` vs `</div>`) que causaba build cascade y error de inicialización.
+  - Eliminado error "Cannot access 'loadDatos' before initialization".
+  - Header sin rotaciones "barrel roll".
 
 ### 🆕 **v2.1.6 - Carnets de Socio Interactivos y Gestión Completa**
 - ✅ **Nueva sección Socios IDONI:** Gestión completa de socios de la agrobotiga
@@ -298,7 +317,7 @@
 
 ### 📥 Descargar
 1. Ve a la sección Releases de este repositorio
-2. Descarga `SSS Kronos-2.1.4 Setup.exe`
+2. Descarga `SSS Kronos-2.1.7 Setup.exe`
 3. Ejecuta el instalador y sigue las instrucciones
 
 ### ⚡ Primera Ejecución
