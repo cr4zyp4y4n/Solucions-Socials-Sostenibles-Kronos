@@ -21,11 +21,25 @@ if (isFirstRun) {
   }, 10000);
 }
 
-// Configuración del auto-updater (electron-updater usa package.json -> publish)
+// Configuración del auto-updater (usar GitHub explícitamente para Forge/Squirrel)
 autoUpdater.autoDownload = true;
 autoUpdater.allowPrerelease = false;
 autoUpdater.autoInstallOnAppQuit = true;
-console.log('🔧 Auto-updater configurado (GitHub via publish en package.json)');
+
+// En builds con Electron Forge no se genera app-update.yml.
+// Definimos el feed de GitHub explícitamente para evitar ENOENT.
+try {
+  autoUpdater.setFeedURL({
+    provider: 'github',
+    owner: 'cr4zyp4y4n',
+    repo: 'Solucions-Socials-Sostenibles-Kronos',
+    releaseType: 'release',
+    vPrefixedTagName: true,
+  });
+  console.log('🔧 Feed del auto-updater configurado: GitHub cr4zyp4y4n/Solucions-Socials-Sostenibles-Kronos');
+} catch (e) {
+  console.error('❌ Error configurando feed del auto-updater:', e);
+}
 
 // Variable global para mainWindow
 let mainWindow = null;
