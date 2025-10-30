@@ -21,16 +21,11 @@ if (isFirstRun) {
   }, 10000);
 }
 
-// Configuración del auto-updater
-autoUpdater.setFeedURL({
-  provider: 'github',
-  owner: 'cr4zyp4y4n',
-  repo: 'Solucions-Socials-Sostenibles-Kronos',
-  private: false
-});
-
-console.log('🔧 Auto-updater configurado para GitHub: cr4zyp4y4n/Solucions-Socials-Sostenibles-Kronos');
-console.log('📡 Feed URL configurada:', autoUpdater.getFeedURL());
+// Configuración del auto-updater (electron-updater usa package.json -> publish)
+autoUpdater.autoDownload = true;
+autoUpdater.allowPrerelease = false;
+autoUpdater.autoInstallOnAppQuit = true;
+console.log('🔧 Auto-updater configurado (GitHub via publish en package.json)');
 
 // Variable global para mainWindow
 let mainWindow = null;
@@ -39,7 +34,6 @@ let mainWindow = null;
 function setupAutoUpdaterEvents() {
   autoUpdater.on('checking-for-update', () => {
     console.log('🔍 Verificando actualizaciones...');
-    console.log('📡 URL del feed:', autoUpdater.getFeedURL());
   });
 
   autoUpdater.on('update-available', (info) => {

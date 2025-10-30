@@ -1205,7 +1205,7 @@ const SettingsPage = () => {
           marginBottom: 32,
         }}
       >
-                  <h1 style={{
+          <h1 style={{
             color: colors.text,
             fontSize: 28,
             fontWeight: 700,
@@ -1213,7 +1213,7 @@ const SettingsPage = () => {
             lineHeight: 1.2,
             userSelect: 'none'
           }}>
-            Configuración v2.0.10
+            Configuración v{appVersion}
           </h1>
         <div style={{ display: 'flex', gap: 8 }}>
           {/* Badge de estado de Supabase */}
