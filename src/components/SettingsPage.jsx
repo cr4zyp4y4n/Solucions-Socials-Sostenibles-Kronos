@@ -1213,7 +1213,7 @@ const SettingsPage = () => {
             lineHeight: 1.2,
             userSelect: 'none'
           }}>
-            Configuración v{appVersion}
+            Versión v{appVersion}
           </h1>
         <div style={{ display: 'flex', gap: 8 }}>
           {/* Badge de estado de Supabase */}

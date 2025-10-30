@@ -1,7 +1,7 @@
 {
   "name": "sss-kronos",
   "productName": "SSS Kronos",
-  "version": "2.1.8",
+  "version": "2.1.9",
   "description": "Aplicación de escritorio para la gestión avanzada de proveedores y análisis de facturas en Solucions Socials. Automatiza la importación de Excel, integra roles y permisos, y ofrece dashboards y auditoría en tiempo real para equipos de administración y gestión.",
   "main": ".webpack/main",
   "scripts": {
@@ -12,7 +12,8 @@
     "lint": "echo \"No linting configured\"",
     "build": "electron-forge make && electron-builder",
     "dist": "electron-forge make && electron-builder",
-    "webpack": "electron-forge make"
+    "webpack": "electron-forge make",
+    "release": "electron-forge make && electron-forge publish"
   },
   "keywords": [
     "electron",
@@ -41,6 +42,7 @@
     "@electron-forge/plugin-auto-unpack-natives": "^7.8.1",
     "@electron-forge/plugin-fuses": "^7.8.1",
     "@electron-forge/plugin-webpack": "^7.8.1",
+    "@electron-forge/publisher-github": "^7.10.2",
     "@electron/fuses": "^1.8.0",
     "@vercel/webpack-asset-relocator-loader": "^1.7.3",
     "css-loader": "^6.11.0",
