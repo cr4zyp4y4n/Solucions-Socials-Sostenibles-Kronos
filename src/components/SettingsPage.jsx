@@ -182,6 +182,7 @@ const SettingsPage = () => {
   const [debugLogs, setDebugLogs] = useState([]);
   const [showDebugLogs, setShowDebugLogs] = useState(false);
   const [shouldAutoDownload, setShouldAutoDownload] = useState(false);
+  const [updateInfo, setUpdateInfo] = useState(null); // Almacenar info de la actualización de electron-updater
 
   // Verificar si el usuario es admin
   const isAdmin = user?.role === 'authenticated' && user?.user_metadata?.role === 'admin';
@@ -243,6 +244,7 @@ const SettingsPage = () => {
         addDebugLog('✅ Evento: update-available recibido', 'success');
         addDebugLog(`📦 Información: ${JSON.stringify(info)}`, 'info');
         setUpdateAvailable(true);
+        setUpdateInfo(info); // Guardar info de la actualización
         setChecking(false);
       });
 
@@ -294,14 +296,14 @@ const SettingsPage = () => {
     };
   }, []);
 
-  // useEffect para manejar descarga automática
-  useEffect(() => {
-    if (updateAvailable && shouldAutoDownload && !downloading) {
-      addDebugLog('🔄 Descarga automática iniciada por useEffect', 'info');
-      setShouldAutoDownload(false); // Resetear la bandera
-      downloadUpdate();
-    }
-  }, [updateAvailable, shouldAutoDownload, downloading]);
+  // useEffect para manejar descarga automática (deshabilitado - esperar a que electron-updater lo haga)
+  // useEffect(() => {
+  //   if (updateAvailable && shouldAutoDownload && !downloading) {
+  //     addDebugLog('🔄 Descarga automática iniciada por useEffect', 'info');
+  //     setShouldAutoDownload(false); // Resetear la bandera
+  //     downloadUpdate();
+  //   }
+  // }, [updateAvailable, shouldAutoDownload, downloading]);
 
   // Función para verificar conectividad con GitHub
   const testGitHubConnection = async () => {
@@ -367,13 +369,10 @@ const SettingsPage = () => {
         const latestVersion = githubData.tag_name.replace('v', '');
         
         if (latestVersion > currentVersion) {
-          addDebugLog(`✅ Nueva versión disponible: ${latestVersion}`, 'success');
-          setUpdateAvailable(true);
+          addDebugLog(`✅ Nueva versión disponible en GitHub: ${latestVersion}`, 'success');
           showAlertMessage(`Nueva versión disponible: ${latestVersion}`, 'success');
-          
-          // Activar descarga automática usando la bandera
-          addDebugLog('🔄 Activando descarga automática...', 'info');
-          setShouldAutoDownload(true);
+          addDebugLog('⏳ Esperando verificación de electron-updater...', 'info');
+          // NO establecer updateAvailable aquí, esperar a que electron-updater lo confirme
         } else {
           addDebugLog('✅ Ya tienes la última versión', 'info');
           addDebugLog(`📦 Versión actual: ${currentVersion}`, 'info');
@@ -417,10 +416,11 @@ const SettingsPage = () => {
       return;
     }
     
-    // Verificar que se haya detectado una actualización disponible
-    if (!updateAvailable) {
-      addDebugLog('⚠️ No se puede descargar: no hay actualización verificada', 'warning');
-      showAlertMessage('Primero debes verificar si hay actualizaciones disponibles', 'warning');
+    // Verificar que se haya detectado una actualización disponible POR electron-updater
+    if (!updateAvailable || !updateInfo) {
+      addDebugLog('⚠️ No se puede descargar: electron-updater aún no ha verificado la actualización', 'warning');
+      addDebugLog('💡 Espera a que aparezca "✅ Actualización disponible" después de verificar', 'info');
+      showAlertMessage('Espera a que se complete la verificación de actualizaciones', 'warning');
       return;
     }
     
@@ -1060,7 +1060,7 @@ const SettingsPage = () => {
         {updateAvailable && !downloading && !updateDownloaded && (
           <div style={{ marginBottom: 16 }}>
             <div style={{ color: colors.success, marginBottom: 8, fontWeight: 500 }}>
-              ✅ Nueva actualización disponible
+              ✅ Nueva actualización disponible{updateInfo ? ` (${updateInfo.version})` : ''}
             </div>
             {canInstallUpdates ? (
               <button
@@ -1213,7 +1213,7 @@ const SettingsPage = () => {
             lineHeight: 1.2,
             userSelect: 'none'
           }}>
-            Versión v{appVersion}
+            Configuración - v{appVersion}
           </h1>
         <div style={{ display: 'flex', gap: 8 }}>
           {/* Badge de estado de Supabase */}
