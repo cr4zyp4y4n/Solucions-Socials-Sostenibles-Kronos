@@ -13,7 +13,8 @@
     "build": "electron-forge make && electron-builder",
     "dist": "electron-forge make && electron-builder",
     "webpack": "electron-forge make",
-    "release": "electron-forge make && electron-forge publish"
+    "release": "electron-builder --publish always",
+    "release-forge": "electron-forge make && electron-forge publish"
   },
   "keywords": [
     "electron",

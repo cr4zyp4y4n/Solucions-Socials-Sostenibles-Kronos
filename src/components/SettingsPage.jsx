@@ -370,9 +370,9 @@ const SettingsPage = () => {
         
         if (latestVersion > currentVersion) {
           addDebugLog(`✅ Nueva versión disponible en GitHub: ${latestVersion}`, 'success');
-          showAlertMessage(`Nueva versión disponible: ${latestVersion}`, 'success');
           addDebugLog('⏳ Esperando verificación de electron-updater...', 'info');
           // NO establecer updateAvailable aquí, esperar a que electron-updater lo confirme
+          // electron-updater enviará 'update-available' cuando confirme
         } else {
           addDebugLog('✅ Ya tienes la última versión', 'info');
           addDebugLog(`📦 Versión actual: ${currentVersion}`, 'info');
@@ -385,15 +385,18 @@ const SettingsPage = () => {
         showAlertMessage('No se pudo verificar actualizaciones. Revisa tu conexión a internet.', 'warning');
       }
       
-      // También intentar verificar con electron-updater (solo en producción)
+      // SIEMPRE intentar verificar con electron-updater (solo en producción)
+      // Esto es crítico: electron-updater debe verificar primero antes de intentar descargar
       if (process.env.NODE_ENV !== 'development') {
         try {
           addDebugLog('📡 Enviando solicitud a electron-updater...', 'info');
+          addDebugLog('⏳ Esperando respuesta de electron-updater...', 'info');
           await window.electronAPI.checkForUpdates();
           addDebugLog('✅ Solicitud de verificación enviada correctamente', 'success');
+          addDebugLog('💡 Espera a que electron-updater confirme la actualización', 'info');
         } catch (electronError) {
           addDebugLog(`⚠️ Error con electron-updater: ${electronError.message}`, 'warning');
-          // No mostrar error al usuario si ya tenemos respuesta de GitHub
+          // Si hay error, mostrar pero no bloquear
         }
       } else {
         addDebugLog('🛠️ Modo desarrollo: saltando electron-updater', 'info');

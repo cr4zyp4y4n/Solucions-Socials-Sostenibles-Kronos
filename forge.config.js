@@ -34,8 +34,8 @@ module.exports = {
         },
         prerelease: false,
         draft: false,
-        // Añadir token de GitHub (opcional para publicación automática)
-        // token: process.env.GITHUB_TOKEN
+        // Token de GitHub (requerido para publicación)
+        token: process.env.GITHUB_TOKEN
       }
     }
   ],
