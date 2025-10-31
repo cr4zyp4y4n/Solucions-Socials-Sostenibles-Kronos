@@ -13,7 +13,7 @@
     "build": "electron-forge make && electron-builder",
     "dist": "electron-forge make && electron-builder",
     "webpack": "electron-forge make",
-    "release": "electron-forge make && electron-builder --publish always",
+    "release": "electron-forge make && node -e \"require('fs').cpSync('.webpack/x64/main', '.webpack/main', {recursive: true, force: true}) && require('fs').cpSync('.webpack/x64/renderer', '.webpack/renderer', {recursive: true, force: true})\" && electron-builder --publish always",
     "release-forge": "electron-forge make && electron-forge publish"
   },
   "keywords": [
@@ -97,12 +97,16 @@
     "appId": "com.solucionssocials.sss-kronos",
     "productName": "SSS Kronos",
     "directories": {
-      "output": "dist"
+      "output": "dist",
+      "buildResources": "build"
     },
     "files": [
-      "out/**/*",
+      ".webpack/**/*",
       "node_modules/**/*",
-      "package.json"
+      "package.json",
+      "!out/**/*",
+      "!src/**/*",
+      "!**/*.map"
     ],
     "extraResources": [
       {
