@@ -1,7 +1,7 @@
 {
   "name": "sss-kronos",
   "productName": "SSS Kronos",
-  "version": "2.1.12",
+  "version": "2.1.11",
   "description": "Aplicación de escritorio para la gestión avanzada de proveedores y análisis de facturas en Solucions Socials. Automatiza la importación de Excel, integra roles y permisos, y ofrece dashboards y auditoría en tiempo real para equipos de administración y gestión.",
   "main": ".webpack/main",
   "scripts": {
@@ -13,8 +13,7 @@
     "build": "electron-forge make && electron-builder",
     "dist": "electron-forge make && electron-builder",
     "webpack": "electron-forge make",
-    "release": "electron-forge make && node -e \"require('fs').cpSync('.webpack/x64/main', '.webpack/main', {recursive: true, force: true}) && require('fs').cpSync('.webpack/x64/renderer', '.webpack/renderer', {recursive: true, force: true})\" && electron-builder --publish always",
-    "release-forge": "electron-forge make && electron-forge publish"
+    "release": "electron-forge make && electron-forge publish"
   },
   "keywords": [
     "electron",
@@ -97,16 +96,12 @@
     "appId": "com.solucionssocials.sss-kronos",
     "productName": "SSS Kronos",
     "directories": {
-      "output": "dist",
-      "buildResources": "build"
+      "output": "dist"
     },
     "files": [
-      ".webpack/**/*",
+      "out/**/*",
       "node_modules/**/*",
-      "package.json",
-      "!out/**/*",
-      "!src/**/*",
-      "!**/*.map"
+      "package.json"
     ],
     "extraResources": [
       {

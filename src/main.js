@@ -21,16 +21,25 @@ if (isFirstRun) {
   }, 10000);
 }
 
-// Configuración del auto-updater (usando electron-builder que genera latest.yml)
-autoUpdater.autoDownload = false; // Desactivar descarga automática, lo haremos manualmente
+// Configuración del auto-updater (usar GitHub explícitamente para Forge/Squirrel)
+autoUpdater.autoDownload = true;
 autoUpdater.allowPrerelease = false;
 autoUpdater.autoInstallOnAppQuit = true;
 
-// electron-updater detectará automáticamente la configuración desde package.json
-// build.publish.provider: "github"
-// No necesitamos setFeedURL si está en package.json
-console.log('🔧 Feed del auto-updater: Se detectará desde package.json (provider: github)');
-console.log('📦 Buscará archivos: latest.yml y .exe generados por electron-builder');
+// En builds con Electron Forge no se genera app-update.yml.
+// Definimos el feed de GitHub explícitamente para evitar ENOENT.
+try {
+  autoUpdater.setFeedURL({
+    provider: 'github',
+    owner: 'cr4zyp4y4n',
+    repo: 'Solucions-Socials-Sostenibles-Kronos',
+    releaseType: 'release',
+    vPrefixedTagName: true,
+  });
+  console.log('🔧 Feed del auto-updater configurado: GitHub cr4zyp4y4n/Solucions-Socials-Sostenibles-Kronos');
+} catch (e) {
+  console.error('❌ Error configurando feed del auto-updater:', e);
+}
 
 // Variable global para mainWindow
 let mainWindow = null;

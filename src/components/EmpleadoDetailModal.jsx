@@ -31,10 +31,10 @@ const EmpleadoDetailModal = ({ isOpen, onClose, empleado }) => {
     fetchUserProfile();
   }, [user]);
   
-  // Verificar si el usuario puede ver horas (solo jefes y admins)
+  // Verificar si el usuario puede ver horas (jefes, admins y gestión)
   const canManageHoras = useMemo(() => {
     const role = userProfile?.role || user?.user_metadata?.role || '';
-    return ['jefe', 'admin', 'administrador'].includes(role.toLowerCase());
+    return ['jefe', 'admin', 'administrador', 'gestión', 'gestion', 'management'].includes(role.toLowerCase());
   }, [userProfile, user]);
   const [historialServicios, setHistorialServicios] = useState([]);
   const [estadisticasHoras, setEstadisticasHoras] = useState(null);
