@@ -9,7 +9,7 @@ if (require('electron-squirrel-startup')) {
   app.quit();
 }
 
-// Configurar AppUserModelId para Windows
+// Configurar AppUserModelId para que funcione en Windows
 app.setAppUserModelId('com.squirrel.sss-kronos.SSSKronos');
 
 // Verificar si es el primer arranque de Squirrel
