@@ -375,7 +375,7 @@ const HojaRutaPage = () => {
                   }}
                 >
                   <Pen size={18} />
-                  Firmar Hoja de Ruta
+                  Confirmar Listas y Material
                 </motion.button>
               )}
 
@@ -394,7 +394,7 @@ const HojaRutaPage = () => {
                   fontWeight: '500'
                 }}>
                   <CheckCircle2 size={18} />
-                  Firmada por {hojaActual.firmaInfo.firmadoPor}
+                  Verificado por {hojaActual.firmaInfo.firmadoPor || hojaActual.firmaInfo.firmado_por || 'N/A'}
                 </div>
               )}
 

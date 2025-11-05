@@ -1149,18 +1149,25 @@ class HojaRutaSupabaseService {
   // Firmar hoja de ruta
   async firmarHojaRuta(hojaId, firmaData, firmadoPor) {
     try {
+      // Verificar si ya está firmada
+      const hojaActual = await this.getHojaRuta(hojaId);
+      if (hojaActual?.firmaInfo?.firmado) {
+        throw new Error('Esta hoja de ruta ya está firmada y no se puede modificar la firma');
+      }
+
+      // firmaData ahora es el nombre (texto), no una imagen
       const firmaInfo = {
         firmado: true,
-        firmado_por: firmadoPor,
+        firmado_por: firmadoPor, // El nombre del firmante
         fecha_firma: new Date().toISOString(),
-        firma_data: firmaData
+        firma_data: firmaData // El nombre también se guarda aquí como texto
       };
 
       const { error } = await supabase
         .from('hojas_ruta')
         .update({
           firma_info: firmaInfo,
-          firma_responsable: firmaData
+          firma_responsable: firmaData // Guardar el nombre como texto
         })
         .eq('id', hojaId);
 

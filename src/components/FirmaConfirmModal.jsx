@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { 
   AlertTriangle, 
@@ -23,17 +23,37 @@ const FirmaConfirmModal = ({
   const { user } = useAuth();
   const [showSignaturePad, setShowSignaturePad] = useState(false);
   const [firmaData, setFirmaData] = useState(null);
+  
+  // Verificar si ya está firmada
+  const yaEstaFirmada = hojaRuta?.firmaInfo?.firmado || false;
+  // Para firma como texto, usamos firmadoPor (nombre) o firma_data si es texto
+  const firmaExistente = hojaRuta?.firmaInfo?.firmado_por || hojaRuta?.firmaInfo?.firmadoPor || null;
+
+  // Cargar firma existente si ya está firmada
+  useEffect(() => {
+    if (yaEstaFirmada && firmaExistente) {
+      // Solo cargar si es texto (no imagen base64)
+      if (typeof firmaExistente === 'string' && !firmaExistente.startsWith('data:')) {
+        setFirmaData(firmaExistente);
+      } else if (yaEstaFirmada && firmaExistente) {
+        // Si ya está firmada pero el nombre está en firmadoPor
+        setFirmaData(hojaRuta?.firmaInfo?.firmado_por || hojaRuta?.firmaInfo?.firmadoPor || 'Firmado');
+      }
+    }
+  }, [yaEstaFirmada, firmaExistente, hojaRuta]);
 
   if (!isOpen || !hojaRuta) return null;
 
   const handleConfirmarFirma = () => {
     if (firmaData) {
-      onFirmar(firmaData, user?.name || user?.email || 'Usuario');
+      // firmaData ahora es el nombre (texto), y lo usamos tanto para firmaData como para firmadoPor
+      onFirmar(firmaData, firmaData); // El nombre es tanto la "firma" como el "firmadoPor"
       onClose();
     }
   };
 
   const handleSignatureSave = (signature) => {
+    // signature ahora es el nombre (texto)
     setFirmaData(signature);
     setShowSignaturePad(false);
   };
@@ -102,7 +122,7 @@ const FirmaConfirmModal = ({
             gap: '12px'
           }}>
             <AlertTriangle size={28} color={colors.warning || '#f59e0b'} />
-            Confirmar Firma de Hoja de Ruta
+            Confirmar Verificación de Listas y Material
           </h2>
           <motion.button
             whileHover={{ scale: 1.1 }}
@@ -253,7 +273,7 @@ const FirmaConfirmModal = ({
             gap: '8px'
           }}>
             <User size={20} color={colors.primary} />
-            Información del Firmante
+            Información de Verificación
           </h3>
           
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
@@ -267,7 +287,7 @@ const FirmaConfirmModal = ({
                 marginBottom: '4px',
                 display: 'block'
               }}>
-                Firmado por
+                Verificado por
               </label>
               <p style={{
                 fontSize: '14px',
@@ -332,7 +352,7 @@ const FirmaConfirmModal = ({
                 margin: 0,
                 lineHeight: '1.5'
               }}>
-                Al firmar esta hoja de ruta, confirmas que eres responsable del servicio y que toda la información es correcta. 
+                Al firmar esta hoja de ruta, confirmas que has verificado las listas, material y equipamiento del servicio. 
                 Esta firma quedará registrada en el sistema para fines de control y seguimiento.
               </p>
             </div>
@@ -356,14 +376,14 @@ const FirmaConfirmModal = ({
               color: colors.text,
               margin: '0 0 8px 0'
             }}>
-              {firmaData ? 'Firma Capturada' : 'Listo para Firmar'}
+              {firmaData ? 'Verificación Capturada' : 'Listo para Verificar'}
             </h3>
             <p style={{
               fontSize: '14px',
               color: colors.textSecondary,
               margin: '0 0 20px 0'
             }}>
-              {firmaData ? 'Tu firma ha sido capturada correctamente' : 'Haz clic en el botón para capturar tu firma digital'}
+              {firmaData ? 'Tu nombre ha sido registrado correctamente' : 'Haz clic en el botón para escribir tu nombre y confirmar la verificación'}
             </p>
             
             {firmaData && (
@@ -372,43 +392,65 @@ const FirmaConfirmModal = ({
                 display: 'flex',
                 justifyContent: 'center'
               }}>
-                <img 
-                  src={firmaData} 
-                  alt="Firma capturada"
-                  style={{
-                    maxWidth: '200px',
-                    maxHeight: '80px',
-                    border: `1px solid ${colors.border}`,
-                    borderRadius: '4px',
-                    backgroundColor: 'white',
-                    padding: '8px'
-                  }}
-                />
+                <div style={{
+                  padding: '16px 24px',
+                  border: `2px solid ${colors.success}`,
+                  borderRadius: '8px',
+                  backgroundColor: 'white',
+                  textAlign: 'center'
+                }}>
+                  <div style={{
+                    fontSize: '20px',
+                    fontWeight: 'bold',
+                    color: '#000000',
+                    textTransform: 'uppercase',
+                    letterSpacing: '1px'
+                  }}>
+                    {firmaData}
+                  </div>
+                </div>
               </div>
             )}
             
-            <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={() => setShowSignaturePad(true)}
-              style={{
+            {!yaEstaFirmada && (
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => setShowSignaturePad(true)}
+                style={{
+                  padding: '12px 24px',
+                  backgroundColor: colors.primary,
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  margin: '0 auto'
+                }}
+              >
+                <Pen size={16} />
+                {firmaData ? 'Cambiar Verificación' : 'Escribir Nombre'}
+              </motion.button>
+            )}
+            {yaEstaFirmada && (
+              <div style={{
                 padding: '12px 24px',
-                backgroundColor: colors.primary,
-                color: 'white',
-                border: 'none',
+                backgroundColor: colors.success + '20',
+                color: colors.success,
+                border: `1px solid ${colors.success}`,
                 borderRadius: '8px',
-                cursor: 'pointer',
                 fontSize: '14px',
                 fontWeight: '500',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
+                textAlign: 'center',
                 margin: '0 auto'
-              }}
-            >
-              <Pen size={16} />
-              {firmaData ? 'Cambiar Firma' : 'Capturar Firma'}
-            </motion.button>
+              }}>
+                ✓ Esta hoja ya está firmada y no se puede modificar
+              </div>
+            )}
           </div>
         ) : (
           <div style={{ marginBottom: '24px' }}>
@@ -416,6 +458,7 @@ const FirmaConfirmModal = ({
               onSave={handleSignatureSave}
               onCancel={handleSignatureCancel}
               initialSignature={firmaData}
+              isReadOnly={yaEstaFirmada}
             />
           </div>
         )}
@@ -444,29 +487,31 @@ const FirmaConfirmModal = ({
             Cancelar
           </motion.button>
           
-          <motion.button
-            whileHover={{ scale: firmaData ? 1.05 : 1 }}
-            whileTap={{ scale: firmaData ? 0.95 : 1 }}
-            onClick={handleConfirmarFirma}
-            disabled={!firmaData}
-            style={{
-              padding: '12px 24px',
-              backgroundColor: firmaData ? colors.success : colors.textSecondary,
-              color: 'white',
-              border: 'none',
-              borderRadius: '8px',
-              cursor: firmaData ? 'pointer' : 'not-allowed',
-              fontSize: '14px',
-              fontWeight: '500',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              opacity: firmaData ? 1 : 0.6
-            }}
-          >
-            <CheckCircle size={16} />
-            Confirmar y Firmar
-          </motion.button>
+          {!yaEstaFirmada && (
+            <motion.button
+              whileHover={{ scale: firmaData ? 1.05 : 1 }}
+              whileTap={{ scale: firmaData ? 0.95 : 1 }}
+              onClick={handleConfirmarFirma}
+              disabled={!firmaData}
+              style={{
+                padding: '12px 24px',
+                backgroundColor: firmaData ? colors.success : colors.textSecondary,
+                color: 'white',
+                border: 'none',
+                borderRadius: '8px',
+                cursor: firmaData ? 'pointer' : 'not-allowed',
+                fontSize: '14px',
+                fontWeight: '500',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                opacity: firmaData ? 1 : 0.6
+              }}
+            >
+              <CheckCircle size={16} />
+              Confirmar Verificación
+            </motion.button>
+          )}
         </div>
       </motion.div>
     </motion.div>

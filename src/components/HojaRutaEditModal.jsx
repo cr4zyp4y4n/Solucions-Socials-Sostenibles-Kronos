@@ -25,6 +25,9 @@ const HojaRutaEditModal = ({ isOpen, onClose, hojaRuta, onEditSuccess }) => {
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(false);
   const [showSignaturePad, setShowSignaturePad] = useState(false);
+  
+  // Verificar si ya está firmada
+  const yaEstaFirmada = hojaRuta?.firmaInfo?.firmado || false;
 
   // Inicializar datos del formulario
   useEffect(() => {
@@ -37,7 +40,7 @@ const HojaRutaEditModal = ({ isOpen, onClose, hojaRuta, onEditSuccess }) => {
         transportista: hojaRuta.transportista || '',
         personal: hojaRuta.personal || '',
         responsable: hojaRuta.responsable || '',
-        firmaResponsable: hojaRuta.firmaResponsable || '',
+        firmaResponsable: hojaRuta.firmaResponsable || hojaRuta.firmaInfo?.firma_data || hojaRuta.firmaInfo?.firmado_por || hojaRuta.firmaInfo?.firmadoPor || '',
         numPersonas: hojaRuta.numPersonas || 0,
         horarios: {
           montaje: hojaRuta.horarios?.montaje || '',
@@ -70,6 +73,11 @@ const HojaRutaEditModal = ({ isOpen, onClose, hojaRuta, onEditSuccess }) => {
   };
 
   const handleSignatureSave = (signatureData) => {
+    // No permitir cambiar la firma si ya está firmada
+    if (yaEstaFirmada) {
+      setShowSignaturePad(false);
+      return;
+    }
     setFormData(prev => ({
       ...prev,
       firmaResponsable: signatureData
@@ -378,7 +386,7 @@ const HojaRutaEditModal = ({ isOpen, onClose, hojaRuta, onEditSuccess }) => {
                   marginBottom: '8px',
                   display: 'block'
                 }}>
-                  Firma del Responsable
+                  Verificación de Listas y Material
                 </label>
                 <div style={{
                   display: 'flex',
@@ -396,17 +404,17 @@ const HojaRutaEditModal = ({ isOpen, onClose, hojaRuta, onEditSuccess }) => {
                       alignItems: 'center',
                       gap: '12px'
                     }}>
-                      <img 
-                        src={formData.firmaResponsable} 
-                        alt="Firma del responsable"
-                        style={{
-                          maxWidth: '100px',
-                          maxHeight: '40px',
-                          border: `1px solid ${colors.border}`,
-                          borderRadius: '4px',
-                          backgroundColor: 'white'
-                        }}
-                      />
+                      <div style={{
+                        fontSize: '16px',
+                        fontWeight: 'bold',
+                        color: colors.text,
+                        textTransform: 'uppercase',
+                        letterSpacing: '1px'
+                      }}>
+                        {typeof formData.firmaResponsable === 'string' && !formData.firmaResponsable.startsWith('data:') 
+                          ? formData.firmaResponsable 
+                          : 'Firmado'}
+                      </div>
                       <span style={{
                         fontSize: '12px',
                         color: colors.textSecondary,
@@ -430,27 +438,42 @@ const HojaRutaEditModal = ({ isOpen, onClose, hojaRuta, onEditSuccess }) => {
                     </div>
                   )}
                   
-                  <motion.button
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    onClick={() => setShowSignaturePad(true)}
-                    style={{
+                  {!yaEstaFirmada ? (
+                    <motion.button
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                      onClick={() => setShowSignaturePad(true)}
+                      style={{
+                        padding: '12px',
+                        backgroundColor: colors.primary,
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '8px',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        fontSize: '14px',
+                        fontWeight: '500'
+                      }}
+                    >
+                      <Pen size={16} />
+                      {formData.firmaResponsable ? 'Cambiar' : 'Firmar'}
+                    </motion.button>
+                  ) : (
+                    <div style={{
                       padding: '12px',
-                      backgroundColor: colors.primary,
-                      color: 'white',
-                      border: 'none',
+                      backgroundColor: colors.success + '20',
+                      color: colors.success,
+                      border: `1px solid ${colors.success}`,
                       borderRadius: '8px',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                      fontSize: '14px',
-                      fontWeight: '500'
-                    }}
-                  >
-                    <Pen size={16} />
-                    {formData.firmaResponsable ? 'Cambiar' : 'Firmar'}
-                  </motion.button>
+                      fontSize: '12px',
+                      fontWeight: '500',
+                      textAlign: 'center'
+                    }}>
+                      ✓ Ya firmada
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -720,6 +743,7 @@ const HojaRutaEditModal = ({ isOpen, onClose, hojaRuta, onEditSuccess }) => {
               onSave={handleSignatureSave}
               onCancel={handleSignatureCancel}
               initialSignature={formData.firmaResponsable}
+              isReadOnly={yaEstaFirmada}
             />
           </motion.div>
         </motion.div>

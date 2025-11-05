@@ -531,6 +531,11 @@ class HojaRutaService {
   firmarHojaRuta(id, firmaData, firmadoPor) {
     const index = this.hojasRuta.findIndex(hoja => hoja.id === id);
     if (index !== -1) {
+      // Verificar si ya está firmada
+      if (this.hojasRuta[index].firmaInfo?.firmado) {
+        throw new Error('Esta hoja de ruta ya está firmada y no se puede modificar la firma');
+      }
+      
       this.hojasRuta[index].firmaInfo = {
         firmado: true,
         firmadoPor: firmadoPor,

@@ -232,7 +232,7 @@ const HojaRutaViewModal = ({
                     </p>
                   </div>
 
-                  {/* Firma del Responsable */}
+                  {/* Verificación de Listas y Material */}
                   {hojaRuta.firmaInfo?.firmado && (
                     <div style={{ gridColumn: '1 / -1' }}>
                       <label style={{ 
@@ -244,7 +244,7 @@ const HojaRutaViewModal = ({
                         marginBottom: '8px',
                         display: 'block'
                       }}>
-                        Firma Digital del Responsable
+                        Verificación de Listas y Material
                       </label>
                       <div style={{
                         padding: '16px',
@@ -268,32 +268,20 @@ const HojaRutaViewModal = ({
                         
                         <div style={{ flex: 1 }}>
                           <div style={{
-                            fontSize: '12px',
-                            color: colors.textSecondary,
-                            marginBottom: '4px'
+                            fontSize: '14px',
+                            color: colors.text,
+                            marginBottom: '4px',
+                            fontWeight: '600'
                           }}>
-                            Firmado por: <strong>{hojaRuta.firmaInfo.firmadoPor}</strong>
+                            Verificado por: <strong>{hojaRuta.firmaInfo.firmadoPor || hojaRuta.firmaInfo.firmado_por || 'N/A'}</strong>
                           </div>
                           <div style={{
                             fontSize: '12px',
                             color: colors.textSecondary
                           }}>
-                            Fecha: {new Date(hojaRuta.firmaInfo.fechaFirma).toLocaleString('es-ES')}
+                            Fecha: {hojaRuta.firmaInfo.fechaFirma ? new Date(hojaRuta.firmaInfo.fechaFirma).toLocaleString('es-ES') : 'N/A'}
                           </div>
                         </div>
-                        
-                        <img 
-                          src={hojaRuta.firmaInfo.firmaData} 
-                          alt="Firma del responsable"
-                          style={{
-                            maxWidth: '150px',
-                            maxHeight: '50px',
-                            border: `1px solid ${colors.border}`,
-                            borderRadius: '4px',
-                            backgroundColor: 'white',
-                            padding: '4px'
-                          }}
-                        />
                       </div>
                     </div>
                   )}

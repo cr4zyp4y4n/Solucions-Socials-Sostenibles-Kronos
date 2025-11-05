@@ -14,7 +14,8 @@ import {
   Bell,
   Utensils,
   Coffee,
-  Wine
+  Wine,
+  ShieldCheck
 } from 'lucide-react';
 import { useTheme } from './ThemeContext';
 import { useAuth } from './AuthContext';
@@ -419,6 +420,52 @@ const ChecklistSection = ({
           </motion.div>
         ))}
       </div>
+
+      {/* Indicador de verificación */}
+      {hojaRuta?.firmaInfo?.firmado && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+          style={{
+            marginTop: '24px',
+            padding: '16px',
+            backgroundColor: colors.success + '15',
+            border: `2px solid ${colors.success}`,
+            borderRadius: '12px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px'
+          }}
+        >
+          <ShieldCheck size={24} color={colors.success} />
+          <div style={{ flex: 1 }}>
+            <div style={{
+              fontSize: '14px',
+              fontWeight: '600',
+              color: colors.text,
+              marginBottom: '4px'
+            }}>
+              ✓ Listas verificadas
+            </div>
+            <div style={{
+              fontSize: '12px',
+              color: colors.textSecondary,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}>
+              <span>Verificado por: <strong>{hojaRuta.firmaInfo.firmadoPor || hojaRuta.firmaInfo.firmado_por || 'N/A'}</strong></span>
+              {(hojaRuta.firmaInfo.fechaFirma || hojaRuta.firmaInfo.fecha_firma) && (
+                <>
+                  <span>•</span>
+                  <span>{formatFecha(hojaRuta.firmaInfo.fechaFirma || hojaRuta.firmaInfo.fecha_firma)}</span>
+                </>
+              )}
+            </div>
+          </div>
+        </motion.div>
+      )}
     </div>
   );
 };
