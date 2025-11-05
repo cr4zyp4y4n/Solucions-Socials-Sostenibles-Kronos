@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef, Fragment, useEffect } from 'react';
+import React, { useState, useMemo, useRef, Fragment, useEffect, useCallback } from 'react';
 import { useDataContext } from './DataContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTheme } from './ThemeContext';
@@ -8,7 +8,7 @@ import { supabase } from '../config/supabase';
 import holdedApi from '../services/holdedApi';
 import { brunoInvoicesService } from '../services/brunoInvoicesService';
 import { solucionsInvoicesService } from '../services/solucionsInvoicesService';
-import { Calendar, Filter, Upload, FileText, Check, X, ChevronDown, ChevronRight, Download } from 'lucide-react';
+import { Calendar, Filter, Upload, FileText, Check, X, ChevronDown, ChevronRight, Download, Copy, Loader2, RotateCcw } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import {
   Chart as ChartJS,
@@ -56,6 +56,9 @@ const AnalyticsPage = () => {
     menjar: { headers: [], data: [], loading: false },
     idoni: { headers: [], data: [], loading: false }
   });
+  
+  // Estado para datos de Bruno
+  const [brunoDataState, setBrunoDataState] = useState([]);
   const [loading, setLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState('Cargando datos...');
   const [error, setError] = useState('');
@@ -105,6 +108,10 @@ const AnalyticsPage = () => {
   const [showHideModal, setShowHideModal] = useState(false);
   const [selectedInvoiceForHide, setSelectedInvoiceForHide] = useState(null);
   const [hideReason, setHideReason] = useState('');
+
+  // Estados para selección de facturas para exportar a Excel (separadas por vista)
+  const [selectedInvoicesForBruno, setSelectedInvoicesForBruno] = useState(new Set());
+  const [selectedInvoicesForSergi, setSelectedInvoicesForSergi] = useState(new Set());
 
   // Mantener orden cronológico fijo para el gráfico
   const idoniHourlyChartData = useMemo(() => {
@@ -181,8 +188,7 @@ const AnalyticsPage = () => {
 
   // Cargar datos desde Holded al montar el componente
   useEffect(() => {
-    loadDataFromHolded(); // Carga datos de Solucions y Menjar
-    loadBrunoData(); // Cargar datos de Bruno
+    loadDataFromHolded(); // Carga datos de Solucions y Menjar (y Bruno en paralelo)
   }, []);
 
   // Cerrar dropdown de meses cuando se hace clic fuera
@@ -202,8 +208,7 @@ const AnalyticsPage = () => {
   // Verificar si necesita actualización cuando se monta el componente
   useEffect(() => {
     if (needsUpdate('analytics')) {
-      loadDataFromHolded(); // Carga datos de Solucions y Menjar
-      loadBrunoData(); // Cargar datos de Bruno
+      loadDataFromHolded(); // Carga datos de Solucions y Menjar (y Bruno en paralelo)
       markTabUpdated('analytics');
     }
   }, []);
@@ -211,11 +216,11 @@ const AnalyticsPage = () => {
   // Escuchar cambios en shouldReloadHolded para recargar datos
   useEffect(() => {
     if (shouldReloadHolded) {
-      loadDataFromHolded(); // Carga datos de Solucions y Menjar
-      loadBrunoData(); // Cargar datos de Bruno
+      loadDataFromHolded(); // Carga datos de Solucions y Menjar (y Bruno en paralelo)
       setShouldReloadHolded(false);
     }
   }, [shouldReloadHolded]);
+
 
 
 
@@ -225,6 +230,11 @@ const AnalyticsPage = () => {
     setLoading(true);
     setLoadingMessage('Conectando con Holded...');
     setError('');
+    
+    // Cargar datos de Bruno en paralelo (pero no gestiona loading)
+    loadBrunoData().catch(err => {
+      console.error('Error cargando datos de Bruno en paralelo:', err);
+    });
 
     try {
       // Obtener el rol del usuario actual
@@ -266,7 +276,7 @@ const AnalyticsPage = () => {
       
       // NOTA: Los datos de Solucions se cargan directamente desde Holded, no desde Supabase
 
-      // Actualizar el estado con datos separados
+      // Actualizar el estado con datos separados (esto es lo que realmente muestra los datos)
       setSupabaseData({
         solucions: {
           headers: processedSolucions.headers,
@@ -284,12 +294,17 @@ const AnalyticsPage = () => {
           loading: false
         }
       });
+      
+      console.log('✅ Datos de Holded cargados correctamente');
+      // IMPORTANTE: Usar setTimeout para asegurar que React haya renderizado los datos
+      // antes de quitar la pantalla de carga
+      setTimeout(() => {
+        setLoading(false);
+      }, 100);
 
     } catch (error) {
       setError('Error al cargar los datos de Holded');
       console.error('Error en loadDataFromHolded:', error);
-    } finally {
-      console.log('✅ Datos de Holded cargados correctamente');
       setLoading(false);
     }
   };
@@ -299,8 +314,8 @@ const AnalyticsPage = () => {
   const loadBrunoData = async () => {
     try {
       console.log('🔄 Cargando datos de Bruno...');
-      setLoading(true);
-      setLoadingMessage('Cargando datos de Bruno...');
+      // NO poner loading en true aquí, ya que loadDataFromHolded lo gestiona
+      // Solo actualizar el mensaje si ya estamos cargando
       
       // Obtener facturas de Bruno según el rol del usuario
       let { data: brunoInvoices, error } = user?.user_metadata?.role === 'manager' 
@@ -338,13 +353,16 @@ const AnalyticsPage = () => {
         invoice.document_type
       ]) || [];
 
+      // Guardar los datos procesados en el estado
+      setBrunoDataState(processedData);
+      
       // Datos de Bruno procesados
       console.log('✅ Datos de Bruno cargados correctamente');
+      // NO poner loading en false aquí, loadDataFromHolded lo gestiona
       
     } catch (error) {
       console.error('Error cargando datos de Bruno:', error);
-    } finally {
-      setLoading(false);
+      // NO poner loading en false aquí, loadDataFromHolded lo gestiona
     }
   };
 
@@ -1472,8 +1490,8 @@ const AnalyticsPage = () => {
   
   // Datos para la vista Bruno (sin filtro de mes)
   const brunoData = useMemo(() => {
-    return baseData;
-  }, [baseData]);
+    return brunoDataState;
+  }, [brunoDataState]);
 
   // Función para manejar el ordenamiento
   const handleSort = (key) => {
@@ -1574,6 +1592,70 @@ const AnalyticsPage = () => {
     });
     return indices;
   }, [currentHeaders]);
+
+  // Función para obtener una clave única de una factura
+  const getInvoiceKey = useCallback((row) => {
+    if (!row || !columnIndices.invoiceNumber) return null;
+    const invoiceNumber = row[columnIndices.invoiceNumber];
+    const provider = row[columnIndices.provider] || '';
+    // Usar número de factura + proveedor como clave única
+    return `${invoiceNumber}_${provider}`;
+  }, [columnIndices]);
+
+  // Inicializar facturas seleccionadas cuando cambien los datos base (separadas por vista)
+  useEffect(() => {
+    // Esperar a que baseData y getInvoiceKey estén disponibles
+    if (!baseData || !getInvoiceKey) return;
+    
+    // Si baseData es un array vacío, limpiar las selecciones
+    if (baseData.length === 0) {
+      setSelectedInvoicesForBruno(new Set());
+      setSelectedInvoicesForSergi(new Set());
+      return;
+    }
+    
+    const initializeSet = (prevSet) => {
+      if (prevSet.size > 0) {
+        // Mantener selecciones existentes y añadir nuevas facturas
+        const newSet = new Set(prevSet);
+        baseData.forEach(row => {
+          if (!row) return; // Saltar filas nulas
+          const key = getInvoiceKey(row);
+          if (key && !newSet.has(key)) {
+            newSet.add(key);
+          }
+        });
+        // Eliminar facturas que ya no existen
+        const currentKeys = new Set();
+        baseData.forEach(row => {
+          if (row) {
+            const key = getInvoiceKey(row);
+            if (key) currentKeys.add(key);
+          }
+        });
+        Array.from(newSet).forEach(key => {
+          if (!currentKeys.has(key)) {
+            newSet.delete(key);
+          }
+        });
+        return newSet;
+      } else {
+        // Inicializar todas las facturas como seleccionadas
+        const newSet = new Set();
+        baseData.forEach(row => {
+          if (!row) return; // Saltar filas nulas
+          const key = getInvoiceKey(row);
+          if (key) {
+            newSet.add(key);
+          }
+        });
+        return newSet;
+      }
+    };
+    
+    setSelectedInvoicesForBruno(prev => initializeSet(prev));
+    setSelectedInvoicesForSergi(prev => initializeSet(prev));
+  }, [baseData, getInvoiceKey]);
 
   // Función para ordenar datos de la vista General
   const sortData = (data, key, direction) => {
@@ -1750,12 +1832,23 @@ const AnalyticsPage = () => {
     return Array.from(providers).sort();
   }, [generalData, columnIndices.provider]);
 
-  // Calcular estadísticas por proveedor
+  // Calcular estadísticas por proveedor (solo para vista Bruno)
+  // IMPORTANTE: Usar los mismos datos enriquecidos que Sergi para tener IBANs y totales correctos
   const providerStats = useMemo(() => {
-    if (!columnIndices.provider || !columnIndices.total) return [];
+    // Usar los datos enriquecidos de baseData (mismos que Sergi) en lugar de brunoData
+    // Esto asegura que los IBANs y totales sean correctos
+    const dataToUse = (selectedDataset === 'solucions' || selectedDataset === 'menjar') 
+      ? baseData 
+      : brunoData;
+    
+    if (!dataToUse || dataToUse.length === 0 || !columnIndices.provider || !columnIndices.total) {
+      return [];
+    }
     
     const stats = {};
-    brunoData.forEach(row => {
+    dataToUse.forEach(row => {
+      if (!row || !Array.isArray(row)) return;
+      
       const provider = row[columnIndices.provider];
       const total = parseFloat(row[columnIndices.total]) || 0;
       const pending = columnIndices.pending ? (parseFloat(row[columnIndices.pending]) || 0) : 0;
@@ -1771,13 +1864,22 @@ const AnalyticsPage = () => {
             iban: iban || ''
           };
         }
-        // Para facturas pendientes, usar el monto pendiente en lugar del total
+        
+        // Para facturas pendientes, usar el monto pendiente en lugar del total (igual que Sergi)
         const amountToAdd = pending > 0 ? pending : total;
-        stats[provider].totalAmount += amountToAdd;
-        stats[provider].totalPending += pending;
+        
+        // Validar que los valores sean finitos antes de sumar
+        if (isFinite(amountToAdd)) {
+          stats[provider].totalAmount += amountToAdd;
+        }
+        if (isFinite(pending)) {
+          stats[provider].totalPending += pending;
+        }
+        
         stats[provider].invoiceCount += 1;
         stats[provider].invoices.push(row);
-        // Actualizar IBAN si encontramos uno no vacío
+        
+        // Actualizar IBAN si encontramos uno no vacío (priorizar el primero encontrado que tenga IBAN)
         if (iban && !stats[provider].iban) {
           stats[provider].iban = iban;
         }
@@ -1786,9 +1888,16 @@ const AnalyticsPage = () => {
     
     return Object.entries(stats).map(([provider, data]) => ({
       provider,
-      ...data
-    })).sort((a, b) => b.totalAmount - a.totalAmount);
-  }, [brunoData, columnIndices]);
+      ...data,
+      // Asegurar que los totales sean finitos
+      totalAmount: isFinite(data.totalAmount) ? data.totalAmount : 0,
+      totalPending: isFinite(data.totalPending) ? data.totalPending : 0
+    })).sort((a, b) => {
+      const aAmount = isFinite(a.totalAmount) ? a.totalAmount : 0;
+      const bAmount = isFinite(b.totalAmount) ? b.totalAmount : 0;
+      return bAmount - aAmount;
+    });
+  }, [baseData, brunoData, selectedDataset, columnIndices]);
 
   // Calcular totales por canal según el dataset
   const channelStats = useMemo(() => {
@@ -2257,7 +2366,7 @@ const AnalyticsPage = () => {
     setHideReason('');
   };
 
-  // Función para ocultar una factura
+  // Función para ocultar una factura (funciona desde cualquier vista: general, Bruno, Sergi)
   const hideInvoice = async (invoice, reason = '') => {
     try {
       if (!user) {
@@ -2265,13 +2374,12 @@ const AnalyticsPage = () => {
         return false;
       }
 
-      // Ocultando factura
-
-      // Encontrar la factura en brunoData por número de factura
-      const brunoInvoice = brunoData.find(row => row[0] === invoice[0]); // Comparar por número de factura
+      // Obtener número de factura y proveedor desde el invoice (puede venir de cualquier vista)
+      const invoiceNumber = invoice[columnIndices.invoiceNumber] || invoice[0];
+      const provider = invoice[columnIndices.provider] || invoice[1] || '';
       
-      if (!brunoInvoice) {
-        showAlertMessage('No se encontró la factura en la base de datos de Bruno', 'error');
+      if (!invoiceNumber) {
+        showAlertMessage('No se pudo identificar el número de factura', 'error');
         return false;
       }
 
@@ -2283,24 +2391,42 @@ const AnalyticsPage = () => {
         return false;
       }
 
-      const dbInvoice = invoiceData.find(inv => inv.invoice_number === invoice[0]);
+      // Buscar la factura por número y proveedor (más preciso)
+      const dbInvoice = invoiceData.find(inv => 
+        inv.invoice_number === invoiceNumber && 
+        (provider ? inv.provider === provider : true)
+      );
       
       if (!dbInvoice) {
-        showAlertMessage('No se encontró la factura en la base de datos', 'error');
-        return false;
-      }
-
-      const result = await brunoInvoicesService.hideInvoice(dbInvoice.id, reason);
-
-      if (result.error) {
-        const errorMessage = extractErrorMessage(result.error);
-        showAlertMessage(errorMessage, 'error');
-        return false;
+        // Si no se encuentra con proveedor, intentar solo con número
+        const dbInvoiceByNumber = invoiceData.find(inv => inv.invoice_number === invoiceNumber);
+        if (!dbInvoiceByNumber) {
+          showAlertMessage('No se encontró la factura en la base de datos', 'error');
+          return false;
+        }
+        // Usar la factura encontrada solo por número
+        const result = await brunoInvoicesService.hideInvoice(dbInvoiceByNumber.id, reason);
+        if (result.error) {
+          const errorMessage = extractErrorMessage(result.error);
+          showAlertMessage(errorMessage, 'error');
+          return false;
+        }
+      } else {
+        // Usar la factura encontrada por número y proveedor
+        const result = await brunoInvoicesService.hideInvoice(dbInvoice.id, reason);
+        if (result.error) {
+          const errorMessage = extractErrorMessage(result.error);
+          showAlertMessage(errorMessage, 'error');
+          return false;
+        }
       }
 
       showAlertMessage('Factura ocultada correctamente', 'success');
-      // Recargar datos de Bruno para reflejar los cambios
-      await loadBrunoData();
+      // Recargar datos de Holded y Bruno para reflejar los cambios en todas las vistas
+      await Promise.all([
+        loadDataFromHolded(),
+        loadBrunoData()
+      ]);
       closeHideModal();
       return true;
       
@@ -3863,6 +3989,14 @@ const AnalyticsPage = () => {
       return;
     }
 
+    // Filtrar solo las facturas seleccionadas para Sergi
+    let filteredSergiData = sergiData.filter(row => isInvoiceSelected(row, 'sergi'));
+    
+    if (filteredSergiData.length === 0) {
+      showAlertMessage('No hay facturas seleccionadas para descargar', 'error');
+      return;
+    }
+
     try {
       // Crear workbook
       const wb = XLSX.utils.book_new();
@@ -3881,12 +4015,12 @@ const AnalyticsPage = () => {
         // Filtrar datos por canal
         let channelData;
         if (selectedDataset === 'idoni') {
-          channelData = sergiData.filter(row => {
+          channelData = filteredSergiData.filter(row => {
             const tienda = row[2] || '';
             return tienda === channel;
           });
         } else {
-          channelData = sergiData.filter(row => {
+          channelData = filteredSergiData.filter(row => {
             const description = (row[columnIndices.description] || '').toLowerCase();
             const account = (row[columnIndices.account] || '').toLowerCase();
             
@@ -4029,13 +4163,90 @@ const AnalyticsPage = () => {
     return formattedIBAN;
   };
 
+
+
+  // Función para alternar la selección de una factura (según la vista)
+  const toggleInvoiceSelection = (row, view) => {
+    const key = getInvoiceKey(row);
+    if (!key) return;
+    
+    const setter = view === 'bruno' ? setSelectedInvoicesForBruno : setSelectedInvoicesForSergi;
+    setter(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(key)) {
+        newSet.delete(key);
+      } else {
+        newSet.add(key);
+      }
+      return newSet;
+    });
+  };
+
+  // Función para verificar si una factura está seleccionada (según la vista)
+  const isInvoiceSelected = (row, view) => {
+    const key = getInvoiceKey(row);
+    if (!key) return true; // Por defecto seleccionada si no hay clave
+    const selectedSet = view === 'bruno' ? selectedInvoicesForBruno : selectedInvoicesForSergi;
+    return selectedSet.has(key);
+  };
+
+  // Función para copiar selecciones de Sergi a Bruno
+  const copySergiSelectionsToBruno = () => {
+    setSelectedInvoicesForBruno(new Set(selectedInvoicesForSergi));
+    showAlertMessage('Selecciones de Sergi copiadas a Bruno', 'success');
+  };
+
+  // Función para copiar selecciones de Bruno a Sergi
+  const copyBrunoSelectionsToSergi = () => {
+    setSelectedInvoicesForSergi(new Set(selectedInvoicesForBruno));
+    showAlertMessage('Selecciones de Bruno copiadas a Sergi', 'success');
+  };
+
+  // Función para resetear selecciones de Bruno (seleccionar todas las facturas)
+  const resetBrunoSelections = () => {
+    if (!baseData || baseData.length === 0) return;
+    const newSet = new Set();
+    baseData.forEach(row => {
+      if (!row) return;
+      const key = getInvoiceKey(row);
+      if (key) {
+        newSet.add(key);
+      }
+    });
+    setSelectedInvoicesForBruno(newSet);
+    showAlertMessage('Todas las facturas seleccionadas en Bruno', 'success');
+  };
+
+  // Función para resetear selecciones de Sergi (seleccionar todas las facturas)
+  const resetSergiSelections = () => {
+    if (!baseData || baseData.length === 0) return;
+    const newSet = new Set();
+    baseData.forEach(row => {
+      if (!row) return;
+      const key = getInvoiceKey(row);
+      if (key) {
+        newSet.add(key);
+      }
+    });
+    setSelectedInvoicesForSergi(newSet);
+    showAlertMessage('Todas las facturas seleccionadas en Sergi', 'success');
+  };
+
   // Función para descargar datos de la vista Bruno
   const downloadBrunoData = () => {
     // Usar los datos procesados que se muestran en la vista, no los datos sin procesar
-    const dataToExport = baseData; // Usar baseData que es lo que realmente se muestra
+    let dataToExport = baseData; // Usar baseData que es lo que realmente se muestra
     
     if (!dataToExport || dataToExport.length === 0) {
       showAlertMessage('No hay datos para descargar', 'error');
+      return;
+    }
+
+    // Filtrar solo las facturas seleccionadas para Bruno
+    dataToExport = dataToExport.filter(row => isInvoiceSelected(row, 'bruno'));
+    
+    if (dataToExport.length === 0) {
+      showAlertMessage('No hay facturas seleccionadas para descargar', 'error');
       return;
     }
 
@@ -4396,8 +4607,7 @@ const AnalyticsPage = () => {
       </motion.h2>
 
       {/* Selector de Dataset */}
-      {!loading && (
-        <motion.div
+      <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: 0.15 }}
@@ -4622,8 +4832,7 @@ const AnalyticsPage = () => {
             </span>
           </motion.div>
         </div>
-        </motion.div>
-      )}
+      </motion.div>
 
       {/* Tarjetas de selección de vista - Solo mostrar para Holded */}
       {!loading && selectedDataset !== 'idoni' && (
@@ -4672,40 +4881,64 @@ const AnalyticsPage = () => {
       )}
 
       <AnimatePresence mode="wait">
-        {loading ? (
+        {loading && (selectedDataset === 'solucions' || selectedDataset === 'menjar' || selectedDataset === 'bruno') ? (
           <motion.div
             key="loading"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
-            transition={{ duration: 0.2, ease: 'easeOut' }}
+            transition={{ duration: 0.3, ease: 'easeOut' }}
             style={{ 
               display: 'flex', 
               flexDirection: 'column', 
               alignItems: 'center', 
               justifyContent: 'center', 
+              minHeight: '500px',
               padding: '60px 20px',
-              color: colors.textSecondary 
+              gap: '24px'
             }}
           >
             <motion.div
               animate={{ rotate: 360 }}
               transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
               style={{
-                width: '40px',
-                height: '40px',
-                border: `3px solid ${colors.border}`,
-                borderTop: `3px solid ${colors.primary}`,
-                borderRadius: '50%',
-                marginBottom: '20px'
+                width: '64px',
+                height: '64px',
+                border: `4px solid ${colors.border}`,
+                borderTop: `4px solid ${colors.primary}`,
+                borderRadius: '50%'
               }}
             />
-            <div style={{ fontSize: 16, fontWeight: 500, marginBottom: 8 }}>
-              {loadingMessage}
-            </div>
-            <div style={{ fontSize: 14, color: colors.textSecondary, textAlign: 'center' }}>
-              Por favor espera mientras se cargan los datos
-            </div>
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3, delay: 0.2 }}
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: '12px',
+                textAlign: 'center',
+                maxWidth: '500px'
+              }}
+            >
+              <h3 style={{
+                margin: 0,
+                color: colors.text,
+                fontSize: '20px',
+                fontWeight: 600
+              }}>
+                {loadingMessage || 'Cargando datos...'}
+              </h3>
+              <p style={{
+                margin: 0,
+                color: colors.textSecondary,
+                fontSize: '14px',
+                lineHeight: '1.6'
+              }}>
+                Por favor espera mientras se cargan los datos de {selectedDataset === 'solucions' ? 'Solucions Socials' : selectedDataset === 'menjar' ? 'Menjar d\'Hort' : selectedDataset === 'bruno' ? 'Bruno' : 'IDONI'} desde Holded. Esto puede tardar unos momentos...
+              </p>
+            </motion.div>
           </motion.div>
         ) : error ? (
           <motion.div
@@ -6321,28 +6554,74 @@ const AnalyticsPage = () => {
                     Análisis por Canales
                   </motion.h3>
                   
-                  <motion.button
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    onClick={downloadSergiData}
-                    style={{
-                      background: colors.primary,
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: 8,
-                      padding: '10px 16px',
-                      fontSize: 14,
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                      transition: 'all 0.2s ease'
-                    }}
-                  >
-                    <Download size={16} />
-                    Descargar Datos
-                  </motion.button>
+                  <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                    <motion.button
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                      onClick={resetSergiSelections}
+                      style={{
+                        background: colors.surface,
+                        color: colors.text,
+                        border: `1px solid ${colors.border}`,
+                        borderRadius: 8,
+                        padding: '10px 16px',
+                        fontSize: 14,
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        transition: 'all 0.2s ease'
+                      }}
+                    >
+                      <RotateCcw size={16} />
+                      Resetear Selección
+                    </motion.button>
+                    <motion.button
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                      onClick={copyBrunoSelectionsToSergi}
+                      style={{
+                        background: colors.surface,
+                        color: colors.text,
+                        border: `1px solid ${colors.border}`,
+                        borderRadius: 8,
+                        padding: '10px 16px',
+                        fontSize: 14,
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        transition: 'all 0.2s ease'
+                      }}
+                    >
+                      <Copy size={16} />
+                      Usar selecciones de Bruno
+                    </motion.button>
+                    <motion.button
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                      onClick={downloadSergiData}
+                      style={{
+                        background: colors.primary,
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: 8,
+                        padding: '10px 16px',
+                        fontSize: 14,
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        transition: 'all 0.2s ease'
+                      }}
+                    >
+                      <Download size={16} />
+                      Descargar Datos
+                    </motion.button>
+                  </div>
                 </div>
 
                 {/* Filtro por Meses - Solo en vista Sergi */}
@@ -6564,6 +6843,17 @@ const AnalyticsPage = () => {
                         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
                           <thead>
                             <tr>
+                              <th style={{ 
+                                borderBottom: `1px solid ${colors.border}`, 
+                                padding: '12px 8px', 
+                                textAlign: 'center', 
+                                color: colors.primary, 
+                                fontWeight: 600, 
+                                background: colors.card,
+                                width: '40px'
+                              }}>
+                                ✓
+                              </th>
                               <SortableHeader
                                 label={currentHeaders[columnIndices.date] || 'Fecha'}
                                 sortKey="date"
@@ -6624,11 +6914,36 @@ const AnalyticsPage = () => {
                                 sortChannelData(channelFilteredData, channelSortConfig.key, channelSortConfig.direction) : 
                                 channelFilteredData;
                               
-                              return sortedData.map((row, i) => (
-                              <tr key={i} style={{ 
-                                background: getRowBackgroundColor(i),
-                                transition: 'background-color 0.2s ease'
-                              }}>
+                              return sortedData.map((row, i) => {
+                                const isSelected = isInvoiceSelected(row, 'sergi');
+                                return (
+                                  <tr key={i} style={{ 
+                                    background: getRowBackgroundColor(i),
+                                    transition: 'background-color 0.2s ease',
+                                    opacity: isSelected ? 1 : 0.5
+                                  }}>
+                                    <td style={{ 
+                                      borderBottom: `1px solid ${colors.border}`, 
+                                      padding: '12px 8px', 
+                                      textAlign: 'center',
+                                      color: colors.text 
+                                    }}>
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    onChange={(e) => {
+                                      e.stopPropagation();
+                                      toggleInvoiceSelection(row, 'sergi');
+                                    }}
+                                    onClick={(e) => e.stopPropagation()}
+                                    style={{
+                                      cursor: 'pointer',
+                                      width: '16px',
+                                      height: '16px',
+                                      accentColor: colors.primary
+                                    }}
+                                  />
+                                </td>
                                 <td style={{ borderBottom: `1px solid ${colors.border}`, padding: '12px 8px', color: colors.text }}>
                                   {row[columnIndices.date] ? formatDate(row[columnIndices.date]) : '-'}
                                 </td>
@@ -6671,8 +6986,9 @@ const AnalyticsPage = () => {
                                   </td>
                                 )}
                               </tr>
-                            ));
-                          })()}
+                                );
+                              });
+                            })()}
                           </tbody>
                         </table>
                       </div>
@@ -6848,28 +7164,74 @@ const AnalyticsPage = () => {
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
                     <h3 style={{ margin: 0, color: colors.text, fontSize: 18, fontWeight: 600, lineHeight: 1.2 }}>Análisis de Deudas por Proveedor</h3>
                     
-                    <motion.button
-                      whileHover={{ scale: 1.05 }}
-                      whileTap={{ scale: 0.95 }}
-                      onClick={downloadBrunoData}
-                      style={{
-                        background: colors.primary,
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: 8,
-                        padding: '10px 16px',
-                        fontSize: 14,
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        transition: 'all 0.2s ease'
-                      }}
-                    >
-                      <Download size={16} />
-                      Descargar Datos
-                    </motion.button>
+                    <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                      <motion.button
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
+                        onClick={resetBrunoSelections}
+                        style={{
+                          background: colors.surface,
+                          color: colors.text,
+                          border: `1px solid ${colors.border}`,
+                          borderRadius: 8,
+                          padding: '10px 16px',
+                          fontSize: 14,
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          transition: 'all 0.2s ease'
+                        }}
+                      >
+                        <RotateCcw size={16} />
+                        Resetear Selección
+                      </motion.button>
+                      <motion.button
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
+                        onClick={copySergiSelectionsToBruno}
+                        style={{
+                          background: colors.surface,
+                          color: colors.text,
+                          border: `1px solid ${colors.border}`,
+                          borderRadius: 8,
+                          padding: '10px 16px',
+                          fontSize: 14,
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          transition: 'all 0.2s ease'
+                        }}
+                      >
+                        <Copy size={16} />
+                        Usar selecciones de Sergi
+                      </motion.button>
+                      <motion.button
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
+                        onClick={downloadBrunoData}
+                        style={{
+                          background: colors.primary,
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: 8,
+                          padding: '10px 16px',
+                          fontSize: 14,
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          transition: 'all 0.2s ease'
+                        }}
+                      >
+                        <Download size={16} />
+                        Descargar Datos
+                      </motion.button>
+                    </div>
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px', marginBottom: '32px' }}>
                     <div style={{ background: colors.surface, padding: '20px', borderRadius: '8px' }}>
@@ -6960,7 +7322,7 @@ const AnalyticsPage = () => {
                               <AnimatePresence>
                                 {isExpanded && (
                                   <tr>
-                                    <td colSpan="5" style={{ padding: 0, border: 'none' }}>
+                                    <td colSpan="6" style={{ padding: 0, border: 'none' }}>
                                       <motion.div
                                         initial={{ opacity: 0, height: 0 }}
                                         animate={{ opacity: 1, height: 'auto' }}
@@ -6989,6 +7351,18 @@ const AnalyticsPage = () => {
                                           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                                             <thead>
                                               <tr>
+                                                <th style={{ 
+                                                  borderBottom: `1px solid ${colors.border}`, 
+                                                  padding: '8px 12px', 
+                                                  textAlign: 'center', 
+                                                  color: colors.primary, 
+                                                  fontWeight: 600, 
+                                                  background: colors.card,
+                                                  fontSize: '12px',
+                                                  width: '40px'
+                                                }}>
+                                                  ✓
+                                                </th>
                                                 <th style={{ 
                                                   borderBottom: `1px solid ${colors.border}`, 
                                                   padding: '8px 12px', 
@@ -7060,11 +7434,46 @@ const AnalyticsPage = () => {
                                               </tr>
                                             </thead>
                                             <tbody>
-                                              {stat.invoices.map((invoice, j) => (
+                                              {stat.invoices.map((invoice, j) => {
+                                                const isSelected = isInvoiceSelected(invoice, 'bruno');
+                                                
+                                                // Usar los mismos índices que los datos enriquecidos (columnIndices)
+                                                const total = parseFloat(invoice[columnIndices.total]) || 0;
+                                                const pending = columnIndices.pending ? (parseFloat(invoice[columnIndices.pending]) || 0) : 0;
+                                                
+                                                // Para facturas pendientes, usar el monto pendiente en lugar del total (igual que Sergi)
+                                                const isPendingInvoice = pending > 0;
+                                                const amountToShow = isPendingInvoice ? pending : total;
+                                                
+                                                return (
                                                 <tr key={j} style={{ 
                                                   background: j % 2 === 0 ? colors.card : colors.surface,
-                                                  transition: 'background-color 0.2s ease'
+                                                  transition: 'background-color 0.2s ease',
+                                                  opacity: isSelected ? 1 : 0.5
                                                 }}>
+                                                  <td style={{ 
+                                                    borderBottom: `1px solid ${colors.border}`, 
+                                                    padding: '8px 12px', 
+                                                    textAlign: 'center',
+                                                    color: colors.text,
+                                                    fontSize: '12px'
+                                                  }}>
+                                                    <input
+                                                      type="checkbox"
+                                                      checked={isSelected}
+                                                      onChange={(e) => {
+                                                        e.stopPropagation();
+                                                        toggleInvoiceSelection(invoice, 'bruno');
+                                                      }}
+                                                      onClick={(e) => e.stopPropagation()}
+                                                      style={{
+                                                        cursor: 'pointer',
+                                                        width: '16px',
+                                                        height: '16px',
+                                                        accentColor: colors.primary
+                                                      }}
+                                                    />
+                                                  </td>
                                                   <td style={{ 
                                                     borderBottom: `1px solid ${colors.border}`, 
                                                     padding: '8px 12px', 
@@ -7097,13 +7506,7 @@ const AnalyticsPage = () => {
                                                     fontSize: '12px',
                                                     fontWeight: '600'
                                                   }}>
-                                                    {(() => {
-                                                      const total = parseFloat(invoice[columnIndices.total]) || 0;
-                                                      const pending = columnIndices.pending ? (parseFloat(invoice[columnIndices.pending]) || 0) : 0;
-                                                      // Para facturas pendientes, mostrar el monto pendiente en lugar del total
-                                                      const amountToShow = pending > 0 ? pending : total;
-                                                      return formatCurrency(amountToShow);
-                                                    })()}
+                                                    {isFinite(amountToShow) ? formatCurrency(amountToShow) : '-'}
                                                   </td>
                                                   <td style={{ 
                                                     borderBottom: `1px solid ${colors.border}`, 
@@ -7115,13 +7518,13 @@ const AnalyticsPage = () => {
                                                       padding: '2px 6px',
                                                       borderRadius: '3px',
                                                       fontSize: '11px',
-                                                      background: isPending(invoice, columnIndices) ? 
+                                                      background: isPendingInvoice ? 
                                                         colors.error + '22' : colors.success + '22',
-                                                      color: isPending(invoice, columnIndices) ? 
+                                                      color: isPendingInvoice ? 
                                                         colors.error : colors.success,
                                                       fontWeight: '500'
                                                     }}>
-                                                      {isPending(invoice, columnIndices) ? 'Pendiente' : 'Pagada'}
+                                                      {isPendingInvoice ? 'Pendiente' : 'Pagada'}
                                                     </span>
                                                   </td>
                                                   {canHideInvoices() && (
@@ -7160,7 +7563,8 @@ const AnalyticsPage = () => {
                                                     </td>
                                                   )}
                                                 </tr>
-                                              ))}
+                                                );
+                                              })}
                                             </tbody>
                                           </table>
                                         </div>
