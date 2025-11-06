@@ -10,8 +10,9 @@
     "make": "electron-forge make",
     "publish": "electron-forge publish",
     "lint": "echo \"No linting configured\"",
-    "build": "electron-forge make && electron-builder",
-    "dist": "electron-forge make && electron-builder",
+    "build": "electron-forge make",
+    "build-nsis": "electron-forge make && electron-builder --config.asar=false --config.directories.app=out/SSS\\ Kronos-win32-x64",
+    "dist": "electron-forge make && electron-builder --config.asar=false --config.directories.app=out/SSS\\ Kronos-win32-x64",
     "webpack": "electron-forge make",
     "release": "electron-forge make && electron-forge publish"
   },
@@ -96,12 +97,11 @@
     "appId": "com.solucionssocials.sss-kronos",
     "productName": "SSS Kronos",
     "directories": {
-      "output": "dist"
+      "output": "dist",
+      "app": "out/SSS Kronos-win32-x64"
     },
     "files": [
-      "out/**/*",
-      "node_modules/**/*",
-      "package.json"
+      "**/*"
     ],
     "extraResources": [
       {
@@ -109,6 +109,7 @@
         "to": "assets"
       }
     ],
+    "asar": false,
     "publish": {
       "provider": "github",
       "owner": "cr4zyp4y4n",
@@ -123,7 +124,8 @@
           ]
         }
       ],
-      "icon": "src/assets/LogoMinimalistSSSHighestOpacity.ico"
+      "icon": "src/assets/LogoMinimalistSSSHighestOpacity.ico",
+      "verifyUpdateCodeSignature": false
     },
     "nsis": {
       "oneClick": false,

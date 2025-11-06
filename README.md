@@ -1,11 +1,11 @@
-# SSS Kronos v2.1.7
+# SSS Kronos v2.1.12
 
-🚀 **Release Notes - SSS Kronos v2.1.7**
+🚀 **Release Notes - SSS Kronos v2.1.12**
 
 ## 📦 Archivos de Distribución
 
 ### Windows
-- **Instalador:** SSS Kronos-2.1.7 Setup.exe (130 MB aprox.)
+- **Instalador:** SSS Kronos-2.1.12 Setup.exe (130 MB aprox.)
 - **Ubicación:** `out/make/squirrel.windows/x64/`
 - **Compatibilidad:** Windows 10/11 (64-bit)
 
@@ -13,6 +13,31 @@
 *Nota: Los instaladores para macOS y Linux se generarán en futuras versiones*
 
 ## ✨ Nuevas Características y Cambios Clave
+
+### 🆕 **v2.1.12 - Verificación de Listas y Material, Selección de Facturas para Exportación**
+- ✅ **Sistema de verificación de listas y material:** Firma convertida a texto para verificación de checklists, material y equipamiento
+- ✅ **Verificación por nombre:** El usuario escribe su nombre completo para confirmar la verificación
+- ✅ **Indicador de verificación en checklist:** Muestra quién verificó las listas y cuándo
+- ✅ **Separación de responsabilidades:** Verificación de listas separada del responsable del servicio
+- ✅ **Selección de facturas para exportación:** Sistema de checkboxes para elegir qué facturas incluir en Excel
+- ✅ **Selecciones independientes:** Bruno y Sergi tienen selecciones independientes de facturas
+- ✅ **Botones de sincronización:** Opción para copiar selecciones entre vistas Bruno y Sergi
+- ✅ **Botones de reset:** Volver a seleccionar todas las facturas con un solo clic
+- ✅ **Pantalla de carga en análisis:** Indicador de carga dentro de la sección mientras se cargan las tablas
+- ✅ **Corrección de datos Bruno:** Solucionados problemas de valores "infinity" y datos incorrectos
+- ✅ **IBANs correctos:** Vista Bruno ahora muestra IBANs correctos usando datos enriquecidos de Holded
+- ✅ **Totales precisos:** Cálculos de totales corregidos usando datos consistentes entre vistas
+- ✅ **Validación numérica robusta:** Manejo de valores no numéricos e infinitos en cálculos
+- ✅ **UI mejorada:** Facturas no seleccionadas aparecen con opacidad reducida para mejor visualización
+
+### 🆕 **v2.1.12 - Sistema de Verificación de Listas y Material en Hojas de Ruta**
+- ✅ **Verificación por nombre:** Sistema de verificación convertido de firma digital a texto (nombre completo)
+- ✅ **Confirmación de listas y material:** El usuario escribe su nombre para confirmar verificación de checklists, material y equipamiento
+- ✅ **Indicador visual en checklist:** Muestra quién verificó las listas y cuándo se realizó la verificación
+- ✅ **Separación de responsabilidades:** Verificación de listas separada del responsable del servicio
+- ✅ **Texto actualizado:** Todos los textos relacionados actualizados para reflejar "verificación de listas y material"
+- ✅ **Visualización mejorada:** Muestra "Verificado por [Nombre]" en lugar de imagen de firma
+- ✅ **Prevención de cambios:** Una vez verificada, la verificación no se puede modificar
 
 ### 🆕 **v2.1.7 - Hojas de Ruta en Supabase, Historial y Permisos**
 - ✅ **Base de datos Hojas de Ruta (Supabase):** Tablas creadas para hojas, personal asignado, checklist y relaciones.
@@ -132,12 +157,17 @@
 - ✅ **Función SQL optimizada:** `complete_delete_user_cascade` mejorada
 - ✅ **Eliminación segura:** Sin afectar integridad de la base de datos
 
-### 📊 **Exportación de Datos Avanzada**
+### 📊 **Exportación de Datos Avanzada (v2.1.12)**
+- ✅ **Selección de facturas para exportación:** Sistema de checkboxes para elegir qué facturas incluir en Excel
+- ✅ **Selecciones independientes:** Bruno y Sergi tienen selecciones independientes de facturas
+- ✅ **Botones de sincronización:** Opción para copiar selecciones entre vistas Bruno y Sergi
+- ✅ **Botones de reset:** Volver a seleccionar todas las facturas con un solo clic
 - ✅ **Vista Sergi mejorada:** Descarga por canales con hojas separadas
 - ✅ **Vista Bruno optimizada:** Todas las facturas en una hoja, agrupadas por proveedor
 - ✅ **Inclusión de IBAN:** Para cada factura individual en exportaciones
 - ✅ **Límites Excel manejados:** Nombres de hojas truncados a 31 caracteres
 - ✅ **Totales precisos:** Calculados por canal y proveedor correctamente
+- ✅ **Exportación filtrada:** Solo se exportan las facturas seleccionadas, manteniendo el formato original
 
 ### 💰 **Cálculos Financieros Precisos**
 - ✅ **Montos pendientes:** En lugar de totales para facturas parcialmente pagadas
@@ -187,7 +217,13 @@
 - ✅ **Gráficos de productos:** Top 10 por importe y cantidad con etiquetas limpias
 - ✅ **Tooltips informativos:** Información completa del producto en hover
 
-### 📊 **Mejoras en AnalyticsPage**
+### 📊 **Mejoras en AnalyticsPage (v2.1.12)**
+- ✅ **Pantalla de carga integrada:** Indicador de carga dentro de la sección mientras se cargan las tablas
+- ✅ **Mensajes de carga contextuales:** Usuario sabe exactamente qué datos se están cargando
+- ✅ **Corrección de datos Bruno:** Solucionados problemas de valores "infinity" y datos incorrectos
+- ✅ **IBANs correctos:** Vista Bruno ahora muestra IBANs correctos usando datos enriquecidos de Holded
+- ✅ **Totales precisos:** Cálculos de totales corregidos usando datos consistentes entre vistas
+- ✅ **Validación numérica robusta:** Manejo de valores no numéricos e infinitos en cálculos
 - ✅ **Ordenación de fechas corregida:** Ahora ordena cronológicamente correctamente
 - ✅ **Filtros independientes:** El filtro de mes en vista Sergi ya no afecta a otras vistas
 - ✅ **Interfaz adaptativa:** Vista IDONI con interfaz específica sin vistas General/Sergi/Bruno
@@ -216,6 +252,15 @@
 - ✅ **Notificaciones inteligentes:** Sistema de notificaciones integrado con Supabase
 
 ### 🐞 Correcciones de Errores
+
+#### **v2.1.12 - Correcciones de Análisis y Datos**
+- ✅ **Corregido error "infinity" en vista Bruno:** Solucionados valores infinitos en totales y cálculos
+- ✅ **Corregidos IBANs incorrectos:** Vista Bruno ahora usa datos enriquecidos de Holded con IBANs correctos
+- ✅ **Corregidos totales incorrectos:** Cálculos de totales ahora usan datos consistentes entre vistas
+- ✅ **Corregida validación numérica:** Manejo robusto de valores no numéricos e infinitos
+- ✅ **Corregida pantalla de carga:** Ahora aparece correctamente dentro de la sección de análisis
+- ✅ **Corregida sincronización de datos:** `baseData` y `brunoData` ahora usan la misma fuente de datos enriquecidos
+- ✅ **Corregidos índices de columnas:** Uso de `columnIndices` en lugar de índices fijos para acceso a datos
 
 #### **v2.1.4 - Correcciones Críticas de Sistema**
 - ✅ **Corregido error de RLS infinito:** Solucionada recursión infinita en políticas de Supabase
@@ -317,7 +362,7 @@
 
 ### 📥 Descargar
 1. Ve a la sección Releases de este repositorio
-2. Descarga `SSS Kronos-2.1.7 Setup.exe`
+2. Descarga `SSS Kronos-2.1.12 Setup.exe`
 3. Ejecuta el instalador y sigue las instrucciones
 
 ### ⚡ Primera Ejecución
@@ -359,6 +404,13 @@
 - **Documentación:** docs.supabase.com
 
 ## 🔄 Próximas Versiones
+
+### 🎯 v2.1.12 ✅ **COMPLETADA**
+- ✅ Sistema de verificación de listas y material (texto) ✅
+- ✅ Selección de facturas para exportación ✅
+- ✅ Botones de sincronización y reset ✅
+- ✅ Corrección de datos Bruno (infinity, IBANs) ✅
+- ✅ Pantalla de carga en análisis ✅
 
 ### 🎯 v2.1.4 ✅ **COMPLETADA**
 - 🏢 Sistema de entidades múltiples (EI SSS + Menjar d'Hort) ✅
