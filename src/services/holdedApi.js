@@ -585,6 +585,559 @@ class HoldedApiService {
     return this.makeRequest(`/remittances?page=${page}&limit=${limit}`, {}, company);
   }
 
+  // ========== FUNCIONES PARA FACTURAS DE VENTA (SALES) ==========
+  
+  // Obtener facturas de venta (sales invoices) con filtros opcionales
+  // Según la API de Holded, el docType para facturas de venta es "invoice"
+  async getSales(params = {}, company = 'solucions') {
+    const {
+      page = 1,
+      limit = 100,
+      starttmp,
+      endtmp,
+      contactid,
+      paid,
+      billed,
+      sort = 'created-desc'
+    } = params;
+
+    // El endpoint correcto es /documents/invoice (no /documents/sale)
+    let endpoint = `/documents/invoice?page=${page}&limit=${limit}&sort=${sort}`;
+    
+    if (starttmp) endpoint += `&starttmp=${starttmp}`;
+    if (endtmp) endpoint += `&endtmp=${endtmp}`;
+    if (contactid) endpoint += `&contactid=${contactid}`;
+    if (paid !== undefined) endpoint += `&paid=${paid}`;
+    if (billed !== undefined) endpoint += `&billed=${billed}`;
+
+    return this.makeRequest(endpoint, {}, company);
+  }
+
+  // Obtener facturas de venta pendientes (no pagadas)
+  async getPendingSales(page = 1, limit = 100, company = 'solucions') {
+    // Intentar primero sin el filtro paid para ver si el endpoint funciona
+    try {
+      const allSales = await this.getSales({
+        page,
+        limit,
+        sort: 'created-desc'
+      }, company);
+      
+      // Filtrar manualmente las no pagadas
+      return allSales.filter(sale => {
+        const isUnpaid = sale.paid === false || sale.paid === 0 || sale.paid === '0';
+        return isUnpaid;
+      });
+    } catch (error) {
+      console.error(`Error obteniendo facturas de venta pendientes (intentando sin filtro paid):`, error);
+      // Si falla, intentar con el filtro paid
+      return this.getSales({
+        page,
+        limit,
+        paid: '0' // 0 = not paid
+      }, company);
+    }
+  }
+
+  // Obtener facturas de venta parcialmente pagadas (paid=2)
+  async getPartiallyPaidSales(page = 1, limit = 100, company = 'solucions') {
+    // Intentar primero sin el filtro paid para ver si el endpoint funciona
+    try {
+      const allSales = await this.getSales({
+        page,
+        limit,
+        sort: 'created-desc'
+      }, company);
+      
+      // Filtrar manualmente las parcialmente pagadas
+      return allSales.filter(sale => {
+        const isPartiallyPaid = sale.status === 2 && (sale.paymentsPending > 0 || sale.pending > 0);
+        return isPartiallyPaid;
+      });
+    } catch (error) {
+      console.error(`Error obteniendo facturas de venta parcialmente pagadas (intentando sin filtro paid):`, error);
+      // Si falla, intentar con el filtro paid
+      return await this.getSales({
+        page,
+        limit,
+        paid: '2' // 2 = partially paid
+      }, company);
+    }
+  }
+
+  // Obtener TODAS las facturas de venta pendientes (todas las páginas)
+  // Igual que getAllPendingPurchasesPages - usa getPendingSalesIncludingPartial
+  async getAllPendingSalesPages(company = 'solucions') {
+    const allSales = [];
+    let page = 1;
+    let hasMorePages = true;
+    const limit = 100; // Máximo por página
+
+    while (hasMorePages) {
+      try {
+        const sales = await this.getPendingSalesIncludingPartial(page, limit, company);
+        
+        if (sales && sales.length > 0) {
+          allSales.push(...sales);
+          
+          // Si obtenemos menos del límite, significa que es la última página
+          if (sales.length < limit) {
+            hasMorePages = false;
+          } else {
+            page++;
+          }
+        } else {
+          hasMorePages = false;
+        }
+      } catch (error) {
+        console.error(`Error obteniendo facturas de venta pendientes en página ${page}:`, error);
+        hasMorePages = false;
+      }
+    }
+
+    return allSales;
+  }
+
+  // Obtener TODAS las facturas de venta parcialmente pagadas (todas las páginas)
+  async getAllPartiallyPaidSalesPages(company = 'solucions') {
+    const allPartiallyPaidSales = [];
+    let page = 1;
+    let hasMorePages = true;
+    const limit = 100; // Máximo por página
+
+    while (hasMorePages) {
+      try {
+        const sales = await this.getPartiallyPaidSales(page, limit, company);
+        
+        if (sales && sales.length > 0) {
+          allPartiallyPaidSales.push(...sales);
+          
+          // Si obtenemos menos del límite, significa que es la última página
+          if (sales.length < limit) {
+            hasMorePages = false;
+          } else {
+            page++;
+          }
+        } else {
+          hasMorePages = false;
+        }
+      } catch (error) {
+        console.error(`Error obteniendo facturas de venta parcialmente pagadas en página ${page}:`, error);
+        hasMorePages = false;
+      }
+    }
+
+    return allPartiallyPaidSales;
+  }
+
+  // Obtener facturas de venta pendientes incluyendo parcialmente pagadas
+  // Igual que getPendingPurchasesIncludingPartial
+  async getPendingSalesIncludingPartial(page = 1, limit = 100, company = 'solucions') {
+    // Obtener todas las facturas de venta de esta página
+    const allSales = await this.getSales({
+      page,
+      limit,
+      sort: 'created-desc'
+    }, company);
+    
+    // Filtrar solo las que realmente son pendientes
+    const pendingSales = allSales.filter(sale => {
+      // Incluir:
+      // 1. Las facturas con paid=false (no pagadas)
+      // 2. Las facturas con status=2 que tienen paymentsPending > 0 (parcialmente pagadas)
+      
+      const isUnpaid = sale.paid === false || sale.paid === 0 || sale.paid === '0';
+      const isPartiallyPaid = sale.status === 2 && (sale.paymentsPending > 0 || sale.pending > 0);
+      
+      return isUnpaid || isPartiallyPaid;
+    });
+    
+    return pendingSales;
+  }
+
+  // Obtener facturas de venta vencidas (pendientes con fecha de vencimiento pasada)
+  async getOverdueSales(page = 1, limit = 100, company = 'solucions') {
+    const today = new Date().toISOString().split('T')[0];
+    return this.getSales({
+      page,
+      limit,
+      paid: '0', // no pagadas
+      endtmp: today // hasta hoy (vencidas)
+    }, company);
+  }
+
+  // Obtener TODAS las facturas de venta vencidas (todas las páginas)
+  async getAllOverdueSalesPages(company = 'solucions') {
+    const allSales = [];
+    let page = 1;
+    let hasMorePages = true;
+    const limit = 100; // Máximo por página
+
+    while (hasMorePages) {
+      try {
+        const sales = await this.getOverdueSales(page, limit, company);
+        
+        if (sales && sales.length > 0) {
+          allSales.push(...sales);
+          
+          // Si obtenemos menos del límite, significa que es la última página
+          if (sales.length < limit) {
+            hasMorePages = false;
+          } else {
+            page++;
+          }
+        } else {
+          hasMorePages = false;
+        }
+      } catch (error) {
+        console.error(`Error obteniendo facturas de venta vencidas en página ${page}:`, error);
+        hasMorePages = false;
+      }
+    }
+
+    return allSales;
+  }
+
+  // Obtener facturas de venta de tipo "salesreceipt" (tickets de venta/TPV)
+  async getSalesReceipts(params = {}, company = 'solucions') {
+    const {
+      page = 1,
+      limit = 100,
+      starttmp,
+      endtmp,
+      contactid,
+      paid,
+      billed,
+      sort = 'created-desc'
+    } = params;
+
+    // El endpoint para tickets de venta es /documents/salesreceipt
+    let endpoint = `/documents/salesreceipt?page=${page}&limit=${limit}&sort=${sort}`;
+    
+    if (starttmp) endpoint += `&starttmp=${starttmp}`;
+    if (endtmp) endpoint += `&endtmp=${endtmp}`;
+    if (contactid) endpoint += `&contactid=${contactid}`;
+    if (paid !== undefined) endpoint += `&paid=${paid}`;
+    if (billed !== undefined) endpoint += `&billed=${billed}`;
+
+    return this.makeRequest(endpoint, {}, company);
+  }
+
+  // Obtener TODAS las facturas de venta pendientes, parcialmente pagadas y vencidas
+  // Igual que getAllPendingAndOverduePurchases pero para ventas
+  async getAllPendingAndPartiallyPaidSales(company = 'solucions') {
+    try {
+      // Obtener pendientes, parcialmente pagadas y vencidas en paralelo (igual que en purchases)
+      const [pendingSales, partiallyPaidSales, overdueSales] = await Promise.all([
+        this.getAllPendingSalesPages(company).catch(error => {
+          console.error(`Error obteniendo facturas de venta pendientes para ${company}:`, error);
+          return [];
+        }),
+        this.getAllPartiallyPaidSalesPages(company).catch(error => {
+          console.error(`Error obteniendo facturas de venta parcialmente pagadas para ${company}:`, error);
+          return [];
+        }),
+        this.getAllOverdueSalesPages(company).catch(error => {
+          console.error(`Error obteniendo facturas de venta vencidas para ${company}:`, error);
+          return [];
+        })
+      ]);
+
+      // También obtener tickets de venta (salesreceipt) que pueden ser las facturas que faltan
+      console.log(`🔍 [Holded API] Buscando tickets de venta (salesreceipt) para ${company}...`);
+      let allSalesReceipts = [];
+      let page = 1;
+      let hasMorePages = true;
+      const limit = 100;
+
+      while (hasMorePages) {
+        try {
+          const receipts = await this.getSalesReceipts({
+            page,
+            limit,
+            sort: 'created-desc'
+          }, company);
+          
+          if (receipts && receipts.length > 0) {
+            allSalesReceipts.push(...receipts);
+            
+            if (receipts.length < limit) {
+              hasMorePages = false;
+            } else {
+              page++;
+            }
+          } else {
+            hasMorePages = false;
+          }
+        } catch (error) {
+          console.error(`Error obteniendo tickets de venta en página ${page}:`, error);
+          hasMorePages = false;
+        }
+      }
+
+      console.log(`📄 [Holded API] Tickets de venta obtenidos: ${allSalesReceipts.length}`);
+
+      // Filtrar tickets de venta pendientes o vencidos
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      const pendingReceipts = allSalesReceipts.filter(receipt => {
+        const isUnpaid = receipt.paid === false || receipt.paid === 0 || receipt.paid === '0';
+        const isPartiallyPaid = receipt.status === 2 && (receipt.paymentsPending > 0 || receipt.pending > 0);
+        const isPending = isUnpaid || isPartiallyPaid;
+        
+        let isOverdue = false;
+        if (receipt.dueDate) {
+          try {
+            const dueDate = new Date(receipt.dueDate);
+            dueDate.setHours(0, 0, 0, 0);
+            isOverdue = dueDate < today;
+          } catch (e) {
+            isOverdue = false;
+          }
+        }
+        
+        return isPending || isOverdue;
+      });
+
+      console.log(`📄 [Holded API] Tickets de venta pendientes/vencidos: ${pendingReceipts.length}`);
+
+      // Combinar facturas normales y tickets de venta, y eliminar duplicados basándose en el ID
+      const allDocuments = [...pendingSales, ...partiallyPaidSales, ...overdueSales, ...pendingReceipts];
+      const uniqueDocuments = allDocuments.filter((doc, index, self) => 
+        index === self.findIndex(d => d.id === doc.id)
+      );
+
+      console.log(`✅ [Holded API] Facturas de venta para ${company}:`);
+      console.log(`  - Pendientes: ${pendingSales.length}`);
+      console.log(`  - Parcialmente pagadas: ${partiallyPaidSales.length}`);
+      console.log(`  - Vencidas: ${overdueSales.length}`);
+      console.log(`  - Tickets de venta pendientes/vencidos: ${pendingReceipts.length}`);
+      console.log(`  - Total únicas: ${uniqueDocuments.length}`);
+
+      // Búsqueda de respaldo para facturas específicas que puedan faltar
+      // (por ejemplo, facturas con estados especiales o formatos de número diferentes)
+      const missingNumbers = ['079T'];
+      const foundNumbers = uniqueDocuments.map(doc => doc.docNumber || doc.num || doc.number || '');
+      const stillMissing = missingNumbers.filter(num => 
+        !foundNumbers.some(found => found.includes(num) || num.includes(found))
+      );
+
+      if (stillMissing.length > 0) {
+        console.log(`🔍 Buscando facturas faltantes: ${stillMissing.join(', ')}`);
+        
+        // Buscar en todas las facturas sin filtros
+        try {
+          let searchPage = 1;
+          let foundMissing = [];
+          const searchLimit = 100;
+          const maxSearchPages = 5; // Limitar búsqueda a 5 páginas para no tardar mucho
+          
+          while (searchPage <= maxSearchPages && stillMissing.length > foundMissing.length) {
+            try {
+              const allInvoices = await this.getSales({
+                page: searchPage,
+                limit: searchLimit,
+                sort: 'created-desc'
+              }, company);
+              
+              if (allInvoices && allInvoices.length > 0) {
+                // Buscar facturas faltantes en esta página
+                stillMissing.forEach(missingNum => {
+                  if (foundMissing.includes(missingNum)) return; // Ya encontrada
+                  
+                  const found = allInvoices.find(doc => {
+                    const docNum = doc.docNumber || doc.num || doc.number || '';
+                    return docNum.includes(missingNum) || missingNum.includes(docNum);
+                  });
+                  
+                  if (found) {
+                    // Verificar si cumple criterios (pendiente o vencida)
+                    const isUnpaid = found.paid === false || found.paid === 0 || found.paid === '0';
+                    const isPartiallyPaid = found.status === 2 && (found.paymentsPending > 0 || found.pending > 0);
+                    let isOverdue = false;
+                    if (found.dueDate) {
+                      try {
+                        const dueDate = new Date(found.dueDate);
+                        dueDate.setHours(0, 0, 0, 0);
+                        isOverdue = dueDate < today;
+                      } catch (e) {}
+                    }
+                    
+                    if (isUnpaid || isPartiallyPaid || isOverdue) {
+                      console.log(`  ✅ Encontrada y añadida: ${missingNum}`);
+                      uniqueDocuments.push(found);
+                      foundMissing.push(missingNum);
+                    } else {
+                      console.log(`  ⚠️ Encontrada pero no cumple criterios: ${missingNum}`, {
+                        paid: found.paid,
+                        status: found.status,
+                        pending: found.pending
+                      });
+                    }
+                  }
+                });
+                
+                if (allInvoices.length < searchLimit) {
+                  break; // No hay más páginas
+                }
+                searchPage++;
+              } else {
+                break; // No hay más facturas
+              }
+            } catch (error) {
+              console.error(`Error buscando facturas faltantes en página ${searchPage}:`, error);
+              break;
+            }
+          }
+        } catch (error) {
+          console.error(`Error en búsqueda de respaldo:`, error);
+        }
+      }
+
+      // Log simplificado de facturas de venta
+      console.log(`📊 [Holded API] Facturas de Venta obtenidas (${company}): ${uniqueDocuments.length} facturas`);
+      
+      // Mostrar 1 factura aleatoria con TODOS los campos que devuelve la API
+      if (uniqueDocuments.length > 0) {
+        const randomIndex = Math.floor(Math.random() * uniqueDocuments.length);
+        const randomInvoice = uniqueDocuments[randomIndex];
+        console.log(`\n🔍 Factura aleatoria (índice ${randomIndex}) - TODOS los campos de la API:`);
+        console.log(JSON.stringify(randomInvoice, null, 2));
+      }
+
+      return uniqueDocuments.map(doc => this.transformHoldedDocumentToSaleInvoice(doc));
+    } catch (error) {
+      console.error(`❌ [Holded API] Error obteniendo facturas de venta para ${company}:`, error);
+      // Retornar array vacío en lugar de lanzar error para que la app no se rompa
+      return [];
+    }
+  }
+
+  // Función para transformar datos de Holded al formato de factura de venta
+  transformHoldedDocumentToSaleInvoice(holdedDocument) {
+    // Transformando documento de venta
+    
+    // Obtener información del cliente
+    const contactInfo = holdedDocument.contact || {};
+    const contactName = contactInfo.name || contactInfo.company || holdedDocument.contactName || 'Cliente Holded';
+
+    // Construir descripción con todos los productos (name y desc)
+    const productsDescriptions = [];
+    if (holdedDocument.products && Array.isArray(holdedDocument.products) && holdedDocument.products.length > 0) {
+      holdedDocument.products.forEach(product => {
+        if (product) {
+          const productName = product.name || product.productName || '';
+          const productDesc = product.desc || product.description || '';
+          
+          if (productName || productDesc) {
+            const productInfo = [];
+            if (productName) productInfo.push(productName);
+            if (productDesc) productInfo.push(productDesc);
+            productsDescriptions.push(productInfo.join(' - '));
+          }
+        }
+      });
+    }
+    
+    // SIEMPRE usar la descripción de productos si existe, sin importar otros campos
+    let resolvedDescription;
+    if (productsDescriptions.length > 0) {
+      resolvedDescription = productsDescriptions.join(' | ');
+      console.log(`🔍 [Holded] Descripción de productos para ${holdedDocument.docNumber || holdedDocument.id}:`, resolvedDescription);
+    } else {
+      // Solo si no hay productos, usar otros campos
+      resolvedDescription = [
+        holdedDocument.notes,
+        holdedDocument.description,
+        holdedDocument.desc,
+      ].find(value => typeof value === 'string' && value.trim() !== '') || 
+      `Venta - ${contactName}`;
+      if (holdedDocument.products && holdedDocument.products.length > 0) {
+        console.log(`⚠️ [Holded] Hay ${holdedDocument.products.length} productos pero no se extrajo descripción para ${holdedDocument.docNumber || holdedDocument.id}`);
+      }
+    }
+
+    // Determinar si está pagada basándose en paymentsPending y status
+    const isUnpaid = holdedDocument.paid === false || holdedDocument.paid === 0 || holdedDocument.paid === '0';
+    const isPartiallyPaid = holdedDocument.status === 2 && (holdedDocument.paymentsPending > 0 || holdedDocument.pending > 0);
+    const isFullyPaid = (holdedDocument.paymentsPending === 0 || holdedDocument.paymentsPending === null) && 
+                        (holdedDocument.paid === true || holdedDocument.paid === 1 || holdedDocument.paid === '1');
+    const isPaid = isFullyPaid && !isPartiallyPaid;
+    
+    // Calcular el monto pendiente correctamente
+    let pendingAmount = holdedDocument.total || 0;
+    if (holdedDocument.paymentsPending !== undefined && holdedDocument.paymentsPending !== null) {
+      pendingAmount = holdedDocument.paymentsPending;
+    } else if (holdedDocument.pending !== undefined && holdedDocument.pending !== null) {
+      pendingAmount = holdedDocument.pending;
+    }
+    
+    // Para facturas parcialmente pagadas, asegurar que se muestren como pendientes
+    if (isPartiallyPaid) {
+      pendingAmount = holdedDocument.paymentsPending || holdedDocument.pending || holdedDocument.total || 0;
+    }
+
+    // Mapear valores numéricos correctamente - verificar todos los campos posibles
+    const subtotal = holdedDocument.subtotal || holdedDocument.net || holdedDocument.base || 0;
+    const vat = holdedDocument.tax || holdedDocument.vat || holdedDocument.iva || 0;
+    const retention = holdedDocument.retention || holdedDocument.retencion || 0;
+    const total = holdedDocument.total || holdedDocument.gross || holdedDocument.amount || 0;
+    
+    // Determinar el estado basándose en el status y fechas
+    let statusText = 'Pendiente';
+    if (holdedDocument.status === 1) {
+      statusText = 'Pagado';
+    } else if (holdedDocument.status === 2) {
+      statusText = 'Parcialmente pagado';
+    } else if (holdedDocument.status === 3) {
+      statusText = 'Anulado';
+    }
+    
+    // Verificar si está vencida
+    if (holdedDocument.dueDate) {
+      try {
+        const dueDate = new Date(holdedDocument.dueDate);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        dueDate.setHours(0, 0, 0, 0);
+        if (dueDate < today && (isUnpaid || isPartiallyPaid)) {
+          statusText = 'Vençut';
+        }
+      } catch (e) {
+        // Error parseando fecha
+      }
+    }
+
+    const transformed = {
+      invoice_number: holdedDocument.docNumber || holdedDocument.num || holdedDocument.number || `HOLD-${holdedDocument.id}`,
+      internal_number: holdedDocument.internalNum || holdedDocument.docNumber || holdedDocument.num || holdedDocument.number,
+      issue_date: this.convertHoldedDate(holdedDocument.date),
+      accounting_date: this.convertHoldedDate(holdedDocument.accountingDate),
+      due_date: this.convertHoldedDate(holdedDocument.dueDate),
+      client: contactName,
+      description: resolvedDescription && resolvedDescription.trim() ? resolvedDescription.trim() : `Venta - ${contactName}`,
+      tags: holdedDocument.tags?.join(', ') || '',
+      account: holdedDocument.account || '',
+      project: holdedDocument.project || '',
+      subtotal: subtotal,
+      vat: vat,
+      retention: retention,
+      total: total,
+      paid: isPaid,
+      pending: pendingAmount,
+      status: statusText,
+      payment_date: this.convertHoldedDate(holdedDocument.paymentDate),
+      holded_id: holdedDocument.id, // ID original de Holded para referencia
+      holded_contact_id: holdedDocument.contact?.id,
+      document_type: 'sale' // Tipo: factura de venta
+    };
+    
+    const finalData = this.validateAndCleanInvoiceData(transformed);
+    
+    return finalData;
+  }
+
   // Función auxiliar para convertir fechas de Holded
   convertHoldedDate(dateValue) {
     if (!dateValue) return null;
@@ -664,9 +1217,33 @@ class HoldedApiService {
     const determineChannel = (provider, tags) => {
       const providerLower = (provider || '').toLowerCase();
       const tagsLower = (tags || '').toLowerCase();
-      
-      // Buscar palabras clave en proveedor y tags
-      const searchText = `${providerLower} ${tagsLower}`;
+
+      const productTexts = (holdedDocument.products || [])
+        .flatMap(product => {
+          if (!product) return [];
+          return [
+            product.desc,
+            product.description,
+            product.name,
+            product.productName,
+            product.concept,
+            product.account,
+            product.accountingAccount,
+            product.taxAccount,
+            product.expenseAccount
+          ].map(value => (typeof value === 'string' ? value.toLowerCase() : ''));
+        })
+        .filter(Boolean);
+
+      const documentTexts = [
+        typeof holdedDocument.desc === 'string' ? holdedDocument.desc.toLowerCase() : '',
+        typeof holdedDocument.description === 'string' ? holdedDocument.description.toLowerCase() : '',
+        typeof holdedDocument.account === 'string' ? holdedDocument.account.toLowerCase() : '',
+        typeof holdedDocument.accountingAccount === 'string' ? holdedDocument.accountingAccount.toLowerCase() : ''
+      ].filter(Boolean);
+
+      // Buscar palabras clave en proveedor, tags y descripciones de productos/cuentas
+      const searchText = [providerLower, tagsLower, ...productTexts, ...documentTexts].join(' ');
       
       // Categorías para Solucions Socials
       if (searchText.includes('catering') || searchText.includes('comida') || searchText.includes('alimentación')) {
@@ -702,6 +1279,25 @@ class HoldedApiService {
     // Obtener información adicional del contacto si está disponible
     const contactInfo = holdedDocument.contact || {};
     const contactName = contactInfo.name || contactInfo.company || holdedDocument.contactName || 'Proveedor Holded';
+
+    const primaryProduct = (holdedDocument.products || []).find(product => {
+      if (!product) return false;
+      const possibleDesc = product.desc || product.description || product.name || product.productName || product.concept;
+      return typeof possibleDesc === 'string' && possibleDesc.trim() !== '';
+    });
+
+    const productDescription = primaryProduct
+      ? (primaryProduct.desc || primaryProduct.description || primaryProduct.name || primaryProduct.productName || primaryProduct.concept || '').toString().trim()
+      : '';
+
+    const resolvedDescription = [
+      holdedDocument.notes,
+      holdedDocument.description,
+      holdedDocument.desc,
+      productDescription,
+    ].find(value => typeof value === 'string' && value.trim() !== '');
+
+    // Logs de facturas clasificadas como OTROS eliminados para reducir ruido en consola
     const contactEmail = contactInfo.email || '';
     const contactPhone = contactInfo.phone || '';
     
@@ -771,7 +1367,7 @@ class HoldedApiService {
       accounting_date: this.convertHoldedDate(holdedDocument.accountingDate),
       due_date: this.convertHoldedDate(holdedDocument.dueDate),
       provider: contactName,
-      description: holdedDocument.notes || holdedDocument.description || `Compra ${channel} - ${contactName}`,
+      description: resolvedDescription ? resolvedDescription.trim() : `Compra ${channel} - ${contactName}`,
       tags: holdedDocument.tags?.join(', ') || '',
       account: channel, // Usar el canal como cuenta para filtros
       project: holdedDocument.project || channel,
@@ -1067,6 +1663,223 @@ class HoldedApiService {
         }
       }
       
+      throw error;
+    }
+  }
+
+  // ==================== PRODUCTOS / INVENTARIO ====================
+  
+  /**
+   * Obtener todos los productos de Holded
+   * @param {Object} params - Parámetros de consulta (page, limit, etc.)
+   * @param {string} company - Empresa ('solucions' o 'menjar')
+   * @returns {Promise<Array>} Array de productos
+   */
+  async getProducts(params = {}, company = 'solucions') {
+    try {
+      const queryParams = new URLSearchParams();
+      if (params.page) queryParams.append('page', params.page);
+      if (params.limit) queryParams.append('limit', params.limit);
+      
+      const endpoint = `/products${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
+      const products = await this.makeRequest(endpoint, {}, company);
+      
+      // La API puede devolver un array directamente o un objeto con paginación
+      return Array.isArray(products) ? products : (products.products || products.data || []);
+    } catch (error) {
+      console.error(`Error obteniendo productos de Holded (${company}):`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Obtener TODOS los productos de Holded paginando automáticamente
+   * @param {string} company - Empresa ('solucions' o 'menjar')
+   * @returns {Promise<Array>} Array completo de productos
+   */
+  async getAllProducts(company = 'solucions') {
+    try {
+      let allProducts = [];
+      let page = 1;
+      let hasMorePages = true;
+      const limit = 100; // Límite por página (ajustar si es necesario)
+      
+      console.log(`🔍 [Holded API] Obteniendo todos los productos para ${company}...`);
+      
+      while (hasMorePages) {
+        try {
+          const products = await this.getProducts({ page, limit }, company);
+          
+          if (products && products.length > 0) {
+            allProducts.push(...products);
+            console.log(`📦 [Holded API] Página ${page}: ${products.length} productos (Total acumulado: ${allProducts.length})`);
+            
+            // Si recibimos menos productos que el límite, no hay más páginas
+            if (products.length < limit) {
+              hasMorePages = false;
+            } else {
+              page++;
+            }
+          } else {
+            hasMorePages = false;
+          }
+        } catch (error) {
+          console.error(`Error obteniendo productos en página ${page}:`, error);
+          hasMorePages = false;
+        }
+      }
+      
+      console.log(`✅ [Holded API] Total de productos obtenidos para ${company}: ${allProducts.length}`);
+      return allProducts;
+    } catch (error) {
+      console.error(`Error obteniendo todos los productos de Holded (${company}):`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Obtener un producto específico por ID
+   * @param {string} productId - ID del producto
+   * @param {string} company - Empresa ('solucions' o 'menjar')
+   * @returns {Promise<Object>} Producto
+   */
+  async getProduct(productId, company = 'solucions') {
+    try {
+      const endpoint = `/products/${productId}`;
+      return await this.makeRequest(endpoint, {}, company);
+    } catch (error) {
+      console.error(`Error obteniendo producto ${productId} de Holded (${company}):`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Crear un nuevo producto en Holded
+   * @param {Object} productData - Datos del producto
+   * @param {string} company - Empresa ('solucions' o 'menjar')
+   * @returns {Promise<Object>} Producto creado
+   */
+  async createProduct(productData, company = 'solucions') {
+    try {
+      const endpoint = '/products';
+      const options = {
+        method: 'POST',
+        body: JSON.stringify(productData)
+      };
+      return await this.makeRequest(endpoint, options, company);
+    } catch (error) {
+      console.error(`Error creando producto en Holded (${company}):`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Actualizar un producto existente en Holded
+   * @param {string} productId - ID del producto
+   * @param {Object} productData - Datos a actualizar
+   * @param {string} company - Empresa ('solucions' o 'menjar')
+   * @returns {Promise<Object>} Producto actualizado
+   */
+  async updateProduct(productId, productData, company = 'solucions') {
+    try {
+      const endpoint = `/products/${productId}`;
+      const options = {
+        method: 'PUT',
+        body: JSON.stringify(productData)
+      };
+      return await this.makeRequest(endpoint, options, company);
+    } catch (error) {
+      console.error(`Error actualizando producto ${productId} en Holded (${company}):`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Eliminar un producto de Holded
+   * @param {string} productId - ID del producto
+   * @param {string} company - Empresa ('solucions' o 'menjar')
+   * @returns {Promise<Object>} Resultado de la eliminación
+   */
+  async deleteProduct(productId, company = 'solucions') {
+    try {
+      const endpoint = `/products/${productId}`;
+      const options = {
+        method: 'DELETE'
+      };
+      return await this.makeRequest(endpoint, options, company);
+    } catch (error) {
+      console.error(`Error eliminando producto ${productId} de Holded (${company}):`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Obtener la imagen principal de un producto
+   * @param {string} productId - ID del producto
+   * @param {string} company - Empresa ('solucions' o 'menjar')
+   * @returns {Promise<Blob|Object>} Imagen del producto
+   */
+  async getProductMainImage(productId, company = 'solucions') {
+    try {
+      const endpoint = `/products/${productId}/image`;
+      return await this.makeRequest(endpoint, {}, company);
+    } catch (error) {
+      console.error(`Error obteniendo imagen principal del producto ${productId} (${company}):`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Listar todas las imágenes secundarias de un producto
+   * @param {string} productId - ID del producto
+   * @param {string} company - Empresa ('solucions' o 'menjar')
+   * @returns {Promise<Array>} Lista de imágenes secundarias
+   */
+  async listProductImages(productId, company = 'solucions') {
+    try {
+      const endpoint = `/products/${productId}/imagesList`;
+      const images = await this.makeRequest(endpoint, {}, company);
+      return Array.isArray(images) ? images : (images.images || images.data || []);
+    } catch (error) {
+      console.error(`Error listando imágenes del producto ${productId} (${company}):`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Obtener una imagen secundaria específica de un producto
+   * @param {string} productId - ID del producto
+   * @param {string} imageFileName - Nombre del archivo de imagen
+   * @param {string} company - Empresa ('solucions' o 'menjar')
+   * @returns {Promise<Blob|Object>} Imagen secundaria del producto
+   */
+  async getProductSecondaryImage(productId, imageFileName, company = 'solucions') {
+    try {
+      const endpoint = `/products/${productId}/image/${imageFileName}`;
+      return await this.makeRequest(endpoint, {}, company);
+    } catch (error) {
+      console.error(`Error obteniendo imagen secundaria ${imageFileName} del producto ${productId} (${company}):`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Actualizar el stock de un producto
+   * @param {string} productId - ID del producto
+   * @param {Object} stockData - Datos del stock (objeto con propiedades de stock)
+   * @param {string} company - Empresa ('solucions' o 'menjar')
+   * @returns {Promise<Object>} Producto actualizado
+   */
+  async updateProductStock(productId, stockData, company = 'solucions') {
+    try {
+      const endpoint = `/products/${productId}/stock`;
+      const options = {
+        method: 'PUT',
+        body: JSON.stringify({ stock: stockData })
+      };
+      return await this.makeRequest(endpoint, options, company);
+    } catch (error) {
+      console.error(`Error actualizando stock del producto ${productId} (${company}):`, error);
       throw error;
     }
   }

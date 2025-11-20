@@ -20,7 +20,9 @@ import {
   Coffee,
   DollarSign,
   ShoppingBag,
-  ExternalLink
+  ExternalLink,
+  UploadCloud,
+  Package
 } from 'feather-icons-react';
 import { useTheme } from './ThemeContext';
 import { useAuth } from './AuthContext';
@@ -38,11 +40,14 @@ import AdminPanel from './AdminPanel';
 import AuditLog from './AuditLog';
 import HoldedTest from './HoldedTest';
 import ProvidersContacts from './ProvidersContacts';
+import InnuvaConverterPage from './InnuvaConverterPage';
 import CateringApp from './catering/CateringApp';
 import SubvencionesPage from './SubvencionesPage';
 import EmpleadosPage from './EmpleadosPage';
 import HojaRutaPage from './HojaRutaPage';
 import SociosPage from './SociosPage';
+import SalesInvoicesPage from './SalesInvoicesPage';
+import InventoryPage from './InventoryPage';
 
 
 // Componente visual de acceso denegado reutilizable
@@ -365,6 +370,9 @@ const Layout = () => {
   const menuItems = [
     { key: 'home', label: 'Inicio', path: '/home', icon: Home },
     { key: 'analytics', label: 'Análisis', path: '/analytics', icon: BarChart2 },
+    { key: 'sales-invoices', label: 'Facturas de Venta', path: '/sales-invoices', icon: DollarSign },
+    { key: 'inventory', label: 'Inventario', path: '/inventory', icon: Package },
+    { key: 'innuva-converter', label: 'Conversor Innuva', path: '/innuva-converter', icon: UploadCloud },
     { key: 'subvenciones', label: 'Subvenciones', path: '/subvenciones', icon: FileText },
     { key: 'empleados', label: 'Empleados', path: '/empleados', icon: Users },
     { key: 'hoja-ruta', label: 'Hoja de Ruta', path: '/hoja-ruta', icon: Calendar },
@@ -405,6 +413,12 @@ const Layout = () => {
         return <ProvidersContacts />;
       case 'analytics':
         return <AnalyticsPage />;
+      case 'sales-invoices':
+        return <SalesInvoicesPage />;
+      case 'inventory':
+        return <InventoryPage />;
+      case 'innuva-converter':
+        return <InnuvaConverterPage />;
       case 'subvenciones':
         return <SubvencionesPage />;
       case 'empleados':

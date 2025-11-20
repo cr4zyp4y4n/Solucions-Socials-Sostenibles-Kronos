@@ -69,7 +69,11 @@ const AnalyticsPage = () => {
   const [selectedProvider, setSelectedProvider] = useState('');
   const [selectedChannel, setSelectedChannel] = useState('');
   const [expandedProvider, setExpandedProvider] = useState('');
+  const [expandedDescriptions, setExpandedDescriptions] = useState(new Set());
   const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
+  // Estados para análisis de IDONI por día de la semana
+  const [selectedDayOfWeek, setSelectedDayOfWeek] = useState('');
+  const [selectedMonthYear, setSelectedMonthYear] = useState('');
   const [sergiSortConfig, setSergiSortConfig] = useState({ key: null, direction: 'asc' });
   const [channelSortConfig, setChannelSortConfig] = useState({ key: null, direction: 'asc' });
   const [isChangingDataset, setIsChangingDataset] = useState(false);
@@ -1090,7 +1094,23 @@ const AnalyticsPage = () => {
     const weeklyData = {};
 
     data.forEach(row => {
-      const fecha = new Date(row[0]);
+      const fechaString = row[0];
+      if (!fechaString) return;
+
+      // Parsear fecha correctamente para evitar problemas de zona horaria
+      let fecha;
+      if (typeof fechaString === 'string' && fechaString.includes('-')) {
+        const parts = fechaString.split('-');
+        const year = parseInt(parts[0], 10);
+        const month = parseInt(parts[1], 10) - 1; // getMonth() usa 0-11
+        const day = parseInt(parts[2], 10);
+        fecha = new Date(year, month, day);
+      } else {
+        fecha = new Date(fechaString);
+      }
+
+      if (isNaN(fecha.getTime())) return;
+
       const monthKey = `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}`;
       const dayOfWeek = fecha.getDay(); // 0 = Domingo, 1 = Lunes, etc.
       const importe = parseFloat(row[4]) || 0;
@@ -1439,8 +1459,11 @@ const AnalyticsPage = () => {
         setSelectedProvider('');
         setSelectedChannel('');
         setExpandedProvider('');
+        setExpandedDescriptions(new Set()); // Limpiar descripciones expandidas
         setSelectedMonth(''); // Resetear filtro de mes
         setShowMonthFilter(false); // Cerrar dropdown
+        setSelectedDayOfWeek(''); // Limpiar filtro de día de la semana
+        setSelectedMonthYear(''); // Limpiar filtro de mes/año para IDONI
         setIsChangingDataset(false);
       }, 100); // Pausa más corta para una transición más rápida
     }
@@ -1492,6 +1515,226 @@ const AnalyticsPage = () => {
   const brunoData = useMemo(() => {
     return brunoDataState;
   }, [brunoDataState]);
+
+  // Función para filtrar datos de IDONI por día de la semana y mes
+  const filterIdoniByDayAndMonth = (data, dayOfWeek, monthYear) => {
+    if (selectedDataset !== 'idoni') return data;
+    if (!dayOfWeek && !monthYear) return data;
+
+    const filteredData = getFilteredIdoniData(data);
+    
+    // Mapeo de días en catalán a español
+    const diasCatalanes = {
+      'Diumenge': 'Domingo',
+      'Dilluns': 'Lunes',
+      'Dimarts': 'Martes',
+      'Dimecres': 'Miércoles',
+      'Dijous': 'Jueves',
+      'Divendres': 'Viernes',
+      'Dissabte': 'Sábado'
+    };
+    
+    return filteredData.filter(row => {
+      const fecha = row[0]; // Fecha está en el índice 0
+      const diaSemanaData = row[1]; // Día de la semana está en el índice 1 (puede estar en catalán)
+      
+      if (!fecha) return false;
+
+      // Convertir fecha a objeto Date
+      // Asegurarse de que la fecha se parsea correctamente sin problemas de zona horaria
+      let fechaObj;
+      if (typeof fecha === 'string' && fecha.includes('-')) {
+        // Si es formato YYYY-MM-DD, parsear manualmente para evitar problemas de zona horaria
+        const parts = fecha.split('-');
+        const year = parseInt(parts[0], 10);
+        const month = parseInt(parts[1], 10) - 1; // getMonth() usa 0-11
+        const day = parseInt(parts[2], 10);
+        
+        // Crear fecha en hora local (no UTC) para evitar desplazamientos
+        fechaObj = new Date(year, month, day);
+      } else if (fecha instanceof Date) {
+        fechaObj = fecha;
+      } else {
+        fechaObj = new Date(fecha);
+      }
+      
+      if (isNaN(fechaObj.getTime())) return false;
+
+      // Verificar que la fecha parseada es correcta
+      const year = fechaObj.getFullYear();
+      const month = fechaObj.getMonth() + 1;
+      const day = fechaObj.getDate();
+      
+      // Reconstruir la fecha original para verificar
+      if (typeof fecha === 'string' && fecha.includes('-')) {
+        const [origYear, origMonth, origDay] = fecha.split('-').map(Number);
+        if (year !== origYear || month !== origMonth || day !== origDay) {
+          // Si hay discrepancia, recrear la fecha correctamente
+          fechaObj = new Date(origYear, origMonth - 1, origDay);
+        }
+      }
+
+      // Calcular el día de la semana desde la fecha (más confiable que usar el dato almacenado)
+      // getDay() devuelve: 0=Domingo, 1=Lunes, 2=Martes, 3=Miércoles, 4=Jueves, 5=Viernes, 6=Sábado
+      const diasSemana = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+      const diaCalculado = diasSemana[fechaObj.getDay()];
+
+      // Filtrar por día de la semana - usar el día calculado desde la fecha
+      if (dayOfWeek) {
+        if (diaCalculado !== dayOfWeek) {
+          return false;
+        }
+      }
+
+      // Filtrar por mes y año
+      if (monthYear) {
+        const [yearFilter, monthFilter] = monthYear.split('-');
+        const mesActual = fechaObj.getMonth() + 1; // getMonth() devuelve 0-11
+        const añoActual = fechaObj.getFullYear();
+        
+        if (parseInt(monthFilter, 10) !== mesActual || parseInt(yearFilter, 10) !== añoActual) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  };
+
+  // Datos filtrados para análisis por día de la semana de IDONI
+  const idoniDayMonthData = useMemo(() => {
+    if (selectedDataset !== 'idoni') return [];
+    let filteredData;
+    if (!selectedDayOfWeek && !selectedMonthYear) {
+      // Si no hay filtros, mostrar todos los datos filtrados (sin totales)
+      filteredData = getFilteredIdoniData(baseData);
+    } else {
+      filteredData = filterIdoniByDayAndMonth(baseData, selectedDayOfWeek, selectedMonthYear);
+    }
+    
+    // Agrupar por fecha y tienda, sumando ventas y tickets
+    const groupedMap = new Map();
+    
+    filteredData.forEach(row => {
+      const fecha = row[0];
+      const tienda = row[3] || '';
+      const key = `${fecha}_${tienda}`;
+      
+      if (!groupedMap.has(key)) {
+        // Crear nuevo registro agrupado
+        groupedMap.set(key, {
+          fecha: fecha,
+          diaSemana: row[1], // Día de la semana (se recalculará desde la fecha)
+          tienda: tienda,
+          ventas: 0,
+          tickets: 0,
+          kgs: 0,
+          unidades: 0
+        });
+      }
+      
+      // Sumar valores
+      const grouped = groupedMap.get(key);
+      grouped.ventas += parseFloat(row[4]) || 0;
+      grouped.tickets += parseInt(row[5]) || 0;
+      grouped.kgs += parseFloat(row[7]) || 0;
+      grouped.unidades += parseFloat(row[8]) || 0;
+    });
+    
+    // Convertir el Map a array y calcular media por ticket
+    const groupedArray = Array.from(groupedMap.values()).map(group => {
+      // Calcular el día de la semana desde la fecha
+      let diaSemanaCalculado = group.diaSemana;
+      if (group.fecha) {
+        let fechaObj;
+        if (typeof group.fecha === 'string' && group.fecha.includes('-')) {
+          const parts = group.fecha.split('-');
+          const year = parseInt(parts[0], 10);
+          const month = parseInt(parts[1], 10) - 1;
+          const day = parseInt(parts[2], 10);
+          fechaObj = new Date(year, month, day);
+        } else {
+          fechaObj = new Date(group.fecha);
+        }
+        
+        if (!isNaN(fechaObj.getTime())) {
+          const diasSemana = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+          diaSemanaCalculado = diasSemana[fechaObj.getDay()];
+        }
+      }
+      
+      // Calcular media por ticket
+      const mediaTicket = group.tickets > 0 ? group.ventas / group.tickets : 0;
+      
+      // Retornar en el formato de array original [fecha, dia, c_ven, tienda, ventas, tickets, media, kgs, unidades]
+      return [
+        group.fecha,
+        diaSemanaCalculado,
+        0, // c_ven (no relevante después de agrupar)
+        group.tienda,
+        group.ventas,
+        group.tickets,
+        mediaTicket,
+        group.kgs,
+        group.unidades
+      ];
+    });
+    
+    // Ordenar por fecha ascendente (más antiguo primero)
+    return groupedArray.sort((a, b) => {
+      const fechaA = a[0];
+      const fechaB = b[0];
+      
+      if (!fechaA && !fechaB) return 0;
+      if (!fechaA) return 1;
+      if (!fechaB) return -1;
+      
+      // Parsear fechas para comparar
+      let fechaObjA, fechaObjB;
+      
+      if (typeof fechaA === 'string' && fechaA.includes('-')) {
+        const partsA = fechaA.split('-');
+        fechaObjA = new Date(parseInt(partsA[0], 10), parseInt(partsA[1], 10) - 1, parseInt(partsA[2], 10));
+      } else {
+        fechaObjA = new Date(fechaA);
+      }
+      
+      if (typeof fechaB === 'string' && fechaB.includes('-')) {
+        const partsB = fechaB.split('-');
+        fechaObjB = new Date(parseInt(partsB[0], 10), parseInt(partsB[1], 10) - 1, parseInt(partsB[2], 10));
+      } else {
+        fechaObjB = new Date(fechaB);
+      }
+      
+      if (isNaN(fechaObjA.getTime()) && isNaN(fechaObjB.getTime())) return 0;
+      if (isNaN(fechaObjA.getTime())) return 1;
+      if (isNaN(fechaObjB.getTime())) return -1;
+      
+      // Ordenar ascendente (más antiguo primero)
+      return fechaObjA.getTime() - fechaObjB.getTime();
+    });
+  }, [selectedDataset, baseData, selectedDayOfWeek, selectedMonthYear]);
+
+  // Obtener meses disponibles en los datos de IDONI
+  const availableMonths = useMemo(() => {
+    if (selectedDataset !== 'idoni') return [];
+    const filteredData = getFilteredIdoniData(baseData);
+    const monthsSet = new Set();
+    
+    filteredData.forEach(row => {
+      const fecha = row[0];
+      if (fecha) {
+        const fechaObj = new Date(fecha);
+        if (!isNaN(fechaObj.getTime())) {
+          const year = fechaObj.getFullYear();
+          const month = String(fechaObj.getMonth() + 1).padStart(2, '0');
+          monthsSet.add(`${year}-${month}`);
+        }
+      }
+    });
+    
+    return Array.from(monthsSet).sort().reverse(); // Más recientes primero
+  }, [selectedDataset, baseData]);
 
   // Función para manejar el ordenamiento
   const handleSort = (key) => {
@@ -2050,9 +2293,28 @@ const AnalyticsPage = () => {
     { key: 'description', label: 'Descripción', index: columnIndices.description },
     { key: 'subtotal', label: 'Subtotal', index: columnIndices.subtotal },
     { key: 'total', label: 'Total', index: columnIndices.total },
-    { key: 'iban', label: 'Número IBAN', index: columnIndices.iban },
     { key: 'pending', label: 'Pendiente', index: columnIndices.pending }
   ].filter(col => col.index !== undefined);
+
+  // Función para truncar descripción
+  const truncateDescription = (text, maxLength = 100) => {
+    if (!text || typeof text !== 'string') return '-';
+    if (text.length <= maxLength) return text;
+    return text.substring(0, maxLength) + '...';
+  };
+
+  // Función para manejar clic en descripción
+  const handleDescriptionClick = (rowIndex) => {
+    setExpandedDescriptions(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(rowIndex)) {
+        newSet.delete(rowIndex);
+      } else {
+        newSet.add(rowIndex);
+      }
+      return newSet;
+    });
+  };
 
   // Inicializar columnas seleccionadas
   React.useEffect(() => {
@@ -4629,9 +4891,13 @@ const AnalyticsPage = () => {
             flexWrap: 'wrap',
           }}>
           <motion.div
-            whileHover={{ scale: 1.04, boxShadow: selectedDataset === 'solucions' ? `0 4px 16px 0 ${colors.primary}33` : `0 2px 8px 0 ${colors.primary}22` }}
-            whileTap={{ scale: 0.98 }}
-            onClick={() => handleDatasetChange('solucions')}
+            whileHover={loading || isChangingDataset ? {} : { scale: 1.04, boxShadow: selectedDataset === 'solucions' ? `0 4px 16px 0 ${colors.primary}33` : `0 2px 8px 0 ${colors.primary}22` }}
+            whileTap={loading || isChangingDataset ? {} : { scale: 0.98 }}
+            onClick={() => {
+              if (!loading && !isChangingDataset) {
+                handleDatasetChange('solucions');
+              }
+            }}
             style={{
               minWidth: 200,
               flex: '1 1 200px',
@@ -4640,7 +4906,7 @@ const AnalyticsPage = () => {
               boxShadow: selectedDataset === 'solucions' ? `0 4px 16px 0 ${colors.primary}33` : `0 2px 8px 0 rgba(0,0,0,0.04)`,
               border: selectedDataset === 'solucions' ? `2.5px solid ${colors.primary}` : `1.5px solid ${colors.border}`,
               color: selectedDataset === 'solucions' ? colors.primary : colors.text,
-              cursor: isChangingDataset ? 'not-allowed' : 'pointer',
+              cursor: (loading || isChangingDataset) ? 'not-allowed' : 'pointer',
               padding: '22px 18px',
               display: 'flex',
               flexDirection: 'column',
@@ -4651,7 +4917,7 @@ const AnalyticsPage = () => {
               fontSize: 16,
               outline: selectedDataset === 'solucions' ? `2px solid ${colors.primary}` : 'none',
               position: 'relative',
-              opacity: isChangingDataset ? 0.6 : 1
+              opacity: (loading || isChangingDataset) ? 0.6 : 1
             }}
           >
             {/* Indicador de carga para Solucions */}
@@ -4697,9 +4963,13 @@ const AnalyticsPage = () => {
           </motion.div>
 
           <motion.div
-            whileHover={{ scale: 1.04, boxShadow: selectedDataset === 'menjar' ? `0 4px 16px 0 ${colors.primary}33` : `0 2px 8px 0 ${colors.primary}22` }}
-            whileTap={{ scale: 0.98 }}
-            onClick={() => handleDatasetChange('menjar')}
+            whileHover={loading || isChangingDataset ? {} : { scale: 1.04, boxShadow: selectedDataset === 'menjar' ? `0 4px 16px 0 ${colors.primary}33` : `0 2px 8px 0 ${colors.primary}22` }}
+            whileTap={loading || isChangingDataset ? {} : { scale: 0.98 }}
+            onClick={() => {
+              if (!loading && !isChangingDataset) {
+                handleDatasetChange('menjar');
+              }
+            }}
             style={{
               minWidth: 200,
               flex: '1 1 200px',
@@ -4765,9 +5035,13 @@ const AnalyticsPage = () => {
           </motion.div>
 
           <motion.div
-            whileHover={{ scale: 1.04, boxShadow: selectedDataset === 'idoni' ? `0 4px 16px 0 ${colors.primary}33` : `0 2px 8px 0 ${colors.primary}22` }}
-            whileTap={{ scale: 0.98 }}
-            onClick={() => handleDatasetChange('idoni')}
+            whileHover={loading || isChangingDataset ? {} : { scale: 1.04, boxShadow: selectedDataset === 'idoni' ? `0 4px 16px 0 ${colors.primary}33` : `0 2px 8px 0 ${colors.primary}22` }}
+            whileTap={loading || isChangingDataset ? {} : { scale: 0.98 }}
+            onClick={() => {
+              if (!loading && !isChangingDataset) {
+                handleDatasetChange('idoni');
+              }
+            }}
             style={{
               minWidth: 200,
               flex: '1 1 200px',
@@ -4776,7 +5050,7 @@ const AnalyticsPage = () => {
               boxShadow: selectedDataset === 'idoni' ? `0 4px 16px 0 ${colors.primary}33` : `0 2px 8px 0 rgba(0,0,0,0.04)`,
               border: selectedDataset === 'idoni' ? `2.5px solid ${colors.primary}` : `1.5px solid ${colors.border}`,
               color: selectedDataset === 'idoni' ? colors.primary : colors.text,
-              cursor: isChangingDataset ? 'not-allowed' : 'pointer',
+              cursor: (loading || isChangingDataset) ? 'not-allowed' : 'pointer',
               padding: '22px 18px',
               display: 'flex',
               flexDirection: 'column',
@@ -4787,7 +5061,7 @@ const AnalyticsPage = () => {
               fontSize: 16,
               outline: selectedDataset === 'idoni' ? `2px solid ${colors.primary}` : 'none',
               position: 'relative',
-              opacity: isChangingDataset ? 0.6 : 1
+              opacity: (loading || isChangingDataset) ? 0.6 : 1
             }}
           >
             {/* Indicador de carga para IDONI */}
@@ -4849,7 +5123,10 @@ const AnalyticsPage = () => {
               key={view.id}
               whileHover={{ scale: 1.04, boxShadow: isActive ? `0 4px 16px 0 ${colors.primary}33` : `0 2px 8px 0 ${colors.primary}22` }}
               whileTap={{ scale: 0.98 }}
-              onClick={() => setSelectedView(view.id)}
+              onClick={() => {
+                setSelectedView(view.id);
+                setExpandedDescriptions(new Set()); // Limpiar descripciones expandidas al cambiar de vista
+              }}
               style={{
                 minWidth: 180,
                 flex: '1 1 180px',
@@ -4979,16 +5256,78 @@ const AnalyticsPage = () => {
             </button>
           </motion.div>
         ) : currentHeaders.length === 0 ? (
-          <motion.div
-            key="no-data"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            transition={{ duration: 0.2, ease: 'easeOut' }}
-            style={{ color: colors.textSecondary, fontSize: 18, marginTop: 40 }}
-          >
-            No hay datos disponibles para {selectedDataset === 'solucions' ? 'Solucions Socials' : selectedDataset === 'menjar' ? 'Menjar d\'Hort' : 'IDONI'}. Los datos se cargan automáticamente desde Holded.
-          </motion.div>
+          // Si es IDONI y está cargando, mostrar spinner
+          selectedDataset === 'idoni' && supabaseData.idoni.loading ? (
+            <motion.div
+              key="idoni-loading"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              transition={{ duration: 0.2, ease: 'easeOut' }}
+              style={{ 
+                display: 'flex', 
+                flexDirection: 'column', 
+                alignItems: 'center', 
+                justifyContent: 'center', 
+                minHeight: '500px',
+                padding: '60px 20px',
+                gap: '24px'
+              }}
+            >
+              <motion.div
+                animate={{ rotate: 360 }}
+                transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+                style={{
+                  width: '64px',
+                  height: '64px',
+                  border: `4px solid ${colors.border}`,
+                  borderTop: `4px solid ${colors.primary}`,
+                  borderRadius: '50%'
+                }}
+              />
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3, delay: 0.2 }}
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: '12px',
+                  textAlign: 'center',
+                  maxWidth: '500px'
+                }}
+              >
+                <h3 style={{
+                  margin: 0,
+                  color: colors.text,
+                  fontSize: '20px',
+                  fontWeight: 600
+                }}>
+                  Cargando datos de IDONI...
+                </h3>
+                <p style={{
+                  margin: 0,
+                  color: colors.textSecondary,
+                  fontSize: '14px',
+                  lineHeight: '1.6'
+                }}>
+                  Por favor espera mientras se cargan los datos de ventas de IDONI desde Supabase. Esto puede tardar unos momentos...
+                </p>
+              </motion.div>
+            </motion.div>
+          ) : (
+            <motion.div
+              key="no-data"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              transition={{ duration: 0.2, ease: 'easeOut' }}
+              style={{ color: colors.textSecondary, fontSize: 18, marginTop: 40 }}
+            >
+              No hay datos disponibles para {selectedDataset === 'solucions' ? 'Solucions Socials' : selectedDataset === 'menjar' ? 'Menjar d\'Hort' : 'IDONI'}. Los datos se cargan automáticamente desde Holded.
+            </motion.div>
+          )
         ) : selectedDataset === 'idoni' ? (
           // Interfaz específica para IDONI
           <motion.div
@@ -5003,7 +5342,7 @@ const AnalyticsPage = () => {
             <div style={{ marginBottom: 0, color: colors.textSecondary, fontSize: 15, minHeight: 22 }}>
               Análisis de ventas de IDONI - Datos de tienda y análisis temporal. Exporta un resumen completo para análisis de IA.
             </div>
-            
+
             {/* Contenido específico para IDONI */}
             <div style={{ background: colors.card, borderRadius: 8, boxShadow: '0 2px 8px rgba(0,0,0,0.04)', padding: '20px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
@@ -5849,6 +6188,231 @@ const AnalyticsPage = () => {
                 </div>
               )}
 
+              {/* Nueva sección: Análisis por Día de la Semana */}
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3 }}
+                style={{ 
+                  background: colors.card, 
+                  borderRadius: 8, 
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.04)', 
+                  padding: '20px',
+                  marginTop: '24px'
+                }}
+              >
+                <h3 style={{ margin: '0 0 20px 0', color: colors.text, fontSize: 18, fontWeight: 600 }}>
+                  Análisis Detallado por Día de la Semana
+                </h3>
+                
+                {/* Selectores de día y mes */}
+                <div style={{ display: 'flex', gap: '16px', marginBottom: '20px', flexWrap: 'wrap' }}>
+                  {/* Selector de día de la semana */}
+                  <div style={{ flex: '1 1 200px', minWidth: '200px' }}>
+                    <label style={{ 
+                      display: 'block', 
+                      marginBottom: '8px', 
+                      fontSize: '14px', 
+                      fontWeight: '600', 
+                      color: colors.text 
+                    }}>
+                      Día de la Semana
+                    </label>
+                    <select
+                      value={selectedDayOfWeek}
+                      onChange={(e) => setSelectedDayOfWeek(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '10px 12px',
+                        borderRadius: '8px',
+                        border: `1px solid ${colors.border}`,
+                        backgroundColor: colors.background,
+                        color: colors.text,
+                        fontSize: '14px',
+                        cursor: 'pointer',
+                        outline: 'none'
+                      }}
+                    >
+                      <option value="">Todos los días</option>
+                      <option value="Lunes">Lunes</option>
+                      <option value="Martes">Martes</option>
+                      <option value="Miércoles">Miércoles</option>
+                      <option value="Jueves">Jueves</option>
+                      <option value="Viernes">Viernes</option>
+                      <option value="Sábado">Sábado</option>
+                      <option value="Domingo">Domingo</option>
+                    </select>
+                  </div>
+
+                  {/* Selector de mes */}
+                  <div style={{ flex: '1 1 200px', minWidth: '200px' }}>
+                    <label style={{ 
+                      display: 'block', 
+                      marginBottom: '8px', 
+                      fontSize: '14px', 
+                      fontWeight: '600', 
+                      color: colors.text 
+                    }}>
+                      Mes y Año
+                    </label>
+                    <select
+                      value={selectedMonthYear}
+                      onChange={(e) => setSelectedMonthYear(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '10px 12px',
+                        borderRadius: '8px',
+                        border: `1px solid ${colors.border}`,
+                        backgroundColor: colors.background,
+                        color: colors.text,
+                        fontSize: '14px',
+                        cursor: 'pointer',
+                        outline: 'none'
+                      }}
+                    >
+                      <option value="">Todos los meses</option>
+                      {availableMonths.map(monthYear => {
+                        const [year, month] = monthYear.split('-');
+                        const monthNames = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 
+                                           'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+                        return (
+                          <option key={monthYear} value={monthYear}>
+                            {monthNames[parseInt(month) - 1]} {year}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Tabla de resultados */}
+                {idoniDayMonthData.length > 0 ? (
+                  <div style={{ 
+                    overflowX: 'auto',
+                    overflowY: 'auto',
+                    maxHeight: '500px'
+                  }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+                      <thead style={{ position: 'sticky', top: 0, backgroundColor: colors.card, zIndex: 1 }}>
+                        <tr style={{ borderBottom: `2px solid ${colors.border}` }}>
+                          <th style={{ padding: '12px 8px', textAlign: 'left', fontWeight: '600', color: colors.text }}>
+                            Fecha
+                          </th>
+                          <th style={{ padding: '12px 8px', textAlign: 'left', fontWeight: '600', color: colors.text }}>
+                            Día
+                          </th>
+                          <th style={{ padding: '12px 8px', textAlign: 'left', fontWeight: '600', color: colors.text }}>
+                            Tienda
+                          </th>
+                          <th style={{ padding: '12px 8px', textAlign: 'right', fontWeight: '600', color: colors.text }}>
+                            Ventas (€)
+                          </th>
+                          <th style={{ padding: '12px 8px', textAlign: 'right', fontWeight: '600', color: colors.text }}>
+                            Tickets
+                          </th>
+                          <th style={{ padding: '12px 8px', textAlign: 'right', fontWeight: '600', color: colors.text }}>
+                            Media/Ticket
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {idoniDayMonthData.map((row, i) => {
+                          const fecha = row[0];
+                          const tienda = row[3];
+                          const ventas = parseFloat(row[4]) || 0;
+                          const tickets = parseInt(row[5]) || 0;
+                          const mediaTicket = parseFloat(row[6]) || 0;
+                          
+                          // Calcular el día de la semana desde la fecha para mostrarlo correctamente
+                          let diaSemanaCalculado = '-';
+                          let fechaFormateada = '-';
+                          if (fecha) {
+                            let fechaObj;
+                            if (typeof fecha === 'string' && fecha.includes('-')) {
+                              const parts = fecha.split('-');
+                              const year = parseInt(parts[0], 10);
+                              const month = parseInt(parts[1], 10) - 1;
+                              const day = parseInt(parts[2], 10);
+                              fechaObj = new Date(year, month, day);
+                            } else {
+                              fechaObj = new Date(fecha);
+                            }
+                            
+                            if (!isNaN(fechaObj.getTime())) {
+                              const diasSemana = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+                              diaSemanaCalculado = diasSemana[fechaObj.getDay()];
+                              fechaFormateada = fechaObj.toLocaleDateString('es-ES');
+                            }
+                          }
+                          
+                          return (
+                            <tr key={i} style={{ 
+                              borderBottom: `1px solid ${colors.border}`,
+                              backgroundColor: i % 2 === 0 ? colors.card : colors.background
+                            }}>
+                              <td style={{ padding: '12px 8px', color: colors.text }}>
+                                {fechaFormateada}
+                              </td>
+                              <td style={{ padding: '12px 8px', color: colors.text }}>
+                                {diaSemanaCalculado}
+                              </td>
+                              <td style={{ padding: '12px 8px', color: colors.text }}>
+                                {tienda || '-'}
+                              </td>
+                              <td style={{ padding: '12px 8px', textAlign: 'right', color: colors.text, fontWeight: '600' }}>
+                                {formatCurrency(ventas)}
+                              </td>
+                              <td style={{ padding: '12px 8px', textAlign: 'right', color: colors.text }}>
+                                {tickets}
+                              </td>
+                              <td style={{ padding: '12px 8px', textAlign: 'right', color: colors.text }}>
+                                {formatCurrency(mediaTicket)}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                        {/* Fila de totales */}
+                        {idoniDayMonthData.length > 0 && (
+                          <tr style={{ 
+                            borderTop: `2px solid ${colors.border}`,
+                            backgroundColor: colors.surface,
+                            fontWeight: '600'
+                          }}>
+                            <td colSpan="3" style={{ padding: '12px 8px', color: colors.text, fontWeight: '600' }}>
+                              TOTAL
+                            </td>
+                            <td style={{ padding: '12px 8px', textAlign: 'right', color: colors.text, fontWeight: '600' }}>
+                              {formatCurrency(idoniDayMonthData.reduce((sum, row) => sum + (parseFloat(row[4]) || 0), 0))}
+                            </td>
+                            <td style={{ padding: '12px 8px', textAlign: 'right', color: colors.text, fontWeight: '600' }}>
+                              {idoniDayMonthData.reduce((sum, row) => sum + (parseInt(row[5]) || 0), 0)}
+                            </td>
+                            <td style={{ padding: '12px 8px', textAlign: 'right', color: colors.text, fontWeight: '600' }}>
+                              {idoniDayMonthData.length > 0 
+                                ? formatCurrency(idoniDayMonthData.reduce((sum, row) => sum + (parseFloat(row[4]) || 0), 0) / idoniDayMonthData.reduce((sum, row) => sum + (parseInt(row[5]) || 0), 0))
+                                : '-'
+                              }
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div style={{ 
+                    padding: '40px', 
+                    textAlign: 'center', 
+                    color: colors.textSecondary,
+                    fontSize: '14px'
+                  }}>
+                    {selectedDayOfWeek || selectedMonthYear 
+                      ? 'No hay ventas que coincidan con los filtros seleccionados'
+                      : 'Selecciona un día de la semana y/o un mes para ver las ventas'
+                    }
+                  </div>
+                )}
+              </motion.div>
+
               {/* Análisis de Ventas de Productos - Nuevo Formato */}
               {idoniProductosData && idoniProductosAnalytics && (
                 <div style={{ marginTop: '24px' }}>
@@ -6491,11 +7055,26 @@ const AnalyticsPage = () => {
                   {selectedProvider ? `Facturas de ${selectedProvider}` : 'Todas las facturas'}
                 </h3>
                 <div style={{ 
-                  overflowX: 'auto',
-                  scrollbarWidth: 'thin',
-                  scrollbarColor: `${colors.border} transparent`
+                  overflowX: 'hidden',
+                  overflowY: 'auto',
+                  maxWidth: '100%'
                 }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14, tableLayout: 'fixed' }}>
+                    <colgroup>
+                      {availableColumns
+                        .filter(col => selectedColumns.includes(col.key))
+                        .map(col => {
+                          // Definir anchos para cada columna
+                          let width = 'auto';
+                          if (col.key === 'date') width = '100px';
+                          else if (col.key === 'invoiceNumber') width = '120px';
+                          else if (col.key === 'provider') width = '180px';
+                          else if (col.key === 'account') width = '120px';
+                          else if (col.key === 'description') width = '300px';
+                          else if (col.key === 'subtotal' || col.key === 'total' || col.key === 'pending') width = '110px';
+                          return <col key={col.key} style={{ width }} />;
+                        })}
+                    </colgroup>
                     <thead>
                       <tr>
                         {availableColumns
@@ -6520,19 +7099,37 @@ const AnalyticsPage = () => {
                         }}>
                           {availableColumns
                             .filter(col => selectedColumns.includes(col.key))
-                            .map(col => (
-                              <td key={col.key} style={{ 
-                                borderBottom: `1px solid ${colors.border}`,
-                                padding: '12px 8px', 
-                                color: colors.text 
-                              }}>
-                                {col.key === 'date'
-                                  ? (col.index !== undefined && row[col.index] ? formatDate(row[col.index]) : '')
-                                  : col.key === 'total' || col.key === 'pending' || col.key === 'subtotal'
-                                    ? (col.index !== undefined && row[col.index] ? formatCurrency(row[col.index]) : '-')
-                                    : (col.index !== undefined ? row[col.index] : '')}
-                              </td>
-                            ))}
+                            .map(col => {
+                              const cellValue = col.index !== undefined ? row[col.index] : null;
+                              const isDescription = col.key === 'description';
+                              const isExpanded = expandedDescriptions.has(i);
+                              const shouldTruncate = isDescription && cellValue && typeof cellValue === 'string' && cellValue.length > 100;
+                              
+                              return (
+                                <td key={col.key} style={{ 
+                                  borderBottom: `1px solid ${colors.border}`,
+                                  padding: '12px 8px', 
+                                  color: colors.text,
+                                  maxWidth: isDescription ? '300px' : 'auto',
+                                  wordWrap: isDescription ? 'break-word' : 'normal',
+                                  overflow: 'hidden',
+                                  textOverflow: shouldTruncate && !isExpanded ? 'ellipsis' : 'clip',
+                                  cursor: shouldTruncate ? 'pointer' : 'default',
+                                  whiteSpace: shouldTruncate && !isExpanded ? 'nowrap' : 'normal'
+                                }}
+                                onClick={shouldTruncate ? () => handleDescriptionClick(i) : undefined}
+                                title={shouldTruncate && !isExpanded ? cellValue : undefined}
+                                >
+                                  {col.key === 'date'
+                                    ? (cellValue ? formatDate(cellValue) : '-')
+                                    : col.key === 'total' || col.key === 'pending' || col.key === 'subtotal'
+                                      ? (cellValue ? formatCurrency(cellValue) : '-')
+                                      : isDescription && shouldTruncate
+                                        ? (isExpanded ? cellValue : truncateDescription(cellValue, 100))
+                                        : (cellValue || '-')}
+                                </td>
+                              );
+                            })}
                         </tr>
                       ))}
                     </tbody>
