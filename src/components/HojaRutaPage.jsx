@@ -19,7 +19,8 @@ import {
   Wine,
   Trash2,
   Pen,
-  CheckCircle2
+  CheckCircle2,
+  ChevronDown
 } from 'lucide-react';
 import { useTheme } from './ThemeContext';
 import { useAuth } from './AuthContext';
@@ -50,6 +51,11 @@ const HojaRutaPage = () => {
   const [showEmpleadoModal, setShowEmpleadoModal] = useState(false);
   const [empleadoSeleccionado, setEmpleadoSeleccionado] = useState(null);
   const [selectedHoja, setSelectedHoja] = useState(null);
+  const [showHojaSelector, setShowHojaSelector] = useState(false);
+  
+  // Referencia para evitar bucles en la actualización del checklist
+  const hojaActualizandoRef = useRef(false);
+  const ultimaHojaIdRef = useRef(null);
 
   // Función para cargar datos - usando función directa para evitar problemas de inicialización
   const loadDatos = async () => {
@@ -66,6 +72,9 @@ const HojaRutaPage = () => {
         const hoja = await hojaRutaService.getHojaRuta(selectedHojaId);
         if (hoja) {
           console.log('✅ Hoja cargada desde navegación:', hoja.cliente);
+          // Actualizar referencias antes de establecer la hoja
+          hojaActualizandoRef.current = false;
+          ultimaHojaIdRef.current = hoja.id;
           setHojaActual(hoja);
           const historicoData = await hojaRutaService.getHistorico();
           setHistorico(historicoData);
@@ -79,6 +88,11 @@ const HojaRutaPage = () => {
       const ultima = await hojaRutaService.getUltimaHojaRuta();
       const historicoData = await hojaRutaService.getHistorico();
       
+      // Actualizar referencias antes de establecer la hoja
+      if (ultima) {
+        hojaActualizandoRef.current = false;
+        ultimaHojaIdRef.current = ultima.id;
+      }
       setHojaActual(ultima);
       setHistorico(historicoData);
       setError(null);
@@ -115,24 +129,46 @@ const HojaRutaPage = () => {
 
   // Generar checklists automáticas cuando se carga una hoja de ruta
   useEffect(() => {
-    if (hojaActual) {
+    if (hojaActual && hojaActual.id && hojaActual.id !== ultimaHojaIdRef.current && !hojaActualizandoRef.current) {
+      hojaActualizandoRef.current = true;
+      ultimaHojaIdRef.current = hojaActual.id;
+      
       hojaRutaService.actualizarChecklistElementos(hojaActual.id).then(hojaActualizada => {
-        if (hojaActualizada) {
+        if (hojaActualizada && hojaActualizada.id === hojaActual.id) {
+          // Solo actualizar si es la misma hoja (evitar cambios durante actualización)
           setHojaActual(hojaActualizada);
         }
+        hojaActualizandoRef.current = false;
       }).catch(err => {
         console.error('Error actualizando checklist:', err);
+        hojaActualizandoRef.current = false;
       });
     }
   }, [hojaActual?.id]);
 
   const handleUploadSuccess = async (nuevaHoja) => {
+    // Establecer la nueva hoja y actualizar referencias
+    hojaActualizandoRef.current = true;
+    ultimaHojaIdRef.current = nuevaHoja.id;
     setHojaActual(nuevaHoja);
-    await loadDatos(); // Recargar datos
+    
+    // Solo recargar el histórico, no cambiar la hoja actual
+    try {
+      const historicoData = await hojaRutaService.getHistorico();
+      setHistorico(historicoData);
+    } catch (err) {
+      console.error('Error recargando histórico:', err);
+    }
+    
+    hojaActualizandoRef.current = false;
     setError(null);
   };
 
   const handleEditSuccess = (updatedHoja) => {
+    // Actualizar referencias antes de establecer la hoja
+    if (updatedHoja) {
+      ultimaHojaIdRef.current = updatedHoja.id;
+    }
     setHojaActual(updatedHoja);
     setError(null);
   };
@@ -142,12 +178,39 @@ const HojaRutaPage = () => {
     setShowViewModal(true);
   };
 
+  const handleSelectHoja = async (hoja) => {
+    try {
+      setLoading(true);
+      // Cargar la hoja completa desde la base de datos
+      const hojaCompleta = await hojaRutaService.getHojaRuta(hoja.id);
+      if (hojaCompleta) {
+        // Actualizar referencias antes de establecer la hoja
+        hojaActualizandoRef.current = false;
+        ultimaHojaIdRef.current = hojaCompleta.id;
+        setHojaActual(hojaCompleta);
+        // Recargar el histórico para mantenerlo actualizado
+        const historicoData = await hojaRutaService.getHistorico();
+        setHistorico(historicoData);
+        setError(null);
+      } else {
+        setError('No se pudo cargar la hoja de ruta seleccionada');
+      }
+    } catch (err) {
+      console.error('Error cargando hoja seleccionada:', err);
+      setError('Error al cargar la hoja de ruta seleccionada');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleFirmarHoja = async (firmaData, firmadoPor) => {
     if (!hojaActual || !user?.id) return;
     
     try {
       const updated = await hojaRutaService.firmarHojaRuta(hojaActual.id, firmaData, firmadoPor);
       if (updated) {
+        // Actualizar referencias antes de establecer la hoja
+        ultimaHojaIdRef.current = updated.id;
         setHojaActual(updated);
         setError(null);
       } else {
@@ -178,6 +241,8 @@ const HojaRutaPage = () => {
     const hojaActualizada = await hojaRutaService.actualizarTareaChecklist(hojaId, tipo, fase, tareaId, completed, assignedTo, user?.id || null);
     if (hojaActualizada) {
       console.log('✅ HojaRutaPage - Hoja actualizada, actualizando estado');
+      // Actualizar referencias antes de establecer la hoja
+      ultimaHojaIdRef.current = hojaActualizada.id;
       setHojaActual(hojaActualizada);
     } else {
       console.log('❌ HojaRutaPage - No se pudo actualizar la hoja');
@@ -188,6 +253,8 @@ const HojaRutaPage = () => {
     try {
       const hojaActualizada = await hojaRutaService.cambiarEstadoServicio(hojaId, nuevoEstado);
       if (hojaActualizada) {
+        // Actualizar referencias antes de establecer la hoja
+        ultimaHojaIdRef.current = hojaActualizada.id;
         setHojaActual(hojaActualizada);
       }
     } catch (err) {
@@ -245,6 +312,17 @@ const HojaRutaPage = () => {
     return hora.replace('H', 'h');
   };
 
+  // Cerrar selector al hacer click fuera
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (showHojaSelector && !event.target.closest('[data-hoja-selector]')) {
+        setShowHojaSelector(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showHojaSelector]);
+
   if (loading) {
     return (
       <div style={{ 
@@ -284,7 +362,7 @@ const HojaRutaPage = () => {
           borderBottom: `1px solid ${colors.border}`
         }}
       >
-        <div>
+        <div style={{ flex: 1 }}>
           <h1 style={{ 
             fontSize: '28px', 
             fontWeight: 'bold', 
@@ -305,6 +383,151 @@ const HojaRutaPage = () => {
             Gestión de hojas de ruta de servicios
           </p>
         </div>
+
+        {/* Selector de hojas */}
+        {hojaActual && historico.length > 0 && (
+          <div style={{ position: 'relative', marginRight: '16px' }} data-hoja-selector>
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => setShowHojaSelector(!showHojaSelector)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '10px 16px',
+                backgroundColor: colors.surface,
+                color: colors.text,
+                border: `1px solid ${colors.border}`,
+                borderRadius: '8px',
+                cursor: 'pointer',
+                fontSize: '14px',
+                fontWeight: '500',
+                minWidth: '250px',
+                justifyContent: 'space-between'
+              }}
+            >
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', flex: 1 }}>
+                <span style={{ fontSize: '12px', color: colors.textSecondary }}>Hoja actual</span>
+                <span style={{ fontSize: '14px', fontWeight: '600' }}>
+                  {hojaActual.cliente || 'Sin cliente'}
+                </span>
+              </div>
+              <ChevronDown 
+                size={18} 
+                color={colors.textSecondary}
+                style={{ 
+                  transform: showHojaSelector ? 'rotate(180deg)' : 'rotate(0deg)',
+                  transition: 'transform 0.2s'
+                }}
+              />
+            </motion.button>
+
+            {showHojaSelector && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                data-hoja-selector
+                style={{
+                  position: 'absolute',
+                  top: '100%',
+                  right: 0,
+                  marginTop: '8px',
+                  backgroundColor: colors.surface,
+                  border: `1px solid ${colors.border}`,
+                  borderRadius: '8px',
+                  boxShadow: `0 4px 12px ${colors.border}`,
+                  zIndex: 100,
+                  minWidth: '300px',
+                  maxHeight: '400px',
+                  overflowY: 'auto'
+                }}
+              >
+                {/* Hoja actual */}
+                <div
+                  onClick={() => {
+                    setShowHojaSelector(false);
+                  }}
+                  style={{
+                    padding: '12px 16px',
+                    backgroundColor: colors.primary + '10',
+                    borderBottom: `1px solid ${colors.border}`,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center'
+                  }}
+                >
+                  <div>
+                    <div style={{ fontSize: '12px', color: colors.textSecondary, marginBottom: '4px' }}>
+                      Hoja actual
+                    </div>
+                    <div style={{ fontSize: '14px', fontWeight: '600', color: colors.text }}>
+                      {hojaActual.cliente || 'Sin cliente'}
+                    </div>
+                    <div style={{ fontSize: '12px', color: colors.textSecondary, marginTop: '4px' }}>
+                      {formatFecha(hojaActual.fechaServicio)}
+                    </div>
+                  </div>
+                  <CheckCircle size={16} color={colors.primary} />
+                </div>
+
+                {/* Otras hojas del histórico (excluyendo la actual) */}
+                {historico
+                  .filter(hoja => hoja.id !== hojaActual?.id)
+                  .slice(0, 15)
+                  .map((hoja) => (
+                    <div
+                      key={hoja.id}
+                      onClick={() => {
+                        handleSelectHoja(hoja);
+                        setShowHojaSelector(false);
+                      }}
+                      style={{
+                        padding: '12px 16px',
+                        borderBottom: `1px solid ${colors.border}`,
+                        cursor: 'pointer',
+                        transition: 'background-color 0.2s'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = colors.background;
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = 'transparent';
+                      }}
+                    >
+                      <div style={{ fontSize: '14px', fontWeight: '600', color: colors.text, marginBottom: '4px' }}>
+                        {hoja.cliente || 'Sin cliente'}
+                      </div>
+                      <div style={{ fontSize: '12px', color: colors.textSecondary }}>
+                        {formatFecha(hoja.fechaServicio)}
+                      </div>
+                    </div>
+                  ))}
+
+                {/* Botón para ver todo el histórico */}
+                <div
+                  onClick={() => {
+                    setShowHojaSelector(false);
+                    setShowHistoricoModal(true);
+                  }}
+                  style={{
+                    padding: '12px 16px',
+                    borderTop: `1px solid ${colors.border}`,
+                    cursor: 'pointer',
+                    textAlign: 'center',
+                    backgroundColor: colors.background,
+                    fontWeight: '500',
+                    color: colors.primary
+                  }}
+                >
+                  Ver todo el histórico ({historico.length})
+                </div>
+              </motion.div>
+            )}
+          </div>
+        )}
 
         {/* Botones de acción */}
         <div style={{ display: 'flex', gap: '12px' }}>
@@ -1228,6 +1451,7 @@ const HojaRutaPage = () => {
         historico={historico}
         onViewHoja={handleViewHistorico}
         onDeleteHoja={handleDeleteHoja}
+        onSelectHoja={handleSelectHoja}
       />
 
       <HojaRutaViewModal

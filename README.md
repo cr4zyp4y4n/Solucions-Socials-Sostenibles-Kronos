@@ -1,11 +1,11 @@
-# SSS Kronos v2.1.12
+# SSS Kronos v2.1.14
 
-🚀 **Release Notes - SSS Kronos v2.1.12**
+🚀 **Release Notes - SSS Kronos v2.1.14**
 
 ## 📦 Archivos de Distribución
 
 ### Windows
-- **Instalador:** SSS Kronos-2.1.12 Setup.exe (130 MB aprox.)
+- **Instalador:** SSS Kronos-2.1.14 Setup.exe (130 MB aprox.)
 - **Ubicación:** `out/make/squirrel.windows/x64/`
 - **Compatibilidad:** Windows 10/11 (64-bit)
 
@@ -13,6 +13,29 @@
 *Nota: Los instaladores para macOS y Linux se generarán en futuras versiones*
 
 ## ✨ Nuevas Características y Cambios Clave
+
+### 🆕 **v2.1.14 - Navegación entre Hojas de Ruta y Mejoras de Usabilidad**
+- ✅ **Selector de hojas en header:** Dropdown rápido para cambiar entre hojas de ruta activas sin abrir el histórico
+- ✅ **Botón "Cargar" en histórico:** Nueva opción para seleccionar y cargar cualquier hoja del histórico como hoja actual
+- ✅ **Navegación mejorada:** Posibilidad de cambiar entre múltiples hojas de ruta activas (útil para múltiples caterings simultáneos)
+- ✅ **Corrección de bucle infinito:** Solucionado problema donde al verificar una hoja y subir otra nueva se generaba un bucle
+- ✅ **Gestión de estado optimizada:** Uso de `useRef` para prevenir actualizaciones redundantes y bucles de renderizado
+- ✅ **Comportamiento por defecto mantenido:** La última hoja subida sigue mostrándose automáticamente al entrar a la sección
+- ✅ **Visualización de hoja actual:** Selector muestra claramente qué hoja está activa con indicador visual
+- ✅ **Filtrado inteligente:** Selector excluye automáticamente la hoja actual del listado para evitar duplicados
+- ✅ **Acceso rápido al histórico completo:** Botón en el selector para abrir el modal completo del histórico
+
+### 🆕 **v2.1.13 - Mejoras en Análisis IDONI y Experiencia de Usuario**
+- ✅ **Análisis detallado por día de la semana:** Nueva sección en IDONI para filtrar ventas por día de la semana y mes/año específico
+- ✅ **Tabla de análisis temporal:** Visualización detallada de ventas filtradas con orden cronológico (más antiguo primero)
+- ✅ **Agrupación automática de datos:** Registros duplicados del mismo día y tienda se agrupan automáticamente, sumando ventas y tickets
+- ✅ **Corrección de días de la semana:** Solucionado problema donde los días aparecían desplazados (domingos como lunes) en gráficos y tablas
+- ✅ **Cálculo preciso de días:** Los días de la semana se calculan directamente desde la fecha para evitar errores de zona horaria
+- ✅ **Bloqueo de botones durante carga:** Los botones de selección de dataset (Solucions, Menjar, IDONI) se bloquean mientras se cargan datos de Holded
+- ✅ **Spinner de carga para IDONI:** Reemplazado mensaje de texto por spinner animado con texto explicativo durante la carga
+- ✅ **Alineación consistente:** Spinners de carga alineados verticalmente en todas las secciones
+- ✅ **Prevención de clics durante carga:** Interfaz bloqueada para evitar problemas al cambiar de dataset mientras carga
+- ✅ **Mejora en UX de carga:** Usuario recibe feedback visual claro del estado de carga con mensajes informativos
 
 ### 🆕 **v2.1.12 - Verificación de Listas y Material, Selección de Facturas para Exportación**
 - ✅ **Sistema de verificación de listas y material:** Firma convertida a texto para verificación de checklists, material y equipamiento
@@ -217,6 +240,17 @@
 - ✅ **Gráficos de productos:** Top 10 por importe y cantidad con etiquetas limpias
 - ✅ **Tooltips informativos:** Información completa del producto en hover
 
+### 📊 **Mejoras en AnalyticsPage (v2.1.13)**
+- ✅ **Análisis detallado por día de la semana:** Nueva sección en IDONI con filtros por día de la semana y mes/año
+- ✅ **Agrupación inteligente de datos:** Registros duplicados del mismo día y tienda se agrupan automáticamente
+- ✅ **Corrección de días de la semana:** Solucionado desplazamiento de días en gráficos y tablas de IDONI
+- ✅ **Cálculo preciso desde fechas:** Días calculados directamente desde objetos Date para evitar errores de zona horaria
+- ✅ **Bloqueo de interfaz durante carga:** Botones de selección bloqueados mientras se cargan datos de Holded
+- ✅ **Spinner de carga mejorado:** Indicador visual con texto explicativo para IDONI durante la carga
+- ✅ **Alineación consistente:** Spinners de carga alineados verticalmente en todas las secciones
+- ✅ **Orden cronológico:** Tabla de análisis ordenada con fechas más antiguas primero
+- ✅ **Totales agrupados:** Cálculo correcto de totales después de agrupar registros duplicados
+
 ### 📊 **Mejoras en AnalyticsPage (v2.1.12)**
 - ✅ **Pantalla de carga integrada:** Indicador de carga dentro de la sección mientras se cargan las tablas
 - ✅ **Mensajes de carga contextuales:** Usuario sabe exactamente qué datos se están cargando
@@ -251,7 +285,30 @@
 - ✅ **Interfaz adaptativa:** Solo lectura para usuarios básicos
 - ✅ **Notificaciones inteligentes:** Sistema de notificaciones integrado con Supabase
 
+### 📋 **Mejoras en Hojas de Ruta (v2.1.14)**
+- ✅ **Selector de hojas rápido:** Dropdown en el header que muestra la hoja actual y las últimas 15 hojas del histórico
+- ✅ **Cambio rápido entre hojas:** Un solo clic para cambiar entre diferentes hojas de ruta activas
+- ✅ **Botón "Cargar" en histórico:** Nueva funcionalidad para seleccionar cualquier hoja del histórico y cargarla como actual
+- ✅ **Indicador visual de hoja actual:** La hoja activa se muestra con fondo destacado y check verde en el selector
+- ✅ **Prevención de duplicados:** El selector filtra automáticamente la hoja actual del listado del histórico
+- ✅ **Gestión de múltiples caterings:** Soporte para trabajar con múltiples hojas de ruta activas simultáneamente
+- ✅ **Comportamiento inteligente:** La última hoja subida se muestra por defecto, pero se puede cambiar fácilmente
+- ✅ **Recarga automática del histórico:** Al seleccionar una hoja, el histórico se actualiza automáticamente
+
 ### 🐞 Correcciones de Errores
+
+#### **v2.1.14 - Correcciones de Hojas de Ruta**
+- ✅ **Corregido bucle infinito:** Solucionado problema donde al verificar una hoja y subir otra nueva se generaba un bucle cambiando entre ambas
+- ✅ **Corregida gestión de estado:** Uso de `useRef` para prevenir actualizaciones redundantes del checklist
+- ✅ **Corregida carga de hojas:** `handleUploadSuccess` ahora solo recarga el histórico, no la hoja actual, evitando cambios inesperados
+- ✅ **Corregida navegación:** Al seleccionar una hoja del histórico, se carga correctamente sin afectar otras hojas activas
+
+#### **v2.1.13 - Correcciones de Análisis IDONI**
+- ✅ **Corregido desplazamiento de días:** Los días de la semana ahora se calculan correctamente desde la fecha, evitando errores de zona horaria
+- ✅ **Corregida visualización de días:** Gráficos y tablas muestran el día correcto del calendario
+- ✅ **Corregida agrupación de datos:** Registros duplicados del mismo día y tienda ahora se agrupan correctamente
+- ✅ **Corregido posicionamiento de spinner:** Spinner de carga de IDONI alineado con el de Solucions
+- ✅ **Corregido bloqueo de interfaz:** Botones ahora se bloquean correctamente durante la carga de datos
 
 #### **v2.1.12 - Correcciones de Análisis y Datos**
 - ✅ **Corregido error "infinity" en vista Bruno:** Solucionados valores infinitos en totales y cálculos
@@ -362,7 +419,7 @@
 
 ### 📥 Descargar
 1. Ve a la sección Releases de este repositorio
-2. Descarga `SSS Kronos-2.1.12 Setup.exe`
+2. Descarga `SSS Kronos-2.1.14 Setup.exe`
 3. Ejecuta el instalador y sigue las instrucciones
 
 ### ⚡ Primera Ejecución
@@ -404,6 +461,21 @@
 - **Documentación:** docs.supabase.com
 
 ## 🔄 Próximas Versiones
+
+### 🎯 v2.1.14 ✅ **COMPLETADA**
+- ✅ Selector de hojas en header para navegación rápida ✅
+- ✅ Botón "Cargar" en modal de histórico ✅
+- ✅ Corrección de bucle infinito al subir hojas ✅
+- ✅ Gestión de estado optimizada con useRef ✅
+- ✅ Soporte para múltiples hojas de ruta activas ✅
+
+### 🎯 v2.1.13 ✅ **COMPLETADA**
+- ✅ Análisis detallado por día de la semana en IDONI ✅
+- ✅ Agrupación automática de registros duplicados ✅
+- ✅ Corrección de días de la semana en gráficos y tablas ✅
+- ✅ Bloqueo de botones durante carga ✅
+- ✅ Spinner de carga mejorado para IDONI ✅
+- ✅ Alineación consistente de spinners ✅
 
 ### 🎯 v2.1.12 ✅ **COMPLETADA**
 - ✅ Sistema de verificación de listas y material (texto) ✅

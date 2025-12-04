@@ -16,7 +16,8 @@ const HojaRutaHistoricoModal = ({
   onClose, 
   historico, 
   onViewHoja, 
-  onDeleteHoja 
+  onDeleteHoja,
+  onSelectHoja
 }) => {
   const { colors } = useTheme();
 
@@ -190,6 +191,33 @@ const HojaRutaHistoricoModal = ({
                     gap: '8px',
                     alignItems: 'center'
                   }}>
+                    <motion.button
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                      onClick={() => {
+                        if (onSelectHoja) {
+                          onSelectHoja(hoja);
+                          onClose();
+                        }
+                      }}
+                      style={{
+                        backgroundColor: colors.success,
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '8px',
+                        padding: '8px 12px',
+                        cursor: 'pointer',
+                        fontSize: '12px',
+                        fontWeight: '500',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px'
+                      }}
+                    >
+                      <FileText size={14} />
+                      Cargar
+                    </motion.button>
+                    
                     <motion.button
                       whileHover={{ scale: 1.05 }}
                       whileTap={{ scale: 0.95 }}
