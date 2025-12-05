@@ -1,5 +1,6 @@
 # SSS Kronos v2.1.14
 
+
 🚀 **Release Notes - SSS Kronos v2.1.14**
 
 ## 📦 Archivos de Distribución

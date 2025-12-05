@@ -20,7 +20,9 @@ import {
   Trash2,
   Pen,
   CheckCircle2,
-  ChevronDown
+  ChevronDown,
+  Plus,
+  X
 } from 'lucide-react';
 import { useTheme } from './ThemeContext';
 import { useAuth } from './AuthContext';
@@ -52,6 +54,9 @@ const HojaRutaPage = () => {
   const [empleadoSeleccionado, setEmpleadoSeleccionado] = useState(null);
   const [selectedHoja, setSelectedHoja] = useState(null);
   const [showHojaSelector, setShowHojaSelector] = useState(false);
+  const [nuevaNotaServicio, setNuevaNotaServicio] = useState('');
+  const [editandoNotaIndex, setEditandoNotaIndex] = useState(null);
+  const [notaEditandoTexto, setNotaEditandoTexto] = useState('');
   
   // Referencia para evitar bucles en la actualización del checklist
   const hojaActualizandoRef = useRef(false);
@@ -150,9 +155,8 @@ const HojaRutaPage = () => {
     // Establecer la nueva hoja y actualizar referencias
     hojaActualizandoRef.current = true;
     ultimaHojaIdRef.current = nuevaHoja.id;
-    setHojaActual(nuevaHoja);
     
-    // Solo recargar el histórico, no cambiar la hoja actual
+    // Recargar el histórico PRIMERO para asegurar que tenemos todas las hojas
     try {
       const historicoData = await hojaRutaService.getHistorico();
       setHistorico(historicoData);
@@ -160,6 +164,8 @@ const HojaRutaPage = () => {
       console.error('Error recargando histórico:', err);
     }
     
+    // Luego establecer la nueva hoja como actual
+    setHojaActual(nuevaHoja);
     hojaActualizandoRef.current = false;
     setError(null);
   };
@@ -185,12 +191,16 @@ const HojaRutaPage = () => {
       const hojaCompleta = await hojaRutaService.getHojaRuta(hoja.id);
       if (hojaCompleta) {
         // Actualizar referencias antes de establecer la hoja
-        hojaActualizandoRef.current = false;
+        hojaActualizandoRef.current = true; // Prevenir actualizaciones durante el cambio
         ultimaHojaIdRef.current = hojaCompleta.id;
-        setHojaActual(hojaCompleta);
-        // Recargar el histórico para mantenerlo actualizado
+        
+        // Recargar el histórico PRIMERO para asegurar que tenemos todas las hojas
         const historicoData = await hojaRutaService.getHistorico();
         setHistorico(historicoData);
+        
+        // Luego establecer la hoja actual
+        setHojaActual(hojaCompleta);
+        hojaActualizandoRef.current = false;
         setError(null);
       } else {
         setError('No se pudo cargar la hoja de ruta seleccionada');
@@ -198,6 +208,7 @@ const HojaRutaPage = () => {
     } catch (err) {
       console.error('Error cargando hoja seleccionada:', err);
       setError('Error al cargar la hoja de ruta seleccionada');
+      hojaActualizandoRef.current = false;
     } finally {
       setLoading(false);
     }
@@ -267,6 +278,68 @@ const HojaRutaPage = () => {
     console.log('👤 Navegando a empleado:', empleado);
     setEmpleadoSeleccionado(empleado);
     setShowEmpleadoModal(true);
+  };
+
+  // Handlers para notas de servicio
+  const handleAñadirNotaServicio = async () => {
+    if (!hojaActual || !nuevaNotaServicio.trim()) return;
+    
+    try {
+      const hojaActualizada = await hojaRutaService.añadirNotaServicio(hojaActual.id, nuevaNotaServicio);
+      if (hojaActualizada) {
+        ultimaHojaIdRef.current = hojaActualizada.id;
+        setHojaActual(hojaActualizada);
+        setNuevaNotaServicio('');
+        setError(null);
+      }
+    } catch (err) {
+      console.error('Error añadiendo nota de servicio:', err);
+      setError('Error al añadir la nota de servicio');
+    }
+  };
+
+  const handleEditarNotaServicio = async (indice) => {
+    if (!hojaActual || !notaEditandoTexto.trim()) return;
+    
+    try {
+      const hojaActualizada = await hojaRutaService.editarNotaServicio(hojaActual.id, indice, notaEditandoTexto);
+      if (hojaActualizada) {
+        ultimaHojaIdRef.current = hojaActualizada.id;
+        setHojaActual(hojaActualizada);
+        setEditandoNotaIndex(null);
+        setNotaEditandoTexto('');
+        setError(null);
+      }
+    } catch (err) {
+      console.error('Error editando nota de servicio:', err);
+      setError('Error al editar la nota de servicio');
+    }
+  };
+
+  const handleEliminarNotaServicio = async (indice) => {
+    if (!hojaActual || !window.confirm('¿Estás seguro de que quieres eliminar esta nota de servicio?')) return;
+    
+    try {
+      const hojaActualizada = await hojaRutaService.eliminarNotaServicio(hojaActual.id, indice);
+      if (hojaActualizada) {
+        ultimaHojaIdRef.current = hojaActualizada.id;
+        setHojaActual(hojaActualizada);
+        setError(null);
+      }
+    } catch (err) {
+      console.error('Error eliminando nota de servicio:', err);
+      setError('Error al eliminar la nota de servicio');
+    }
+  };
+
+  const handleIniciarEdicion = (indice, texto) => {
+    setEditandoNotaIndex(indice);
+    setNotaEditandoTexto(texto);
+  };
+
+  const handleCancelarEdicion = () => {
+    setEditandoNotaIndex(null);
+    setNotaEditandoTexto('');
   };
 
   // Obtener estadísticas del checklist
@@ -1282,7 +1355,7 @@ const HojaRutaPage = () => {
                       color: colors.primary,
                       margin: 0
                     }}>
-                      {historico.length + 1}
+                      {historico.length}
                     </p>
                   </div>
                 </div>
@@ -1337,7 +1410,8 @@ const HojaRutaPage = () => {
                 backgroundColor: colors.surface,
                 borderRadius: '12px',
                 padding: '24px',
-                border: `1px solid ${colors.border}`
+                border: `1px solid ${colors.border}`,
+                marginBottom: '24px'
               }}>
                 <h3 style={{ 
                   fontSize: '18px', 
@@ -1373,6 +1447,220 @@ const HojaRutaPage = () => {
                 </div>
               </motion.div>
             )}
+
+            {/* Notas de Servicio */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.4 }}
+              style={{
+                backgroundColor: colors.surface,
+                borderRadius: '12px',
+                padding: '24px',
+                border: `1px solid ${colors.border}`
+              }}>
+              <h3 style={{ 
+                fontSize: '18px', 
+                fontWeight: 'bold', 
+                color: colors.text,
+                margin: '0 0 20px 0',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px'
+              }}>
+                <FileText size={20} color={colors.primary} />
+                Notas de Servicio
+              </h3>
+
+              {/* Lista de notas de servicio */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '16px' }}>
+                {hojaActual.notasServicio && hojaActual.notasServicio.length > 0 ? (
+                  hojaActual.notasServicio.map((nota, index) => (
+                    <div key={index} style={{
+                      padding: '12px',
+                      backgroundColor: colors.background,
+                      borderRadius: '8px',
+                      border: `1px solid ${colors.border}`,
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      gap: '12px'
+                    }}>
+                      {editandoNotaIndex === index ? (
+                        <>
+                          <input
+                            type="text"
+                            value={notaEditandoTexto}
+                            onChange={(e) => setNotaEditandoTexto(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                handleEditarNotaServicio(index);
+                              } else if (e.key === 'Escape') {
+                                handleCancelarEdicion();
+                              }
+                            }}
+                            style={{
+                              flex: 1,
+                              padding: '8px 12px',
+                              borderRadius: '6px',
+                              border: `1px solid ${colors.border}`,
+                              backgroundColor: colors.surface,
+                              color: colors.text,
+                              fontSize: '14px',
+                              outline: 'none'
+                            }}
+                            autoFocus
+                          />
+                          <motion.button
+                            whileHover={{ scale: 1.05 }}
+                            whileTap={{ scale: 0.95 }}
+                            onClick={() => handleEditarNotaServicio(index)}
+                            style={{
+                              padding: '8px',
+                              backgroundColor: colors.primary,
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '6px',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center'
+                            }}
+                          >
+                            <CheckCircle size={16} />
+                          </motion.button>
+                          <motion.button
+                            whileHover={{ scale: 1.05 }}
+                            whileTap={{ scale: 0.95 }}
+                            onClick={handleCancelarEdicion}
+                            style={{
+                              padding: '8px',
+                              backgroundColor: colors.error + '20',
+                              color: colors.error,
+                              border: 'none',
+                              borderRadius: '6px',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center'
+                            }}
+                          >
+                            <X size={16} />
+                          </motion.button>
+                        </>
+                      ) : (
+                        <>
+                          <p style={{ 
+                            fontSize: '14px', 
+                            color: colors.text,
+                            margin: 0,
+                            flex: 1,
+                            lineHeight: '1.5'
+                          }}>
+                            {nota}
+                          </p>
+                          <div style={{ display: 'flex', gap: '8px' }}>
+                            <motion.button
+                              whileHover={{ scale: 1.05 }}
+                              whileTap={{ scale: 0.95 }}
+                              onClick={() => handleIniciarEdicion(index, nota)}
+                              style={{
+                                padding: '6px',
+                                backgroundColor: colors.primary + '20',
+                                color: colors.primary,
+                                border: 'none',
+                                borderRadius: '6px',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center'
+                              }}
+                            >
+                              <Edit3 size={14} />
+                            </motion.button>
+                            <motion.button
+                              whileHover={{ scale: 1.05 }}
+                              whileTap={{ scale: 0.95 }}
+                              onClick={() => handleEliminarNotaServicio(index)}
+                              style={{
+                                padding: '6px',
+                                backgroundColor: colors.error + '20',
+                                color: colors.error,
+                                border: 'none',
+                                borderRadius: '6px',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center'
+                              }}
+                            >
+                              <Trash2 size={14} />
+                            </motion.button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  ))
+                ) : (
+                  <p style={{ 
+                    fontSize: '14px', 
+                    color: colors.textSecondary,
+                    margin: 0,
+                    fontStyle: 'italic',
+                    textAlign: 'center',
+                    padding: '20px'
+                  }}>
+                    No hay notas de servicio. Añade una nueva nota usando el formulario de abajo.
+                  </p>
+                )}
+              </div>
+
+              {/* Formulario para añadir nueva nota */}
+              <div style={{ display: 'flex', gap: '8px', marginTop: '16px' }}>
+                <input
+                  type="text"
+                  value={nuevaNotaServicio}
+                  onChange={(e) => setNuevaNotaServicio(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && nuevaNotaServicio.trim()) {
+                      handleAñadirNotaServicio();
+                    }
+                  }}
+                  placeholder="Escribe una nueva nota de servicio..."
+                  style={{
+                    flex: 1,
+                    padding: '12px',
+                    borderRadius: '8px',
+                    border: `1px solid ${colors.border}`,
+                    backgroundColor: colors.background,
+                    color: colors.text,
+                    fontSize: '14px',
+                    outline: 'none'
+                  }}
+                />
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={handleAñadirNotaServicio}
+                  disabled={!nuevaNotaServicio.trim()}
+                  style={{
+                    padding: '12px 20px',
+                    backgroundColor: nuevaNotaServicio.trim() ? colors.primary : colors.border,
+                    color: nuevaNotaServicio.trim() ? 'white' : colors.textSecondary,
+                    border: 'none',
+                    borderRadius: '8px',
+                    cursor: nuevaNotaServicio.trim() ? 'pointer' : 'not-allowed',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    fontSize: '14px',
+                    fontWeight: '500'
+                  }}
+                >
+                  <Plus size={18} />
+                  Añadir
+                </motion.button>
+              </div>
+            </motion.div>
           </div>
         </motion.div>
       ) : (
@@ -1452,6 +1740,8 @@ const HojaRutaPage = () => {
         onViewHoja={handleViewHistorico}
         onDeleteHoja={handleDeleteHoja}
         onSelectHoja={handleSelectHoja}
+        hojaActual={hojaActual}
+        ultimaHojaSubida={historico.length > 0 ? historico[0] : null}
       />
 
       <HojaRutaViewModal

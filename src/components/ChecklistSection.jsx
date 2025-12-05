@@ -68,7 +68,19 @@ const ChecklistSection = ({
     { id: 'bebidas', label: 'Bebidas', icon: Wine }
   ];
 
-  const handleToggleTarea = (tipo, fase, tareaId, completed) => {
+  // Verificar si el usuario es "Usuario" (rol básico)
+  const esUsuarioBasico = useMemo(() => {
+    const userRole = user?.role?.toLowerCase();
+    return userRole === 'usuario';
+  }, [user?.role]);
+
+  const handleToggleTarea = (tipo, fase, tareaId, completed, tareaActual) => {
+    // Si el usuario es "Usuario" y la tarea ya está completada, no permitir desmarcar
+    if (esUsuarioBasico && tareaActual?.completed && !completed) {
+      console.log('⚠️ Usuario básico no puede desmarcar tareas completadas');
+      return; // No hacer nada, no permitir desmarcar
+    }
+    
     console.log('🔄 Toggle tarea:', { tipo, fase, tareaId, completed });
     onUpdateChecklist(hojaRuta.id, tipo, fase, tareaId, completed, user?.name || user?.email || 'Usuario');
   };
@@ -327,22 +339,28 @@ const ChecklistSection = ({
           >
             {/* Checkbox */}
             <motion.button
-              whileHover={{ scale: 1.1 }}
-              whileTap={{ scale: 0.9 }}
+              whileHover={{ scale: esUsuarioBasico && tarea.completed ? 1 : 1.1 }}
+              whileTap={{ scale: esUsuarioBasico && tarea.completed ? 1 : 0.9 }}
               onClick={() => {
+                // Si es usuario básico y la tarea ya está completada, no hacer nada
+                if (esUsuarioBasico && tarea.completed) {
+                  return;
+                }
                 const tipo = activeTab === 'general' ? 'general' : activeTab;
                 const fase = activeTab === 'general' ? activeSubTab : '';
-                handleToggleTarea(tipo, fase, tarea.id, !tarea.completed);
+                handleToggleTarea(tipo, fase, tarea.id, !tarea.completed, tarea);
               }}
               style={{
                 backgroundColor: 'transparent',
                 border: 'none',
-                cursor: 'pointer',
+                cursor: esUsuarioBasico && tarea.completed ? 'not-allowed' : 'pointer',
                 padding: '4px',
                 display: 'flex',
                 alignItems: 'center',
-                justifyContent: 'center'
+                justifyContent: 'center',
+                opacity: esUsuarioBasico && tarea.completed ? 0.6 : 1
               }}
+              title={esUsuarioBasico && tarea.completed ? 'No puedes desmarcar tareas completadas' : undefined}
             >
               {tarea.completed ? (
                 <CheckCircle2 size={24} color={colors.success} />

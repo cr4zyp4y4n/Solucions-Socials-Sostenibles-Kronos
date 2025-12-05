@@ -7,7 +7,8 @@ import {
   FileText, 
   Eye,
   Trash2,
-  Download
+  Download,
+  CheckCircle
 } from 'lucide-react';
 import { useTheme } from './ThemeContext';
 
@@ -17,9 +18,11 @@ const HojaRutaHistoricoModal = ({
   historico, 
   onViewHoja, 
   onDeleteHoja,
-  onSelectHoja
+  onSelectHoja,
+  hojaActual,
+  ultimaHojaSubida
 }) => {
-  const { colors } = useTheme();
+  const { colors, isDarkMode } = useTheme();
 
   if (!isOpen) return null;
 
@@ -119,17 +122,24 @@ const HojaRutaHistoricoModal = ({
         }}>
           {historico && historico.length > 0 ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {historico.map((hoja, index) => (
+              {historico.map((hoja, index) => {
+                const esHojaViendo = hojaActual && hoja.id === hojaActual.id; // Hoja que está siendo vista
+                const esUltimaHojaSubida = ultimaHojaSubida && hoja.id === ultimaHojaSubida.id; // Última hoja subida
+                // Color adaptativo según el tema - solo para la hoja que se está viendo
+                const backgroundColorHojaViendo = isDarkMode 
+                  ? '#1e3a5f' // Azul oscuro para modo oscuro
+                  : '#E3F2FD'; // Azul clarito para modo claro
+                return (
                 <motion.div
                   key={hoja.id}
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: index * 0.1 }}
                   style={{
-                    backgroundColor: colors.background,
+                    backgroundColor: esHojaViendo ? backgroundColorHojaViendo : colors.background,
                     borderRadius: '12px',
                     padding: '16px',
-                    border: `1px solid ${colors.border}`,
+                    border: `1px solid ${esHojaViendo ? colors.primary + '40' : colors.border}`,
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'center'
@@ -160,6 +170,34 @@ const HojaRutaHistoricoModal = ({
                       }}>
                         {formatFechaServicio(hoja.fechaServicio)}
                       </span>
+                      {esHojaViendo && (
+                        <span style={{
+                          fontSize: '11px',
+                          fontWeight: '600',
+                          color: '#4CAF50', // Verde
+                          backgroundColor: '#4CAF5020',
+                          padding: '4px 10px',
+                          borderRadius: '12px',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.5px'
+                        }}>
+                          VIENDO
+                        </span>
+                      )}
+                      {esUltimaHojaSubida && (
+                        <span style={{
+                          fontSize: '11px',
+                          fontWeight: '600',
+                          color: '#2196F3', // Azul
+                          backgroundColor: '#2196F320',
+                          padding: '4px 10px',
+                          borderRadius: '12px',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.5px'
+                        }}>
+                          HOJA ACTUAL
+                        </span>
+                      )}
                     </div>
                     
                     <div style={{
@@ -191,54 +229,58 @@ const HojaRutaHistoricoModal = ({
                     gap: '8px',
                     alignItems: 'center'
                   }}>
-                    <motion.button
-                      whileHover={{ scale: 1.05 }}
-                      whileTap={{ scale: 0.95 }}
-                      onClick={() => {
-                        if (onSelectHoja) {
-                          onSelectHoja(hoja);
-                          onClose();
-                        }
-                      }}
-                      style={{
-                        backgroundColor: colors.success,
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '8px',
-                        padding: '8px 12px',
-                        cursor: 'pointer',
-                        fontSize: '12px',
-                        fontWeight: '500',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px'
-                      }}
-                    >
-                      <FileText size={14} />
-                      Cargar
-                    </motion.button>
-                    
-                    <motion.button
-                      whileHover={{ scale: 1.05 }}
-                      whileTap={{ scale: 0.95 }}
-                      onClick={() => onViewHoja(hoja)}
-                      style={{
-                        backgroundColor: colors.primary,
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '8px',
-                        padding: '8px 12px',
-                        cursor: 'pointer',
-                        fontSize: '12px',
-                        fontWeight: '500',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px'
-                      }}
-                    >
-                      <Eye size={14} />
-                      Ver
-                    </motion.button>
+                    {!esHojaViendo && (
+                      <>
+                        <motion.button
+                          whileHover={{ scale: 1.05 }}
+                          whileTap={{ scale: 0.95 }}
+                          onClick={() => {
+                            if (onSelectHoja) {
+                              onSelectHoja(hoja);
+                              onClose();
+                            }
+                          }}
+                          style={{
+                            backgroundColor: colors.success,
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '8px',
+                            padding: '8px 12px',
+                            cursor: 'pointer',
+                            fontSize: '12px',
+                            fontWeight: '500',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px'
+                          }}
+                        >
+                          <FileText size={14} />
+                          Cargar
+                        </motion.button>
+                        
+                        <motion.button
+                          whileHover={{ scale: 1.05 }}
+                          whileTap={{ scale: 0.95 }}
+                          onClick={() => onViewHoja(hoja)}
+                          style={{
+                            backgroundColor: colors.primary,
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '8px',
+                            padding: '8px 12px',
+                            cursor: 'pointer',
+                            fontSize: '12px',
+                            fontWeight: '500',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px'
+                          }}
+                        >
+                          <Eye size={14} />
+                          Ver
+                        </motion.button>
+                      </>
+                    )}
                     
                     <motion.button
                       whileHover={{ scale: 1.05 }}
@@ -263,7 +305,7 @@ const HojaRutaHistoricoModal = ({
                     </motion.button>
                   </div>
                 </motion.div>
-              ))}
+              )})}
             </div>
           ) : (
             <div style={{

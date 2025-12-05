@@ -531,6 +531,7 @@ class HojaRutaSupabaseService {
       horarios: hoja.horarios || {},
       estado: hoja.estado || 'preparacion',
       notas: hoja.notas || [],
+      notasServicio: hoja.notas_servicio || [],
       equipamiento: equipamiento,
       menus: menus,
       bebidas: bebidas,
@@ -737,6 +738,7 @@ class HojaRutaSupabaseService {
         horarios: hojaData.horarios || {},
         estado: hojaData.estado || hojaData.estadoServicio || 'preparacion',
         notas: Array.isArray(hojaData.notas) ? hojaData.notas : [],
+        notas_servicio: Array.isArray(hojaData.notasServicio) ? hojaData.notasServicio : [],
         created_by: userId || null // Puede ser null si no hay usuario
       };
 
@@ -884,6 +886,120 @@ class HojaRutaSupabaseService {
       return true;
     } catch (error) {
       console.error('❌ Error eliminando hoja de ruta:', error);
+      throw error;
+    }
+  }
+
+  // =====================================================
+  // MÉTODOS PARA GESTIÓN DE NOTAS DE SERVICIO
+  // =====================================================
+
+  // Añadir una nota de servicio
+  async añadirNotaServicio(hojaId, nota) {
+    try {
+      // Obtener la hoja actual
+      const { data: hoja, error: errorHoja } = await supabase
+        .from('hojas_ruta')
+        .select('notas_servicio')
+        .eq('id', hojaId)
+        .single();
+
+      if (errorHoja) throw errorHoja;
+
+      // Obtener notas actuales o inicializar array vacío
+      const notasActuales = hoja?.notas_servicio || [];
+      
+      // Añadir la nueva nota
+      const nuevasNotas = [...notasActuales, nota.trim()];
+
+      // Actualizar en la base de datos
+      const { error } = await supabase
+        .from('hojas_ruta')
+        .update({ notas_servicio: nuevasNotas })
+        .eq('id', hojaId);
+
+      if (error) throw error;
+
+      return await this.getHojaRuta(hojaId);
+    } catch (error) {
+      console.error('❌ Error añadiendo nota de servicio:', error);
+      throw error;
+    }
+  }
+
+  // Editar una nota de servicio
+  async editarNotaServicio(hojaId, indice, nuevaNota) {
+    try {
+      // Obtener la hoja actual
+      const { data: hoja, error: errorHoja } = await supabase
+        .from('hojas_ruta')
+        .select('notas_servicio')
+        .eq('id', hojaId)
+        .single();
+
+      if (errorHoja) throw errorHoja;
+
+      // Obtener notas actuales
+      const notasActuales = hoja?.notas_servicio || [];
+      
+      // Verificar que el índice es válido
+      if (indice < 0 || indice >= notasActuales.length) {
+        throw new Error('Índice de nota inválido');
+      }
+
+      // Actualizar la nota en el índice especificado
+      const nuevasNotas = [...notasActuales];
+      nuevasNotas[indice] = nuevaNota.trim();
+
+      // Actualizar en la base de datos
+      const { error } = await supabase
+        .from('hojas_ruta')
+        .update({ notas_servicio: nuevasNotas })
+        .eq('id', hojaId);
+
+      if (error) throw error;
+
+      return await this.getHojaRuta(hojaId);
+    } catch (error) {
+      console.error('❌ Error editando nota de servicio:', error);
+      throw error;
+    }
+  }
+
+  // Eliminar una nota de servicio
+  async eliminarNotaServicio(hojaId, indice) {
+    try {
+      // Obtener la hoja actual
+      const { data: hoja, error: errorHoja } = await supabase
+        .from('hojas_ruta')
+        .select('notas_servicio')
+        .eq('id', hojaId)
+        .single();
+
+      if (errorHoja) throw errorHoja;
+
+      // Obtener notas actuales
+      const notasActuales = hoja?.notas_servicio || [];
+      
+      // Verificar que el índice es válido
+      if (indice < 0 || indice >= notasActuales.length) {
+        throw new Error('Índice de nota inválido');
+      }
+
+      // Eliminar la nota en el índice especificado
+      const nuevasNotas = notasActuales.filter((_, i) => i !== indice);
+
+      // Actualizar en la base de datos
+      const { error } = await supabase
+        .from('hojas_ruta')
+        .update({ notas_servicio: nuevasNotas })
+        .eq('id', hojaId);
+
+      if (error) throw error;
+
+      return await this.getHojaRuta(hojaId);
+    } catch (error) {
+      console.error('❌ Error eliminando nota de servicio:', error);
       throw error;
     }
   }
@@ -1135,11 +1251,11 @@ class HojaRutaSupabaseService {
     }
   }
 
-  // Obtener histórico (todas excepto la primera)
+  // Obtener histórico (todas las hojas)
   async getHistorico() {
     try {
       const hojas = await this.getHojasRuta();
-      return hojas.slice(1); // Todas excepto la primera
+      return hojas; // Devolver todas las hojas, el componente filtrará la actual
     } catch (error) {
       console.error('❌ Error obteniendo histórico:', error);
       return [];
