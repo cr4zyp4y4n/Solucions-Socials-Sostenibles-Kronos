@@ -1,10 +1,14 @@
 import { createClient } from '@supabase/supabase-js';
 
-// Configuración de Supabase
-// IMPORTANTE: Reemplaza estas URLs con las de tu proyecto Supabase
-const SUPABASE_URL = 'https://zalnsacawwekmibhoiba.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InphbG5zYWNhd3dla21pYmhvaWJhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTIwNTgxNDMsImV4cCI6MjA2NzYzNDE0M30.vJKSFJGTg19lYgk8O1fr3YJ5wyW_6uEEjQwF3_y6R4I';
-//_dVqMLUP$W53!?j
+// Configuración de Supabase desde variables de entorno
+// IMPORTANTE: Las credenciales deben estar en el archivo .env en la raíz del proyecto
+const SUPABASE_URL = process.env.SUPABASE_URL || 'https://zalnsacawwekmibhoiba.supabase.co';
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InphbG5zYWNhd3dla21pYmhvaWJhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTIwNTgxNDMsImV4cCI6MjA2NzYzNDE0M30.vJKSFJGTg19lYgk8O1fr3YJ5wyW_6uEEjQwF3_y6R4I';
+
+// Validar que las variables de entorno estén configuradas
+if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+  console.error('❌ Error: SUPABASE_URL y SUPABASE_ANON_KEY deben estar configuradas en el archivo .env');
+}
 
 // Crear cliente de Supabase
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {

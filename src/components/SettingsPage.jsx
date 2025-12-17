@@ -183,6 +183,48 @@ const SettingsPage = () => {
   const [showDebugLogs, setShowDebugLogs] = useState(false);
   const [shouldAutoDownload, setShouldAutoDownload] = useState(false);
   const [updateInfo, setUpdateInfo] = useState(null); // Almacenar info de la actualización de electron-updater
+  const [downloadingExecutable, setDownloadingExecutable] = useState(false); // Estado para descarga manual del ejecutable
+  const [latestVersion, setLatestVersion] = useState(null); // Versión más reciente de GitHub
+
+  // Obtener la última versión de GitHub al cargar
+  useEffect(() => {
+    const fetchLatestVersion = async () => {
+      try {
+        const response = await fetch('https://api.github.com/repos/cr4zyp4y4n/Solucions-Socials-Sostenibles-Kronos/releases/latest', {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/vnd.github.v3+json',
+            'User-Agent': 'SSS-Kronos-App'
+          }
+        });
+        
+        if (response.ok) {
+          const githubData = await response.json();
+          const currentVersion = appVersion.replace('v', '');
+          const latestVersionTag = githubData.tag_name.replace('v', '');
+          
+          setLatestVersion(latestVersionTag);
+          
+          // Comparar versiones
+          if (latestVersionTag > currentVersion) {
+            setUpdateAvailable(true);
+            setUpdateInfo({
+              version: latestVersionTag,
+              currentVersion: currentVersion,
+              releaseNotes: githubData.body,
+              htmlUrl: githubData.html_url
+            });
+          }
+        }
+      } catch (error) {
+        console.error('Error obteniendo última versión:', error);
+      }
+    };
+
+    if (appVersion) {
+      fetchLatestVersion();
+    }
+  }, [appVersion]);
 
   // Verificar si el usuario es admin
   const isAdmin = user?.role === 'authenticated' && user?.user_metadata?.role === 'admin';
@@ -479,6 +521,38 @@ const SettingsPage = () => {
       addDebugLog(`   • Tipo de error: ${error.constructor.name}`, 'error');
       setDownloading(false);
       showAlertMessage(`Error en descarga: ${error.message}`, 'error');
+    }
+  };
+
+  // Función para descargar el ejecutable del último release manualmente
+  const downloadLatestExecutable = async () => {
+    if (!window.electronAPI) {
+      showAlertMessage('Error: API de Electron no disponible', 'error');
+      return;
+    }
+
+    setDownloadingExecutable(true);
+    addDebugLog('⬇️ Iniciando descarga manual del ejecutable...', 'info');
+
+    try {
+      const result = await window.electronAPI.downloadLatestExecutable();
+      
+      if (result.success) {
+        addDebugLog(`✅ Archivo descargado exitosamente: ${result.filePath}`, 'success');
+        addDebugLog(`📦 Versión: ${result.version}`, 'info');
+        showAlertMessage(
+          `Archivo descargado exitosamente en: ${result.filePath}\n\nVersión: ${result.version}\n\nPuedes ejecutarlo para instalar la nueva versión.`,
+          'success'
+        );
+      } else {
+        addDebugLog(`❌ Error: ${result.message}`, 'error');
+        showAlertMessage(`Error al descargar: ${result.message}`, 'error');
+      }
+    } catch (error) {
+      addDebugLog(`❌ Error descargando ejecutable: ${error.message}`, 'error');
+      showAlertMessage(`Error al descargar: ${error.message}`, 'error');
+    } finally {
+      setDownloadingExecutable(false);
     }
   };
 
@@ -868,299 +942,365 @@ const SettingsPage = () => {
           )}
         </div>
         
-        {/* Información de debug para todos los usuarios */}
+        {/* Información visual de versiones */}
         <div style={{ 
-          marginBottom: 16, 
-          padding: '12px', 
-          background: colors.surface, 
-          borderRadius: 8,
-          fontSize: 12,
-          color: colors.textSecondary,
-          border: `1px solid ${colors.border}`
+          marginBottom: 24, 
+          padding: '20px', 
+          background: updateAvailable ? colors.success + '15' : colors.surface, 
+          borderRadius: 12,
+          border: `2px solid ${updateAvailable ? colors.success : colors.border}`,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 16
         }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-            <strong>🔧 Información de Debug:</strong>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button
-                onClick={() => setDebugLogs([])}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  color: colors.error,
-                  cursor: 'pointer',
-                  fontSize: 10,
-                  textDecoration: 'underline'
-                }}
-                title="Limpiar logs"
-              >
-                Limpiar
-              </button>
-              <button
-                onClick={() => setShowDebugLogs(!showDebugLogs)}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  color: colors.primary,
-                  cursor: 'pointer',
-                  fontSize: 11,
-                  textDecoration: 'underline'
-                }}
-              >
-                {showDebugLogs ? 'Ocultar logs' : 'Mostrar logs'}
-              </button>
-            </div>
-          </div>
-          • Repositorio: cr4zyp4y4n/Solucions-Socials-Sostenibles-Kronos<br/>
-          • Versión actual: {appVersion}<br/>
-          • Estado: {checking ? 'Verificando...' : downloading ? 'Descargando...' : 'Listo'}<br/>
-          • API disponible: {window.electronAPI ? '✅ Sí' : '❌ No'}<br/>
-          • Modo: {process.env.NODE_ENV === 'development' ? '🛠️ Desarrollo' : '🚀 Producción'}
-          
-          {/* Logs de debug expandibles */}
-          {showDebugLogs && (
-            <div style={{ 
-              marginTop: 12, 
-              padding: '8px', 
-              background: colors.card, 
-              borderRadius: 4,
-              border: `1px solid ${colors.border}`,
-              maxHeight: '200px',
-              overflowY: 'auto',
-              fontSize: 10
-            }}>
-              <div style={{ marginBottom: 8, fontWeight: 600, color: colors.text }}>
-                📋 Logs de Debug ({debugLogs.length} entradas):
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{
+                width: 40,
+                height: 40,
+                borderRadius: '50%',
+                background: updateAvailable ? colors.success + '30' : colors.primary + '30',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}>
+                {updateAvailable ? (
+                  <Download size={20} color={colors.success} />
+                ) : (
+                  <CheckCircle size={20} color={colors.primary} />
+                )}
               </div>
-              {debugLogs.length === 0 ? (
-                <div style={{ color: colors.textSecondary, fontStyle: 'italic' }}>
-                  No hay logs disponibles. Ejecuta una verificación para ver los logs.
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 600, color: colors.text, marginBottom: 4 }}>
+                  {updateAvailable ? 'Actualización disponible' : 'Estás actualizado'}
                 </div>
-              ) : (
-                debugLogs.map((log) => (
-                  <div key={log.id} style={{ 
-                    marginBottom: 4, 
-                    padding: '2px 4px',
-                    borderRadius: 2,
-                    fontSize: 9,
-                    fontFamily: 'monospace',
-                    color: log.type === 'error' ? colors.error : 
-                           log.type === 'warning' ? colors.warning : 
-                           log.type === 'success' ? colors.success : 
-                           colors.textSecondary
-                  }}>
-                    [{log.timestamp}] {log.message}
+                <div style={{ fontSize: 12, color: colors.textSecondary }}>
+                  {updateAvailable ? 'Hay una nueva versión lista para descargar' : 'Tienes la última versión instalada'}
+                </div>
+              </div>
+            </div>
+            {updateAvailable && (
+              <div style={{
+                padding: '6px 12px',
+                borderRadius: '20px',
+                fontSize: 11,
+                fontWeight: 600,
+                background: colors.success,
+                color: 'white'
+              }}>
+                Nueva versión
+              </div>
+            )}
+          </div>
+
+          {/* Comparación visual de versiones */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 16,
+            padding: '16px',
+            background: colors.card,
+            borderRadius: 8,
+            border: `1px solid ${colors.border}`
+          }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 11, color: colors.textSecondary, marginBottom: 6, fontWeight: 500 }}>
+                Versión actual
+              </div>
+              <div style={{
+                fontSize: 18,
+                fontWeight: 700,
+                color: updateAvailable ? colors.textSecondary : colors.text,
+                textDecoration: updateAvailable ? 'line-through' : 'none',
+                opacity: updateAvailable ? 0.6 : 1
+              }}>
+                v{appVersion}
+              </div>
+            </div>
+            
+            {updateAvailable && latestVersion && (
+              <>
+                <div style={{
+                  fontSize: 20,
+                  color: colors.textSecondary,
+                  opacity: 0.4
+                }}>
+                  →
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 11, color: colors.success, marginBottom: 6, fontWeight: 500 }}>
+                    Nueva versión disponible
                   </div>
-                ))
+                  <div style={{
+                    fontSize: 18,
+                    fontWeight: 700,
+                    color: colors.success
+                  }}>
+                    v{latestVersion}
+                  </div>
+                </div>
+              </>
+            )}
+            
+            {!updateAvailable && latestVersion && (
+              <>
+                <div style={{
+                  fontSize: 20,
+                  color: colors.textSecondary,
+                  opacity: 0.4
+                }}>
+                  =
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 11, color: colors.textSecondary, marginBottom: 6, fontWeight: 500 }}>
+                    Última versión en GitHub
+                  </div>
+                  <div style={{
+                    fontSize: 18,
+                    fontWeight: 700,
+                    color: colors.text
+                  }}>
+                    v{latestVersion}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Información técnica colapsable */}
+          <details style={{ fontSize: 11, color: colors.textSecondary }}>
+            <summary style={{ cursor: 'pointer', fontWeight: 500, marginBottom: 8 }}>
+              🔧 Información técnica
+            </summary>
+            <div style={{ marginTop: 8, padding: '12px', background: colors.surface, borderRadius: 6 }}>
+              <div style={{ marginBottom: 4 }}>• Repositorio: cr4zyp4y4n/Solucions-Socials-Sostenibles-Kronos</div>
+              <div style={{ marginBottom: 4 }}>• Estado: {checking ? 'Verificando...' : downloading ? 'Descargando...' : updateDownloaded ? 'Listo para instalar' : 'Listo'}</div>
+              <div style={{ marginBottom: 4 }}>• API disponible: {window.electronAPI ? '✅ Sí' : '❌ No'}</div>
+              <div>• Modo: {process.env.NODE_ENV === 'development' ? '🛠️ Desarrollo' : '🚀 Producción'}</div>
+              
+              {/* Logs de debug expandibles */}
+              <div style={{ marginTop: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <button
+                  onClick={() => setShowDebugLogs(!showDebugLogs)}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: colors.primary,
+                    cursor: 'pointer',
+                    fontSize: 11,
+                    textDecoration: 'underline',
+                    padding: 0
+                  }}
+                >
+                  {showDebugLogs ? 'Ocultar logs' : 'Mostrar logs'}
+                </button>
+                {debugLogs.length > 0 && (
+                  <button
+                    onClick={() => setDebugLogs([])}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: colors.error,
+                      cursor: 'pointer',
+                      fontSize: 10,
+                      textDecoration: 'underline',
+                      padding: 0
+                    }}
+                  >
+                    Limpiar logs
+                  </button>
+                )}
+              </div>
+              
+              {showDebugLogs && (
+                <div style={{ 
+                  marginTop: 8, 
+                  padding: '8px', 
+                  background: colors.card, 
+                  borderRadius: 4,
+                  border: `1px solid ${colors.border}`,
+                  maxHeight: '200px',
+                  overflowY: 'auto',
+                  fontSize: 9
+                }}>
+                  <div style={{ marginBottom: 8, fontWeight: 600, color: colors.text }}>
+                    📋 Logs de Debug ({debugLogs.length} entradas):
+                  </div>
+                  {debugLogs.length === 0 ? (
+                    <div style={{ color: colors.textSecondary, fontStyle: 'italic' }}>
+                      No hay logs disponibles. Ejecuta una verificación para ver los logs.
+                    </div>
+                  ) : (
+                    debugLogs.map((log) => (
+                      <div key={log.id} style={{ 
+                        marginBottom: 4, 
+                        padding: '2px 4px',
+                        borderRadius: 2,
+                        fontSize: 9,
+                        fontFamily: 'monospace',
+                        color: log.type === 'error' ? colors.error : 
+                               log.type === 'warning' ? colors.warning : 
+                               log.type === 'success' ? colors.success : 
+                               colors.textSecondary
+                      }}>
+                        [{log.timestamp}] {log.message}
+                      </div>
+                    ))
+                  )}
+                </div>
               )}
+            </div>
+          </details>
+        </div>
+        
+        {/* Botón único inteligente - Descarga ejecutable directamente */}
+        <div style={{ marginBottom: 16 }}>
+          {updateAvailable && !downloadingExecutable ? (
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={downloadLatestExecutable}
+              disabled={downloadingExecutable || checking}
+              style={{
+                width: '100%',
+                background: colors.success,
+                color: 'white',
+                border: 'none',
+                borderRadius: 12,
+                padding: '16px 24px',
+                fontSize: 16,
+                fontWeight: 600,
+                cursor: (downloadingExecutable || checking) ? 'not-allowed' : 'pointer',
+                opacity: (downloadingExecutable || checking) ? 0.6 : 1,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 12,
+                boxShadow: (downloadingExecutable || checking) ? 'none' : `0 4px 12px ${colors.success}40`
+              }}
+            >
+              <Download size={20} />
+              Descargar Actualización (v{latestVersion})
+            </motion.button>
+          ) : downloadingExecutable ? (
+            <motion.button
+              disabled
+              style={{
+                width: '100%',
+                background: colors.primary,
+                color: 'white',
+                border: 'none',
+                borderRadius: 12,
+                padding: '16px 24px',
+                fontSize: 16,
+                fontWeight: 600,
+                cursor: 'not-allowed',
+                opacity: 0.6,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 12
+              }}
+            >
+              <Download size={20} />
+              Descargando ejecutable...
+            </motion.button>
+          ) : (
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={async () => {
+                // Verificar actualizaciones primero
+                setChecking(true);
+                addDebugLog('🔍 Verificando actualizaciones...', 'info');
+                
+                try {
+                  const response = await fetch('https://api.github.com/repos/cr4zyp4y4n/Solucions-Socials-Sostenibles-Kronos/releases/latest', {
+                    method: 'GET',
+                    headers: {
+                      'Accept': 'application/vnd.github.v3+json',
+                      'User-Agent': 'SSS-Kronos-App'
+                    }
+                  });
+                  
+                  if (response.ok) {
+                    const githubData = await response.json();
+                    const currentVersion = appVersion.replace('v', '');
+                    const latestVersionTag = githubData.tag_name.replace('v', '');
+                    
+                    setLatestVersion(latestVersionTag);
+                    
+                    if (latestVersionTag > currentVersion) {
+                      addDebugLog(`✅ Nueva versión disponible: ${latestVersionTag}`, 'success');
+                      setUpdateAvailable(true);
+                      setUpdateInfo({
+                        version: latestVersionTag,
+                        currentVersion: currentVersion,
+                        releaseNotes: githubData.body,
+                        htmlUrl: githubData.html_url
+                      });
+                      // Descargar automáticamente si hay actualización
+                      downloadLatestExecutable();
+                    } else {
+                      addDebugLog('✅ Ya tienes la última versión', 'info');
+                      showAlertMessage('Ya tienes la última versión disponible', 'info');
+                    }
+                  }
+                } catch (error) {
+                  addDebugLog(`❌ Error verificando: ${error.message}`, 'error');
+                  showAlertMessage('Error al verificar actualizaciones', 'error');
+                } finally {
+                  setChecking(false);
+                }
+              }}
+              disabled={checking || downloadingExecutable}
+              style={{
+                width: '100%',
+                background: colors.primary,
+                color: 'white',
+                border: 'none',
+                borderRadius: 12,
+                padding: '16px 24px',
+                fontSize: 16,
+                fontWeight: 600,
+                cursor: (checking || downloadingExecutable) ? 'not-allowed' : 'pointer',
+                opacity: (checking || downloadingExecutable) ? 0.6 : 1,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 12,
+                boxShadow: (checking || downloadingExecutable) ? 'none' : `0 4px 12px ${colors.primary}40`
+              }}
+            >
+              {checking ? (
+                <>
+                  <RefreshCw size={20} style={{ animation: 'spin 1s linear infinite' }} />
+                  Verificando actualizaciones...
+                </>
+              ) : (
+                <>
+                  <RefreshCw size={20} />
+                  Verificar y Descargar Actualización
+                </>
+              )}
+            </motion.button>
+          )}
+          
+          {downloadingExecutable && (
+            <div style={{ 
+              marginTop: 12,
+              padding: '12px', 
+              background: colors.primary + '22', 
+              borderRadius: 8,
+              color: colors.primary,
+              fontSize: 13,
+              textAlign: 'center'
+            }}>
+              El ejecutable se descargará en tu carpeta de descargas. Ejecútalo para instalar la nueva versión.
             </div>
           )}
         </div>
         
-        <div style={{ marginBottom: 16, display: 'flex', gap: 8 }}>
-          <button
-            onClick={checkForUpdates}
-            disabled={checking || downloading}
-            style={{
-              background: colors.primary,
-              color: 'white',
-              border: 'none',
-              borderRadius: 8,
-              padding: '10px 16px',
-              fontSize: 14,
-              fontWeight: 600,
-              cursor: checking || downloading ? 'not-allowed' : 'pointer',
-              opacity: checking || downloading ? 0.6 : 1
-            }}
-          >
-            {checking ? 'Verificando...' : 'Verificar Actualizaciones'}
-          </button>
-          
-          {/* Botón de prueba para simular descarga */}
-          <button
-            onClick={() => {
-              addDebugLog('🧪 Iniciando prueba de descarga simulada...', 'info');
-              setDownloading(true);
-              setDownloadProgress(0);
-              
-              // Simular progreso de descarga
-              let progress = 0;
-              const interval = setInterval(() => {
-                progress += Math.random() * 15;
-                if (progress >= 100) {
-                  progress = 100;
-                  clearInterval(interval);
-                  addDebugLog('✅ Prueba de descarga completada', 'success');
-                  setDownloading(false);
-                  setUpdateDownloaded(true);
-                } else {
-                  setDownloadProgress(progress);
-                  addDebugLog(`📊 Progreso simulado: ${Math.round(progress)}%`, 'info');
-                }
-              }, 500);
-            }}
-            style={{
-              background: colors.secondary,
-              color: 'white',
-              border: 'none',
-              borderRadius: 8,
-              padding: '10px 16px',
-              fontSize: 12,
-              fontWeight: 600,
-              cursor: 'pointer'
-            }}
-            title="Simular proceso de descarga para probar los logs"
-          >
-            🧪 Probar Logs
-          </button>
-          
-          {/* Botón para verificar archivos del release */}
-          <button
-            onClick={async () => {
-              addDebugLog('🔍 Verificando archivos del release...', 'info');
-              try {
-                // Verificar directamente desde el frontend
-                const response = await fetch('https://api.github.com/repos/cr4zyp4y4n/Solucions-Socials-Sostenibles-Kronos/releases/latest', {
-                  headers: {
-                    'Accept': 'application/vnd.github.v3+json',
-                    'User-Agent': 'SSS-Kronos-App'
-                  }
-                });
-                
-                if (response.ok) {
-                  const releaseInfo = await response.json();
-                  addDebugLog('📁 Archivos del release encontrados:', 'success');
-                  addDebugLog(`📦 Versión: ${releaseInfo.tag_name}`, 'info');
-                  addDebugLog(`📋 Descripción: ${releaseInfo.body?.substring(0, 100)}...`, 'info');
-                  releaseInfo.assets?.forEach(asset => {
-                    addDebugLog(`   • ${asset.name} (${asset.size} bytes)`, 'info');
-                  });
-                } else {
-                  addDebugLog(`❌ Error HTTP: ${response.status}`, 'error');
-                }
-              } catch (error) {
-                addDebugLog(`❌ Error verificando archivos: ${error.message}`, 'error');
-              }
-            }}
-            style={{
-              background: colors.warning,
-              color: 'white',
-              border: 'none',
-              borderRadius: 8,
-              padding: '10px 16px',
-              fontSize: 12,
-              fontWeight: 600,
-              cursor: 'pointer'
-            }}
-            title="Verificar qué archivos están disponibles en el release"
-          >
-            📁 Verificar Archivos
-          </button>
-        </div>
-        
-        {updateAvailable && !downloading && !updateDownloaded && (
-          <div style={{ marginBottom: 16 }}>
-            <div style={{ color: colors.success, marginBottom: 8, fontWeight: 500 }}>
-              ✅ Nueva actualización disponible{updateInfo ? ` (${updateInfo.version})` : ''}
-            </div>
-            {canInstallUpdates ? (
-              <button
-                onClick={() => {
-                  addDebugLog('🖱️ Botón de descarga clickeado', 'info');
-                  downloadUpdate();
-                }}
-                style={{
-                  background: colors.success,
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: 8,
-                  padding: '10px 16px',
-                  fontSize: 14,
-                  fontWeight: 600,
-                  cursor: 'pointer'
-                }}
-              >
-                Descargar Actualización
-              </button>
-            ) : (
-              <div style={{ 
-                padding: '12px', 
-                background: colors.warning + '22', 
-                borderRadius: 8,
-                color: colors.warning,
-                fontSize: 13
-              }}>
-                Contacta con un administrador para instalar la actualización
-              </div>
-            )}
-          </div>
-        )}
-        
-        {downloading && (
-          <div style={{ marginBottom: 16 }}>
-            <div style={{ color: colors.warning, marginBottom: 8, fontWeight: 500 }}>
-              ⬇️ Descargando actualización...
-            </div>
-            <div style={{ 
-              width: '100%', 
-              height: 8, 
-              background: colors.border, 
-              borderRadius: 4,
-              overflow: 'hidden'
-            }}>
-              <div style={{
-                width: `${downloadProgress}%`,
-                height: '100%',
-                background: colors.primary,
-                transition: 'width 0.3s ease'
-              }} />
-            </div>
-            <div style={{ fontSize: 12, color: colors.textSecondary, marginTop: 4 }}>
-              {Math.round(downloadProgress)}% completado
-            </div>
-          </div>
-        )}
-        
-        {updateDownloaded && (
-          <div style={{ marginBottom: 16 }}>
-            <div style={{ color: colors.success, marginBottom: 8, fontWeight: 500 }}>
-              ✅ Actualización descargada y lista para instalar
-            </div>
-            {canInstallUpdates ? (
-              <button
-                onClick={installUpdate}
-                style={{
-                  background: colors.error,
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: 8,
-                  padding: '10px 16px',
-                  fontSize: 14,
-                  fontWeight: 600,
-                  cursor: 'pointer'
-                }}
-              >
-                Reiniciar e Instalar
-              </button>
-            ) : (
-              <div style={{ 
-                padding: '12px', 
-                background: colors.warning + '22', 
-                borderRadius: 8,
-                color: colors.warning,
-                fontSize: 13
-              }}>
-                Contacta con un administrador para completar la instalación
-              </div>
-            )}
-            <div style={{ fontSize: 12, color: colors.textSecondary, marginTop: 8 }}>
-              La aplicación se cerrará automáticamente para instalar la actualización
-            </div>
-          </div>
-        )}
-        
-        <div style={{ fontSize: 12, color: colors.textSecondary }}>
-          Versión actual: {appVersion}
-        </div>
         
         {isAdmin && (
           <div style={{ 

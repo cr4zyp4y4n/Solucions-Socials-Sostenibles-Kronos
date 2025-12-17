@@ -22,6 +22,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // API para verificar archivos del release
   checkReleaseFiles: () => ipcRenderer.invoke('check-release-files'),
   
+  // API para descargar el ejecutable del último release
+  downloadLatestExecutable: () => ipcRenderer.invoke('download-latest-executable'),
+  
   // Listeners para eventos del auto-updater
   onUpdateAvailable: (callback) => ipcRenderer.on('update-available', callback),
   onUpdateNotAvailable: (callback) => ipcRenderer.on('update-not-available', callback),

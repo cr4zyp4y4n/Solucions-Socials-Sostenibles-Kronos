@@ -9,3 +9,11 @@ ADD COLUMN IF NOT EXISTS notas_servicio TEXT[] DEFAULT ARRAY[]::TEXT[];
 -- Comentario para documentación
 COMMENT ON COLUMN hojas_ruta.notas_servicio IS 'Notas de servicio añadidas manualmente por los usuarios (diferentes de las notas importantes del Excel)';
 
+
+
+
+
+
+
+
+

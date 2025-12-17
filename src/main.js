@@ -1,7 +1,11 @@
-const { app, BrowserWindow } = require('electron');
+// Cargar variables de entorno al inicio
+require('dotenv').config();
+
+const { app, BrowserWindow, dialog } = require('electron');
 const path = require('node:path');
 const { ipcMain } = require('electron');
 const https = require('https');
+const fs = require('fs');
 const { autoUpdater } = require('electron-updater');
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
@@ -188,6 +192,125 @@ function setupIpcHandlers() {
         });
       }).on('error', reject);
     });
+  });
+
+  // Handler para descargar el ejecutable del último release
+  console.log('🔧 Registrando handler: download-latest-executable');
+  ipcMain.handle('download-latest-executable', async () => {
+    console.log('📡 Handler IPC: download-latest-executable llamado');
+    try {
+      // 1. Obtener información del último release
+      const releaseInfo = await new Promise((resolve, reject) => {
+        https.get('https://api.github.com/repos/cr4zyp4y4n/Solucions-Socials-Sostenibles-Kronos/releases/latest', {
+          headers: {
+            'User-Agent': 'SSS-Kronos-App',
+            'Accept': 'application/vnd.github.v3+json'
+          }
+        }, (res) => {
+          let data = '';
+          res.on('data', chunk => data += chunk);
+          res.on('end', () => {
+            try {
+              resolve(JSON.parse(data));
+            } catch (e) {
+              reject(e);
+            }
+          });
+        }).on('error', reject);
+      });
+
+      // 2. Buscar el archivo ejecutable (.exe o Setup.exe)
+      const executableAsset = releaseInfo.assets?.find(asset => 
+        asset.name.endsWith('.exe') && 
+        (asset.name.includes('Setup') || asset.name.includes('SSS Kronos'))
+      );
+
+      if (!executableAsset) {
+        throw new Error('No se encontró un archivo ejecutable en el último release');
+      }
+
+      console.log('📦 Archivo encontrado:', executableAsset.name);
+      console.log('📥 URL de descarga:', executableAsset.browser_download_url);
+
+      // 3. Mostrar diálogo para elegir dónde guardar
+      const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
+        title: 'Guardar última versión de SSS Kronos',
+        defaultPath: path.join(app.getPath('downloads'), executableAsset.name),
+        filters: [
+          { name: 'Ejecutables', extensions: ['exe'] },
+          { name: 'Todos los archivos', extensions: ['*'] }
+        ]
+      });
+
+      if (canceled || !filePath) {
+        return { success: false, message: 'Descarga cancelada por el usuario' };
+      }
+
+      // 4. Descargar el archivo
+      return new Promise((resolve, reject) => {
+        const file = fs.createWriteStream(filePath);
+        
+        https.get(executableAsset.browser_download_url, {
+          headers: {
+            'User-Agent': 'SSS-Kronos-App',
+            'Accept': 'application/octet-stream'
+          }
+        }, (response) => {
+          // Redirigir si hay una redirección
+          if (response.statusCode === 302 || response.statusCode === 301) {
+            https.get(response.headers.location, {
+              headers: {
+                'User-Agent': 'SSS-Kronos-App',
+                'Accept': 'application/octet-stream'
+              }
+            }, (redirectResponse) => {
+              redirectResponse.pipe(file);
+              redirectResponse.on('end', () => {
+                file.close();
+                console.log('✅ Archivo descargado exitosamente:', filePath);
+                resolve({ 
+                  success: true, 
+                  message: 'Archivo descargado exitosamente',
+                  filePath: filePath,
+                  version: releaseInfo.tag_name
+                });
+              });
+            }).on('error', (err) => {
+              fs.unlinkSync(filePath); // Eliminar archivo parcial
+              reject(err);
+            });
+          } else {
+            response.pipe(file);
+            response.on('end', () => {
+              file.close();
+              console.log('✅ Archivo descargado exitosamente:', filePath);
+              resolve({ 
+                success: true, 
+                message: 'Archivo descargado exitosamente',
+                filePath: filePath,
+                version: releaseInfo.tag_name
+              });
+            });
+          }
+        }).on('error', (err) => {
+          if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath); // Eliminar archivo parcial
+          }
+          reject(err);
+        });
+
+        file.on('error', (err) => {
+          reject(err);
+        });
+      });
+
+    } catch (error) {
+      console.error('❌ Error descargando ejecutable:', error);
+      return { 
+        success: false, 
+        message: `Error al descargar: ${error.message}` 
+      };
+    }
   });
 }
 

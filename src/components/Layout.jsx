@@ -22,7 +22,10 @@ import {
   ShoppingBag,
   ExternalLink,
   UploadCloud,
-  Package
+  Package,
+  Download,
+  CheckCircle,
+  X
 } from 'feather-icons-react';
 import { useTheme } from './ThemeContext';
 import { useAuth } from './AuthContext';
@@ -84,6 +87,11 @@ const Layout = () => {
   const [showAllNotifications, setShowAllNotifications] = useState(false);
   const [userProfile, setUserProfile] = useState(null); // Nuevo estado para el perfil real
   const [cateringEventId, setCateringEventId] = useState(null); // Para navegación a eventos específicos
+  const [updateAvailable, setUpdateAvailable] = useState(false);
+  const [updateInfo, setUpdateInfo] = useState(null);
+  const [showUpdateTooltip, setShowUpdateTooltip] = useState(false);
+  const [appVersion, setAppVersion] = useState('');
+  const [showNoUpdateMessage, setShowNoUpdateMessage] = useState(false);
   const { isDarkMode, toggleTheme, colors } = useTheme();
   const { user, signOut } = useAuth();
 
@@ -154,11 +162,75 @@ const Layout = () => {
     };
   }, [showNotifications]);
 
+  // Obtener versión de la app al iniciar
+  useEffect(() => {
+    const getVersion = async () => {
+      if (window.electronAPI?.getAppVersion) {
+        try {
+          const version = await window.electronAPI.getAppVersion();
+          setAppVersion(version);
+        } catch (error) {
+          console.error('Error obteniendo versión:', error);
+        }
+      }
+    };
+    getVersion();
+  }, []);
+
+  // Verificar actualizaciones al iniciar la app
+  useEffect(() => {
+    const checkForUpdatesOnStart = async () => {
+      if (!window.electronAPI || !appVersion) return;
+      
+      try {
+        // Verificar con GitHub API directamente
+        const response = await fetch('https://api.github.com/repos/cr4zyp4y4n/Solucions-Socials-Sostenibles-Kronos/releases/latest', {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/vnd.github.v3+json',
+            'User-Agent': 'SSS-Kronos-App'
+          }
+        });
+        
+        if (response.ok) {
+          const githubData = await response.json();
+          const currentVersion = appVersion.replace('v', '');
+          const latestVersion = githubData.tag_name.replace('v', '');
+          
+          // Comparar versiones (formato semver: x.y.z)
+          if (latestVersion > currentVersion) {
+            setUpdateAvailable(true);
+            setUpdateInfo({
+              version: latestVersion,
+              currentVersion: currentVersion,
+              releaseNotes: githubData.body,
+              htmlUrl: githubData.html_url
+            });
+            // Mostrar tooltip automáticamente al detectar actualización
+            setShowUpdateTooltip(true);
+            // Ocultar tooltip después de 5 segundos
+            setTimeout(() => setShowUpdateTooltip(false), 5000);
+          }
+        }
+      } catch (error) {
+        console.error('Error verificando actualizaciones:', error);
+      }
+    };
+
+    if (appVersion) {
+      checkForUpdatesOnStart();
+    }
+  }, [appVersion]);
+
   // Configurar listeners de actualizaciones para notificaciones
   useEffect(() => {
     if (window.electronAPI) {
       // Listener para actualización disponible - mostrar notificación a todos
       window.electronAPI.onUpdateAvailable((event, info) => {
+        setUpdateAvailable(true);
+        setUpdateInfo(info);
+        setShowUpdateTooltip(true);
+        setTimeout(() => setShowUpdateTooltip(false), 5000);
         // Crear notificación automática para todos los usuarios
         createUpdateNotification(info);
       });
@@ -972,6 +1044,189 @@ const Layout = () => {
               </AnimatePresence>
             </div>
 
+            {/* Botón de actualización */}
+            <div style={{ position: 'relative' }}>
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={async () => {
+                  if (updateAvailable) {
+                    navigateTo('settings');
+                  } else {
+                    // Verificar actualizaciones manualmente
+                    try {
+                      if (window.electronAPI?.checkForUpdates) {
+                        await window.electronAPI.checkForUpdates();
+                      }
+                      
+                      // Verificar también con GitHub API
+                      const response = await fetch('https://api.github.com/repos/cr4zyp4y4n/Solucions-Socials-Sostenibles-Kronos/releases/latest', {
+                        method: 'GET',
+                        headers: {
+                          'Accept': 'application/vnd.github.v3+json',
+                          'User-Agent': 'SSS-Kronos-App'
+                        }
+                      });
+                      
+                      if (response.ok) {
+                        const githubData = await response.json();
+                        const currentVersion = appVersion.replace('v', '');
+                        const latestVersion = githubData.tag_name.replace('v', '');
+                        
+                        if (latestVersion > currentVersion) {
+                          // Hay actualización disponible, actualizar estado
+                          setUpdateAvailable(true);
+                          setUpdateInfo({
+                            version: latestVersion,
+                            currentVersion: currentVersion,
+                            releaseNotes: githubData.body,
+                            htmlUrl: githubData.html_url
+                          });
+                          navigateTo('settings');
+                        } else {
+                          // No hay actualización, mostrar mensaje
+                          setShowNoUpdateMessage(true);
+                          setTimeout(() => setShowNoUpdateMessage(false), 3000);
+                        }
+                      } else {
+                        // No hay actualización, mostrar mensaje
+                        setShowNoUpdateMessage(true);
+                        setTimeout(() => setShowNoUpdateMessage(false), 3000);
+                      }
+                    } catch (error) {
+                      // No hay actualización, mostrar mensaje
+                      setShowNoUpdateMessage(true);
+                      setTimeout(() => setShowNoUpdateMessage(false), 3000);
+                    }
+                  }
+                }}
+                onMouseEnter={() => updateAvailable && setShowUpdateTooltip(true)}
+                onMouseLeave={() => setShowUpdateTooltip(false)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  padding: '8px',
+                  borderRadius: '6px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: updateAvailable ? colors.primary : colors.textSecondary,
+                  transition: 'all 0.2s ease',
+                  position: 'relative',
+                }}
+              >
+                <Download size={18} />
+                {updateAvailable && (
+                  <motion.div
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    style={{
+                      position: 'absolute',
+                      top: 2,
+                      right: 2,
+                      background: colors.error,
+                      color: 'white',
+                      borderRadius: '50%',
+                      width: 8,
+                      height: 8,
+                      border: `2px solid ${colors.header}`,
+                    }}
+                  />
+                )}
+              </motion.button>
+              
+              {/* Tooltip de actualización disponible */}
+              <AnimatePresence>
+                {showUpdateTooltip && updateAvailable && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                    style={{
+                      position: 'absolute',
+                      top: '100%',
+                      right: 0,
+                      marginTop: 8,
+                      width: 280,
+                      background: colors.surface,
+                      border: `1px solid ${colors.primary}`,
+                      borderRadius: 12,
+                      padding: '16px',
+                      boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
+                      zIndex: 1001,
+                      pointerEvents: 'auto',
+                    }}
+                    onMouseEnter={() => setShowUpdateTooltip(true)}
+                    onMouseLeave={() => setShowUpdateTooltip(false)}
+                  >
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      gap: 12,
+                    }}>
+                      <div style={{
+                        width: 32,
+                        height: 32,
+                        borderRadius: '50%',
+                        background: colors.primary + '20',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexShrink: 0,
+                      }}>
+                        <Download size={16} color={colors.primary} />
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{
+                          color: colors.text,
+                          fontSize: 14,
+                          fontWeight: 600,
+                          marginBottom: 4,
+                        }}>
+                          Actualización disponible
+                        </div>
+                        <div style={{
+                          color: colors.textSecondary,
+                          fontSize: 12,
+                          lineHeight: 1.4,
+                          marginBottom: 12,
+                        }}>
+                          Hay una nueva versión disponible ({updateInfo?.version || 'Nueva versión'}). Tu versión actual es {updateInfo?.currentVersion || appVersion}.
+                        </div>
+                        <motion.button
+                          whileHover={{ scale: 1.02 }}
+                          whileTap={{ scale: 0.98 }}
+                          onClick={() => {
+                            navigateTo('settings');
+                            setShowUpdateTooltip(false);
+                          }}
+                          style={{
+                            width: '100%',
+                            background: colors.primary,
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: 8,
+                            padding: '8px 16px',
+                            fontSize: 13,
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: 8,
+                          }}
+                        >
+                          <Download size={14} />
+                          Ir a actualizaciones
+                        </motion.button>
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
             <motion.button
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
@@ -1030,6 +1285,75 @@ const Layout = () => {
           {renderSection()}
         </motion.main>
       </div>
+
+      {/* Mensaje de "No hay actualización disponible" */}
+      <AnimatePresence>
+        {showNoUpdateMessage && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            style={{
+              position: 'fixed',
+              top: '20px',
+              right: '20px',
+              zIndex: 1001,
+              backgroundColor: colors.primary + '22',
+              border: `1px solid ${colors.primary}`,
+              borderRadius: '12px',
+              padding: '16px 20px',
+              boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '12px',
+              maxWidth: '400px',
+              minWidth: '300px'
+            }}
+          >
+            <div style={{
+              width: '24px',
+              height: '24px',
+              borderRadius: '50%',
+              backgroundColor: colors.primary,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0
+            }}>
+              <CheckCircle size={14} color="white" />
+            </div>
+            <div style={{
+              flex: 1,
+              fontSize: '15px',
+              fontWeight: '500',
+              color: colors.text,
+              lineHeight: '1.4'
+            }}>
+              Ya tienes la última versión disponible ({appVersion || 'actual'})
+            </div>
+            <button
+              onClick={() => setShowNoUpdateMessage(false)}
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                padding: '4px',
+                borderRadius: '4px',
+                color: colors.text,
+                opacity: 0.7,
+                transition: 'opacity 0.2s',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+              onMouseEnter={(e) => e.target.style.opacity = '1'}
+              onMouseLeave={(e) => e.target.style.opacity = '0.7'}
+            >
+              <X size={16} />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
     </CateringProvider>
   );
