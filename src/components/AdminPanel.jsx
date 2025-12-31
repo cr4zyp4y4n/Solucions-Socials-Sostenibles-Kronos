@@ -30,12 +30,14 @@ import {
   TrendingUp
 } from 'feather-icons-react';
 import { supabase } from '../config/supabase';
+import FichajeAdminSection from './FichajeAdminSection';
 
 const AdminPanel = () => {
   const { user } = useAuth();
   const { colors } = useTheme();
   
   // Estados principales
+  const [activeTab, setActiveTab] = useState('usuarios'); // 'usuarios' o 'fichajes'
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -408,8 +410,57 @@ const AdminPanel = () => {
           color: colors.textSecondary,
           margin: 0
         }}>
-          Gestión completa de usuarios, permisos y seguridad del sistema
+          Gestión completa de usuarios, permisos, seguridad y fichajes del sistema
         </p>
+      </div>
+
+      {/* Pestañas */}
+      <div style={{
+        display: 'flex',
+        gap: '8px',
+        marginBottom: '24px',
+        borderBottom: `2px solid ${colors.border}`
+      }}>
+        <button
+          onClick={() => setActiveTab('usuarios')}
+          style={{
+            padding: '12px 24px',
+            backgroundColor: 'transparent',
+            border: 'none',
+            borderBottom: activeTab === 'usuarios' ? `3px solid ${colors.primary}` : '3px solid transparent',
+            color: activeTab === 'usuarios' ? colors.primary : colors.textSecondary,
+            fontSize: '15px',
+            fontWeight: activeTab === 'usuarios' ? '600' : '500',
+            cursor: 'pointer',
+            transition: 'all 0.2s',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px'
+          }}
+        >
+          <Users size={18} />
+          Usuarios
+        </button>
+        <button
+          onClick={() => setActiveTab('fichajes')}
+          style={{
+            padding: '12px 24px',
+            backgroundColor: 'transparent',
+            border: 'none',
+            borderBottom: activeTab === 'fichajes' ? `3px solid ${colors.primary}` : '3px solid transparent',
+            color: activeTab === 'fichajes' ? colors.primary : colors.textSecondary,
+            fontSize: '15px',
+            fontWeight: activeTab === 'fichajes' ? '600' : '500',
+            cursor: 'pointer',
+            transition: 'all 0.2s',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px'
+          }}
+        >
+          <Clock size={18} />
+          Fichajes
+        </button>
       </div>
 
       {/* Mensajes */}
@@ -481,6 +532,11 @@ const AdminPanel = () => {
         )}
       </AnimatePresence>
 
+      {/* Contenido según pestaña activa */}
+      {activeTab === 'fichajes' ? (
+        <FichajeAdminSection />
+      ) : (
+        <>
       {/* Estadísticas */}
       <div style={{
         display: 'grid',
@@ -1524,6 +1580,8 @@ const AdminPanel = () => {
           }
         `}
       </style>
+        </>
+      )}
     </div>
   );
 };

@@ -25,7 +25,8 @@ import {
   Package,
   Download,
   CheckCircle,
-  X
+  X,
+  Clock
 } from 'feather-icons-react';
 import { useTheme } from './ThemeContext';
 import { useAuth } from './AuthContext';
@@ -51,6 +52,7 @@ import HojaRutaPage from './HojaRutaPage';
 import SociosPage from './SociosPage';
 import SalesInvoicesPage from './SalesInvoicesPage';
 import InventoryPage from './InventoryPage';
+import FichajePage from './FichajePage';
 
 
 // Componente visual de acceso denegado reutilizable
@@ -442,12 +444,13 @@ const Layout = () => {
   const menuItems = [
     { key: 'home', label: 'Inicio', path: '/home', icon: Home },
     { key: 'analytics', label: 'Análisis', path: '/analytics', icon: BarChart2 },
-    { key: 'sales-invoices', label: 'Facturas de Venta', path: '/sales-invoices', icon: DollarSign },
+    { key: 'sales-invoices', label: 'Resum Caterings', path: '/sales-invoices', icon: DollarSign },
     { key: 'inventory', label: 'Inventario', path: '/inventory', icon: Package },
     { key: 'innuva-converter', label: 'Conversor Innuva', path: '/innuva-converter', icon: UploadCloud },
     { key: 'subvenciones', label: 'Subvenciones', path: '/subvenciones', icon: FileText },
     { key: 'empleados', label: 'Empleados', path: '/empleados', icon: Users },
     { key: 'hoja-ruta', label: 'Hoja de Ruta', path: '/hoja-ruta', icon: Calendar },
+    { key: 'fichaje', label: 'Fichaje', path: '/fichaje', icon: Clock },
     { key: 'socios', label: 'Socios IDONI', path: '/socios', icon: Users },
     { key: 'contacts', label: 'Contactos', path: '/contacts', icon: CreditCard },
     { key: 'settings', label: 'Configuración', path: '/settings', icon: Settings },
@@ -497,6 +500,8 @@ const Layout = () => {
         return <EmpleadosPage />;
       case 'hoja-ruta':
         return <HojaRutaPage />;
+      case 'fichaje':
+        return <FichajePage />;
       case 'socios':
         return <SociosPage />;
       case 'settings':
@@ -1277,9 +1282,12 @@ const Layout = () => {
             flex: 1,
             padding: '0',
             overflow: 'auto',
+            overflowX: 'hidden', /* Prevenir scroll horizontal */
             background: colors.background,
             scrollbarWidth: 'thin',
-            scrollbarColor: `${colors.border} transparent`
+            scrollbarColor: `${colors.border} transparent`,
+            height: '100%', /* Asegurar que no exceda el viewport */
+            boxSizing: 'border-box'
           }}
         >
           {renderSection()}

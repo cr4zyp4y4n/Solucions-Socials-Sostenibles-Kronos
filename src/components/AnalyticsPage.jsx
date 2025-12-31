@@ -4401,6 +4401,132 @@ const AnalyticsPage = () => {
         }
       });
 
+      // Crear hoja de resumen con totales
+      const summaryData = [];
+      
+      // Calcular totales generales
+      let totalGeneral = 0;
+      let totalPendienteGeneral = 0;
+      let totalFacturas = 0;
+      
+      filteredSergiData.forEach(row => {
+        const total = parseFloat(row[columnIndices.total]) || 0;
+        const pending = columnIndices.pending ? (parseFloat(row[columnIndices.pending]) || 0) : 0;
+        totalGeneral += total;
+        totalPendienteGeneral += pending;
+        totalFacturas += 1;
+      });
+
+      // Agregar encabezado
+      summaryData.push({
+        'Concepto': 'RESUMEN GENERAL',
+        'Valor': ''
+      });
+      summaryData.push({
+        'Concepto': '',
+        'Valor': ''
+      });
+      
+      // Agregar totales por canal
+      channels.forEach(channel => {
+        const channelData = filteredSergiData.filter(row => {
+          if (selectedDataset === 'idoni') {
+            const tienda = row[2] || '';
+            return tienda === channel;
+          } else {
+            const description = (row[columnIndices.description] || '').toLowerCase();
+            const account = (row[columnIndices.account] || '').toLowerCase();
+            
+            if (selectedDataset === 'solucions') {
+              switch (channel) {
+                case 'Estructura':
+                  return description.includes('estructura') || account.includes('estructura');
+                case 'Catering':
+                  return description.includes('catering') || account.includes('catering');
+                case 'IDONI':
+                  return description.includes('idoni') || account.includes('idoni');
+                case 'Otros':
+                  return !description.includes('estructura') && !description.includes('catering') && 
+                         !description.includes('idoni') && !account.includes('estructura') && 
+                         !account.includes('catering') && !account.includes('idoni');
+                default:
+                  return false;
+              }
+            } else if (selectedDataset === 'menjar') {
+              switch (channel) {
+                case 'OBRADOR':
+                  return description.includes('obrador') || account.includes('obrador');
+                case 'ESTRUCTURA':
+                  return description.includes('estructura') || account.includes('estructura');
+                case 'CATERING':
+                  return description.includes('catering') || account.includes('catering');
+                case 'Otros':
+                  return !description.includes('obrador') && !description.includes('estructura') && 
+                         !description.includes('catering') && !account.includes('obrador') &&
+                         !account.includes('estructura') && !account.includes('catering');
+                default:
+                  return false;
+              }
+            }
+            return false;
+          }
+        });
+
+        if (channelData.length > 0) {
+          const totalCanal = channelData.reduce((sum, row) => {
+            return sum + (parseFloat(row[columnIndices.total]) || 0);
+          }, 0);
+          
+          const pendienteCanal = channelData.reduce((sum, row) => {
+            const pending = columnIndices.pending ? (parseFloat(row[columnIndices.pending]) || 0) : 0;
+            return sum + pending;
+          }, 0);
+
+          summaryData.push({
+            'Concepto': `Total ${channel}`,
+            'Valor': totalCanal
+          });
+          summaryData.push({
+            'Concepto': `Pendiente ${channel}`,
+            'Valor': pendienteCanal
+          });
+          summaryData.push({
+            'Concepto': `Facturas ${channel}`,
+            'Valor': channelData.length
+          });
+          summaryData.push({
+            'Concepto': '',
+            'Valor': ''
+          });
+        }
+      });
+
+      // Agregar totales generales
+      summaryData.push({
+        'Concepto': '═══════════════════════',
+        'Valor': ''
+      });
+      summaryData.push({
+        'Concepto': 'TOTAL GENERAL',
+        'Valor': totalGeneral
+      });
+      summaryData.push({
+        'Concepto': 'TOTAL PENDIENTE',
+        'Valor': totalPendienteGeneral
+      });
+      summaryData.push({
+        'Concepto': 'TOTAL FACTURAS',
+        'Valor': totalFacturas
+      });
+
+      // Crear hoja de resumen
+      const summaryWs = XLSX.utils.json_to_sheet(summaryData);
+      summaryWs['!cols'] = [
+        { wch: 25 }, // Concepto
+        { wch: 15 }  // Valor
+      ];
+      XLSX.utils.book_append_sheet(wb, summaryWs, 'Resumen');
+
       // Descargar archivo
       const fileName = `${datasetName}_Vista_Sergi_Todos_Canales${monthFilter}_${new Date().toISOString().split('T')[0]}.xlsx`;
       XLSX.writeFile(wb, fileName);
@@ -4667,6 +4793,89 @@ const AnalyticsPage = () => {
 
       // Agregar hoja con facturas agrupadas por proveedor
       XLSX.utils.book_append_sheet(wb, ws, 'Facturas por Proveedor');
+
+      // Crear hoja de resumen con totales
+      const summaryData = [];
+      
+      // Calcular totales generales
+      let totalGeneral = 0;
+      let totalPendienteGeneral = 0;
+      let totalFacturas = 0;
+      
+      dataToExport.forEach(row => {
+        const total = parseFloat(row[columnIndices.total]) || 0;
+        const pending = columnIndices.pending ? (parseFloat(row[columnIndices.pending]) || 0) : 0;
+        totalGeneral += total;
+        totalPendienteGeneral += pending;
+        totalFacturas += 1;
+      });
+
+      // Agregar encabezado
+      summaryData.push({
+        'Concepto': 'RESUMEN GENERAL',
+        'Valor': ''
+      });
+      summaryData.push({
+        'Concepto': '',
+        'Valor': ''
+      });
+      
+      // Agregar totales por proveedor
+      Object.keys(groupedByProvider).sort().forEach(provider => {
+        const providerInvoices = groupedByProvider[provider];
+        const providerTotal = providerInvoices.reduce((sum, row) => {
+          const total = parseFloat(row[columnIndices.total]) || 0;
+          return sum + total;
+        }, 0);
+        
+        const providerPendiente = providerInvoices.reduce((sum, row) => {
+          const pending = columnIndices.pending ? (parseFloat(row[columnIndices.pending]) || 0) : 0;
+          return sum + pending;
+        }, 0);
+
+        summaryData.push({
+          'Concepto': `Total ${provider}`,
+          'Valor': providerTotal
+        });
+        summaryData.push({
+          'Concepto': `Pendiente ${provider}`,
+          'Valor': providerPendiente
+        });
+        summaryData.push({
+          'Concepto': `Facturas ${provider}`,
+          'Valor': providerInvoices.length
+        });
+        summaryData.push({
+          'Concepto': '',
+          'Valor': ''
+        });
+      });
+
+      // Agregar totales generales
+      summaryData.push({
+        'Concepto': '═══════════════════════',
+        'Valor': ''
+      });
+      summaryData.push({
+        'Concepto': 'TOTAL GENERAL',
+        'Valor': totalGeneral
+      });
+      summaryData.push({
+        'Concepto': 'TOTAL PENDIENTE',
+        'Valor': totalPendienteGeneral
+      });
+      summaryData.push({
+        'Concepto': 'TOTAL FACTURAS',
+        'Valor': totalFacturas
+      });
+
+      // Crear hoja de resumen
+      const summaryWs = XLSX.utils.json_to_sheet(summaryData);
+      summaryWs['!cols'] = [
+        { wch: 35 }, // Concepto
+        { wch: 15 }  // Valor
+      ];
+      XLSX.utils.book_append_sheet(wb, summaryWs, 'Resumen');
 
       // Descargar archivo
       XLSX.writeFile(wb, fileName);

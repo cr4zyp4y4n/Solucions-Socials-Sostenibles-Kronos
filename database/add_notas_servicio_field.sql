@@ -17,3 +17,5 @@ COMMENT ON COLUMN hojas_ruta.notas_servicio IS 'Notas de servicio añadidas manu
 
 
 
+
+

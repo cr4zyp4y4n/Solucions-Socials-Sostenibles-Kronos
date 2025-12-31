@@ -45,6 +45,7 @@ export const ThemeProvider = ({ children }) => {
       success: '#4CAF50',
       warning: '#ff9800',
       error: '#f44336',
+      info: '#2196F3', // Azul con buen contraste
       idoni: '#ff69b4'
     } : {
       // Colores modo claro
@@ -62,6 +63,7 @@ export const ThemeProvider = ({ children }) => {
       success: '#4CAF50',
       warning: '#ff9800',
       error: '#f44336',
+      info: '#2196F3', // Azul con buen contraste
       idoni: '#ff69b4'
     }
   };

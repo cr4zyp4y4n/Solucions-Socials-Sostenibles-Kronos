@@ -367,7 +367,7 @@ const SalesInvoicesPage = () => {
             margin: '0',
             lineHeight: '1.2',
           }}>
-            Facturas de Venta
+            Resum Caterings
           </h1>
           <p style={{
             fontSize: '14px',
