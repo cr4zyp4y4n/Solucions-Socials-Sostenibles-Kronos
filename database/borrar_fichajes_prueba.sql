@@ -23,3 +23,4 @@ BEGIN
     RAISE NOTICE 'Fichajes de prueba borrados correctamente';
 END $$;
 
+

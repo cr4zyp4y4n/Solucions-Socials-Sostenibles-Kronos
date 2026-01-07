@@ -15,7 +15,8 @@ import {
   Utensils,
   Coffee,
   Wine,
-  ShieldCheck
+  ShieldCheck,
+  Store
 } from 'lucide-react';
 import { useTheme } from './ThemeContext';
 import { useAuth } from './AuthContext';
@@ -65,7 +66,8 @@ const ChecklistSection = ({
     ]},
     { id: 'equipamiento', label: 'Equipamiento', icon: Utensils },
     { id: 'menus', label: 'Menús', icon: Coffee },
-    { id: 'bebidas', label: 'Bebidas', icon: Wine }
+    { id: 'bebidas', label: 'Bebidas', icon: Wine },
+    { id: 'idoni', label: 'IDONI', icon: Store }
   ];
 
   // Verificar si el usuario es "Usuario" (rol básico)
@@ -94,6 +96,61 @@ const ChecklistSection = ({
     return new Date(fecha).toLocaleString('es-ES');
   };
 
+  // Función para verificar si un elemento es de IDONI
+  const esIdoni = (item) => {
+    if (!item) return false;
+    
+    // Si es un string, buscar directamente
+    if (typeof item === 'string') {
+      const texto = item.toUpperCase();
+      return texto.includes('IDONI');
+    }
+    
+    // Si es un objeto, buscar en todos los campos relevantes
+    const campos = [
+      item.item,
+      item.task,
+      item.proveedor,
+      item.nombre,
+      item.descripcion,
+      item.notas
+    ].filter(Boolean); // Filtrar valores nulos/undefined
+    
+    // Buscar en todos los campos
+    return campos.some(campo => {
+      const texto = String(campo).toUpperCase();
+      return texto.includes('IDONI');
+    });
+  };
+
+  // Obtener elementos de IDONI
+  const elementosIdoni = useMemo(() => {
+    const equipamientoIdoni = (hojaRuta.equipamiento || []).filter(esIdoni);
+    const menusIdoni = (hojaRuta.menus || []).filter(esIdoni);
+    const bebidasIdoni = (hojaRuta.bebidas || []).filter(esIdoni);
+    
+    // Debug: verificar qué se está detectando
+    if (activeTab === 'idoni' || menusIdoni.length > 0) {
+      console.log('🔍 [IDONI Debug]', {
+        totalEquipamiento: hojaRuta.equipamiento?.length || 0,
+        equipamientoIdoni: equipamientoIdoni.length,
+        totalMenus: hojaRuta.menus?.length || 0,
+        menusIdoni: menusIdoni.length,
+        totalBebidas: hojaRuta.bebidas?.length || 0,
+        bebidasIdoni: bebidasIdoni.length,
+        ejemploMenu: hojaRuta.menus?.[0],
+        menusIdoniEjemplo: menusIdoni.slice(0, 2)
+      });
+    }
+    
+    return {
+      equipamiento: equipamientoIdoni,
+      menus: menusIdoni,
+      bebidas: bebidasIdoni,
+      total: equipamientoIdoni.length + menusIdoni.length + bebidasIdoni.length
+    };
+  }, [hojaRuta.equipamiento, hojaRuta.menus, hojaRuta.bebidas, activeTab]);
+
   // Obtener tareas actuales basándose en la tab activa
   const tareasActuales = useMemo(() => {
     // Asegurar que la estructura existe
@@ -117,6 +174,9 @@ const ChecklistSection = ({
     
     if (activeTab === 'general') {
       return hojaRuta.checklist.general?.[activeSubTab] || [];
+    } else if (activeTab === 'idoni') {
+      // Para IDONI, retornamos un array especial que se manejará diferente
+      return [];
     } else {
       return hojaRuta.checklist[activeTab] || [];
     }
@@ -211,6 +271,12 @@ const ChecklistSection = ({
           
           if (tab.id === 'general') {
             tabStats = estadisticas?.porFase?.[activeSubTab];
+          } else if (tab.id === 'idoni') {
+            // Estadísticas para IDONI basadas en el total de elementos
+            tabStats = {
+              completadas: 0,
+              total: elementosIdoni.total
+            };
           } else {
             tabStats = estadisticas?.porElemento?.[tab.id];
           }
@@ -315,12 +381,258 @@ const ChecklistSection = ({
         </div>
       )}
 
-      {/* Lista de tareas */}
-      <div style={{
-        display: 'grid',
-        gap: '12px'
-      }}>
-        {tareasActuales.map((tarea, index) => (
+      {/* Contenido de la pestaña IDONI */}
+      {activeTab === 'idoni' && (
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '24px'
+        }}>
+          {/* Equipamiento IDONI */}
+          {elementosIdoni.equipamiento.length > 0 && (
+            <div>
+              <h4 style={{
+                fontSize: '16px',
+                fontWeight: 'bold',
+                color: colors.primary,
+                margin: '0 0 16px 0',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}>
+                <Utensils size={18} color={colors.primary} />
+                Equipamiento IDONI ({elementosIdoni.equipamiento.length})
+              </h4>
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+                gap: '12px'
+              }}>
+                {elementosIdoni.equipamiento.map((item, index) => (
+                  <motion.div
+                    key={index}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: index * 0.05 }}
+                    style={{
+                      padding: '16px',
+                      backgroundColor: colors.background,
+                      borderRadius: '8px',
+                      border: `1px solid ${colors.border}`
+                    }}
+                  >
+                    <p style={{
+                      fontSize: '15px',
+                      fontWeight: '600',
+                      color: colors.text,
+                      margin: '0 0 8px 0'
+                    }}>
+                      {item.item}
+                    </p>
+                    {item.cantidad && (
+                      <p style={{
+                        fontSize: '13px',
+                        color: colors.textSecondary,
+                        margin: '0 0 4px 0'
+                      }}>
+                        Cantidad: <strong>{item.cantidad}</strong>
+                      </p>
+                    )}
+                    {item.notas && (
+                      <p style={{
+                        fontSize: '12px',
+                        color: colors.warning,
+                        margin: 0,
+                        fontStyle: 'italic'
+                      }}>
+                        {item.notas}
+                      </p>
+                    )}
+                  </motion.div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Menús IDONI */}
+          {elementosIdoni.menus.length > 0 && (
+            <div>
+              <h4 style={{
+                fontSize: '16px',
+                fontWeight: 'bold',
+                color: colors.primary,
+                margin: '0 0 16px 0',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}>
+                <Coffee size={18} color={colors.primary} />
+                Menús IDONI ({elementosIdoni.menus.length})
+              </h4>
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+                gap: '12px'
+              }}>
+                {elementosIdoni.menus.map((menu, index) => (
+                  <motion.div
+                    key={index}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: index * 0.05 }}
+                    style={{
+                      padding: '16px',
+                      backgroundColor: colors.background,
+                      borderRadius: '8px',
+                      border: `1px solid ${colors.border}`
+                    }}
+                  >
+                    <div style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      marginBottom: '8px'
+                    }}>
+                      <p style={{
+                        fontSize: '15px',
+                        fontWeight: '600',
+                        color: colors.text,
+                        margin: 0
+                      }}>
+                        {menu.item}
+                      </p>
+                      {menu.proveedor && (
+                        <span style={{
+                          fontSize: '12px',
+                          color: colors.primary,
+                          fontWeight: '500',
+                          padding: '4px 8px',
+                          backgroundColor: colors.primary + '15',
+                          borderRadius: '4px'
+                        }}>
+                          {menu.proveedor}
+                        </span>
+                      )}
+                    </div>
+                    {menu.cantidad && (
+                      <p style={{
+                        fontSize: '13px',
+                        color: colors.textSecondary,
+                        margin: '0 0 4px 0'
+                      }}>
+                        Cantidad: <strong>{menu.cantidad}</strong>
+                      </p>
+                    )}
+                    {menu.tipo && (
+                      <p style={{
+                        fontSize: '12px',
+                        color: colors.textSecondary,
+                        margin: 0,
+                        textTransform: 'capitalize'
+                      }}>
+                        Tipo: {menu.tipo.replace('_', ' ')}
+                      </p>
+                    )}
+                  </motion.div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Bebidas IDONI */}
+          {elementosIdoni.bebidas.length > 0 && (
+            <div>
+              <h4 style={{
+                fontSize: '16px',
+                fontWeight: 'bold',
+                color: colors.primary,
+                margin: '0 0 16px 0',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}>
+                <Wine size={18} color={colors.primary} />
+                Bebidas IDONI ({elementosIdoni.bebidas.length})
+              </h4>
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+                gap: '12px'
+              }}>
+                {elementosIdoni.bebidas.map((bebida, index) => (
+                  <motion.div
+                    key={index}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: index * 0.05 }}
+                    style={{
+                      padding: '16px',
+                      backgroundColor: colors.background,
+                      borderRadius: '8px',
+                      border: `1px solid ${colors.border}`
+                    }}
+                  >
+                    <p style={{
+                      fontSize: '15px',
+                      fontWeight: '600',
+                      color: colors.text,
+                      margin: '0 0 8px 0'
+                    }}>
+                      {bebida.item}
+                    </p>
+                    {bebida.cantidad && (
+                      <p style={{
+                        fontSize: '13px',
+                        color: colors.textSecondary,
+                        margin: '0 0 4px 0'
+                      }}>
+                        Cantidad: <strong>{bebida.cantidad}</strong>
+                      </p>
+                    )}
+                    {bebida.unidad && (
+                      <p style={{
+                        fontSize: '13px',
+                        color: colors.textSecondary,
+                        margin: 0
+                      }}>
+                        Unidad: <strong>{bebida.unidad}</strong>
+                      </p>
+                    )}
+                  </motion.div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Mensaje si no hay elementos IDONI */}
+          {elementosIdoni.total === 0 && (
+            <div style={{
+              padding: '32px',
+              textAlign: 'center',
+              backgroundColor: colors.background,
+              borderRadius: '8px',
+              border: `1px dashed ${colors.border}`
+            }}>
+              <Store size={48} color={colors.textSecondary} style={{ marginBottom: '16px', opacity: 0.5 }} />
+              <p style={{
+                fontSize: '16px',
+                color: colors.textSecondary,
+                margin: 0
+              }}>
+                No hay elementos de IDONI en esta hoja de ruta
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Lista de tareas (para otras pestañas) */}
+      {activeTab !== 'idoni' && (
+        <div style={{
+          display: 'grid',
+          gap: '12px'
+        }}>
+          {tareasActuales.map((tarea, index) => (
           <motion.div
             key={tarea.id}
             initial={{ opacity: 0, y: 20 }}
@@ -437,7 +749,8 @@ const ChecklistSection = ({
             </div>
           </motion.div>
         ))}
-      </div>
+        </div>
+      )}
 
       {/* Indicador de verificación */}
       {hojaRuta?.firmaInfo?.firmado && (

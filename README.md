@@ -15,7 +15,15 @@
 
 ## ✨ Nuevas Características y Cambios Clave
 
-### 🆕 **v2.1.14 - Navegación entre Hojas de Ruta y Mejoras de Usabilidad**
+### 🆕 **v2.1.14 - Sistema de Fichaje, Navegación Mejorada y Exportación Excel**
+- ✅ **Sistema completo de fichaje:** Nueva sección para registro de entrada/salida de empleados con cumplimiento normativa laboral española
+- ✅ **Gestión de pausas:** Registro obligatorio de pausas de comida y descansos según normativa
+- ✅ **Panel de administración:** Vista completa de fichajes con filtros, edición y exportación CSV/PDF
+- ✅ **Notificaciones de cambios:** Sistema de notificaciones cuando se modifican fichajes, con validación del trabajador
+- ✅ **Auditoría completa:** Registro de todos los cambios con historial completo (retención 4 años)
+- ✅ **Zona horaria correcta:** Migración a TIMESTAMPTZ para manejo preciso de horas con conversión automática a hora de España
+- ✅ **Hora del servidor:** Todos los fichajes usan hora del servidor (UTC) para prevenir manipulación
+- ✅ **Hoja de resumen en Excel:** Nueva hoja "Resumen" en exportaciones de Sergi y Bruno con totales de facturas
 - ✅ **Selector de hojas en header:** Dropdown rápido para cambiar entre hojas de ruta activas sin abrir el histórico
 - ✅ **Botón "Cargar" en histórico:** Nueva opción para seleccionar y cargar cualquier hoja del histórico como hoja actual
 - ✅ **Navegación mejorada:** Posibilidad de cambiar entre múltiples hojas de ruta activas (útil para múltiples caterings simultáneos)
@@ -286,6 +294,21 @@
 - ✅ **Interfaz adaptativa:** Solo lectura para usuarios básicos
 - ✅ **Notificaciones inteligentes:** Sistema de notificaciones integrado con Supabase
 
+### 🕐 **Sistema de Fichaje Completo (v2.1.14)**
+- ✅ **Registro de entrada/salida:** Fichaje diario con hora del servidor (UTC) para cumplimiento normativa
+- ✅ **Gestión de pausas obligatorias:** Registro de pausas de comida y descansos según normativa laboral española
+- ✅ **Panel de administración:** Vista completa con filtros por empleado, fecha y exportación CSV/PDF
+- ✅ **Modificación de fichajes:** Administradores pueden modificar fichajes con motivo obligatorio y notificación al trabajador
+- ✅ **Validación del trabajador:** Sistema de aceptación/rechazo de cambios realizados por la empresa
+- ✅ **Auditoría completa:** Historial de todos los cambios con quién, cuándo y valores anteriores/nuevos
+- ✅ **Añadir fichajes a posteriori:** Posibilidad de añadir fichajes olvidados con marcado especial
+- ✅ **Resumen mensual:** Visualización de horas trabajadas, días completos/incompletos y totales
+- ✅ **Detección automática de empleado:** Integración con Holded para detectar automáticamente el empleado del usuario
+- ✅ **Zona horaria correcta:** Migración a TIMESTAMPTZ con conversión automática a hora de España (Europe/Madrid)
+- ✅ **Prevención de manipulación:** Todos los timestamps usan hora del servidor, no del dispositivo del usuario
+- ✅ **Interfaz moderna:** Diseño consistente con animaciones y feedback visual claro
+- ✅ **Cumplimiento normativa:** Sistema diseñado según normativa laboral española con retención de 4 años
+
 ### 📋 **Mejoras en Hojas de Ruta (v2.1.14)**
 - ✅ **Selector de hojas rápido:** Dropdown en el header que muestra la hoja actual y las últimas 15 hojas del histórico
 - ✅ **Cambio rápido entre hojas:** Un solo clic para cambiar entre diferentes hojas de ruta activas
@@ -296,7 +319,21 @@
 - ✅ **Comportamiento inteligente:** La última hoja subida se muestra por defecto, pero se puede cambiar fácilmente
 - ✅ **Recarga automática del histórico:** Al seleccionar una hoja, el histórico se actualiza automáticamente
 
+### 📊 **Mejoras en Exportación Excel (v2.1.14)**
+- ✅ **Hoja de resumen en Excel Sergi:** Nueva hoja "Resumen" con totales por canal y totales generales
+- ✅ **Hoja de resumen en Excel Bruno:** Nueva hoja "Resumen" con totales por proveedor y totales generales
+- ✅ **Totales detallados:** Incluye total general, total pendiente y número total de facturas
+- ✅ **Formato profesional:** Columnas con ancho adecuado y valores numéricos para sumas automáticas en Excel
+
 ### 🐞 Correcciones de Errores
+
+#### **v2.1.14 - Correcciones de Fichaje y Zona Horaria**
+- ✅ **Corregida zona horaria:** Migración completa de TIMESTAMP a TIMESTAMPTZ para manejo correcto de horas
+- ✅ **Corregida visualización de horas:** Las horas ahora se muestran correctamente en zona horaria de España (Europe/Madrid)
+- ✅ **Corregida interpretación de timestamps:** Strings sin timezone ahora se interpretan correctamente como UTC
+- ✅ **Corregida función parseDateAsUTC:** Manejo correcto de timestamps sin indicador de zona horaria
+- ✅ **Limpieza de código:** Eliminados todos los logs de debug y archivos SQL temporales
+- ✅ **Optimización de funciones:** Código limpio y listo para producción sin funciones de prueba
 
 #### **v2.1.14 - Correcciones de Hojas de Ruta**
 - ✅ **Corregido bucle infinito:** Solucionado problema donde al verificar una hoja y subir otra nueva se generaba un bucle cambiando entre ambas
@@ -464,11 +501,19 @@
 ## 🔄 Próximas Versiones
 
 ### 🎯 v2.1.14 ✅ **COMPLETADA**
+- ✅ Sistema completo de fichaje con cumplimiento normativa laboral española ✅
+- ✅ Gestión de pausas obligatorias (comida y descansos) ✅
+- ✅ Panel de administración de fichajes con filtros y exportación ✅
+- ✅ Sistema de notificaciones para cambios en fichajes ✅
+- ✅ Auditoría completa con retención de 4 años ✅
+- ✅ Migración a TIMESTAMPTZ para zona horaria correcta ✅
+- ✅ Hoja de resumen en Excel de Sergi y Bruno con totales ✅
 - ✅ Selector de hojas en header para navegación rápida ✅
 - ✅ Botón "Cargar" en modal de histórico ✅
 - ✅ Corrección de bucle infinito al subir hojas ✅
 - ✅ Gestión de estado optimizada con useRef ✅
 - ✅ Soporte para múltiples hojas de ruta activas ✅
+- ✅ Limpieza completa de código (logs y archivos temporales) ✅
 
 ### 🎯 v2.1.13 ✅ **COMPLETADA**
 - ✅ Análisis detallado por día de la semana en IDONI ✅

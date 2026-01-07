@@ -51,11 +51,39 @@ class HoldedApiService {
     } catch (error) {
       console.error(`Error en la petición a Holded API (${company}):`, error);
       
-      // Si el error indica que la API key es inválida, dar un mensaje más claro
-      if (error.message.includes('Unexpected token') || error.message.includes('<div')) {
-        throw new Error(`API key de Holded inválida o no autorizada para ${company}. Verifica tu API key.`);
+      // Detectar diferentes tipos de errores y proporcionar mensajes más claros
+      const errorMessage = error.message || '';
+      
+      // Error de parsing JSON (respuesta no válida)
+      if (errorMessage.includes('Error parsing JSON') || errorMessage.includes('Unexpected token')) {
+        // Verificar si es un error de servidor/gateway
+        if (errorMessage.includes('upstream') || errorMessage.includes('502') || errorMessage.includes('503') || errorMessage.includes('504')) {
+          throw new Error(`Error de conexión con Holded API (${company}): El servidor de Holded no está disponible temporalmente. Intenta de nuevo en unos momentos.`);
+        }
+        // Verificar si es un error de autenticación
+        if (errorMessage.includes('401') || errorMessage.includes('403') || errorMessage.includes('autenticación')) {
+          throw new Error(`API key de Holded inválida o no autorizada para ${company}. Verifica tu API key en Configuración > Conexiones.`);
+        }
+        // Error genérico de respuesta no válida
+        throw new Error(`Error en la respuesta de Holded API (${company}): La respuesta no es válida. Verifica tu conexión a internet y las API keys.`);
       }
       
+      // Error de autenticación explícito
+      if (errorMessage.includes('autenticación') || errorMessage.includes('API key inválida')) {
+        throw new Error(`API key de Holded inválida o no autorizada para ${company}. Verifica tu API key en Configuración > Conexiones.`);
+      }
+      
+      // Error de servidor/gateway
+      if (errorMessage.includes('servidor') || errorMessage.includes('gateway') || errorMessage.includes('502') || errorMessage.includes('503') || errorMessage.includes('504')) {
+        throw new Error(`Error de conexión con Holded API (${company}): El servidor de Holded no está disponible temporalmente. Intenta de nuevo en unos momentos.`);
+      }
+      
+      // Error de conexión
+      if (errorMessage.includes('Request failed') || errorMessage.includes('ECONNREFUSED') || errorMessage.includes('ETIMEDOUT')) {
+        throw new Error(`Error de conexión con Holded API (${company}): No se pudo conectar al servidor. Verifica tu conexión a internet.`);
+      }
+      
+      // Si el error ya tiene un mensaje claro, lanzarlo tal cual
       throw error;
     }
   }
@@ -325,6 +353,7 @@ class HoldedApiService {
     let page = 1;
     let hasMorePages = true;
     const limit = 100; // Máximo por página
+    let firstError = null;
 
     while (hasMorePages) {
       try {
@@ -348,8 +377,21 @@ class HoldedApiService {
         }
       } catch (error) {
         console.error(`❌ [Holded API] Error en página ${page}:`, error);
+        // Guardar el primer error para lanzarlo al final si no hay datos
+        if (!firstError) {
+          firstError = error;
+        }
+        // Si es un error de autenticación o servidor, detener inmediatamente
+        if (error.message && (error.message.includes('API key') || error.message.includes('servidor') || error.message.includes('conexión'))) {
+          throw error;
+        }
         hasMorePages = false;
       }
+    }
+
+    // Si no se obtuvo ningún dato y hubo un error, lanzarlo
+    if (allPartiallyPaidPurchases.length === 0 && firstError) {
+      throw firstError;
     }
 
     // Total final procesado

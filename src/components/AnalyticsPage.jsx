@@ -103,6 +103,8 @@ const AnalyticsPage = () => {
   const [uploadTypeProductos, setUploadTypeProductos] = useState(''); // 'productos'
   const [productosSearchTerm, setProductosSearchTerm] = useState('');
   const [productosNuevoFormatoSearchTerm, setProductosNuevoFormatoSearchTerm] = useState('');
+  const [selectedProductosChart, setSelectedProductosChart] = useState('importe'); // 'importe', 'cantidadUnitaria', 'cantidadKg'
+  const [productosChartLimit, setProductosChartLimit] = useState(20); // Número de productos a mostrar
 
   // Estados para visibilidad de facturas
   // Los datos de Solucions se manejan a través de supabaseData.solucions
@@ -381,16 +383,37 @@ const AnalyticsPage = () => {
         idoni: { ...prev.idoni, loading: true }
       }));
 
-      // Cargar datos de ventas diarias
-      const { data: ventasDiarias, error: errorDiarias } = await supabase
-        .from('idoni_ventas_diarias')
-        .select('*')
-        .order('data', { ascending: false });
+      // Cargar datos de ventas diarias (TODOS los registros usando paginación)
+      let allVentasDiarias = [];
+      let pageDiarias = 0;
+      const pageSizeDiarias = 1000;
+      let hasMoreDiarias = true;
+      
+      while (hasMoreDiarias) {
+        const { data: ventasDiarias, error: errorDiarias } = await supabase
+          .from('idoni_ventas_diarias')
+          .select('*')
+          .order('data', { ascending: false })
+          .range(pageDiarias * pageSizeDiarias, (pageDiarias + 1) * pageSizeDiarias - 1);
 
-      if (errorDiarias) {
-        console.error('Error cargando ventas diarias de IDONI:', errorDiarias);
-        throw errorDiarias;
+        if (errorDiarias) {
+          console.error('Error cargando ventas diarias de IDONI:', errorDiarias);
+          throw errorDiarias;
+        }
+
+        if (ventasDiarias && ventasDiarias.length > 0) {
+          allVentasDiarias = [...allVentasDiarias, ...ventasDiarias];
+          pageDiarias++;
+          // Si obtenemos menos del tamaño de página, es la última página
+          if (ventasDiarias.length < pageSizeDiarias) {
+            hasMoreDiarias = false;
+          }
+        } else {
+          hasMoreDiarias = false;
+        }
       }
+
+      const ventasDiarias = allVentasDiarias;
 
       // Cargar datos de ventas por horas (TODOS los registros usando paginación)
       let allVentasHoras = [];
@@ -413,6 +436,10 @@ const AnalyticsPage = () => {
         if (ventasHoras && ventasHoras.length > 0) {
           allVentasHoras = [...allVentasHoras, ...ventasHoras];
           page++;
+          // Si obtenemos menos del tamaño de página, es la última página
+          if (ventasHoras.length < pageSize) {
+            hasMore = false;
+          }
         } else {
           hasMore = false;
         }
@@ -475,12 +502,28 @@ const AnalyticsPage = () => {
           .reduce((sum, v) => sum + (parseFloat(v.import) || 0), 0);
         const totalHoras = hourlyData?.totalVentas || 0;
         
+        // Obtener meses únicos de los datos
+        const mesesUnicos = new Set();
+        ventasDiarias
+          .filter(v => v.c_ven !== 0)
+          .forEach(v => {
+            if (v.data) {
+              const fecha = new Date(v.data);
+              if (!isNaN(fecha.getTime())) {
+                const monthKey = `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}`;
+                mesesUnicos.add(monthKey);
+              }
+            }
+          });
+        
         console.log('🔍 COMPARACIÓN DE TOTALES IDONI:');
         console.log('📊 Ventas Diarias (tabla resumen):', totalDiarias.toFixed(2), '€');
         console.log('⏰ Ventas por Horas (tickets individuales):', totalHoras.toFixed(2), '€');
         console.log('📉 Diferencia:', (totalDiarias - totalHoras).toFixed(2), '€');
         console.log('📈 Registros Ventas Diarias:', ventasDiarias.filter(v => v.c_ven !== 0).length);
         console.log('🎫 Registros Ventas por Horas:', ventasHoras.length);
+        console.log('📅 Meses únicos encontrados:', Array.from(mesesUnicos).sort().join(', '));
+        console.log('📅 Total de meses:', mesesUnicos.size);
       }
 
       // Procesar datos de ventas de productos (nuevo formato)
@@ -3923,6 +3966,28 @@ const AnalyticsPage = () => {
 
   // ===== NUEVAS FUNCIONES PARA PROCESAR DATOS DEL NUEVO FORMATO =====
 
+  // Función para detectar si un producto es a peso o a unidad
+  const detectarTipoProducto = (cantidad) => {
+    // Lista de meses a revisar
+    const meses = ['gener', 'febrer', 'marc', 'abril', 'maig', 'juny', 'juliol', 'agost', 'setembre', 'octubre', 'novembre', 'desembre'];
+    
+    // Revisar todos los valores de cantidad de todos los meses
+    let tieneDecimales = false;
+    
+    for (const mes of meses) {
+      const valor = cantidad[mes] || 0;
+      // Si el valor es mayor que 0 y tiene decimales (no es entero)
+      if (valor > 0 && valor % 1 !== 0) {
+        tieneDecimales = true;
+        break; // Si encontramos al menos un valor con decimales, es producto a peso
+      }
+    }
+    
+    // Si tiene al menos un valor con decimales, es producto a peso
+    // Si todos los valores son enteros, es producto unitario
+    return tieneDecimales;
+  };
+
   // Función para procesar datos del nuevo formato de productos
   const processIdoniProductosNuevoFormato = (ventasProductosImporte, ventasProductosCantidad) => {
     if ((!ventasProductosImporte || ventasProductosImporte.length === 0) && 
@@ -4057,6 +4122,12 @@ const AnalyticsPage = () => {
 
     // Convertir a array y ordenar por total de importe
     const productosArray = Array.from(productosCombinados.values());
+    
+    // Añadir la propiedad 'esPeso' a cada producto basándose en los valores de cantidad
+    productosArray.forEach(producto => {
+      producto.esPeso = detectarTipoProducto(producto.cantidad);
+    });
+    
     productosArray.sort((a, b) => b.importe.total - a.importe.total);
 
     return {
@@ -4075,16 +4146,19 @@ const AnalyticsPage = () => {
 
     const productos = productosData.productosArray;
     
-    // Top 10 productos por importe
-    const top10PorImporte = productos
-      .filter(p => p.importe.total > 0)
-      .slice(0, 10);
+    // Top productos por importe (sin límite aquí, se limitará en la visualización)
+    const topPorImporte = productos
+      .filter(p => p.importe.total > 0);
     
-    // Top 10 productos por cantidad
-    const top10PorCantidad = productos
-      .filter(p => p.cantidad.total > 0)
-      .sort((a, b) => b.cantidad.total - a.cantidad.total)
-      .slice(0, 10);
+    // Top productos por cantidad unitaria (productos unitarios)
+    const topPorCantidadUnitaria = productos
+      .filter(p => p.cantidad.total > 0 && !p.esPeso)
+      .sort((a, b) => b.cantidad.total - a.cantidad.total);
+    
+    // Top productos por cantidad en kg (productos a peso)
+    const topPorCantidadKg = productos
+      .filter(p => p.cantidad.total > 0 && p.esPeso)
+      .sort((a, b) => b.cantidad.total - a.cantidad.total);
     
     // Productos con mayor crecimiento mensual (comparando últimos meses)
     const productosConCrecimiento = productos
@@ -4110,8 +4184,9 @@ const AnalyticsPage = () => {
       productosData.totalCantidad / productosData.totalProductos : 0;
 
     return {
-      top10PorImporte,
-      top10PorCantidad,
+      topPorImporte,
+      topPorCantidadUnitaria,
+      topPorCantidadKg,
       top10PorCrecimiento: productosConCrecimiento,
       importePromedioPorProducto,
       cantidadPromedioPorProducto,
@@ -5859,7 +5934,7 @@ const AnalyticsPage = () => {
                     Total Ventas
                   </h4>
                   <div style={{ fontSize: '24px', fontWeight: 'bold', color: colors.success, marginBottom: '8px' }}>
-                    {formatCurrency(getFilteredIdoniData(baseData).reduce((sum, row) => sum + (parseFloat(row[4]) || 0), 0))}
+                    {formatCurrency(idoniAnalytics?.totalGeneral || getFilteredIdoniData(baseData).reduce((sum, row) => sum + (parseFloat(row[4]) || 0), 0))}
                   </div>
                   <div style={{ fontSize: '14px', color: colors.textSecondary }}>
                     Ventas totales registradas
@@ -5970,13 +6045,17 @@ const AnalyticsPage = () => {
                     <div style={{ height: '300px' }}>
                       <Bar
                         data={{
-                          labels: Object.keys(idoniChartData.monthlyData).map(month => {
+                          labels: Object.keys(idoniChartData.monthlyData)
+                            .sort((a, b) => a.localeCompare(b))
+                            .map(month => {
                             return getMonthName(month);
                           }),
                           datasets: [
                             {
                               label: 'Ventas (€)',
-                              data: Object.values(idoniChartData.monthlyData).map(month => month.ventas),
+                              data: Object.keys(idoniChartData.monthlyData)
+                                .sort((a, b) => a.localeCompare(b))
+                                .map(monthKey => idoniChartData.monthlyData[monthKey].ventas),
                               backgroundColor: colors.primary,
                               borderColor: colors.primary,
                               borderWidth: 1,
@@ -5984,7 +6063,9 @@ const AnalyticsPage = () => {
                             },
                             {
                               label: 'Tickets',
-                              data: Object.values(idoniChartData.monthlyData).map(month => month.tickets),
+                              data: Object.keys(idoniChartData.monthlyData)
+                                .sort((a, b) => a.localeCompare(b))
+                                .map(monthKey => idoniChartData.monthlyData[monthKey].tickets),
                               backgroundColor: colors.warning,
                               borderColor: colors.warning,
                               borderWidth: 1,
@@ -6107,16 +6188,23 @@ const AnalyticsPage = () => {
                     <div style={{ height: '400px' }}>
                       <Line
                         data={{
-                          labels: Object.keys(idoniChartData.weeklyData).map(month => {
-                            const [year, monthNum] = month.split('-');
-                            return `${getMonthName(month)} ${year}`;
-                          }),
+                          labels: (() => {
+                            // Ordenar meses cronológicamente (de enero a diciembre)
+                            const sortedMonths = Object.keys(idoniChartData.weeklyData).sort();
+                            return sortedMonths.map(month => {
+                              const [year, monthNum] = month.split('-');
+                              return `${getMonthName(month)} ${year}`;
+                            });
+                          })(),
                           datasets: [
                             {
                               label: 'Domingo',
-                              data: Object.keys(idoniChartData.weeklyData).map(month => 
-                                idoniChartData.weeklyData[month]['Domingo'].ventas
-                              ),
+                              data: (() => {
+                                const sortedMonths = Object.keys(idoniChartData.weeklyData).sort();
+                                return sortedMonths.map(month => 
+                                  idoniChartData.weeklyData[month]['Domingo'].ventas
+                                );
+                              })(),
                               borderColor: '#FF6B6B',
                               backgroundColor: '#FF6B6B20',
                               borderWidth: 2,
@@ -6131,9 +6219,12 @@ const AnalyticsPage = () => {
                             },
                             {
                               label: 'Lunes',
-                              data: Object.keys(idoniChartData.weeklyData).map(month => 
-                                idoniChartData.weeklyData[month]['Lunes'].ventas
-                              ),
+                              data: (() => {
+                                const sortedMonths = Object.keys(idoniChartData.weeklyData).sort();
+                                return sortedMonths.map(month => 
+                                  idoniChartData.weeklyData[month]['Lunes'].ventas
+                                );
+                              })(),
                               borderColor: '#4ECDC4',
                               backgroundColor: '#4ECDC420',
                               borderWidth: 2,
@@ -6148,9 +6239,12 @@ const AnalyticsPage = () => {
                             },
                             {
                               label: 'Martes',
-                              data: Object.keys(idoniChartData.weeklyData).map(month => 
-                                idoniChartData.weeklyData[month]['Martes'].ventas
-                              ),
+                              data: (() => {
+                                const sortedMonths = Object.keys(idoniChartData.weeklyData).sort();
+                                return sortedMonths.map(month => 
+                                  idoniChartData.weeklyData[month]['Martes'].ventas
+                                );
+                              })(),
                               borderColor: '#6C5CE7',
                               backgroundColor: '#6C5CE720',
                               borderWidth: 2,
@@ -6165,9 +6259,12 @@ const AnalyticsPage = () => {
                             },
                             {
                               label: 'Miércoles',
-                              data: Object.keys(idoniChartData.weeklyData).map(month => 
-                                idoniChartData.weeklyData[month]['Miércoles'].ventas
-                              ),
+                              data: (() => {
+                                const sortedMonths = Object.keys(idoniChartData.weeklyData).sort();
+                                return sortedMonths.map(month => 
+                                  idoniChartData.weeklyData[month]['Miércoles'].ventas
+                                );
+                              })(),
                               borderColor: '#00B894',
                               backgroundColor: '#00B89420',
                               borderWidth: 2,
@@ -6182,9 +6279,12 @@ const AnalyticsPage = () => {
                             },
                             {
                               label: 'Jueves',
-                              data: Object.keys(idoniChartData.weeklyData).map(month => 
-                                idoniChartData.weeklyData[month]['Jueves'].ventas
-                              ),
+                              data: (() => {
+                                const sortedMonths = Object.keys(idoniChartData.weeklyData).sort();
+                                return sortedMonths.map(month => 
+                                  idoniChartData.weeklyData[month]['Jueves'].ventas
+                                );
+                              })(),
                               borderColor: '#FDCB6E',
                               backgroundColor: '#FDCB6E20',
                               borderWidth: 2,
@@ -6199,9 +6299,12 @@ const AnalyticsPage = () => {
                             },
                             {
                               label: 'Viernes',
-                              data: Object.keys(idoniChartData.weeklyData).map(month => 
-                                idoniChartData.weeklyData[month]['Viernes'].ventas
-                              ),
+                              data: (() => {
+                                const sortedMonths = Object.keys(idoniChartData.weeklyData).sort();
+                                return sortedMonths.map(month => 
+                                  idoniChartData.weeklyData[month]['Viernes'].ventas
+                                );
+                              })(),
                               borderColor: '#E84393',
                               backgroundColor: '#E8439320',
                               borderWidth: 2,
@@ -6216,9 +6319,12 @@ const AnalyticsPage = () => {
                             },
                             {
                               label: 'Sábado',
-                              data: Object.keys(idoniChartData.weeklyData).map(month => 
-                                idoniChartData.weeklyData[month]['Sábado'].ventas
-                              ),
+                              data: (() => {
+                                const sortedMonths = Object.keys(idoniChartData.weeklyData).sort();
+                                return sortedMonths.map(month => 
+                                  idoniChartData.weeklyData[month]['Sábado'].ventas
+                                );
+                              })(),
                               borderColor: '#74B9FF',
                               backgroundColor: '#74B9FF20',
                               borderWidth: 2,
@@ -6673,26 +6779,82 @@ const AnalyticsPage = () => {
                     </div>
                   </div>
 
+                  {/* Selector y control de gráficos */}
+                  <div style={{ 
+                    marginBottom: '24px', 
+                    display: 'flex', 
+                    gap: '16px', 
+                    alignItems: 'center',
+                    flexWrap: 'wrap'
+                  }}>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      <label style={{ color: colors.text, fontSize: '14px', fontWeight: '500' }}>
+                        Tipo de gráfico:
+                      </label>
+                      <select
+                        value={selectedProductosChart}
+                        onChange={(e) => setSelectedProductosChart(e.target.value)}
+                        style={{
+                          padding: '8px 12px',
+                          border: `1px solid ${colors.border}`,
+                          borderRadius: '8px',
+                          fontSize: '14px',
+                          backgroundColor: colors.card,
+                          color: colors.text,
+                          outline: 'none',
+                          cursor: 'pointer',
+                          minWidth: '200px'
+                        }}
+                      >
+                        <option value="importe">Top por Importe</option>
+                        <option value="cantidadUnitaria">Top por Cantidad Unitaria</option>
+                        <option value="cantidadKg">Top por Cantidad Kg</option>
+                      </select>
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      <label style={{ color: colors.text, fontSize: '14px', fontWeight: '500' }}>
+                        Número de productos:
+                      </label>
+                      <select
+                        value={productosChartLimit}
+                        onChange={(e) => setProductosChartLimit(Number(e.target.value))}
+                        style={{
+                          padding: '8px 12px',
+                          border: `1px solid ${colors.border}`,
+                          borderRadius: '8px',
+                          fontSize: '14px',
+                          backgroundColor: colors.card,
+                          color: colors.text,
+                          outline: 'none',
+                          cursor: 'pointer',
+                          minWidth: '100px'
+                        }}
+                      >
+                        <option value={10}>Top 10</option>
+                        <option value={20}>Top 20</option>
+                        <option value={30}>Top 30</option>
+                        <option value={50}>Top 50</option>
+                      </select>
+                    </div>
+                  </div>
+
                   {/* Charts de productos más vendidos */}
                     <div style={{
-                    display: 'grid', 
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', 
-                    gap: '24px', 
                     marginBottom: '32px' 
                   }}>
-                    {/* Chart Top 10 por Importe */}
-                    {idoniProductosAnalytics.top10PorImporte && idoniProductosAnalytics.top10PorImporte.length > 0 && (
+                    {/* Chart Top por Importe */}
+                    {selectedProductosChart === 'importe' && idoniProductosAnalytics.topPorImporte && idoniProductosAnalytics.topPorImporte.length > 0 && (
                       <div style={{ background: colors.card, padding: '20px', borderRadius: '12px', border: `1px solid ${colors.border}` }}>
                         <h4 style={{ margin: '0 0 16px 0', color: colors.text, fontSize: '16px', fontWeight: '600' }}>
-                          Top 10 Productos por Importe
+                          Top {Math.min(productosChartLimit, idoniProductosAnalytics.topPorImporte.length)} Productos por Importe
                     </h4>
-                        <div style={{ height: '300px' }}>
+                        <div style={{ height: '400px' }}>
                       <Bar
                                                     data={{
-                              labels: idoniProductosAnalytics.top10PorImporte.map(p => `${p.codi} - ${p.descripcio.length > 20 ? p.descripcio.substring(0, 20) + '...' : p.descripcio}`),
+                              labels: idoniProductosAnalytics.topPorImporte.slice(0, productosChartLimit).map(p => `${p.codi} - ${p.descripcio.length > 20 ? p.descripcio.substring(0, 20) + '...' : p.descripcio}`),
                               datasets: [{
                                 label: 'Importe Total (€)',
-                                data: idoniProductosAnalytics.top10PorImporte.map(p => p.importe.total),
+                                data: idoniProductosAnalytics.topPorImporte.slice(0, productosChartLimit).map(p => p.importe.total),
                                 backgroundColor: colors.primary,
                                 borderColor: colors.primary,
                                 borderWidth: 1
@@ -6728,19 +6890,19 @@ const AnalyticsPage = () => {
                   </div>
                     )}
 
-                    {/* Chart Top 10 por Cantidad */}
-                    {idoniProductosAnalytics.top10PorCantidad && idoniProductosAnalytics.top10PorCantidad.length > 0 && (
+                    {/* Chart Top por Cantidad Unitaria */}
+                    {selectedProductosChart === 'cantidadUnitaria' && idoniProductosAnalytics.topPorCantidadUnitaria && idoniProductosAnalytics.topPorCantidadUnitaria.length > 0 && (
                       <div style={{ background: colors.card, padding: '20px', borderRadius: '12px', border: `1px solid ${colors.border}` }}>
                         <h4 style={{ margin: '0 0 16px 0', color: colors.text, fontSize: '16px', fontWeight: '600' }}>
-                          Top 10 Productos por Cantidad
+                          Top {Math.min(productosChartLimit, idoniProductosAnalytics.topPorCantidadUnitaria.length)} Productos por Cantidad Unitaria
                     </h4>
-                        <div style={{ height: '300px' }}>
+                        <div style={{ height: '400px' }}>
                       <Bar
                                                     data={{
-                              labels: idoniProductosAnalytics.top10PorCantidad.map(p => `${p.codi} - ${p.descripcio.length > 20 ? p.descripcio.substring(0, 20) + '...' : p.descripcio}`),
+                              labels: idoniProductosAnalytics.topPorCantidadUnitaria.slice(0, productosChartLimit).map(p => `${p.codi} - ${p.descripcio.length > 20 ? p.descripcio.substring(0, 20) + '...' : p.descripcio}`),
                               datasets: [{
-                                label: 'Cantidad Total',
-                                data: idoniProductosAnalytics.top10PorCantidad.map(p => p.cantidad.total),
+                                label: 'Cantidad Total (unidades)',
+                                data: idoniProductosAnalytics.topPorCantidadUnitaria.slice(0, productosChartLimit).map(p => p.cantidad.total),
                                 backgroundColor: colors.warning,
                                 borderColor: colors.warning,
                                 borderWidth: 1
@@ -6752,6 +6914,13 @@ const AnalyticsPage = () => {
                           plugins: {
                             legend: {
                                   display: false
+                            },
+                            tooltip: {
+                              callbacks: {
+                                label: function(context) {
+                                  return `Cantidad: ${context.parsed.y.toLocaleString()} unidades`;
+                                }
+                              }
                             }
                           },
                                                         scales: {
@@ -6775,6 +6944,62 @@ const AnalyticsPage = () => {
                         </div>
                       </div>
                     )}
+
+                    {/* Chart Top por Cantidad Kg */}
+                    {selectedProductosChart === 'cantidadKg' && idoniProductosAnalytics.topPorCantidadKg && idoniProductosAnalytics.topPorCantidadKg.length > 0 && (
+                      <div style={{ background: colors.card, padding: '20px', borderRadius: '12px', border: `1px solid ${colors.border}` }}>
+                        <h4 style={{ margin: '0 0 16px 0', color: colors.text, fontSize: '16px', fontWeight: '600' }}>
+                          Top {Math.min(productosChartLimit, idoniProductosAnalytics.topPorCantidadKg.length)} Productos por Cantidad Kg
+                    </h4>
+                        <div style={{ height: '400px' }}>
+                      <Bar
+                                                    data={{
+                              labels: idoniProductosAnalytics.topPorCantidadKg.slice(0, productosChartLimit).map(p => `${p.codi} - ${p.descripcio.length > 20 ? p.descripcio.substring(0, 20) + '...' : p.descripcio}`),
+                              datasets: [{
+                                label: 'Cantidad Total (kg)',
+                                data: idoniProductosAnalytics.topPorCantidadKg.slice(0, productosChartLimit).map(p => p.cantidad.total),
+                                backgroundColor: colors.success,
+                                borderColor: colors.success,
+                                borderWidth: 1
+                              }]
+                            }}
+                        options={{
+                          responsive: true,
+                          maintainAspectRatio: false,
+                          plugins: {
+                            legend: {
+                                  display: false
+                            },
+                            tooltip: {
+                              callbacks: {
+                                label: function(context) {
+                                  return `Cantidad: ${context.parsed.y.toLocaleString()} kg`;
+                                }
+                              }
+                            }
+                          },
+                                                        scales: {
+                                y: {
+                                  beginAtZero: true,
+                                  ticks: {
+                                    callback: function(value) {
+                                      return value.toLocaleString();
+                                    }
+                                  }
+                                },
+                                x: {
+                                  ticks: {
+                                    maxRotation: 90,
+                                    minRotation: 90
+                                  }
+                                }
+                              }
+                        }}
+                      />
+                        </div>
+                      </div>
+                    )}
+
                   </div>
 
                   {/* Tabla con buscador de productos */}
@@ -6844,7 +7069,9 @@ const AnalyticsPage = () => {
                                 <td style={{ padding: '12px 16px', fontSize: '14px', color: colors.text, fontWeight: '500' }}>{producto.codi}</td>
                                 <td style={{ padding: '12px 16px', fontSize: '14px', color: colors.text }}>{producto.descripcio}</td>
                                 <td style={{ padding: '12px 16px', fontSize: '14px', color: colors.text, textAlign: 'right', fontWeight: '600' }}>{formatCurrency(producto.importe.total)}</td>
-                                <td style={{ padding: '12px 16px', fontSize: '14px', color: colors.text, textAlign: 'right', fontWeight: '600' }}>{producto.cantidad.total.toLocaleString()}</td>
+                                <td style={{ padding: '12px 16px', fontSize: '14px', color: colors.text, textAlign: 'right', fontWeight: '600' }}>
+                                  {producto.cantidad.total.toLocaleString()}{producto.esPeso ? ' kg' : ''}
+                                </td>
                                 <td style={{ padding: '8px 12px', fontSize: '13px', color: colors.text, textAlign: 'right' }}>{formatCurrency(producto.importe.gener)}</td>
                                 <td style={{ padding: '8px 12px', fontSize: '13px', color: colors.text, textAlign: 'right' }}>{formatCurrency(producto.importe.febrer)}</td>
                                 <td style={{ padding: '8px 12px', fontSize: '13px', color: colors.text, textAlign: 'right' }}>{formatCurrency(producto.importe.marc)}</td>

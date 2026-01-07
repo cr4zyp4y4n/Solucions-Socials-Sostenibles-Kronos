@@ -353,6 +353,31 @@ ipcMain.handle('make-holded-request', async (event, { url, options }) => {
       let data = '';
       res.on('data', chunk => data += chunk);
       res.on('end', () => {
+        const contentType = res.headers['content-type'] || '';
+        const isJson = contentType.includes('application/json');
+        
+        // Si la respuesta no es JSON, intentar extraer información útil del error
+        if (!isJson) {
+          // Si es un error del servidor (5xx) o gateway (502, 503, 504)
+          if (res.statusCode >= 500 || res.statusCode === 502 || res.statusCode === 503 || res.statusCode === 504) {
+            const errorPreview = data.substring(0, 100).replace(/\s+/g, ' ');
+            reject(new Error(`Error del servidor Holded (${res.statusCode}): ${res.statusMessage}. Respuesta: ${errorPreview}...`));
+            return;
+          }
+          
+          // Si es un error de autenticación (401) o no autorizado (403)
+          if (res.statusCode === 401 || res.statusCode === 403) {
+            reject(new Error(`Error de autenticación Holded (${res.statusCode}): API key inválida o no autorizada.`));
+            return;
+          }
+          
+          // Para otros errores, mostrar el contenido truncado
+          const errorPreview = data.substring(0, 200).replace(/\s+/g, ' ');
+          reject(new Error(`Error en respuesta Holded (${res.statusCode}): La respuesta no es JSON válido. Contenido: ${errorPreview}...`));
+          return;
+        }
+        
+        // Intentar parsear como JSON
         try {
           const responseData = JSON.parse(data);
           resolve({
@@ -362,7 +387,9 @@ ipcMain.handle('make-holded-request', async (event, { url, options }) => {
             data: responseData
           });
         } catch (e) {
-          reject(new Error(`Error parsing response: ${e.message}`));
+          // Si el Content-Type dice JSON pero no se puede parsear, mostrar más contexto
+          const errorPreview = data.substring(0, 200).replace(/\s+/g, ' ');
+          reject(new Error(`Error parsing JSON response: ${e.message}. Respuesta recibida: ${errorPreview}...`));
         }
       });
     });

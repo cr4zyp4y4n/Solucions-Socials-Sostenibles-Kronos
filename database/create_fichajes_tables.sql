@@ -397,3 +397,4 @@ CREATE POLICY "Usuarios autenticados pueden ver auditoría" ON fichajes_auditori
 
 
 
+
