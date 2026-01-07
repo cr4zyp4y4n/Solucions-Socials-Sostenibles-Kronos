@@ -353,12 +353,33 @@ ipcMain.handle('make-holded-request', async (event, { url, options }) => {
       let data = '';
       res.on('data', chunk => data += chunk);
       res.on('end', () => {
-        const contentType = res.headers['content-type'] || '';
-        const isJson = contentType.includes('application/json');
+        // Primero intentar parsear como JSON, independientemente del Content-Type
+        // Algunos servidores pueden devolver JSON válido sin el header correcto
+        let responseData;
+        let isJsonValid = false;
         
-        // Si la respuesta no es JSON, intentar extraer información útil del error
-        if (!isJson) {
-          // Si es un error del servidor (5xx) o gateway (502, 503, 504)
+        try {
+          // Si la respuesta está vacía, tratar como array vacío
+          if (data.trim() === '') {
+            responseData = [];
+            isJsonValid = true;
+          } else {
+            responseData = JSON.parse(data);
+            isJsonValid = true;
+          }
+        } catch (e) {
+          // No es JSON válido, verificar el Content-Type y el código de estado
+          const contentType = res.headers['content-type'] || '';
+          const isJsonContentType = contentType.includes('application/json');
+          
+          // Si el Content-Type dice JSON pero no se puede parsear, es un error real
+          if (isJsonContentType) {
+            const errorPreview = data.substring(0, 200).replace(/\s+/g, ' ');
+            reject(new Error(`Error parsing JSON response: ${e.message}. Respuesta recibida: ${errorPreview}...`));
+            return;
+          }
+          
+          // Si no es JSON y es un error del servidor (5xx) o gateway (502, 503, 504)
           if (res.statusCode >= 500 || res.statusCode === 502 || res.statusCode === 503 || res.statusCode === 504) {
             const errorPreview = data.substring(0, 100).replace(/\s+/g, ' ');
             reject(new Error(`Error del servidor Holded (${res.statusCode}): ${res.statusMessage}. Respuesta: ${errorPreview}...`));
@@ -377,20 +398,13 @@ ipcMain.handle('make-holded-request', async (event, { url, options }) => {
           return;
         }
         
-        // Intentar parsear como JSON
-        try {
-          const responseData = JSON.parse(data);
-          resolve({
-            ok: res.statusCode >= 200 && res.statusCode < 300,
-            status: res.statusCode,
-            statusText: res.statusMessage,
-            data: responseData
-          });
-        } catch (e) {
-          // Si el Content-Type dice JSON pero no se puede parsear, mostrar más contexto
-          const errorPreview = data.substring(0, 200).replace(/\s+/g, ' ');
-          reject(new Error(`Error parsing JSON response: ${e.message}. Respuesta recibida: ${errorPreview}...`));
-        }
+        // Si llegamos aquí, el JSON es válido
+        resolve({
+          ok: res.statusCode >= 200 && res.statusCode < 300,
+          status: res.statusCode,
+          statusText: res.statusMessage,
+          data: responseData
+        });
       });
     });
 

@@ -1,12 +1,12 @@
-# SSS Kronos v2.1.14
+# SSS Kronos v2.1.16
 
 
-🚀 **Release Notes - SSS Kronos v2.1.14**
+🚀 **Release Notes - SSS Kronos v2.1.16**
 
 ## 📦 Archivos de Distribución
 
 ### Windows
-- **Instalador:** SSS Kronos-2.1.14 Setup.exe (130 MB aprox.)
+- **Instalador:** SSS Kronos-2.1.16 Setup.exe (130 MB aprox.)
 - **Ubicación:** `out/make/squirrel.windows/x64/`
 - **Compatibilidad:** Windows 10/11 (64-bit)
 
@@ -14,6 +14,29 @@
 *Nota: Los instaladores para macOS y Linux se generarán en futuras versiones*
 
 ## ✨ Nuevas Características y Cambios Clave
+
+### 🆕 **v2.1.16 - Filtrado por Año en Analytics y Mejoras en Exportación Excel**
+- ✅ **Filtrado por año en Analytics:** Selector de año para visualizar facturas de 2025, 2026 o cualquier año disponible
+- ✅ **Carga de facturas históricas:** Sistema mejorado que obtiene facturas de múltiples años (2025 y 2026) combinando resultados
+- ✅ **Formato de fechas corregido:** Cambio de YYYY-MM-DD a timestamps Unix para compatibilidad con API de Holded
+- ✅ **Logs de depuración extensivos:** Sistema completo de logging para diagnóstico de peticiones a Holded API
+- ✅ **Optimización de consultas:** Consultas específicas por año en lugar de sin filtro para obtener todas las facturas históricas
+- ✅ **Hojas de resumen Excel optimizadas:** Eliminado "Total" de hojas de resumen, mostrando solo "Pendiente" (lo que realmente se debe pagar)
+- ✅ **Mantenimiento de hojas individuales:** Las hojas con facturas individuales mantienen columnas "Total" y "Pendiente" para referencia completa
+- ✅ **Mejora en paginación:** Sistema mejorado para continuar cargando páginas aunque algunas estén vacías
+- ✅ **Años disponibles dinámicos:** El selector de años se genera automáticamente basándose en los datos cargados
+
+### 🆕 **v2.1.15 - Mejoras en Análisis IDONI: Productos y Visualización**
+- ✅ **Carga completa de datos IDONI:** Paginación implementada para cargar todos los registros de ventas diarias (más de 1000 registros)
+- ✅ **12 meses completos:** Corregido problema donde solo se mostraban 9 meses en gráficos y totales
+- ✅ **Detección automática de productos a peso:** Sistema inteligente que distingue productos vendidos por kg vs unidades
+- ✅ **Visualización diferenciada:** Productos a peso muestran "kg" automáticamente en tablas y gráficos
+- ✅ **Gráficos separados de productos:** Tres gráficos independientes: Top por Importe, Top por Cantidad Unitaria, Top por Cantidad Kg
+- ✅ **Selector de gráficos:** Dropdown para elegir qué tipo de gráfico visualizar
+- ✅ **Selector de cantidad de productos:** Opción para mostrar Top 10, 20, 30 o 50 productos
+- ✅ **Orden cronológico correcto:** Gráfico de "Ventas por Días de la Semana" ahora muestra meses de enero a diciembre (antes era al revés)
+- ✅ **Totales precisos:** Cálculo correcto de totales generales incluyendo todos los meses disponibles
+- ✅ **Mejora en visualización:** Gráficos con mayor altura (400px) para mejor visualización de más productos
 
 ### 🆕 **v2.1.14 - Sistema de Fichaje, Navegación Mejorada y Exportación Excel**
 - ✅ **Sistema completo de fichaje:** Nueva sección para registro de entrada/salida de empleados con cumplimiento normativa laboral española
@@ -249,6 +272,25 @@
 - ✅ **Gráficos de productos:** Top 10 por importe y cantidad con etiquetas limpias
 - ✅ **Tooltips informativos:** Información completa del producto en hover
 
+### 📊 **Mejoras en AnalyticsPage (v2.1.16)**
+- ✅ **Filtrado por año:** Selector de año para filtrar facturas por año específico (2025, 2026, etc.)
+- ✅ **Carga de múltiples años:** Sistema que carga facturas de 2025 y 2026 automáticamente cuando no hay filtro de año
+- ✅ **Logs de depuración:** Sistema completo de logging que muestra peticiones a API, cantidad de facturas obtenidas, rangos de fechas y años encontrados
+- ✅ **Optimización de consultas:** Consultas específicas por año en lugar de sin filtro para mejor rendimiento y resultados completos
+- ✅ **Hojas de resumen Excel:** Eliminado "Total" de resúmenes, mostrando solo "Pendiente" (monto realmente a pagar)
+- ✅ **Años disponibles dinámicos:** Selector de años se genera automáticamente basándose en los datos cargados
+
+### 📊 **Mejoras en AnalyticsPage (v2.1.15)**
+- ✅ **Carga completa de datos:** Paginación implementada para cargar todos los registros de ventas diarias (sin límite de 1000)
+- ✅ **12 meses completos:** Corregido problema donde solo se mostraban 9 meses en gráficos y totales
+- ✅ **Detección de productos a peso:** Sistema que identifica automáticamente productos vendidos por kg (valores con decimales) vs unidades (valores enteros)
+- ✅ **Visualización diferenciada:** Productos a peso muestran "kg" en tablas y tooltips de gráficos
+- ✅ **Gráficos separados:** Tres gráficos independientes con selector para elegir tipo (Importe, Cantidad Unitaria, Cantidad Kg)
+- ✅ **Selector de cantidad:** Opción para mostrar Top 10, 20, 30 o 50 productos en los gráficos
+- ✅ **Orden cronológico correcto:** Gráfico de días de la semana muestra meses de enero a diciembre (corregido orden inverso)
+- ✅ **Totales precisos:** Cálculo correcto incluyendo todos los meses disponibles
+- ✅ **Mejora visual:** Gráficos con mayor altura para mejor visualización de más productos
+
 ### 📊 **Mejoras en AnalyticsPage (v2.1.13)**
 - ✅ **Análisis detallado por día de la semana:** Nueva sección en IDONI con filtros por día de la semana y mes/año
 - ✅ **Agrupación inteligente de datos:** Registros duplicados del mismo día y tienda se agrupan automáticamente
@@ -326,6 +368,21 @@
 - ✅ **Formato profesional:** Columnas con ancho adecuado y valores numéricos para sumas automáticas en Excel
 
 ### 🐞 Correcciones de Errores
+
+#### **v2.1.16 - Correcciones de Filtrado por Año y API Holded**
+- ✅ **Corregido problema de facturas de 2025:** Solucionado problema donde solo se mostraban facturas de 2026, ahora se obtienen correctamente facturas de 2025 y 2026
+- ✅ **Corregido formato de fechas:** Cambio de formato YYYY-MM-DD a timestamps Unix para compatibilidad correcta con API de Holded
+- ✅ **Corregido error 400 Bad Request:** Solucionados errores al hacer consultas con filtros de fecha incorrectos
+- ✅ **Corregida estrategia de carga:** Cambio de consultas sin filtro (que solo devolvían facturas recientes) a consultas específicas por año
+- ✅ **Corregida paginación:** Sistema mejorado que continúa cargando aunque haya páginas vacías consecutivas
+- ✅ **Corregida función getOverduePurchases:** Ya no aplica filtro de fecha de hoy cuando year es null, obteniendo todas las facturas vencidas de cualquier año
+
+#### **v2.1.15 - Correcciones de Análisis IDONI**
+- ✅ **Corregida carga incompleta de datos:** Solucionado problema donde solo se cargaban los primeros 1000 registros de ventas diarias
+- ✅ **Corregidos meses faltantes:** Ahora se muestran los 12 meses completos en gráficos y totales (antes solo 9)
+- ✅ **Corregido orden de meses:** Gráfico de días de la semana ahora muestra meses de enero a diciembre (corregido orden inverso)
+- ✅ **Corregidos totales incorrectos:** Cálculo de totales generales ahora incluye todos los meses disponibles
+- ✅ **Corregida visualización de productos:** Productos a peso ahora muestran correctamente "kg" en lugar de unidades
 
 #### **v2.1.14 - Correcciones de Fichaje y Zona Horaria**
 - ✅ **Corregida zona horaria:** Migración completa de TIMESTAMP a TIMESTAMPTZ para manejo correcto de horas
@@ -457,7 +514,7 @@
 
 ### 📥 Descargar
 1. Ve a la sección Releases de este repositorio
-2. Descarga `SSS Kronos-2.1.14 Setup.exe`
+2. Descarga `SSS Kronos-2.1.16 Setup.exe`
 3. Ejecuta el instalador y sigue las instrucciones
 
 ### ⚡ Primera Ejecución
@@ -499,6 +556,24 @@
 - **Documentación:** docs.supabase.com
 
 ## 🔄 Próximas Versiones
+
+### 🎯 v2.1.16 ✅ **COMPLETADA**
+- ✅ Filtrado por año en Analytics con selector dinámico ✅
+- ✅ Carga de facturas históricas (2025 y 2026) ✅
+- ✅ Formato de fechas corregido (timestamps Unix) ✅
+- ✅ Logs de depuración extensivos para diagnóstico ✅
+- ✅ Hojas de resumen Excel optimizadas (solo Pendiente) ✅
+- ✅ Corrección de error 400 Bad Request en API Holded ✅
+- ✅ Optimización de consultas por año específico ✅
+
+### 🎯 v2.1.15 ✅ **COMPLETADA**
+- ✅ Carga completa de datos IDONI con paginación ✅
+- ✅ Corrección de 12 meses completos en gráficos y totales ✅
+- ✅ Sistema de detección automática de productos a peso vs unitarios ✅
+- ✅ Visualización diferenciada con "kg" para productos a peso ✅
+- ✅ Gráficos separados con selector de tipo y cantidad ✅
+- ✅ Orden cronológico correcto en gráfico de días de la semana ✅
+- ✅ Totales precisos incluyendo todos los meses ✅
 
 ### 🎯 v2.1.14 ✅ **COMPLETADA**
 - ✅ Sistema completo de fichaje con cumplimiento normativa laboral española ✅

@@ -82,6 +82,10 @@ const AnalyticsPage = () => {
   const [selectedMonth, setSelectedMonth] = useState('');
   const [showMonthFilter, setShowMonthFilter] = useState(false);
   
+  // Estados para filtro por año
+  const [selectedYear, setSelectedYear] = useState('');
+  const [showYearFilter, setShowYearFilter] = useState(false);
+  
   // Estados para carga de archivos Excel de IDONI
   const [uploadingIdoni, setUploadingIdoni] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -194,7 +198,7 @@ const AnalyticsPage = () => {
 
   // Cargar datos desde Holded al montar el componente
   useEffect(() => {
-    loadDataFromHolded(); // Carga datos de Solucions y Menjar (y Bruno en paralelo)
+    loadDataFromHolded(null); // Carga datos de Solucions y Menjar (y Bruno en paralelo) - todos los años
   }, []);
 
   // Cerrar dropdown de meses cuando se hace clic fuera
@@ -203,18 +207,21 @@ const AnalyticsPage = () => {
       if (showMonthFilter && !event.target.closest('[data-month-filter]')) {
         setShowMonthFilter(false);
       }
+      if (showYearFilter && !event.target.closest('[data-year-filter]')) {
+        setShowYearFilter(false);
+      }
     };
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [showMonthFilter]);
+  }, [showMonthFilter, showYearFilter]);
 
   // Verificar si necesita actualización cuando se monta el componente
   useEffect(() => {
     if (needsUpdate('analytics')) {
-      loadDataFromHolded(); // Carga datos de Solucions y Menjar (y Bruno en paralelo)
+      loadDataFromHolded(selectedYear || null); // Carga datos de Solucions y Menjar (y Bruno en paralelo)
       markTabUpdated('analytics');
     }
   }, []);
@@ -222,17 +229,21 @@ const AnalyticsPage = () => {
   // Escuchar cambios en shouldReloadHolded para recargar datos
   useEffect(() => {
     if (shouldReloadHolded) {
-      loadDataFromHolded(); // Carga datos de Solucions y Menjar (y Bruno en paralelo)
+      loadDataFromHolded(); // Carga datos de Solucions y Menjar (todas las facturas, sin filtro de año)
       setShouldReloadHolded(false);
     }
   }, [shouldReloadHolded]);
+
+  // NO recargar datos cuando cambie el año - solo filtrar en el frontend
+  // Los datos ya están cargados con todas las facturas, solo necesitamos filtrar
 
 
 
 
   // Función para cargar datos desde Holded con filtrado de visibilidad
+  // NOTA: Siempre carga todas las facturas sin filtro de año - el filtrado se hace en el frontend
   const loadDataFromHolded = async () => {
-    console.log('🔄 Cargando datos de Holded...');
+    console.log('🔄 Cargando datos de Holded (todas las facturas)...');
     setLoading(true);
     setLoadingMessage('Conectando con Holded...');
     setError('');
@@ -246,26 +257,35 @@ const AnalyticsPage = () => {
       // Obtener el rol del usuario actual
       const userRole = user?.user_metadata?.role || 'user';
       
-      // Cargar datos para ambas empresas en paralelo
-      console.log('📊 Cargando datos de Solucions y Menjar...');
+      // Cargar datos para ambas empresas en paralelo (todas las facturas, sin filtro de año)
+      console.log('📊 Cargando datos de Solucions y Menjar (todas las facturas)...');
       setLoadingMessage('Descargando facturas de Solucions y Menjar...');
       const [solucionsPurchases, menjarPurchases] = await Promise.all([
-        // Cargar datos de Solucions Socials
-        holdedApi.getAllPendingAndOverduePurchases('solucions').catch(error => {
-          console.error('Error cargando datos de Solucions:', error);
+        // Cargar datos de Solucions Socials (todas las facturas)
+        holdedApi.getAllPendingAndOverduePurchases('solucions', null).catch(error => {
+          console.error('❌ Error cargando datos de Solucions:', error);
           return [];
         }),
-        // Cargar datos de Menjar D'Hort
-        holdedApi.getAllPendingAndOverduePurchases('menjar').catch(error => {
-          console.error('Error cargando datos de Menjar:', error);
+        // Cargar datos de Menjar D'Hort (todas las facturas)
+        holdedApi.getAllPendingAndOverduePurchases('menjar', null).catch(error => {
+          console.error('❌ Error cargando datos de Menjar:', error);
           return [];
         })
       ]);
+
+      console.log(`📦 [AnalyticsPage] Facturas recibidas de Holded:`);
+      console.log(`   - Solucions: ${solucionsPurchases.length} facturas`);
+      console.log(`   - Menjar: ${menjarPurchases.length} facturas`);
+      console.log(`   - Total: ${solucionsPurchases.length + menjarPurchases.length} facturas`);
 
       // Procesar datos de cada empresa
       setLoadingMessage('Procesando datos de facturas...');
       const processedSolucions = processHoldedPurchases(solucionsPurchases);
       const processedMenjar = processHoldedPurchases(menjarPurchases);
+      
+      console.log(`📊 [AnalyticsPage] Datos procesados:`);
+      console.log(`   - Solucions: ${processedSolucions.data.length} filas`);
+      console.log(`   - Menjar: ${processedMenjar.data.length} filas`);
 
       // Enriquecer datos con IBAN de contactos
       setLoadingMessage('Obteniendo información de contactos...');
@@ -301,7 +321,22 @@ const AnalyticsPage = () => {
         }
       });
       
-      console.log('✅ Datos de Holded cargados correctamente');
+      // Analizar años disponibles en los datos finales
+      const allYears = new Set();
+      [...enrichedSolucionsData, ...enrichedMenjarData].forEach(row => {
+        const dateValue = row[0]; // La fecha está en el índice 0
+        if (dateValue) {
+          const date = new Date(dateValue);
+          if (!isNaN(date.getTime())) {
+            allYears.add(date.getFullYear());
+          }
+        }
+      });
+      
+      console.log(`✅ Datos de Holded cargados correctamente`);
+      console.log(`📅 Años disponibles en los datos finales: ${Array.from(allYears).sort().join(', ')}`);
+      console.log(`   - Total de filas Solucions: ${enrichedSolucionsData.length}`);
+      console.log(`   - Total de filas Menjar: ${enrichedMenjarData.length}`);
       // IMPORTANTE: Usar setTimeout para asegurar que React haya renderizado los datos
       // antes de quitar la pantalla de carga
       setTimeout(() => {
@@ -1505,6 +1540,8 @@ const AnalyticsPage = () => {
         setExpandedDescriptions(new Set()); // Limpiar descripciones expandidas
         setSelectedMonth(''); // Resetear filtro de mes
         setShowMonthFilter(false); // Cerrar dropdown
+        setSelectedYear(''); // Resetear filtro de año
+        setShowYearFilter(false); // Cerrar dropdown de año
         setSelectedDayOfWeek(''); // Limpiar filtro de día de la semana
         setSelectedMonthYear(''); // Limpiar filtro de mes/año para IDONI
         setIsChangingDataset(false);
@@ -1543,21 +1580,47 @@ const AnalyticsPage = () => {
     return calculateIdoniAnalytics(idoniChartData.monthlyData, idoniChartData.weeklyData);
   }, [idoniChartData]);
   
-  // Datos para la vista General (sin filtro de mes)
+  // Datos para la vista General (con filtro de año si está seleccionado)
   const generalData = useMemo(() => {
-    return baseData;
-  }, [baseData]);
+    let filtered = baseData;
+    if (selectedYear) {
+      filtered = filterDataByYear(filtered, selectedYear);
+    }
+    return filtered;
+  }, [baseData, selectedYear]);
   
-  // Datos para la vista Sergi (con filtro de mes si está seleccionado)
+  // Datos para la vista Sergi (con filtro de mes y año si están seleccionados)
   const sergiData = useMemo(() => {
-    if (!selectedMonth) return baseData;
-    return filterDataByMonth(baseData, selectedMonth);
-  }, [baseData, selectedMonth]);
+    let filtered = baseData;
+    
+    // Aplicar filtro de año primero
+    if (selectedYear) {
+      filtered = filterDataByYear(filtered, selectedYear);
+    }
+    
+    // Luego aplicar filtro de mes
+    if (selectedMonth) {
+      filtered = filterDataByMonth(filtered, selectedMonth);
+    }
+    
+    return filtered;
+  }, [baseData, selectedMonth, selectedYear]);
   
-  // Datos para la vista Bruno (sin filtro de mes)
+  // Datos para la vista Bruno (con filtro de año si está seleccionado)
   const brunoData = useMemo(() => {
-    return brunoDataState;
-  }, [brunoDataState]);
+    if (!selectedYear) return brunoDataState;
+    
+    // Filtrar datos de Bruno por año
+    return brunoDataState.filter(row => {
+      const dateValue = row[0]; // La fecha está en el índice 0
+      if (!dateValue) return false;
+      
+      const date = parseSpanishDate(dateValue);
+      if (!date || isNaN(date.getTime())) return false;
+      
+      return date.getFullYear() === parseInt(selectedYear);
+    });
+  }, [brunoDataState, selectedYear]);
 
   // Función para filtrar datos de IDONI por día de la semana y mes
   const filterIdoniByDayAndMonth = (data, dayOfWeek, monthYear) => {
@@ -2471,10 +2534,14 @@ const AnalyticsPage = () => {
     const months = new Set();
     
     data.forEach(row => {
-      const dateValue = row[columnIndices.date]; // Usar el índice correcto de fecha
+      const dateValue = row[0]; // La fecha está en el índice 0
       if (dateValue) {
         const date = parseSpanishDate(dateValue);
         if (date && !isNaN(date.getTime())) {
+          // Si hay un año seleccionado, solo incluir meses de ese año
+          if (selectedYear && date.getFullYear() !== parseInt(selectedYear)) {
+            return;
+          }
           const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
           months.add(monthKey);
         }
@@ -2512,6 +2579,47 @@ const AnalyticsPage = () => {
     
     const monthName = monthNames[parseInt(month) - 1];
     return `${monthName} ${year}`;
+  }
+
+  // Función para obtener años disponibles en los datos (usa baseData sin filtrar)
+  function getAvailableYears() {
+    const years = new Set();
+    
+    // Usar baseData sin filtrar para obtener todos los años disponibles
+    const dataToCheck = selectedDataset === 'solucions' 
+      ? supabaseData.solucions.data
+      : selectedDataset === 'menjar'
+      ? supabaseData.menjar.data
+      : selectedDataset === 'bruno'
+      ? brunoDataState
+      : [];
+    
+    dataToCheck.forEach(row => {
+      const dateValue = row[0]; // La fecha está en el índice 0
+      if (dateValue) {
+        const date = parseSpanishDate(dateValue);
+        if (date && !isNaN(date.getTime())) {
+          years.add(date.getFullYear());
+        }
+      }
+    });
+    
+    return Array.from(years).sort((a, b) => b - a); // Ordenar de más reciente a más antiguo
+  }
+
+  // Función para filtrar datos por año
+  function filterDataByYear(data, year) {
+    if (!year) return data;
+    
+    return data.filter(row => {
+      const dateValue = row[0]; // La fecha está en el índice 0
+      if (!dateValue) return false;
+      
+      const date = parseSpanishDate(dateValue);
+      if (!date || isNaN(date.getTime())) return false;
+      
+      return date.getFullYear() === parseInt(year);
+    });
   }
 
   // --- Unificar lógica de filtrado de facturas por canal ---
@@ -4479,15 +4587,12 @@ const AnalyticsPage = () => {
       // Crear hoja de resumen con totales
       const summaryData = [];
       
-      // Calcular totales generales
-      let totalGeneral = 0;
+      // Calcular totales generales (solo pendiente, no total)
       let totalPendienteGeneral = 0;
       let totalFacturas = 0;
       
       filteredSergiData.forEach(row => {
-        const total = parseFloat(row[columnIndices.total]) || 0;
         const pending = columnIndices.pending ? (parseFloat(row[columnIndices.pending]) || 0) : 0;
-        totalGeneral += total;
         totalPendienteGeneral += pending;
         totalFacturas += 1;
       });
@@ -4548,19 +4653,12 @@ const AnalyticsPage = () => {
         });
 
         if (channelData.length > 0) {
-          const totalCanal = channelData.reduce((sum, row) => {
-            return sum + (parseFloat(row[columnIndices.total]) || 0);
-          }, 0);
-          
           const pendienteCanal = channelData.reduce((sum, row) => {
             const pending = columnIndices.pending ? (parseFloat(row[columnIndices.pending]) || 0) : 0;
             return sum + pending;
           }, 0);
 
-          summaryData.push({
-            'Concepto': `Total ${channel}`,
-            'Valor': totalCanal
-          });
+          // Solo mostrar Pendiente, no Total
           summaryData.push({
             'Concepto': `Pendiente ${channel}`,
             'Valor': pendienteCanal
@@ -4576,14 +4674,10 @@ const AnalyticsPage = () => {
         }
       });
 
-      // Agregar totales generales
+      // Agregar totales generales (solo pendiente, no total)
       summaryData.push({
         'Concepto': '═══════════════════════',
         'Valor': ''
-      });
-      summaryData.push({
-        'Concepto': 'TOTAL GENERAL',
-        'Valor': totalGeneral
       });
       summaryData.push({
         'Concepto': 'TOTAL PENDIENTE',
@@ -4872,15 +4966,12 @@ const AnalyticsPage = () => {
       // Crear hoja de resumen con totales
       const summaryData = [];
       
-      // Calcular totales generales
-      let totalGeneral = 0;
+      // Calcular totales generales (solo pendiente, no total)
       let totalPendienteGeneral = 0;
       let totalFacturas = 0;
       
       dataToExport.forEach(row => {
-        const total = parseFloat(row[columnIndices.total]) || 0;
         const pending = columnIndices.pending ? (parseFloat(row[columnIndices.pending]) || 0) : 0;
-        totalGeneral += total;
         totalPendienteGeneral += pending;
         totalFacturas += 1;
       });
@@ -4895,23 +4986,16 @@ const AnalyticsPage = () => {
         'Valor': ''
       });
       
-      // Agregar totales por proveedor
+      // Agregar totales por proveedor (solo pendiente, no total)
       Object.keys(groupedByProvider).sort().forEach(provider => {
         const providerInvoices = groupedByProvider[provider];
-        const providerTotal = providerInvoices.reduce((sum, row) => {
-          const total = parseFloat(row[columnIndices.total]) || 0;
-          return sum + total;
-        }, 0);
         
         const providerPendiente = providerInvoices.reduce((sum, row) => {
           const pending = columnIndices.pending ? (parseFloat(row[columnIndices.pending]) || 0) : 0;
           return sum + pending;
         }, 0);
 
-        summaryData.push({
-          'Concepto': `Total ${provider}`,
-          'Valor': providerTotal
-        });
+        // Solo mostrar Pendiente, no Total
         summaryData.push({
           'Concepto': `Pendiente ${provider}`,
           'Valor': providerPendiente
@@ -4926,14 +5010,10 @@ const AnalyticsPage = () => {
         });
       });
 
-      // Agregar totales generales
+      // Agregar totales generales (solo pendiente, no total)
       summaryData.push({
         'Concepto': '═══════════════════════',
         'Valor': ''
-      });
-      summaryData.push({
-        'Concepto': 'TOTAL GENERAL',
-        'Valor': totalGeneral
       });
       summaryData.push({
         'Concepto': 'TOTAL PENDIENTE',
@@ -7657,7 +7737,7 @@ const AnalyticsPage = () => {
                   </div>
                 </div>
 
-                {/* Filtro por Meses - Solo en vista Sergi */}
+                {/* Filtro por Año y Meses - Solo en vista Sergi */}
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -7671,63 +7751,179 @@ const AnalyticsPage = () => {
                     position: 'relative'
                   }}
                 >
-                  <div 
-                    data-month-filter
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                      padding: '8px 16px',
-                      background: colors.card,
-                      borderRadius: '8px',
-                      border: `1px solid ${colors.border}`,
-                      cursor: 'pointer',
-                      transition: 'all 0.2s ease',
-                      userSelect: 'none'
-                    }}
-                    onClick={() => setShowMonthFilter(!showMonthFilter)}
+                  {/* Selector de Año */}
+                  <motion.div
+                    style={{ position: 'relative' }}
                   >
-                    <Filter size={16} color={colors.text} />
-                    <span style={{ color: colors.text, fontSize: '14px', fontWeight: '500' }}>
-                      {selectedMonth ? getMonthName(selectedMonth) : 'Todos los meses'}
-                    </span>
-                    {selectedMonth && (
-                      <span style={{
-                        background: colors.primary + '22',
-                        color: colors.primary,
-                        fontSize: '11px',
-                        padding: '2px 6px',
-                        borderRadius: '4px',
-                        fontWeight: '500'
-                      }}>
-                        Filtrado
+                    <div 
+                      data-year-filter
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        padding: '8px 16px',
+                        background: colors.card,
+                        borderRadius: '8px',
+                        border: `1px solid ${colors.border}`,
+                        cursor: 'pointer',
+                        transition: 'all 0.2s ease',
+                        userSelect: 'none'
+                      }}
+                      onClick={() => {
+                        setShowYearFilter(!showYearFilter);
+                        setShowMonthFilter(false); // Cerrar selector de mes si está abierto
+                      }}
+                    >
+                      <Filter size={16} color={colors.text} />
+                      <span style={{ color: colors.text, fontSize: '14px', fontWeight: '500' }}>
+                        {selectedYear ? `Año ${selectedYear}` : 'Todos los años'}
                       </span>
-                    )}
-                  </div>
+                      {selectedYear && (
+                        <span style={{
+                          background: colors.primary + '22',
+                          color: colors.primary,
+                          fontSize: '11px',
+                          padding: '2px 6px',
+                          borderRadius: '4px',
+                          fontWeight: '500'
+                        }}>
+                          Filtrado
+                        </span>
+                      )}
+                    </div>
 
-                  {/* Dropdown de meses */}
-                  <AnimatePresence>
-                    {showMonthFilter && (
-                      <motion.div
-                        data-month-filter
-                        initial={{ opacity: 0, y: -10, scale: 0.95 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={{ opacity: 0, y: -10, scale: 0.95 }}
-                        transition={{ duration: 0.2 }}
-                        style={{
-                          position: 'absolute',
-                          top: '100%',
-                          left: 0,
-                          background: colors.card,
-                          borderRadius: '8px',
-                          border: `1px solid ${colors.border}`,
-                          boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-                          zIndex: 1000,
-                          minWidth: '200px',
-                          maxHeight: '300px',
-                          overflowY: 'auto'
-                        }}
-                      >
+                    {/* Dropdown de años */}
+                    <AnimatePresence>
+                      {showYearFilter && (
+                        <motion.div
+                          data-year-filter
+                          initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                          animate={{ opacity: 1, y: 0, scale: 1 }}
+                          exit={{ opacity: 0, y: -10, scale: 0.95 }}
+                          transition={{ duration: 0.2 }}
+                          style={{
+                            position: 'absolute',
+                            top: '100%',
+                            left: 0,
+                            background: colors.card,
+                            borderRadius: '8px',
+                            border: `1px solid ${colors.border}`,
+                            boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                            zIndex: 1001,
+                            minWidth: '150px',
+                            maxHeight: '300px',
+                            overflowY: 'auto',
+                            marginTop: '4px'
+                          }}
+                        >
+                          <div
+                            style={{
+                              padding: '8px 12px',
+                              cursor: 'pointer',
+                              transition: 'background-color 0.2s ease',
+                              borderBottom: `1px solid ${colors.border}`,
+                              background: !selectedYear ? colors.hover : 'transparent',
+                              color: colors.text,
+                              fontSize: '14px',
+                              fontWeight: '500'
+                            }}
+                            onClick={() => {
+                              setSelectedYear('');
+                              setShowYearFilter(false);
+                            }}
+                          >
+                            Todos los años
+                          </div>
+                          {getAvailableYears().map(year => (
+                            <div
+                              key={year}
+                              style={{
+                                padding: '8px 12px',
+                                cursor: 'pointer',
+                                transition: 'background-color 0.2s ease',
+                                borderBottom: `1px solid ${colors.border}`,
+                                background: selectedYear === String(year) ? colors.hover : 'transparent',
+                                color: colors.text,
+                                fontSize: '14px'
+                              }}
+                              onClick={() => {
+                                setSelectedYear(String(year));
+                                setShowYearFilter(false);
+                              }}
+                            >
+                              {year}
+                            </div>
+                          ))}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </motion.div>
+
+                  {/* Selector de Mes */}
+                  <motion.div
+                    style={{ position: 'relative' }}
+                  >
+                    <div 
+                      data-month-filter
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        padding: '8px 16px',
+                        background: colors.card,
+                        borderRadius: '8px',
+                        border: `1px solid ${colors.border}`,
+                        cursor: 'pointer',
+                        transition: 'all 0.2s ease',
+                        userSelect: 'none'
+                      }}
+                      onClick={() => {
+                        setShowMonthFilter(!showMonthFilter);
+                        setShowYearFilter(false); // Cerrar selector de año si está abierto
+                      }}
+                    >
+                      <Filter size={16} color={colors.text} />
+                      <span style={{ color: colors.text, fontSize: '14px', fontWeight: '500' }}>
+                        {selectedMonth ? getMonthName(selectedMonth) : 'Todos los meses'}
+                      </span>
+                      {selectedMonth && (
+                        <span style={{
+                          background: colors.primary + '22',
+                          color: colors.primary,
+                          fontSize: '11px',
+                          padding: '2px 6px',
+                          borderRadius: '4px',
+                          fontWeight: '500'
+                        }}>
+                          Filtrado
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Dropdown de meses */}
+                    <AnimatePresence>
+                      {showMonthFilter && (
+                        <motion.div
+                          data-month-filter
+                          initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                          animate={{ opacity: 1, y: 0, scale: 1 }}
+                          exit={{ opacity: 0, y: -10, scale: 0.95 }}
+                          transition={{ duration: 0.2 }}
+                          style={{
+                            position: 'absolute',
+                            top: '100%',
+                            left: 0,
+                            background: colors.card,
+                            borderRadius: '8px',
+                            border: `1px solid ${colors.border}`,
+                            boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                            zIndex: 1001,
+                            minWidth: '200px',
+                            maxHeight: '300px',
+                            overflowY: 'auto',
+                            marginTop: '4px'
+                          }}
+                        >
                         <div
                           style={{
                             padding: '8px 12px',
@@ -7769,6 +7965,7 @@ const AnalyticsPage = () => {
                       </motion.div>
                     )}
                   </AnimatePresence>
+                  </motion.div>
                 </motion.div>
                 
                 <div style={{
