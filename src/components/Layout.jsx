@@ -123,8 +123,12 @@ const Layout = () => {
     fetchUserProfile();
   }, [user]);
 
-  // Verificar si el usuario es administrador
+  // Verificar roles del usuario
   const isAdmin = userProfile?.role === 'admin';
+  const isManager = userProfile?.role === 'manager';
+  const isTienda = userProfile?.role === 'tienda';
+  const isManagementOrManager = userProfile?.role === 'management' || isManager;
+  const isUser = !isAdmin && !isManagementOrManager && !isTienda;
 
   // Limpiar eventId cuando se navega a otra sección
   useEffect(() => {
@@ -132,8 +136,6 @@ const Layout = () => {
       setCateringEventId(null);
     }
   }, [activeSection]);
-  const isManagementOrManager = userProfile?.role === 'management' || userProfile?.role === 'manager';
-  const isUser = !isAdmin && !isManagementOrManager;
 
   // Configurar notificaciones en tiempo real
   useEffect(() => {
@@ -404,6 +406,7 @@ const Layout = () => {
       case 'admin': return 'Administrador';
       case 'management': return 'Gestión';
       case 'manager': return 'Jefe';
+      case 'tienda': return 'Tienda';
       case 'user': return 'Usuario';
       default: return 'Usuario';
     }
@@ -441,24 +444,29 @@ const Layout = () => {
     return showAllNotifications ? processedNotifications : processedNotifications.slice(0, 5);
   };
 
-  // Menú lateral según rol
-  const menuItems = [
-    { key: 'home', label: 'Inicio', path: '/home', icon: Home },
-    { key: 'analytics', label: 'Análisis', path: '/analytics', icon: BarChart2 },
-    { key: 'sales-invoices', label: 'Resum Caterings', path: '/sales-invoices', icon: DollarSign },
-    { key: 'inventory', label: 'Inventario', path: '/inventory', icon: Package },
-    { key: 'innuva-converter', label: 'Conversor Innuva', path: '/innuva-converter', icon: UploadCloud },
-    { key: 'subvenciones', label: 'Subvenciones', path: '/subvenciones', icon: FileText },
-    { key: 'empleados', label: 'Empleados', path: '/empleados', icon: Users },
-    { key: 'hoja-ruta', label: 'Hoja de Ruta', path: '/hoja-ruta', icon: Calendar },
-    { key: 'fichaje', label: 'Fichaje', path: '/fichaje', icon: Clock },
-    { key: 'socios', label: 'Socios IDONI', path: '/socios', icon: Users },
-    { key: 'gestion-tienda', label: 'Gestión Tienda', path: '/gestion-tienda', icon: ShoppingBag },
-    { key: 'contacts', label: 'Contactos', path: '/contacts', icon: CreditCard },
-    { key: 'settings', label: 'Configuración', path: '/settings', icon: Settings },
+  // Menú lateral según rol - Definir todos los items con sus roles permitidos
+  const allMenuItems = [
+    { key: 'home', label: 'Inicio', path: '/home', icon: Home, roles: ['admin', 'management', 'manager', 'user', 'tienda'] },
+    { key: 'analytics', label: 'Análisis', path: '/analytics', icon: BarChart2, roles: ['admin', 'management', 'manager'] },
+    { key: 'sales-invoices', label: 'Resum Caterings', path: '/sales-invoices', icon: DollarSign, roles: ['admin', 'management', 'manager'] },
+    { key: 'inventory', label: 'Inventario', path: '/inventory', icon: Package, roles: ['admin', 'manager', 'tienda'] },
+    { key: 'innuva-converter', label: 'Conversor Innuva', path: '/innuva-converter', icon: UploadCloud, roles: ['admin', 'management', 'manager'] },
+    { key: 'subvenciones', label: 'Subvenciones', path: '/subvenciones', icon: FileText, roles: ['admin', 'management', 'manager'] },
+    { key: 'empleados', label: 'Empleados', path: '/empleados', icon: Users, roles: ['admin', 'management', 'manager'] },
+    { key: 'hoja-ruta', label: 'Hoja de Ruta', path: '/hoja-ruta', icon: Calendar, roles: ['admin', 'management', 'manager'] },
+    { key: 'fichaje', label: 'Fichaje', path: '/fichaje', icon: Clock, roles: ['admin', 'manager', 'tienda'] },
+    { key: 'socios', label: 'Socios IDONI', path: '/socios', icon: Users, roles: ['admin', 'management', 'manager'] },
+    { key: 'gestion-tienda', label: 'Gestión Tienda', path: '/gestion-tienda', icon: ShoppingBag, roles: ['admin', 'manager', 'tienda'] },
+    { key: 'contacts', label: 'Contactos', path: '/contacts', icon: CreditCard, roles: ['admin', 'management', 'manager'] },
+    { key: 'settings', label: 'Configuración', path: '/settings', icon: Settings, roles: ['admin', 'management', 'manager', 'user', 'tienda'] },
   ];
 
-  // Solo administradores pueden ver catering
+  // Filtrar items según el rol del usuario
+  const menuItems = allMenuItems.filter(item =>
+    item.roles.includes(userProfile?.role || 'user')
+  );
+
+  // Agregar items especiales para admin
   if (isAdmin) {
     menuItems.splice(1, 0, { key: 'catering', label: 'Catering', path: '/catering', icon: Coffee });
     menuItems.push(
@@ -493,6 +501,9 @@ const Layout = () => {
       case 'sales-invoices':
         return <SalesInvoicesPage />;
       case 'inventory':
+        if (!isAdmin && !isManager && !isTienda) {
+          return <AccessDenied message="No tienes permisos para acceder al Inventario." />;
+        }
         return <InventoryPage />;
       case 'innuva-converter':
         return <InnuvaConverterPage />;
@@ -503,10 +514,16 @@ const Layout = () => {
       case 'hoja-ruta':
         return <HojaRutaPage />;
       case 'fichaje':
+        if (!isAdmin && !isManager && !isTienda) {
+          return <AccessDenied message="No tienes permisos para acceder al Fichaje." />;
+        }
         return <FichajePage />;
       case 'socios':
         return <SociosPage />;
       case 'gestion-tienda':
+        if (!isAdmin && !isManager && !isTienda) {
+          return <AccessDenied message="No tienes permisos para acceder a Gestión Tienda." />;
+        }
         return <GestionTiendaPage />;
       case 'settings':
         return <SettingsPage />;
