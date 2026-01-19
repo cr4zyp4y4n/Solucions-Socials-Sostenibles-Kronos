@@ -9,6 +9,7 @@ const HojaTecnicaModal = ({ isOpen, onClose, hoja, onSave }) => {
     const { colors } = useTheme();
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
+    const [isDragging, setIsDragging] = useState(false);
 
     // Form state
     const [nombrePlato, setNombrePlato] = useState('');
@@ -50,15 +51,19 @@ const HojaTecnicaModal = ({ isOpen, onClose, hoja, onSave }) => {
     const handleImageChange = (e) => {
         const file = e.target.files[0];
         if (file) {
-            // Revoke old preview if exists
-            if (imagenPreview && imagenPreview.startsWith('blob:')) {
-                revokeImagePreview(imagenPreview);
-            }
-
-            setImagen(file);
-            const preview = createImagePreview(file);
-            setImagenPreview(preview);
+            processImageFile(file);
         }
+    };
+
+    const processImageFile = (file) => {
+        // Revoke old preview if exists
+        if (imagenPreview && imagenPreview.startsWith('blob:')) {
+            revokeImagePreview(imagenPreview);
+        }
+
+        setImagen(file);
+        const preview = createImagePreview(file);
+        setImagenPreview(preview);
     };
 
     const handleRemoveImage = () => {
@@ -67,6 +72,40 @@ const HojaTecnicaModal = ({ isOpen, onClose, hoja, onSave }) => {
         }
         setImagen(null);
         setImagenPreview(null);
+    };
+
+    const handleDragEnter = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(true);
+    };
+
+    const handleDragLeave = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(false);
+    };
+
+    const handleDragOver = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+    };
+
+    const handleDrop = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(false);
+
+        const files = e.dataTransfer.files;
+        if (files && files.length > 0) {
+            const file = files[0];
+            // Validate it's an image
+            if (file.type.startsWith('image/')) {
+                processImageFile(file);
+            } else {
+                setError('Por favor, arrastra solo archivos de imagen');
+            }
+        }
     };
 
     const handleAddIngrediente = () => {
@@ -370,29 +409,43 @@ const HojaTecnicaModal = ({ isOpen, onClose, hoja, onSave }) => {
                                     </button>
                                 </div>
                             ) : (
-                                <label style={{
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    width: '200px',
-                                    height: '200px',
-                                    border: `2px dashed ${colors.border}`,
-                                    borderRadius: '8px',
-                                    cursor: 'pointer',
-                                    backgroundColor: colors.surface,
-                                    transition: 'all 0.2s',
-                                }}
-                                    onMouseEnter={(e) => e.currentTarget.style.borderColor = colors.primary}
-                                    onMouseLeave={(e) => e.currentTarget.style.borderColor = colors.border}
+                                <label
+                                    onDragEnter={handleDragEnter}
+                                    onDragOver={handleDragOver}
+                                    onDragLeave={handleDragLeave}
+                                    onDrop={handleDrop}
+                                    style={{
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        width: '200px',
+                                        height: '200px',
+                                        border: `2px dashed ${isDragging ? colors.primary : colors.border}`,
+                                        borderRadius: '8px',
+                                        cursor: 'pointer',
+                                        backgroundColor: isDragging ? `${colors.primary}10` : colors.surface,
+                                        transition: 'all 0.2s',
+                                    }}
+                                    onMouseEnter={(e) => {
+                                        if (!isDragging) {
+                                            e.currentTarget.style.borderColor = colors.primary;
+                                        }
+                                    }}
+                                    onMouseLeave={(e) => {
+                                        if (!isDragging) {
+                                            e.currentTarget.style.borderColor = colors.border;
+                                        }
+                                    }}
                                 >
-                                    <Upload size={32} color={colors.textSecondary} />
+                                    <Upload size={32} color={isDragging ? colors.primary : colors.textSecondary} />
                                     <span style={{
                                         marginTop: '8px',
                                         fontSize: '14px',
-                                        color: colors.textSecondary,
+                                        color: isDragging ? colors.primary : colors.textSecondary,
+                                        fontWeight: isDragging ? '600' : '400',
                                     }}>
-                                        Subir imagen
+                                        {isDragging ? 'Suelta aquí' : 'Subir o arrastrar imagen'}
                                     </span>
                                     <input
                                         type="file"
