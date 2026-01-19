@@ -28,7 +28,7 @@ const HojaTecnicaCard = ({ hoja, onClick }) => {
             {/* Image Section */}
             <div style={{
                 width: '100%',
-                height: '160px',
+                height: '200px',
                 borderRadius: '8px',
                 overflow: 'hidden',
                 backgroundColor: colors.surface,
@@ -44,6 +44,10 @@ const HojaTecnicaCard = ({ hoja, onClick }) => {
                             width: '100%',
                             height: '100%',
                             objectFit: 'cover',
+                        }}
+                        onError={(e) => {
+                            console.error('Error loading image:', hoja.imagen_url);
+                            e.target.style.display = 'none';
                         }}
                     />
                 ) : (

@@ -42,6 +42,14 @@ class HojasTecnicasService {
                 throw error;
             }
 
+            console.log('📋 Hojas técnicas fetched:', data?.length || 0);
+            if (data && data.length > 0) {
+                console.log('🖼️ Image URLs:', data.map(h => ({
+                    nombre: h.nombre_plato,
+                    imagen_url: h.imagen_url
+                })));
+            }
+
             // Calculate cost summary for each hoja técnica
             const hojasConResumen = (data || []).map(hoja => ({
                 ...hoja,
@@ -336,6 +344,12 @@ class HojasTecnicasService {
      */
     async uploadDishImage(file) {
         try {
+            console.log('📤 Starting image upload...', {
+                name: file.name,
+                type: file.type,
+                size: file.size
+            });
+
             // Validate file
             const validation = validateImageFile(file);
             if (!validation.valid) {
@@ -343,12 +357,23 @@ class HojasTecnicasService {
             }
 
             // Compress image
+            console.log('🗜️ Compressing image...');
             const compressedBlob = await compressImage(file);
+            console.log('✅ Image compressed:', {
+                originalSize: file.size,
+                compressedSize: compressedBlob.size,
+                reduction: `${((1 - compressedBlob.size / file.size) * 100).toFixed(1)}%`
+            });
 
             // Generate unique filename
             const fileExt = 'jpg'; // Always use jpg after compression
             const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
             const filePath = `${fileName}`;
+
+            console.log('📁 Uploading to storage...', {
+                bucket: this.storageBucket,
+                path: filePath
+            });
 
             // Upload to Supabase Storage
             const { data, error } = await supabase.storage
@@ -364,10 +389,14 @@ class HojasTecnicasService {
                 throw error;
             }
 
+            console.log('✅ Upload successful:', data);
+
             // Get public URL
             const { data: { publicUrl } } = supabase.storage
                 .from(this.storageBucket)
                 .getPublicUrl(filePath);
+
+            console.log('🔗 Public URL generated:', publicUrl);
 
             return publicUrl;
         } catch (error) {
