@@ -1,0 +1,830 @@
+import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { X, Plus, Trash2, Upload, Image as ImageIcon } from 'feather-icons-react';
+import { useTheme } from './ThemeContext';
+import hojasTecnicasService from '../services/hojasTecnicasService';
+import { createImagePreview, revokeImagePreview } from '../utils/imageCompression';
+
+const HojaTecnicaModal = ({ isOpen, onClose, hoja, onSave }) => {
+    const { colors } = useTheme();
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState(null);
+
+    // Form state
+    const [nombrePlato, setNombrePlato] = useState('');
+    const [imagen, setImagen] = useState(null);
+    const [imagenPreview, setImagenPreview] = useState(null);
+    const [ingredientes, setIngredientes] = useState([]);
+    const [alergenos, setAlergenos] = useState([]);
+
+    // Initialize form when hoja changes
+    useEffect(() => {
+        if (hoja) {
+            setNombrePlato(hoja.nombre_plato || '');
+            setImagenPreview(hoja.imagen_url || null);
+            setIngredientes(hoja.ingredientes || []);
+            setAlergenos(hoja.alergenos || []);
+        } else {
+            resetForm();
+        }
+    }, [hoja]);
+
+    // Cleanup preview URL on unmount
+    useEffect(() => {
+        return () => {
+            if (imagenPreview && imagenPreview.startsWith('blob:')) {
+                revokeImagePreview(imagenPreview);
+            }
+        };
+    }, [imagenPreview]);
+
+    const resetForm = () => {
+        setNombrePlato('');
+        setImagen(null);
+        setImagenPreview(null);
+        setIngredientes([]);
+        setAlergenos([]);
+        setError(null);
+    };
+
+    const handleImageChange = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            // Revoke old preview if exists
+            if (imagenPreview && imagenPreview.startsWith('blob:')) {
+                revokeImagePreview(imagenPreview);
+            }
+
+            setImagen(file);
+            const preview = createImagePreview(file);
+            setImagenPreview(preview);
+        }
+    };
+
+    const handleRemoveImage = () => {
+        if (imagenPreview && imagenPreview.startsWith('blob:')) {
+            revokeImagePreview(imagenPreview);
+        }
+        setImagen(null);
+        setImagenPreview(null);
+    };
+
+    const handleAddIngrediente = () => {
+        setIngredientes([
+            ...ingredientes,
+            {
+                id: `temp-${Date.now()}`,
+                nombre_ingrediente: '',
+                peso_gramos: 0,
+                coste_euros: 0,
+                gastos_euros: 0,
+            }
+        ]);
+    };
+
+    const handleRemoveIngrediente = (index) => {
+        setIngredientes(ingredientes.filter((_, i) => i !== index));
+    };
+
+    const handleIngredienteChange = (index, field, value) => {
+        const updated = [...ingredientes];
+        updated[index] = { ...updated[index], [field]: value };
+        setIngredientes(updated);
+    };
+
+    const handleAddAlergeno = () => {
+        setAlergenos([
+            ...alergenos,
+            {
+                id: `temp-${Date.now()}`,
+                tipo_alergeno: '',
+            }
+        ]);
+    };
+
+    const handleRemoveAlergeno = (index) => {
+        setAlergenos(alergenos.filter((_, i) => i !== index));
+    };
+
+    const handleAlergenoChange = (index, value) => {
+        const updated = [...alergenos];
+        updated[index] = { ...updated[index], tipo_alergeno: value };
+        setAlergenos(updated);
+    };
+
+    const calculateResumen = () => {
+        const resumen = {
+            total_peso: 0,
+            total_coste: 0,
+            total_gastos: 0,
+            coste_total: 0,
+        };
+
+        ingredientes.forEach(ing => {
+            resumen.total_peso += parseFloat(ing.peso_gramos) || 0;
+            resumen.total_coste += parseFloat(ing.coste_euros) || 0;
+            resumen.total_gastos += parseFloat(ing.gastos_euros) || 0;
+        });
+
+        resumen.coste_total = resumen.total_coste + resumen.total_gastos;
+
+        return resumen;
+    };
+
+    const handleSave = async () => {
+        try {
+            setError(null);
+
+            // Validation
+            if (!nombrePlato.trim()) {
+                setError('El nombre del plato es obligatorio');
+                return;
+            }
+
+            setLoading(true);
+
+            const hojaData = {
+                nombre_plato: nombrePlato,
+                imagen: imagen,
+                ingredientes: ingredientes.filter(ing => ing.nombre_ingrediente.trim()),
+                alergenos: alergenos.filter(alg => alg.tipo_alergeno.trim()),
+            };
+
+            let result;
+            if (hoja) {
+                // Update existing
+                result = await hojasTecnicasService.updateHojaTecnica(hoja.id, hojaData);
+            } else {
+                // Create new
+                result = await hojasTecnicasService.createHojaTecnica(hojaData);
+            }
+
+            onSave(result);
+            handleClose();
+        } catch (err) {
+            console.error('Error saving hoja técnica:', err);
+            setError(err.message || 'Error al guardar la hoja técnica');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleDelete = async () => {
+        if (!hoja) return;
+
+        const confirmed = window.confirm('¿Estás seguro de que quieres borrar esta hoja técnica?');
+        if (!confirmed) return;
+
+        try {
+            setLoading(true);
+            await hojasTecnicasService.deleteHojaTecnica(hoja.id);
+            onSave(null); // Signal deletion
+            handleClose();
+        } catch (err) {
+            console.error('Error deleting hoja técnica:', err);
+            setError(err.message || 'Error al borrar la hoja técnica');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleClose = () => {
+        resetForm();
+        onClose();
+    };
+
+    const resumen = calculateResumen();
+
+    if (!isOpen) return null;
+
+    return (
+        <AnimatePresence>
+            <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                style={{
+                    position: 'fixed',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    zIndex: 1000,
+                    padding: '20px',
+                }}
+                onClick={handleClose}
+            >
+                <motion.div
+                    initial={{ scale: 0.9, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    exit={{ scale: 0.9, opacity: 0 }}
+                    onClick={(e) => e.stopPropagation()}
+                    style={{
+                        backgroundColor: colors.background,
+                        borderRadius: '16px',
+                        width: '100%',
+                        maxWidth: '900px',
+                        maxHeight: '90vh',
+                        overflow: 'hidden',
+                        display: 'flex',
+                        flexDirection: 'column',
+                    }}
+                >
+                    {/* Header */}
+                    <div style={{
+                        padding: '24px',
+                        borderBottom: `1px solid ${colors.border}`,
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                    }}>
+                        <h2 style={{
+                            fontSize: '24px',
+                            fontWeight: '700',
+                            color: colors.text,
+                            margin: 0,
+                        }}>
+                            {hoja ? 'Editar Hoja Técnica' : 'Nueva Hoja Técnica'}
+                        </h2>
+                        <button
+                            onClick={handleClose}
+                            style={{
+                                background: 'none',
+                                border: 'none',
+                                cursor: 'pointer',
+                                padding: '8px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                borderRadius: '8px',
+                                transition: 'background-color 0.2s',
+                            }}
+                            onMouseEnter={(e) => e.target.style.backgroundColor = colors.surface}
+                            onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
+                        >
+                            <X size={24} color={colors.text} />
+                        </button>
+                    </div>
+
+                    {/* Content */}
+                    <div style={{
+                        flex: 1,
+                        overflowY: 'auto',
+                        padding: '24px',
+                    }}>
+                        {error && (
+                            <div style={{
+                                padding: '12px 16px',
+                                backgroundColor: '#fee2e2',
+                                border: '1px solid #fecaca',
+                                borderRadius: '8px',
+                                color: '#991b1b',
+                                fontSize: '14px',
+                                marginBottom: '20px',
+                            }}>
+                                {error}
+                            </div>
+                        )}
+
+                        {/* Nombre del Plato */}
+                        <div style={{ marginBottom: '24px' }}>
+                            <label style={{
+                                display: 'block',
+                                fontSize: '14px',
+                                fontWeight: '600',
+                                color: colors.text,
+                                marginBottom: '8px',
+                            }}>
+                                Nombre del Plato <span style={{ color: '#ef4444' }}>*</span>
+                            </label>
+                            <input
+                                type="text"
+                                value={nombrePlato}
+                                onChange={(e) => setNombrePlato(e.target.value)}
+                                placeholder="Ej: Paella Valenciana"
+                                style={{
+                                    width: '100%',
+                                    padding: '12px',
+                                    backgroundColor: colors.surface,
+                                    border: `1px solid ${colors.border}`,
+                                    borderRadius: '8px',
+                                    color: colors.text,
+                                    fontSize: '14px',
+                                    outline: 'none',
+                                }}
+                            />
+                        </div>
+
+                        {/* Foto del Plato */}
+                        <div style={{ marginBottom: '24px' }}>
+                            <label style={{
+                                display: 'block',
+                                fontSize: '14px',
+                                fontWeight: '600',
+                                color: colors.text,
+                                marginBottom: '8px',
+                            }}>
+                                Foto del Plato (Opcional)
+                            </label>
+
+                            {imagenPreview ? (
+                                <div style={{
+                                    position: 'relative',
+                                    width: '200px',
+                                    height: '200px',
+                                    borderRadius: '8px',
+                                    overflow: 'hidden',
+                                    border: `1px solid ${colors.border}`,
+                                }}>
+                                    <img
+                                        src={imagenPreview}
+                                        alt="Preview"
+                                        style={{
+                                            width: '100%',
+                                            height: '100%',
+                                            objectFit: 'cover',
+                                        }}
+                                    />
+                                    <button
+                                        onClick={handleRemoveImage}
+                                        style={{
+                                            position: 'absolute',
+                                            top: '8px',
+                                            right: '8px',
+                                            backgroundColor: 'rgba(0, 0, 0, 0.6)',
+                                            border: 'none',
+                                            borderRadius: '50%',
+                                            width: '32px',
+                                            height: '32px',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            cursor: 'pointer',
+                                        }}
+                                    >
+                                        <X size={18} color="white" />
+                                    </button>
+                                </div>
+                            ) : (
+                                <label style={{
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    width: '200px',
+                                    height: '200px',
+                                    border: `2px dashed ${colors.border}`,
+                                    borderRadius: '8px',
+                                    cursor: 'pointer',
+                                    backgroundColor: colors.surface,
+                                    transition: 'all 0.2s',
+                                }}
+                                    onMouseEnter={(e) => e.currentTarget.style.borderColor = colors.primary}
+                                    onMouseLeave={(e) => e.currentTarget.style.borderColor = colors.border}
+                                >
+                                    <Upload size={32} color={colors.textSecondary} />
+                                    <span style={{
+                                        marginTop: '8px',
+                                        fontSize: '14px',
+                                        color: colors.textSecondary,
+                                    }}>
+                                        Subir imagen
+                                    </span>
+                                    <input
+                                        type="file"
+                                        accept="image/*"
+                                        onChange={handleImageChange}
+                                        style={{ display: 'none' }}
+                                    />
+                                </label>
+                            )}
+                        </div>
+
+                        {/* Ingredientes */}
+                        <div style={{ marginBottom: '24px' }}>
+                            <div style={{
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                                marginBottom: '12px',
+                            }}>
+                                <label style={{
+                                    fontSize: '14px',
+                                    fontWeight: '600',
+                                    color: colors.text,
+                                }}>
+                                    Ingredientes y Costes
+                                </label>
+                                <motion.button
+                                    whileHover={{ scale: 1.05 }}
+                                    whileTap={{ scale: 0.95 }}
+                                    onClick={handleAddIngrediente}
+                                    style={{
+                                        padding: '8px 16px',
+                                        backgroundColor: colors.primary,
+                                        border: 'none',
+                                        borderRadius: '6px',
+                                        color: 'white',
+                                        fontSize: '13px',
+                                        fontWeight: '500',
+                                        cursor: 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                    }}
+                                >
+                                    <Plus size={14} />
+                                    Añadir Ingrediente
+                                </motion.button>
+                            </div>
+
+                            {ingredientes.length === 0 ? (
+                                <div style={{
+                                    padding: '24px',
+                                    backgroundColor: colors.surface,
+                                    borderRadius: '8px',
+                                    textAlign: 'center',
+                                    color: colors.textSecondary,
+                                    fontSize: '14px',
+                                }}>
+                                    No hay ingredientes. Haz clic en "Añadir Ingrediente" para empezar.
+                                </div>
+                            ) : (
+                                <div style={{
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: '12px',
+                                }}>
+                                    {ingredientes.map((ing, index) => (
+                                        <div
+                                            key={ing.id || index}
+                                            style={{
+                                                display: 'grid',
+                                                gridTemplateColumns: '2fr 1fr 1fr 1fr auto',
+                                                gap: '8px',
+                                                padding: '12px',
+                                                backgroundColor: colors.surface,
+                                                borderRadius: '8px',
+                                                alignItems: 'center',
+                                            }}
+                                        >
+                                            <input
+                                                type="text"
+                                                value={ing.nombre_ingrediente}
+                                                onChange={(e) => handleIngredienteChange(index, 'nombre_ingrediente', e.target.value)}
+                                                placeholder="Nombre"
+                                                style={{
+                                                    padding: '8px',
+                                                    backgroundColor: colors.background,
+                                                    border: `1px solid ${colors.border}`,
+                                                    borderRadius: '6px',
+                                                    color: colors.text,
+                                                    fontSize: '13px',
+                                                    outline: 'none',
+                                                }}
+                                            />
+                                            <input
+                                                type="number"
+                                                value={ing.peso_gramos}
+                                                onChange={(e) => handleIngredienteChange(index, 'peso_gramos', e.target.value)}
+                                                placeholder="Peso (g)"
+                                                min="0"
+                                                step="0.01"
+                                                style={{
+                                                    padding: '8px',
+                                                    backgroundColor: colors.background,
+                                                    border: `1px solid ${colors.border}`,
+                                                    borderRadius: '6px',
+                                                    color: colors.text,
+                                                    fontSize: '13px',
+                                                    outline: 'none',
+                                                }}
+                                            />
+                                            <input
+                                                type="number"
+                                                value={ing.coste_euros}
+                                                onChange={(e) => handleIngredienteChange(index, 'coste_euros', e.target.value)}
+                                                placeholder="Coste (€)"
+                                                min="0"
+                                                step="0.01"
+                                                style={{
+                                                    padding: '8px',
+                                                    backgroundColor: colors.background,
+                                                    border: `1px solid ${colors.border}`,
+                                                    borderRadius: '6px',
+                                                    color: colors.text,
+                                                    fontSize: '13px',
+                                                    outline: 'none',
+                                                }}
+                                            />
+                                            <input
+                                                type="number"
+                                                value={ing.gastos_euros}
+                                                onChange={(e) => handleIngredienteChange(index, 'gastos_euros', e.target.value)}
+                                                placeholder="Gastos (€)"
+                                                min="0"
+                                                step="0.01"
+                                                style={{
+                                                    padding: '8px',
+                                                    backgroundColor: colors.background,
+                                                    border: `1px solid ${colors.border}`,
+                                                    borderRadius: '6px',
+                                                    color: colors.text,
+                                                    fontSize: '13px',
+                                                    outline: 'none',
+                                                }}
+                                            />
+                                            <button
+                                                onClick={() => handleRemoveIngrediente(index)}
+                                                style={{
+                                                    padding: '8px',
+                                                    backgroundColor: 'transparent',
+                                                    border: 'none',
+                                                    borderRadius: '6px',
+                                                    cursor: 'pointer',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                }}
+                                            >
+                                                <Trash2 size={16} color="#ef4444" />
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Alérgenos */}
+                        <div style={{ marginBottom: '24px' }}>
+                            <div style={{
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                                marginBottom: '12px',
+                            }}>
+                                <label style={{
+                                    fontSize: '14px',
+                                    fontWeight: '600',
+                                    color: colors.text,
+                                }}>
+                                    Alérgenos
+                                </label>
+                                <motion.button
+                                    whileHover={{ scale: 1.05 }}
+                                    whileTap={{ scale: 0.95 }}
+                                    onClick={handleAddAlergeno}
+                                    style={{
+                                        padding: '8px 16px',
+                                        backgroundColor: colors.primary,
+                                        border: 'none',
+                                        borderRadius: '6px',
+                                        color: 'white',
+                                        fontSize: '13px',
+                                        fontWeight: '500',
+                                        cursor: 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                    }}
+                                >
+                                    <Plus size={14} />
+                                    Añadir Alérgeno
+                                </motion.button>
+                            </div>
+
+                            {alergenos.length === 0 ? (
+                                <div style={{
+                                    padding: '24px',
+                                    backgroundColor: colors.surface,
+                                    borderRadius: '8px',
+                                    textAlign: 'center',
+                                    color: colors.textSecondary,
+                                    fontSize: '14px',
+                                }}>
+                                    No hay alérgenos. Haz clic en "Añadir Alérgeno" para empezar.
+                                </div>
+                            ) : (
+                                <div style={{
+                                    display: 'grid',
+                                    gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))',
+                                    gap: '12px',
+                                }}>
+                                    {alergenos.map((alg, index) => (
+                                        <div
+                                            key={alg.id || index}
+                                            style={{
+                                                display: 'flex',
+                                                gap: '8px',
+                                                alignItems: 'center',
+                                            }}
+                                        >
+                                            <input
+                                                type="text"
+                                                value={alg.tipo_alergeno}
+                                                onChange={(e) => handleAlergenoChange(index, e.target.value)}
+                                                placeholder="Ej: Gluten, Lactosa..."
+                                                style={{
+                                                    flex: 1,
+                                                    padding: '10px',
+                                                    backgroundColor: colors.surface,
+                                                    border: `1px solid ${colors.border}`,
+                                                    borderRadius: '6px',
+                                                    color: colors.text,
+                                                    fontSize: '13px',
+                                                    outline: 'none',
+                                                }}
+                                            />
+                                            <button
+                                                onClick={() => handleRemoveAlergeno(index)}
+                                                style={{
+                                                    padding: '8px',
+                                                    backgroundColor: 'transparent',
+                                                    border: 'none',
+                                                    borderRadius: '6px',
+                                                    cursor: 'pointer',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                }}
+                                            >
+                                                <Trash2 size={16} color="#ef4444" />
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Resumen de Costes */}
+                        <div style={{
+                            padding: '20px',
+                            backgroundColor: colors.surface,
+                            borderRadius: '12px',
+                            border: `1px solid ${colors.border}`,
+                        }}>
+                            <h3 style={{
+                                fontSize: '16px',
+                                fontWeight: '600',
+                                color: colors.text,
+                                marginBottom: '16px',
+                                marginTop: 0,
+                            }}>
+                                Resumen de Costes
+                            </h3>
+                            <div style={{
+                                display: 'grid',
+                                gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+                                gap: '16px',
+                            }}>
+                                <div>
+                                    <div style={{
+                                        fontSize: '12px',
+                                        color: colors.textSecondary,
+                                        marginBottom: '4px',
+                                    }}>
+                                        Total Peso
+                                    </div>
+                                    <div style={{
+                                        fontSize: '18px',
+                                        fontWeight: '600',
+                                        color: colors.text,
+                                    }}>
+                                        {resumen.total_peso.toFixed(2)} g
+                                    </div>
+                                </div>
+                                <div>
+                                    <div style={{
+                                        fontSize: '12px',
+                                        color: colors.textSecondary,
+                                        marginBottom: '4px',
+                                    }}>
+                                        Total Coste
+                                    </div>
+                                    <div style={{
+                                        fontSize: '18px',
+                                        fontWeight: '600',
+                                        color: colors.text,
+                                    }}>
+                                        {resumen.total_coste.toFixed(2)} €
+                                    </div>
+                                </div>
+                                <div>
+                                    <div style={{
+                                        fontSize: '12px',
+                                        color: colors.textSecondary,
+                                        marginBottom: '4px',
+                                    }}>
+                                        Total Gastos
+                                    </div>
+                                    <div style={{
+                                        fontSize: '18px',
+                                        fontWeight: '600',
+                                        color: colors.text,
+                                    }}>
+                                        {resumen.total_gastos.toFixed(2)} €
+                                    </div>
+                                </div>
+                                <div>
+                                    <div style={{
+                                        fontSize: '12px',
+                                        color: colors.textSecondary,
+                                        marginBottom: '4px',
+                                    }}>
+                                        Coste Total
+                                    </div>
+                                    <div style={{
+                                        fontSize: '18px',
+                                        fontWeight: '700',
+                                        color: colors.primary,
+                                    }}>
+                                        {resumen.coste_total.toFixed(2)} €
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Footer */}
+                    <div style={{
+                        padding: '24px',
+                        borderTop: `1px solid ${colors.border}`,
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        gap: '12px',
+                    }}>
+                        <div>
+                            {hoja && (
+                                <motion.button
+                                    whileHover={{ scale: 1.02 }}
+                                    whileTap={{ scale: 0.98 }}
+                                    onClick={handleDelete}
+                                    disabled={loading}
+                                    style={{
+                                        padding: '12px 24px',
+                                        backgroundColor: '#ef4444',
+                                        border: 'none',
+                                        borderRadius: '8px',
+                                        color: 'white',
+                                        fontSize: '14px',
+                                        fontWeight: '600',
+                                        cursor: loading ? 'not-allowed' : 'pointer',
+                                        opacity: loading ? 0.6 : 1,
+                                    }}
+                                >
+                                    Borrar Ficha
+                                </motion.button>
+                            )}
+                        </div>
+                        <div style={{ display: 'flex', gap: '12px' }}>
+                            <motion.button
+                                whileHover={{ scale: 1.02 }}
+                                whileTap={{ scale: 0.98 }}
+                                onClick={handleClose}
+                                disabled={loading}
+                                style={{
+                                    padding: '12px 24px',
+                                    backgroundColor: colors.surface,
+                                    border: `1px solid ${colors.border}`,
+                                    borderRadius: '8px',
+                                    color: colors.text,
+                                    fontSize: '14px',
+                                    fontWeight: '600',
+                                    cursor: loading ? 'not-allowed' : 'pointer',
+                                    opacity: loading ? 0.6 : 1,
+                                }}
+                            >
+                                Cancelar
+                            </motion.button>
+                            <motion.button
+                                whileHover={{ scale: 1.02 }}
+                                whileTap={{ scale: 0.98 }}
+                                onClick={handleSave}
+                                disabled={loading}
+                                style={{
+                                    padding: '12px 24px',
+                                    backgroundColor: colors.primary,
+                                    border: 'none',
+                                    borderRadius: '8px',
+                                    color: 'white',
+                                    fontSize: '14px',
+                                    fontWeight: '600',
+                                    cursor: loading ? 'not-allowed' : 'pointer',
+                                    opacity: loading ? 0.6 : 1,
+                                }}
+                            >
+                                {loading ? 'Guardando...' : 'Guardar Ficha'}
+                            </motion.button>
+                        </div>
+                    </div>
+                </motion.div>
+            </motion.div>
+        </AnimatePresence>
+    );
+};
+
+export default HojaTecnicaModal;
