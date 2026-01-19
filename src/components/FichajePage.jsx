@@ -18,6 +18,7 @@ import {
 import fichajeService from '../services/fichajeService';
 import fichajeSupabaseService from '../services/fichajeSupabaseService';
 import holdedEmployeesService from '../services/holdedEmployeesService';
+import fichajeCodigosService from '../services/fichajeCodigosService';
 import FichajeModal from './FichajeModal';
 import FichajeNotificacionModal from './FichajeNotificacionModal';
 import { useTheme } from './ThemeContext';
@@ -30,8 +31,9 @@ const FichajePage = () => {
   
   // Estados
   const [empleadoId, setEmpleadoId] = useState(null);
-  const [empleados, setEmpleados] = useState([]);
-  const [loadingEmpleados, setLoadingEmpleados] = useState(true);
+  const [empleadoInfo, setEmpleadoInfo] = useState(null); // Información del empleado encontrado
+  const [codigoFichaje, setCodigoFichaje] = useState('');
+  const [validandoCodigo, setValidandoCodigo] = useState(false);
   const [estadoFichaje, setEstadoFichaje] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -44,42 +46,96 @@ const FichajePage = () => {
   const [historial, setHistorial] = useState([]);
   const [resumenMensual, setResumenMensual] = useState(null);
 
-  // Cargar empleados y buscar el del usuario actual
-  useEffect(() => {
-    const loadEmpleados = async () => {
-      setLoadingEmpleados(true);
-      try {
-        // Cargar empleados de ambas empresas
-        const [empleadosSolucions, empleadosMenjar] = await Promise.all([
-          holdedEmployeesService.getEmployeesTransformed('solucions').catch(() => []),
-          holdedEmployeesService.getEmployeesTransformed('menjar').catch(() => [])
-        ]);
+  // Validar código de fichaje
+  const validarCodigo = async (codigo) => {
+    if (!codigo || !codigo.trim()) {
+      setError('Por favor, introduce un código');
+      return;
+    }
+
+    setValidandoCodigo(true);
+    setError('');
+    
+    try {
+      const resultado = await fichajeCodigosService.buscarEmpleadoPorCodigo(codigo);
+      
+      if (resultado.success) {
+        // Buscar información del empleado en Holded (intentar ambas empresas)
+        let empleado = null;
+        let empleadoEncontrado = false;
         
-        // Combinar ambas listas
-        const todosEmpleados = [
-          ...(empleadosSolucions || []),
-          ...(empleadosMenjar || [])
-        ];
+        // Intentar primero en solucions
+        try {
+          const empleadoSolucions = await holdedEmployeesService.getEmployee(resultado.data.empleadoId, 'solucions');
+          if (empleadoSolucions) {
+            empleado = empleadoSolucions;
+            empleadoEncontrado = true;
+          }
+        } catch (err) {
+          // Si falla, intentar en menjar
+          console.log(`Empleado no encontrado en solucions, intentando en menjar...`);
+        }
         
-        setEmpleados(todosEmpleados);
-        
-        // Intentar encontrar el empleado por email del usuario en la lista combinada
-        if (user?.email && todosEmpleados.length > 0) {
-          const empleadoEncontrado = todosEmpleados.find(emp => 
-            emp.email?.toLowerCase() === user.email?.toLowerCase()
-          );
-          if (empleadoEncontrado) {
-            setEmpleadoId(empleadoEncontrado.id);
+        // Si no se encontró en solucions, intentar en menjar
+        if (!empleadoEncontrado) {
+          try {
+            const empleadoMenjar = await holdedEmployeesService.getEmployee(resultado.data.empleadoId, 'menjar');
+            if (empleadoMenjar) {
+              empleado = empleadoMenjar;
+              empleadoEncontrado = true;
+            }
+          } catch (err) {
+            console.log(`Empleado no encontrado en menjar tampoco`);
           }
         }
-      } catch (err) {
-        console.error('Error cargando empleados:', err);
-      } finally {
-        setLoadingEmpleados(false);
+        
+        if (empleado) {
+          setEmpleadoId(resultado.data.empleadoId);
+          setEmpleadoInfo({
+            id: resultado.data.empleadoId,
+            nombreCompleto: empleado.nombreCompleto || empleado.name || 'Empleado',
+            email: empleado.email,
+            codigo: resultado.data.codigo
+          });
+          setSuccess('Código válido');
+          setTimeout(() => setSuccess(''), 2000);
+        } else {
+          // Si no se encuentra en Holded, usar el código igualmente (puede ser un empleado nuevo)
+          console.warn('Empleado no encontrado en Holded, pero el código es válido. Usando información básica.');
+          setEmpleadoId(resultado.data.empleadoId);
+          setEmpleadoInfo({
+            id: resultado.data.empleadoId,
+            nombreCompleto: 'Empleado (ID: ' + resultado.data.empleadoId.substring(0, 8) + '...)',
+            email: null,
+            codigo: resultado.data.codigo
+          });
+          setSuccess('Código válido');
+          setTimeout(() => setSuccess(''), 2000);
+        }
+      } else {
+        setError(resultado.error || 'Código no válido');
+        setEmpleadoId(null);
+        setEmpleadoInfo(null);
       }
-    };
-    loadEmpleados();
-  }, [user]);
+    } catch (err) {
+      console.error('Error validando código:', err);
+      setError('Error al validar el código');
+      setEmpleadoId(null);
+      setEmpleadoInfo(null);
+    } finally {
+      setValidandoCodigo(false);
+    }
+  };
+
+  // Limpiar selección
+  const limpiarSeleccion = () => {
+    setCodigoFichaje('');
+    setEmpleadoId(null);
+    setEmpleadoInfo(null);
+    setEstadoFichaje(null);
+    setHistorial([]);
+    setResumenMensual(null);
+  };
 
   // Cargar estado del fichaje
   const loadEstadoFichaje = async () => {
@@ -175,10 +231,10 @@ const FichajePage = () => {
       loadHistorial();
       buscarFichajesPendientes();
       
-      // Recargar cada minuto
+      // Recargar cada 30 segundos para gestionar descansos automáticos
       const interval = setInterval(() => {
         loadEstadoFichaje();
-      }, 60000);
+      }, 30000); // 30 segundos
       
       return () => clearInterval(interval);
     }
@@ -295,8 +351,6 @@ const FichajePage = () => {
   // Formatear fecha (usando zona horaria de Madrid)
   const formatDate = formatDateMadrid;
 
-  // Obtener nombre del empleado seleccionado
-  const empleadoSeleccionado = empleados.find(e => e.id === empleadoId);
 
   return (
     <div style={{ 
@@ -331,33 +385,9 @@ const FichajePage = () => {
         </p>
       </motion.div>
 
-      {/* Loading splash mientras se cargan los empleados - Solo la sección de contenido */}
-      {loadingEmpleados ? (
-        <div style={{ 
-          display: 'flex', 
-          justifyContent: 'center', 
-          alignItems: 'center', 
-          height: '400px',
-          flexDirection: 'column',
-          gap: '20px'
-        }}>
-          <motion.div
-            animate={{ rotate: 360 }}
-            transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-            style={{
-              width: '40px',
-              height: '40px',
-              border: `3px solid ${colors.border}`,
-              borderTop: `3px solid ${colors.primary}`,
-              borderRadius: '50%'
-            }}
-          />
-          <p style={{ color: colors.textSecondary }}>Cargando empleados...</p>
-        </div>
-      ) : (
         <>
-          {/* Selección de empleado */}
-          {!loadingEmpleados && !empleadoId && (
+          {/* Input de código de fichaje */}
+          {!empleadoId && (
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -377,27 +407,118 @@ const FichajePage = () => {
                 color: colors.text, 
                 marginBottom: '12px' 
               }}>
-                Selecciona tu empleado
+                Introduce tu código de fichaje
               </label>
-              <select
-                value={empleadoId || ''}
-                onChange={(e) => setEmpleadoId(e.target.value)}
+              <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
+                <input
+                  type="text"
+                  value={codigoFichaje}
+                  onChange={(e) => {
+                    setCodigoFichaje(e.target.value.toUpperCase());
+                    setError('');
+                  }}
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter' && !validandoCodigo) {
+                      validarCodigo(codigoFichaje);
+                    }
+                  }}
+                  placeholder="Ej: 1234"
+                  disabled={validandoCodigo}
+                  style={{
+                    flex: 1,
+                    padding: '12px',
+                    border: `1px solid ${colors.border}`,
+                    borderRadius: '8px',
+                    fontSize: '16px',
+                    fontWeight: '600',
+                    letterSpacing: '2px',
+                    textAlign: 'center',
+                    color: colors.text,
+                    backgroundColor: colors.background,
+                    outline: 'none',
+                    textTransform: 'uppercase',
+                    opacity: validandoCodigo ? 0.6 : 1
+                  }}
+                />
+                <button
+                  onClick={() => validarCodigo(codigoFichaje)}
+                  disabled={validandoCodigo || !codigoFichaje.trim()}
+                  style={{
+                    padding: '12px 24px',
+                    backgroundColor: validandoCodigo || !codigoFichaje.trim() ? colors.border : colors.primary,
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '8px',
+                    fontSize: '14px',
+                    fontWeight: '600',
+                    cursor: validandoCodigo || !codigoFichaje.trim() ? 'not-allowed' : 'pointer',
+                    opacity: validandoCodigo || !codigoFichaje.trim() ? 0.6 : 1,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px'
+                  }}
+                >
+                  {validandoCodigo ? (
+                    <>
+                      <RefreshCw size={18} style={{ animation: 'spin 1s linear infinite' }} />
+                      Validando...
+                    </>
+                  ) : (
+                    'Validar'
+                  )}
+                </button>
+              </div>
+              <p style={{ 
+                fontSize: '12px', 
+                color: colors.textSecondary, 
+                marginTop: '8px',
+                marginBottom: 0
+              }}>
+                Introduce el código único asignado para fichar. El jefe puede fichar por cualquier empleado.
+              </p>
+            </motion.div>
+          )}
+
+          {/* Información del empleado seleccionado */}
+          {empleadoInfo && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, ease: 'easeOut', delay: 0.1 }}
+              style={{
+                backgroundColor: colors.surface,
+                padding: '20px',
+                borderRadius: '12px',
+                marginBottom: '24px',
+                border: `1px solid ${colors.primary}`,
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+              }}
+            >
+              <div>
+                <div style={{ fontSize: '16px', fontWeight: '600', color: colors.text, marginBottom: '4px' }}>
+                  {empleadoInfo.nombreCompleto}
+                </div>
+                <div style={{ fontSize: '12px', color: colors.textSecondary }}>
+                  Código: {empleadoInfo.codigo}
+                </div>
+              </div>
+              <button
+                onClick={limpiarSeleccion}
                 style={{
-                  width: '100%',
-                  padding: '12px',
-                  border: `1px solid ${colors.border}`,
+                  padding: '8px 16px',
+                  backgroundColor: 'transparent',
+                  color: colors.error,
+                  border: `1px solid ${colors.error}`,
                   borderRadius: '8px',
-                  fontSize: '14px',
-                  color: colors.text,
-                  backgroundColor: colors.background,
-                  outline: 'none'
+                  fontSize: '12px',
+                  fontWeight: '600',
+                  cursor: 'pointer'
                 }}
               >
-                <option value="">-- Selecciona un empleado --</option>
-                {empleados.map(emp => (
-                  <option key={emp.id} value={emp.id}>{emp.nombreCompleto}</option>
-                ))}
-              </select>
+                Cambiar código
+              </button>
             </motion.div>
           )}
 
@@ -470,7 +591,7 @@ const FichajePage = () => {
           )}
           </AnimatePresence>
 
-          {!loadingEmpleados && empleadoId && (
+          {empleadoId && (
         <>
           {/* Estado actual del día */}
           <motion.div
@@ -849,7 +970,7 @@ const FichajePage = () => {
           {showNotificacionModal && fichajePendiente && (
             <FichajeNotificacionModal
               fichaje={fichajePendiente}
-              empleadoNombre={empleadoSeleccionado?.nombreCompleto || 'Empleado'}
+              empleadoNombre={empleadoInfo?.nombreCompleto || 'Empleado'}
               onClose={() => {
                 setShowNotificacionModal(false);
                 setFichajePendiente(null);
@@ -866,7 +987,6 @@ const FichajePage = () => {
         </>
           )}
         </>
-      )}
 
       {/* CSS para animación */}
       <style>

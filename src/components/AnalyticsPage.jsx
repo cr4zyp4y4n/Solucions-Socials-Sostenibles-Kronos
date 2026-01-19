@@ -50,6 +50,10 @@ const AnalyticsPage = () => {
   const { user } = useAuth();
   const { colors } = useTheme();
   
+  // Verificar rol del usuario para permisos
+  const userRole = user?.user_metadata?.role || 'user';
+  const canViewAllDatasets = ['admin', 'manager', 'management'].includes(userRole);
+  
   // Estados para datos desde Supabase
   const [supabaseData, setSupabaseData] = useState({
     solucions: { headers: [], data: [], loading: false },
@@ -63,7 +67,8 @@ const AnalyticsPage = () => {
   const [loadingMessage, setLoadingMessage] = useState('Cargando datos...');
   const [error, setError] = useState('');
 
-  const [selectedDataset, setSelectedDataset] = useState('solucions');
+  // Si el usuario no puede ver todos los datasets, forzar IDONI
+  const [selectedDataset, setSelectedDataset] = useState(canViewAllDatasets ? 'solucions' : 'idoni');
   const [selectedView, setSelectedView] = useState('general');
   const [selectedColumns, setSelectedColumns] = useState([]);
   const [selectedProvider, setSelectedProvider] = useState('');
@@ -196,6 +201,13 @@ const AnalyticsPage = () => {
     );
   }, [idoniProductosData, productosNuevoFormatoSearchTerm]);
 
+  // Forzar dataset a IDONI si el usuario no tiene permisos
+  useEffect(() => {
+    if (!canViewAllDatasets && selectedDataset !== 'idoni') {
+      setSelectedDataset('idoni');
+    }
+  }, [canViewAllDatasets, selectedDataset]);
+
   // Cargar datos desde Holded al montar el componente
   useEffect(() => {
     loadDataFromHolded(null); // Carga datos de Solucions y Menjar (y Bruno en paralelo) - todos los años
@@ -221,10 +233,22 @@ const AnalyticsPage = () => {
   // Verificar si necesita actualización cuando se monta el componente
   useEffect(() => {
     if (needsUpdate('analytics')) {
-      loadDataFromHolded(selectedYear || null); // Carga datos de Solucions y Menjar (y Bruno en paralelo)
+      if (canViewAllDatasets) {
+        loadDataFromHolded(selectedYear || null); // Carga datos de Solucions y Menjar (y Bruno en paralelo)
+      } else {
+        // Si el usuario no tiene permisos, solo cargar datos de IDONI
+        loadIdoniData();
+      }
       markTabUpdated('analytics');
     }
   }, []);
+
+  // Cargar datos de IDONI automáticamente si el usuario no tiene permisos
+  useEffect(() => {
+    if (!canViewAllDatasets && selectedDataset === 'idoni') {
+      loadIdoniData();
+    }
+  }, [canViewAllDatasets]);
 
   // Escuchar cambios en shouldReloadHolded para recargar datos
   useEffect(() => {
@@ -1520,6 +1544,11 @@ const AnalyticsPage = () => {
 
   // Función para manejar el cambio de dataset con animación
   const handleDatasetChange = (newDataset) => {
+    // Si el usuario no tiene permisos, solo permitir IDONI
+    if (!canViewAllDatasets && newDataset !== 'idoni') {
+      return;
+    }
+    
     if (newDataset !== selectedDataset) {
       setIsChangingDataset(true);
       setTimeout(async () => {
@@ -5229,11 +5258,12 @@ const AnalyticsPage = () => {
         transition={{ duration: 0.4, delay: 0.1 }}
         style={{ margin: '0 0 24px 0', color: colors.text, fontWeight: 700, fontSize: 28, lineHeight: 1.2 }}
       >
-        Análisis de Compras
+        {canViewAllDatasets ? 'Análisis de Compras' : 'Análisis IDONI'}
       </motion.h2>
 
-      {/* Selector de Dataset */}
-      <motion.div
+      {/* Selector de Dataset - Solo visible para admin, manager y management */}
+      {canViewAllDatasets && (
+        <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: 0.15 }}
@@ -5471,6 +5501,7 @@ const AnalyticsPage = () => {
           </motion.div>
         </div>
       </motion.div>
+      )}
 
       {/* Tarjetas de selección de vista - Solo mostrar para Holded */}
       {!loading && selectedDataset !== 'idoni' && (

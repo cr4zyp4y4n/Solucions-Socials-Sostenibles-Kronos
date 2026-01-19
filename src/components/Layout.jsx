@@ -26,7 +26,8 @@ import {
   Download,
   CheckCircle,
   X,
-  Clock
+  Clock,
+  Image
 } from 'feather-icons-react';
 import { useTheme } from './ThemeContext';
 import { useAuth } from './AuthContext';
@@ -53,6 +54,7 @@ import SociosPage from './SociosPage';
 import SalesInvoicesPage from './SalesInvoicesPage';
 import InventoryPage from './InventoryPage';
 import FichajePage from './FichajePage';
+import AlbaranOCRPage from './AlbaranOCRPage';
 
 
 // Componente visual de acceso denegado reutilizable
@@ -122,8 +124,9 @@ const Layout = () => {
     fetchUserProfile();
   }, [user]);
 
-  // Verificar si el usuario es administrador
-  const isAdmin = userProfile?.role === 'admin';
+  // Verificar rol del usuario (prioridad: DB, fallback: metadata)
+  const effectiveRole = (userProfile?.role || user?.user_metadata?.role || '').toLowerCase();
+  const isAdmin = effectiveRole === 'admin';
 
   // Limpiar eventId cuando se navega a otra sección
   useEffect(() => {
@@ -131,7 +134,7 @@ const Layout = () => {
       setCateringEventId(null);
     }
   }, [activeSection]);
-  const isManagementOrManager = userProfile?.role === 'management' || userProfile?.role === 'manager';
+  const isManagementOrManager = effectiveRole === 'management' || effectiveRole === 'manager';
   const isUser = !isAdmin && !isManagementOrManager;
 
   // Configurar notificaciones en tiempo real
@@ -441,8 +444,14 @@ const Layout = () => {
   };
 
   // Menú lateral según rol
-  const menuItems = [
-    { key: 'home', label: 'Inicio', path: '/home', icon: Home },
+  const menuItems = [];
+  
+  // Solo admin, manager y management pueden ver INICIO
+  if (isAdmin || isManagementOrManager) {
+    menuItems.push({ key: 'home', label: 'Inicio', path: '/home', icon: Home });
+  }
+  
+  menuItems.push(
     { key: 'analytics', label: 'Análisis', path: '/analytics', icon: BarChart2 },
     { key: 'sales-invoices', label: 'Resum Caterings', path: '/sales-invoices', icon: DollarSign },
     { key: 'inventory', label: 'Inventario', path: '/inventory', icon: Package },
@@ -452,9 +461,10 @@ const Layout = () => {
     { key: 'hoja-ruta', label: 'Hoja de Ruta', path: '/hoja-ruta', icon: Calendar },
     { key: 'fichaje', label: 'Fichaje', path: '/fichaje', icon: Clock },
     { key: 'socios', label: 'Socios IDONI', path: '/socios', icon: Users },
+    { key: 'albaran-ocr', label: 'Formateador Albaranes', path: '/albaran-ocr', icon: Image },
     { key: 'contacts', label: 'Contactos', path: '/contacts', icon: CreditCard },
     { key: 'settings', label: 'Configuración', path: '/settings', icon: Settings },
-  ];
+  );
   
   // Solo administradores pueden ver catering
   if (isAdmin) {
@@ -504,6 +514,8 @@ const Layout = () => {
         return <FichajePage />;
       case 'socios':
         return <SociosPage />;
+      case 'albaran-ocr':
+        return <AlbaranOCRPage />;
       case 'settings':
         return <SettingsPage />;
       case 'users':

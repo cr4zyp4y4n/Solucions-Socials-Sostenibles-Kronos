@@ -508,9 +508,9 @@ class HojaRutaSupabaseService {
       checklist
     ] = await Promise.all([
       this.getPersonal(hoja.id),
-      this.getEquipamiento(hoja.id),
-      this.getMenus(hoja.id),
-      this.getBebidas(hoja.id),
+      this.getEquipamientoWithIds(hoja.id),
+      this.getMenusWithIds(hoja.id),
+      this.getBebidasWithIds(hoja.id),
       this.getChecklist(hoja.id)
     ]);
 
@@ -532,9 +532,28 @@ class HojaRutaSupabaseService {
       estado: hoja.estado || 'preparacion',
       notas: hoja.notas || [],
       notasServicio: hoja.notas_servicio || [],
-      equipamiento: equipamiento,
-      menus: menus,
-      bebidas: bebidas,
+      equipamiento: equipamiento.map(eq => ({
+        id: eq.id,
+        item: eq.item,
+        cantidad: eq.cantidad,
+        orden: eq.orden || 0
+      })),
+      menus: menus.map(m => ({
+        id: m.id,
+        tipo: m.tipo,
+        hora: m.hora,
+        item: m.item,
+        cantidad: m.cantidad,
+        proveedor: m.proveedor,
+        orden: m.orden || 0
+      })),
+      bebidas: bebidas.map(b => ({
+        id: b.id,
+        item: b.item,
+        cantidad: b.cantidad,
+        unidad: b.unidad,
+        orden: b.orden || 0
+      })),
       checklist: checklist
     };
   }
@@ -1078,6 +1097,281 @@ class HojaRutaSupabaseService {
       .insert(bebidasData);
 
     if (error) throw error;
+  }
+
+  // =====================================================
+  // FUNCIONES DE EDICIÓN DE LISTAS (Equipamiento, Menús, Bebidas)
+  // =====================================================
+
+  // Añadir un elemento de equipamiento
+  async addEquipamientoItem(hojaId, item) {
+    try {
+      // Obtener el máximo orden actual
+      const { data: existing } = await supabase
+        .from('hojas_ruta_equipamiento')
+        .select('orden')
+        .eq('hoja_ruta_id', hojaId)
+        .order('orden', { ascending: false })
+        .limit(1);
+
+      const maxOrden = existing && existing.length > 0 ? existing[0].orden : 0;
+
+      const { data, error } = await supabase
+        .from('hojas_ruta_equipamiento')
+        .insert({
+          hoja_ruta_id: hojaId,
+          item: item.item || '',
+          cantidad: item.cantidad || null,
+          orden: maxOrden + 1
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('❌ Error añadiendo equipamiento:', error);
+      throw error;
+    }
+  }
+
+  // Actualizar un elemento de equipamiento
+  async updateEquipamientoItem(hojaId, itemId, item) {
+    try {
+      const { data, error } = await supabase
+        .from('hojas_ruta_equipamiento')
+        .update({
+          item: item.item,
+          cantidad: item.cantidad || null
+        })
+        .eq('id', itemId)
+        .eq('hoja_ruta_id', hojaId)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('❌ Error actualizando equipamiento:', error);
+      throw error;
+    }
+  }
+
+  // Eliminar un elemento de equipamiento
+  async deleteEquipamientoItem(hojaId, itemId) {
+    try {
+      const { error } = await supabase
+        .from('hojas_ruta_equipamiento')
+        .delete()
+        .eq('id', itemId)
+        .eq('hoja_ruta_id', hojaId);
+
+      if (error) throw error;
+      return true;
+    } catch (error) {
+      console.error('❌ Error eliminando equipamiento:', error);
+      throw error;
+    }
+  }
+
+  // Añadir un elemento de menú
+  async addMenuItem(hojaId, menu) {
+    try {
+      // Obtener el máximo orden actual para este tipo de menú
+      const { data: existing } = await supabase
+        .from('hojas_ruta_menus')
+        .select('orden')
+        .eq('hoja_ruta_id', hojaId)
+        .eq('tipo', menu.tipo || '')
+        .order('orden', { ascending: false })
+        .limit(1);
+
+      const maxOrden = existing && existing.length > 0 ? existing[0].orden : 0;
+
+      const { data, error } = await supabase
+        .from('hojas_ruta_menus')
+        .insert({
+          hoja_ruta_id: hojaId,
+          tipo: menu.tipo || '',
+          hora: menu.hora || null,
+          item: menu.item || '',
+          cantidad: menu.cantidad || null,
+          proveedor: menu.proveedor || null,
+          orden: maxOrden + 1
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('❌ Error añadiendo menú:', error);
+      throw error;
+    }
+  }
+
+  // Actualizar un elemento de menú
+  async updateMenuItem(hojaId, itemId, menu) {
+    try {
+      const { data, error } = await supabase
+        .from('hojas_ruta_menus')
+        .update({
+          tipo: menu.tipo,
+          hora: menu.hora || null,
+          item: menu.item,
+          cantidad: menu.cantidad || null,
+          proveedor: menu.proveedor || null
+        })
+        .eq('id', itemId)
+        .eq('hoja_ruta_id', hojaId)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('❌ Error actualizando menú:', error);
+      throw error;
+    }
+  }
+
+  // Eliminar un elemento de menú
+  async deleteMenuItem(hojaId, itemId) {
+    try {
+      const { error } = await supabase
+        .from('hojas_ruta_menus')
+        .delete()
+        .eq('id', itemId)
+        .eq('hoja_ruta_id', hojaId);
+
+      if (error) throw error;
+      return true;
+    } catch (error) {
+      console.error('❌ Error eliminando menú:', error);
+      throw error;
+    }
+  }
+
+  // Añadir un elemento de bebida
+  async addBebidaItem(hojaId, bebida) {
+    try {
+      // Obtener el máximo orden actual
+      const { data: existing } = await supabase
+        .from('hojas_ruta_bebidas')
+        .select('orden')
+        .eq('hoja_ruta_id', hojaId)
+        .order('orden', { ascending: false })
+        .limit(1);
+
+      const maxOrden = existing && existing.length > 0 ? existing[0].orden : 0;
+
+      const { data, error } = await supabase
+        .from('hojas_ruta_bebidas')
+        .insert({
+          hoja_ruta_id: hojaId,
+          item: bebida.item || '',
+          cantidad: bebida.cantidad || null,
+          unidad: bebida.unidad || null,
+          orden: maxOrden + 1
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('❌ Error añadiendo bebida:', error);
+      throw error;
+    }
+  }
+
+  // Actualizar un elemento de bebida
+  async updateBebidaItem(hojaId, itemId, bebida) {
+    try {
+      const { data, error } = await supabase
+        .from('hojas_ruta_bebidas')
+        .update({
+          item: bebida.item,
+          cantidad: bebida.cantidad || null,
+          unidad: bebida.unidad || null
+        })
+        .eq('id', itemId)
+        .eq('hoja_ruta_id', hojaId)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('❌ Error actualizando bebida:', error);
+      throw error;
+    }
+  }
+
+  // Eliminar un elemento de bebida
+  async deleteBebidaItem(hojaId, itemId) {
+    try {
+      const { error } = await supabase
+        .from('hojas_ruta_bebidas')
+        .delete()
+        .eq('id', itemId)
+        .eq('hoja_ruta_id', hojaId);
+
+      if (error) throw error;
+      return true;
+    } catch (error) {
+      console.error('❌ Error eliminando bebida:', error);
+      throw error;
+    }
+  }
+
+  // Obtener IDs de los elementos (necesario para edición)
+  async getEquipamientoWithIds(hojaId) {
+    try {
+      const { data, error } = await supabase
+        .from('hojas_ruta_equipamiento')
+        .select('*')
+        .eq('hoja_ruta_id', hojaId)
+        .order('orden');
+
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error('❌ Error obteniendo equipamiento con IDs:', error);
+      return [];
+    }
+  }
+
+  async getMenusWithIds(hojaId) {
+    try {
+      const { data, error } = await supabase
+        .from('hojas_ruta_menus')
+        .select('*')
+        .eq('hoja_ruta_id', hojaId)
+        .order('orden');
+
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error('❌ Error obteniendo menús con IDs:', error);
+      return [];
+    }
+  }
+
+  async getBebidasWithIds(hojaId) {
+    try {
+      const { data, error } = await supabase
+        .from('hojas_ruta_bebidas')
+        .select('*')
+        .eq('hoja_ruta_id', hojaId)
+        .order('orden');
+
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error('❌ Error obteniendo bebidas con IDs:', error);
+      return [];
+    }
   }
 
   async insertChecklist(hojaId, checklist) {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Clock, 
@@ -32,9 +32,13 @@ const FichajeAdminSection = () => {
   // Estados
   const [fichajes, setFichajes] = useState([]);
   const [empleados, setEmpleados] = useState([]);
+  const [pausasActivas, setPausasActivas] = useState({}); // { fichajeId: pausaActiva }
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  
+  // Ref para almacenar fichajes actuales sin causar re-renders
+  const fichajesRef = useRef([]);
   
   // Filtros
   const [searchTerm, setSearchTerm] = useState('');
@@ -97,7 +101,26 @@ const FichajeAdminSection = () => {
         throw new Error(resultado.error);
       }
 
-      setFichajes(resultado.data || []);
+      const fichajesData = resultado.data || [];
+      setFichajes(fichajesData);
+      fichajesRef.current = fichajesData; // Actualizar ref
+
+      // Cargar pausas activas para cada fichaje
+      const pausasActivasMap = {};
+      for (const fichaje of fichajesData) {
+        // Solo verificar pausas activas para fichajes sin salida (en curso)
+        if (!fichaje.hora_salida) {
+          try {
+            const { data: pausaActiva } = await fichajeSupabaseService.obtenerPausaActiva(fichaje.id);
+            if (pausaActiva) {
+              pausasActivasMap[fichaje.id] = pausaActiva;
+            }
+          } catch (err) {
+            console.error(`Error obteniendo pausa activa para fichaje ${fichaje.id}:`, err);
+          }
+        }
+      }
+      setPausasActivas(pausasActivasMap);
     } catch (err) {
       setError(err.message || 'Error al cargar los fichajes');
     } finally {
@@ -108,6 +131,51 @@ const FichajeAdminSection = () => {
   useEffect(() => {
     loadFichajes();
   }, [fechaInicio, fechaFin, filterEmpleado]);
+
+  // Actualizar pausas activas cada 30 segundos para fichajes en curso (separado para evitar bucles)
+  useEffect(() => {
+    // Función para actualizar pausas activas usando la ref
+    const actualizarPausas = async () => {
+      const fichajesActuales = fichajesRef.current;
+      if (!fichajesActuales || fichajesActuales.length === 0) return;
+      
+      const fichajesEnCurso = fichajesActuales.filter(f => !f.hora_salida);
+      if (fichajesEnCurso.length === 0) {
+        setPausasActivas({});
+        return;
+      }
+      
+      const pausasActivasMap = {};
+      for (const fichaje of fichajesEnCurso) {
+        try {
+          const { data: pausaActiva } = await fichajeSupabaseService.obtenerPausaActiva(fichaje.id);
+          if (pausaActiva) {
+            pausasActivasMap[fichaje.id] = pausaActiva;
+          }
+        } catch (err) {
+          console.error(`Error obteniendo pausa activa para fichaje ${fichaje.id}:`, err);
+        }
+      }
+      
+      // Solo actualizar si hay cambios
+      setPausasActivas(prev => {
+        const prevKeys = Object.keys(prev).sort();
+        const newKeys = Object.keys(pausasActivasMap).sort();
+        if (prevKeys.length !== newKeys.length) return pausasActivasMap;
+        
+        const hasChanges = prevKeys.some(id => prev[id]?.id !== pausasActivasMap[id]?.id);
+        return hasChanges ? pausasActivasMap : prev;
+      });
+    };
+    
+    // Actualizar inmediatamente al montar
+    actualizarPausas();
+    
+    // Luego actualizar cada 30 segundos
+    const interval = setInterval(actualizarPausas, 30000);
+    
+    return () => clearInterval(interval);
+  }, []); // Sin dependencias para evitar bucles
 
   // Filtrar fichajes por búsqueda
   const filteredFichajes = useMemo(() => {
@@ -701,37 +769,120 @@ const FichajeAdminSection = () => {
                       </span>
                     </td>
                     <td style={{ padding: '16px', textAlign: 'center' }}>
-                      {fichaje.es_modificado && (
-                        <div style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '6px',
-                          padding: '6px 12px',
-                          backgroundColor: colors.warning + '15',
-                          borderRadius: '6px'
-                        }}>
-                          <AlertCircle size={14} color={colors.warning} />
-                          <span style={{ color: colors.warning, fontSize: '12px', fontWeight: '600' }}>
-                            Modificado
-                          </span>
-                        </div>
-                      )}
-                      {!fichaje.hora_salida && (
-                        <div style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '6px',
-                          padding: '6px 12px',
-                          backgroundColor: colors.info + '15',
-                          borderRadius: '6px',
-                          marginLeft: '8px'
-                        }}>
-                          <Clock size={14} color={colors.info} />
-                          <span style={{ color: colors.info, fontSize: '12px', fontWeight: '600' }}>
-                            En curso
-                          </span>
-                        </div>
-                      )}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'center' }}>
+                        {fichaje.hora_salida ? (
+                          <div style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            padding: '6px 12px',
+                            backgroundColor: colors.success + '15',
+                            borderRadius: '6px'
+                          }}>
+                            <CheckCircle size={14} color={colors.success} />
+                            <span style={{ color: colors.success, fontSize: '12px', fontWeight: '600' }}>
+                              Completado
+                            </span>
+                          </div>
+                        ) : (
+                          <>
+                            <div style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                              padding: '6px 12px',
+                              backgroundColor: colors.info + '15',
+                              borderRadius: '6px'
+                            }}>
+                              <Clock size={14} color={colors.info} />
+                              <span style={{ color: colors.info, fontSize: '12px', fontWeight: '600' }}>
+                                En curso
+                              </span>
+                            </div>
+                            {pausasActivas[fichaje.id] ? (() => {
+                              const pausa = pausasActivas[fichaje.id];
+                              const inicioPausa = pausa.inicio ? new Date(pausa.inicio) : null;
+                              const ahora = new Date();
+                              let tiempoDescanso = '';
+                              
+                              if (inicioPausa) {
+                                const minutosTranscurridos = Math.floor((ahora - inicioPausa) / (1000 * 60));
+                                const horasTranscurridas = Math.floor(minutosTranscurridos / 60);
+                                
+                                if (horasTranscurridas > 0) {
+                                  const minutosRestantes = minutosTranscurridos % 60;
+                                  tiempoDescanso = horasTranscurridas === 1 
+                                    ? `1 hora${minutosRestantes > 0 ? ` y ${minutosRestantes} min` : ''}`
+                                    : `${horasTranscurridas} horas${minutosRestantes > 0 ? ` y ${minutosRestantes} min` : ''}`;
+                                } else {
+                                  tiempoDescanso = minutosTranscurridos === 1 
+                                    ? '1 minuto' 
+                                    : `${minutosTranscurridos} minutos`;
+                                }
+                                
+                                const horaInicio = inicioPausa.toLocaleTimeString('es-ES', { 
+                                  hour: '2-digit', 
+                                  minute: '2-digit' 
+                                });
+                                tiempoDescanso = `Desde las ${horaInicio} (hace ${tiempoDescanso})`;
+                              }
+                              
+                              return (
+                                <div 
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    padding: '4px 10px',
+                                    backgroundColor: colors.warning + '15',
+                                    borderRadius: '6px',
+                                    fontSize: '11px',
+                                    cursor: 'help'
+                                  }}
+                                  title={tiempoDescanso || 'En descanso'}
+                                >
+                                  <Clock size={12} color={colors.warning} />
+                                  <span style={{ color: colors.warning, fontWeight: '600' }}>
+                                    En Descanso
+                                  </span>
+                                </div>
+                              );
+                            })() : (
+                              <div style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                padding: '4px 10px',
+                                backgroundColor: colors.success + '15',
+                                borderRadius: '6px',
+                                fontSize: '11px'
+                              }}>
+                                <CheckCircle size={12} color={colors.success} />
+                                <span style={{ color: colors.success, fontWeight: '600' }}>
+                                  Trabajando
+                                </span>
+                              </div>
+                            )}
+                          </>
+                        )}
+                        {fichaje.es_modificado && (
+                          <div style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            padding: '4px 10px',
+                            backgroundColor: colors.warning + '15',
+                            borderRadius: '6px',
+                            fontSize: '11px',
+                            marginTop: '4px'
+                          }}>
+                            <AlertCircle size={12} color={colors.warning} />
+                            <span style={{ color: colors.warning, fontWeight: '600' }}>
+                              Modificado
+                            </span>
+                          </div>
+                        )}
+                      </div>
                     </td>
                     <td style={{ padding: '16px' }}>
                       <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>

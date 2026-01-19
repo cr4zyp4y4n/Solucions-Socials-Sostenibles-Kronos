@@ -436,20 +436,32 @@ const createWindow = () => {
     },
   });
 
-  // Configurar Content Security Policy
+  // Configurar Content Security Policy (muy permisiva para permitir Tesseract workers)
+  // Asegurarse de que worker-src permita blob: explícitamente
   mainWindow.webContents.session.webRequest.onHeadersReceived((details, callback) => {
-    callback({
-      responseHeaders: {
-        ...details.responseHeaders,
-        'Content-Security-Policy': [
-          "default-src 'self' 'unsafe-inline' data:; " +
-          "script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +
-          "style-src 'self' 'unsafe-inline'; " +
-          "connect-src 'self' https://v6.exchangerate-api.com https://api.exchangerate-api.com https://zalnsacawwekmibhoiba.supabase.co https://*.supabase.co wss://zalnsacawwekmibhoiba.supabase.co wss://*.supabase.co https://api.holded.com https://api.github.com; " +
-          "img-src 'self' data:;"
-        ]
-      }
-    });
+    // Eliminar cualquier CSP existente y aplicar una muy permisiva
+    const responseHeaders = { ...details.responseHeaders };
+    
+    // Eliminar CSP existente si existe
+    if (responseHeaders['Content-Security-Policy']) {
+      delete responseHeaders['Content-Security-Policy'];
+    }
+    if (responseHeaders['content-security-policy']) {
+      delete responseHeaders['content-security-policy'];
+    }
+    
+    // Aplicar CSP muy permisiva que permita blob: para workers
+    responseHeaders['Content-Security-Policy'] = [
+      "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; " +
+      "script-src * 'unsafe-inline' 'unsafe-eval' blob: data:; " +
+      "worker-src * blob: data: 'unsafe-inline' 'unsafe-eval'; " +
+      "style-src * 'unsafe-inline'; " +
+      "connect-src *; " +
+      "img-src * data: blob:;"
+    ];
+    
+    console.log('🔍 [CSP] Aplicando CSP permisiva para Tesseract workers');
+    callback({ responseHeaders });
   });
 
   // and load the index.html of the app.
