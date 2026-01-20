@@ -37,28 +37,30 @@ const HojaTecnicaModal = ({ isOpen, onClose, hoja, onSave }) => {
         'Fruits vermells'
     ];
 
-    // Initialize form when hoja changes
+    // Initialize form when hoja changes or modal opens
     useEffect(() => {
-        if (hoja) {
-            setNombrePlato(hoja.nombre_plato || '');
-            setImagenPreview(hoja.imagen_url || null);
-            setIngredientes(hoja.ingredientes || []);
+        if (isOpen) {
+            if (hoja) {
+                setNombrePlato(hoja.nombre_plato || '');
+                setImagenPreview(hoja.imagen_url || null);
+                setIngredientes(hoja.ingredientes || []);
 
-            // Convert allergens array to selected state
-            const alergenosArray = hoja.alergenos || [];
-            const selectedAlergenos = alergenosArray.map(a => a.tipo_alergeno);
+                // Convert allergens array to selected state
+                const alergenosArray = hoja.alergenos || [];
+                const selectedAlergenos = alergenosArray.map(a => a.tipo_alergeno);
 
-            // Check if there's a custom "Otros" allergen
-            const otrosItem = alergenosArray.find(a =>
-                !alergenosPredefinidos.includes(a.tipo_alergeno) && a.tipo_alergeno.trim() !== ''
-            );
+                // Check if there's a custom "Otros" allergen
+                const otrosItem = alergenosArray.find(a =>
+                    !alergenosPredefinidos.includes(a.tipo_alergeno) && a.tipo_alergeno.trim() !== ''
+                );
 
-            setAlergenos(selectedAlergenos);
-            setOtrosAlergeno(otrosItem ? otrosItem.tipo_alergeno : '');
-        } else {
-            resetForm();
+                setAlergenos(selectedAlergenos);
+                setOtrosAlergeno(otrosItem ? otrosItem.tipo_alergeno : '');
+            } else {
+                resetForm();
+            }
         }
-    }, [hoja]);
+    }, [hoja, isOpen]);
 
     // Cleanup preview URL on unmount
     useEffect(() => {
