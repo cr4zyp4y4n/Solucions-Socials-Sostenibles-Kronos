@@ -17,6 +17,25 @@ const HojaTecnicaModal = ({ isOpen, onClose, hoja, onSave }) => {
     const [imagenPreview, setImagenPreview] = useState(null);
     const [ingredientes, setIngredientes] = useState([]);
     const [alergenos, setAlergenos] = useState([]);
+    const [otrosAlergeno, setOtrosAlergeno] = useState('');
+
+    // Predefined allergen list
+    const alergenosPredefinidos = [
+        'Gluten',
+        'Crustacis i derivats',
+        'Ous i Derivats',
+        'Peix i derivats',
+        'Fruita seca i derivats',
+        'Soja i derivats',
+        'Llet i derivats',
+        'Cacauet',
+        'Mostassa i Derivats',
+        'Apit i derivats',
+        'Llavors de Sèsam altres',
+        'Molusc i derivats',
+        'Anhidrid i sulfits>10mg',
+        'Fruits vermells'
+    ];
 
     // Initialize form when hoja changes
     useEffect(() => {
@@ -24,7 +43,18 @@ const HojaTecnicaModal = ({ isOpen, onClose, hoja, onSave }) => {
             setNombrePlato(hoja.nombre_plato || '');
             setImagenPreview(hoja.imagen_url || null);
             setIngredientes(hoja.ingredientes || []);
-            setAlergenos(hoja.alergenos || []);
+
+            // Convert allergens array to selected state
+            const alergenosArray = hoja.alergenos || [];
+            const selectedAlergenos = alergenosArray.map(a => a.tipo_alergeno);
+
+            // Check if there's a custom "Otros" allergen
+            const otrosItem = alergenosArray.find(a =>
+                !alergenosPredefinidos.includes(a.tipo_alergeno) && a.tipo_alergeno.trim() !== ''
+            );
+
+            setAlergenos(selectedAlergenos);
+            setOtrosAlergeno(otrosItem ? otrosItem.tipo_alergeno : '');
         } else {
             resetForm();
         }
@@ -45,6 +75,7 @@ const HojaTecnicaModal = ({ isOpen, onClose, hoja, onSave }) => {
         setImagenPreview(null);
         setIngredientes([]);
         setAlergenos([]);
+        setOtrosAlergeno('');
         setError(null);
     };
 
@@ -131,24 +162,12 @@ const HojaTecnicaModal = ({ isOpen, onClose, hoja, onSave }) => {
         setIngredientes(updated);
     };
 
-    const handleAddAlergeno = () => {
-        setAlergenos([
-            ...alergenos,
-            {
-                id: `temp-${Date.now()}`,
-                tipo_alergeno: '',
-            }
-        ]);
-    };
-
-    const handleRemoveAlergeno = (index) => {
-        setAlergenos(alergenos.filter((_, i) => i !== index));
-    };
-
-    const handleAlergenoChange = (index, value) => {
-        const updated = [...alergenos];
-        updated[index] = { ...updated[index], tipo_alergeno: value };
-        setAlergenos(updated);
+    const handleAlergenoToggle = (alergeno) => {
+        if (alergenos.includes(alergeno)) {
+            setAlergenos(alergenos.filter(a => a !== alergeno));
+        } else {
+            setAlergenos([...alergenos, alergeno]);
+        }
     };
 
     const calculateResumen = () => {
@@ -182,11 +201,17 @@ const HojaTecnicaModal = ({ isOpen, onClose, hoja, onSave }) => {
 
             setLoading(true);
 
+            // Prepare allergens data
+            const alergenosData = [...alergenos];
+            if (otrosAlergeno.trim()) {
+                alergenosData.push(otrosAlergeno.trim());
+            }
+
             const hojaData = {
                 nombre_plato: nombrePlato,
                 imagen: imagen,
                 ingredientes: ingredientes.filter(ing => ing.nombre_ingrediente.trim()),
-                alergenos: alergenos.filter(alg => alg.tipo_alergeno.trim()),
+                alergenos: alergenosData.map(tipo => ({ tipo_alergeno: tipo })),
             };
 
             let result;
@@ -638,109 +663,104 @@ const HojaTecnicaModal = ({ isOpen, onClose, hoja, onSave }) => {
 
                         {/* Alérgenos */}
                         <div style={{ marginBottom: '24px' }}>
-                            <div style={{
-                                display: 'flex',
-                                justifyContent: 'space-between',
-                                alignItems: 'center',
+                            <label style={{
+                                display: 'block',
+                                fontSize: '14px',
+                                fontWeight: '600',
+                                color: colors.text,
                                 marginBottom: '12px',
                             }}>
-                                <label style={{
-                                    fontSize: '14px',
-                                    fontWeight: '600',
-                                    color: colors.text,
+                                Alérgenos
+                            </label>
+
+                            <div style={{
+                                display: 'grid',
+                                gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+                                gap: '12px',
+                                padding: '16px',
+                                backgroundColor: colors.surface,
+                                borderRadius: '8px',
+                                border: `1px solid ${colors.border}`,
+                            }}>
+                                {alergenosPredefinidos.map((alergeno) => (
+                                    <label
+                                        key={alergeno}
+                                        style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '8px',
+                                            cursor: 'pointer',
+                                            padding: '8px',
+                                            borderRadius: '6px',
+                                            transition: 'background-color 0.2s',
+                                            backgroundColor: alergenos.includes(alergeno) ? `${colors.primary}15` : 'transparent',
+                                        }}
+                                        onMouseEnter={(e) => {
+                                            if (!alergenos.includes(alergeno)) {
+                                                e.currentTarget.style.backgroundColor = colors.background;
+                                            }
+                                        }}
+                                        onMouseLeave={(e) => {
+                                            if (!alergenos.includes(alergeno)) {
+                                                e.currentTarget.style.backgroundColor = 'transparent';
+                                            }
+                                        }}
+                                    >
+                                        <input
+                                            type="checkbox"
+                                            checked={alergenos.includes(alergeno)}
+                                            onChange={() => handleAlergenoToggle(alergeno)}
+                                            style={{
+                                                width: '18px',
+                                                height: '18px',
+                                                cursor: 'pointer',
+                                                accentColor: colors.primary,
+                                            }}
+                                        />
+                                        <span style={{
+                                            fontSize: '13px',
+                                            color: colors.text,
+                                            userSelect: 'none',
+                                        }}>
+                                            {alergeno}
+                                        </span>
+                                    </label>
+                                ))}
+
+                                {/* Otros - Custom allergen input */}
+                                <div style={{
+                                    gridColumn: '1 / -1',
+                                    marginTop: '8px',
+                                    paddingTop: '12px',
+                                    borderTop: `1px solid ${colors.border}`,
                                 }}>
-                                    Alérgenos
-                                </label>
-                                <motion.button
-                                    whileHover={{ scale: 1.05 }}
-                                    whileTap={{ scale: 0.95 }}
-                                    onClick={handleAddAlergeno}
-                                    style={{
-                                        padding: '8px 16px',
-                                        backgroundColor: colors.primary,
-                                        border: 'none',
-                                        borderRadius: '6px',
-                                        color: 'white',
+                                    <label style={{
+                                        display: 'block',
                                         fontSize: '13px',
                                         fontWeight: '500',
-                                        cursor: 'pointer',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '6px',
-                                    }}
-                                >
-                                    <Plus size={14} />
-                                    Añadir Alérgeno
-                                </motion.button>
+                                        color: colors.text,
+                                        marginBottom: '8px',
+                                    }}>
+                                        Otros (especificar):
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={otrosAlergeno}
+                                        onChange={(e) => setOtrosAlergeno(e.target.value)}
+                                        placeholder="Escribe otro alérgeno no listado..."
+                                        style={{
+                                            width: '100%',
+                                            padding: '10px',
+                                            backgroundColor: colors.background,
+                                            border: `1px solid ${colors.border}`,
+                                            borderRadius: '6px',
+                                            color: colors.text,
+                                            fontSize: '13px',
+                                            outline: 'none',
+                                        }}
+                                    />
+                                </div>
                             </div>
-
-                            {alergenos.length === 0 ? (
-                                <div style={{
-                                    padding: '24px',
-                                    backgroundColor: colors.surface,
-                                    borderRadius: '8px',
-                                    textAlign: 'center',
-                                    color: colors.textSecondary,
-                                    fontSize: '14px',
-                                }}>
-                                    No hay alérgenos. Haz clic en "Añadir Alérgeno" para empezar.
-                                </div>
-                            ) : (
-                                <div style={{
-                                    display: 'grid',
-                                    gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))',
-                                    gap: '12px',
-                                }}>
-                                    {alergenos.map((alg, index) => (
-                                        <div
-                                            key={alg.id || index}
-                                            style={{
-                                                display: 'flex',
-                                                gap: '8px',
-                                                alignItems: 'center',
-                                            }}
-                                        >
-                                            <input
-                                                type="text"
-                                                value={alg.tipo_alergeno}
-                                                onChange={(e) => handleAlergenoChange(index, e.target.value)}
-                                                onKeyDown={(e) => {
-                                                    if (e.key === 'Enter') {
-                                                        e.preventDefault();
-                                                        handleAddAlergeno();
-                                                    }
-                                                }}
-                                                placeholder="Ej: Gluten, Lactosa..."
-                                                style={{
-                                                    flex: 1,
-                                                    padding: '10px',
-                                                    backgroundColor: colors.surface,
-                                                    border: `1px solid ${colors.border}`,
-                                                    borderRadius: '6px',
-                                                    color: colors.text,
-                                                    fontSize: '13px',
-                                                    outline: 'none',
-                                                }}
-                                            />
-                                            <button
-                                                onClick={() => handleRemoveAlergeno(index)}
-                                                style={{
-                                                    padding: '8px',
-                                                    backgroundColor: 'transparent',
-                                                    border: 'none',
-                                                    borderRadius: '6px',
-                                                    cursor: 'pointer',
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    justifyContent: 'center',
-                                                }}
-                                            >
-                                                <Trash2 size={16} color="#ef4444" />
-                                            </button>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
                         </div>
 
                         {/* Resumen de Costes */}
