@@ -529,6 +529,12 @@ const HojaTecnicaModal = ({ isOpen, onClose, hoja, onSave }) => {
                                                 type="text"
                                                 value={ing.nombre_ingrediente}
                                                 onChange={(e) => handleIngredienteChange(index, 'nombre_ingrediente', e.target.value)}
+                                                onKeyDown={(e) => {
+                                                    if (e.key === 'Enter') {
+                                                        e.preventDefault();
+                                                        handleAddIngrediente();
+                                                    }
+                                                }}
                                                 placeholder="Nombre"
                                                 style={{
                                                     padding: '8px',
@@ -544,6 +550,12 @@ const HojaTecnicaModal = ({ isOpen, onClose, hoja, onSave }) => {
                                                 type="number"
                                                 value={ing.peso_gramos}
                                                 onChange={(e) => handleIngredienteChange(index, 'peso_gramos', e.target.value)}
+                                                onKeyDown={(e) => {
+                                                    if (e.key === 'Enter') {
+                                                        e.preventDefault();
+                                                        handleAddIngrediente();
+                                                    }
+                                                }}
                                                 placeholder="Peso (g)"
                                                 min="0"
                                                 step="0.01"
@@ -561,6 +573,12 @@ const HojaTecnicaModal = ({ isOpen, onClose, hoja, onSave }) => {
                                                 type="number"
                                                 value={ing.coste_euros}
                                                 onChange={(e) => handleIngredienteChange(index, 'coste_euros', e.target.value)}
+                                                onKeyDown={(e) => {
+                                                    if (e.key === 'Enter') {
+                                                        e.preventDefault();
+                                                        handleAddIngrediente();
+                                                    }
+                                                }}
                                                 placeholder="Coste (€)"
                                                 min="0"
                                                 step="0.01"
@@ -578,6 +596,12 @@ const HojaTecnicaModal = ({ isOpen, onClose, hoja, onSave }) => {
                                                 type="number"
                                                 value={ing.gastos_euros}
                                                 onChange={(e) => handleIngredienteChange(index, 'gastos_euros', e.target.value)}
+                                                onKeyDown={(e) => {
+                                                    if (e.key === 'Enter') {
+                                                        e.preventDefault();
+                                                        handleAddIngrediente();
+                                                    }
+                                                }}
                                                 placeholder="Gastos (€)"
                                                 min="0"
                                                 step="0.01"
@@ -680,6 +704,12 @@ const HojaTecnicaModal = ({ isOpen, onClose, hoja, onSave }) => {
                                                 type="text"
                                                 value={alg.tipo_alergeno}
                                                 onChange={(e) => handleAlergenoChange(index, e.target.value)}
+                                                onKeyDown={(e) => {
+                                                    if (e.key === 'Enter') {
+                                                        e.preventDefault();
+                                                        handleAddAlergeno();
+                                                    }
+                                                }}
                                                 placeholder="Ej: Gluten, Lactosa..."
                                                 style={{
                                                     flex: 1,
