@@ -96,10 +96,13 @@ const ConfirmacionProductosSection = () => {
         setFilteredProductos(filtered);
     };
 
-    const handleProductoUpdate = (hojaRutaId, productoId, nuevoEstado) => {
-        const success = productosIdoniService.updateProductoEstado(hojaRutaId, productoId, nuevoEstado);
-        if (success) {
-            cargarProductos(); // Reload to update stats
+    const handleProductoUpdate = async (hojaRutaId, productoId, nuevoEstado) => {
+        try {
+            await productosIdoniService.updateProductoEstado(productoId, nuevoEstado);
+            await cargarProductos(); // Reload to update stats
+        } catch (error) {
+            console.error('Error actualizando producto:', error);
+            alert('Error al actualizar el producto. Revisa la consola para mas detalles.');
         }
     };
 
