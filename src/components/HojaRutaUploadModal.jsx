@@ -38,7 +38,7 @@ const HojaRutaUploadModal = ({ isOpen, onClose, onUploadSuccess, userId }) => {
     e.preventDefault();
     e.stopPropagation();
     setDragActive(false);
-    
+
     const files = e.dataTransfer.files;
     if (files && files.length > 0) {
       handleFileSelect(files[0]);
@@ -52,7 +52,7 @@ const HojaRutaUploadModal = ({ isOpen, onClose, onUploadSuccess, userId }) => {
     const fileName = file.name.toLowerCase();
     const isExcel = fileName.endsWith('.xlsx') || fileName.endsWith('.xls');
     const isCSV = fileName.endsWith('.csv');
-    
+
     if (!isExcel && !isCSV) {
       setError('Solo se permiten archivos Excel (.xlsx, .xls) o CSV (.csv)');
       return;
@@ -257,7 +257,7 @@ const HojaRutaUploadModal = ({ isOpen, onClose, onUploadSuccess, userId }) => {
             onChange={handleFileInputChange}
             style={{ display: 'none' }}
           />
-          
+
           {selectedFile ? (
             <div>
               <CheckCircle size={48} color={colors.success} style={{ marginBottom: '16px' }} />
@@ -411,7 +411,7 @@ const HojaRutaUploadModal = ({ isOpen, onClose, onUploadSuccess, userId }) => {
           >
             Cancelar
           </motion.button>
-          
+
           <motion.button
             whileHover={{ scale: uploading ? 1 : 1.05 }}
             whileTap={{ scale: uploading ? 1 : 0.95 }}

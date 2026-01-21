@@ -211,6 +211,75 @@ class ProductosIdoniService {
             return false;
         }
     }
+
+    /**
+     * Escanear manualmente todas las hojas de ruta existentes y extraer productos IDONI/BONCOR
+     * Esta es una función de utilidad para detectar productos en hojas ya subidas
+     */
+    escanearProductosEnHojasExistentes() {
+        console.log('🔍 Iniciando escaneo manual de productos IDONI/BONCOR...');
+
+        const hojasRuta = hojaRutaService.getAllHojasRuta();
+        let productosDetectados = 0;
+        let hojasActualizadas = 0;
+
+        hojasRuta.forEach(hoja => {
+            // Si la hoja ya tiene productos, saltarla
+            if (hoja.productosIdoni && hoja.productosIdoni.length > 0) {
+                console.log(`⏭️ Hoja "${hoja.cliente}" ya tiene ${hoja.productosIdoni.length} productos, saltando...`);
+                return;
+            }
+
+            // Inicializar array de productos si no existe
+            if (!hoja.productosIdoni) {
+                hoja.productosIdoni = [];
+            }
+
+            // Buscar productos en los menús
+            if (hoja.menus && hoja.menus.length > 0) {
+                hoja.menus.forEach(menu => {
+                    const proveedor = menu.proveedor?.trim().toUpperCase() || '';
+
+                    if (proveedor && (proveedor.includes('IDONI') || proveedor.includes('BONCOR'))) {
+                        const producto = menu.item?.trim() || '';
+                        const cantidad = menu.cantidad?.trim() || '';
+
+                        if (producto && producto.length > 0) {
+                            hoja.productosIdoni.push({
+                                id: Date.now().toString(36) + Math.random().toString(36).substr(2),
+                                producto: producto,
+                                cantidad: cantidad,
+                                proveedor: menu.proveedor?.trim() || '',
+                                estado: 'pendiente',
+                                fechaActualizacion: null,
+                                orden: hoja.productosIdoni.length
+                            });
+
+                            productosDetectados++;
+                            console.log(`✅ Producto detectado en "${hoja.cliente}": ${producto} (${proveedor})`);
+                        }
+                    }
+                });
+            }
+
+            // Si se encontraron productos, actualizar la hoja
+            if (hoja.productosIdoni.length > 0) {
+                hojaRutaService.updateHojaRuta(hoja.id, hoja);
+                hojasActualizadas++;
+            }
+        });
+
+        console.log(`📊 Escaneo completado:`);
+        console.log(`   - Hojas escaneadas: ${hojasRuta.length}`);
+        console.log(`   - Hojas actualizadas: ${hojasActualizadas}`);
+        console.log(`   - Productos detectados: ${productosDetectados}`);
+
+        return {
+            hojasEscaneadas: hojasRuta.length,
+            hojasActualizadas: hojasActualizadas,
+            productosDetectados: productosDetectados
+        };
+    }
 }
 
 export default new ProductosIdoniService();

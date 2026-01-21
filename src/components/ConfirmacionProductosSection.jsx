@@ -17,6 +17,8 @@ const ConfirmacionProductosSection = () => {
         noDisponibles: 0
     });
     const [filtroEstado, setFiltroEstado] = useState('todos'); // todos, pendientes, disponibles, no_disponibles
+    const [loading, setLoading] = useState(true);
+    const [escaneando, setEscaneando] = useState(false);
 
     // Load products on mount
     useEffect(() => {
@@ -29,6 +31,7 @@ const ConfirmacionProductosSection = () => {
     }, [searchTerm, filtroEstado, productosAgrupados]);
 
     const cargarProductos = () => {
+        setLoading(true);
         try {
             const productos = productosIdoniService.getProductosPorHojaRuta();
             const stats = productosIdoniService.getEstadisticas();
@@ -41,6 +44,29 @@ const ConfirmacionProductosSection = () => {
             setEstadisticas(stats);
         } catch (error) {
             console.error('Error cargando productos:', error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleEscanearProductos = () => {
+        setEscaneando(true);
+        try {
+            const resultado = productosIdoniService.escanearProductosEnHojasExistentes();
+
+            // Recargar productos después del escaneo
+            cargarProductos();
+
+            // Mostrar resultado
+            alert(`✅ Escaneo completado!\n\n` +
+                `Hojas escaneadas: ${resultado.hojasEscaneadas}\n` +
+                `Hojas actualizadas: ${resultado.hojasActualizadas}\n` +
+                `Productos detectados: ${resultado.productosDetectados}`);
+        } catch (error) {
+            console.error('Error escaneando productos:', error);
+            alert('❌ Error al escanear productos. Revisa la consola para más detalles.');
+        } finally {
+            setEscaneando(false);
         }
     };
 
@@ -149,6 +175,42 @@ const ConfirmacionProductosSection = () => {
                         {filtroEstado === 'todos' ? 'Todos' :
                             filtroEstado === 'pendientes' ? 'Pendientes' :
                                 filtroEstado === 'disponibles' ? 'Disponibles' : 'No Disponibles'}
+                    </motion.button>
+
+                    <motion.button
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                        onClick={handleEscanearProductos}
+                        disabled={escaneando}
+                        style={{
+                            padding: '10px 20px',
+                            backgroundColor: escaneando ? '#95a5a6' : '#9b59b6',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '8px',
+                            cursor: escaneando ? 'not-allowed' : 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            fontSize: '14px',
+                            fontWeight: '500',
+                            transition: 'all 0.3s ease'
+                        }}
+                        onMouseEnter={(e) => {
+                            if (!escaneando) {
+                                e.currentTarget.style.backgroundColor = '#8e44ad';
+                                e.currentTarget.style.transform = 'translateY(-2px)';
+                            }
+                        }}
+                        onMouseLeave={(e) => {
+                            if (!escaneando) {
+                                e.currentTarget.style.backgroundColor = '#9b59b6';
+                                e.currentTarget.style.transform = 'translateY(0)';
+                            }
+                        }}
+                    >
+                        <Search size={18} />
+                        {escaneando ? 'Escaneando...' : 'Escanear Productos'}
                     </motion.button>
 
                     <motion.button
