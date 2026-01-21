@@ -405,7 +405,7 @@ const ConfirmacionProductosSection = () => {
                 }}>
                     {filteredProductos.map((hoja) => (
                         <HojaRutaProductosCard
-                            key={hoja.hojaRutaId}
+                            key={hoja.hojaId}
                             hojaRuta={hoja}
                             onProductoUpdate={handleProductoUpdate}
                         />
