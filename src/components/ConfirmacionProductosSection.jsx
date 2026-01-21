@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { CheckCircle, Search, Filter, RefreshCw, FileText } from 'feather-icons-react';
+import { Package, Search, RefreshCw, CheckCircle, XCircle, Clock, Filter, FileText } from 'lucide-react';
 import { useTheme } from './ThemeContext';
-import productosIdoniService from '../services/productosIdoniService';
+import productosIdoniService from '../services/productosIdoniSupabaseService';
 import HojaRutaProductosCard from './HojaRutaProductosCard';
 
 const ConfirmacionProductosSection = () => {
@@ -30,18 +30,18 @@ const ConfirmacionProductosSection = () => {
         aplicarFiltros();
     }, [searchTerm, filtroEstado, productosAgrupados]);
 
-    const cargarProductos = () => {
+    const cargarProductos = async () => {
         setLoading(true);
         try {
-            const productos = productosIdoniService.getProductosPorHojaRuta();
-            const stats = productosIdoniService.getEstadisticas();
-
-            console.log('📦 Productos IDONI/BONCOR cargados:', productos.length, 'hojas de ruta');
-            console.log('📊 Estadísticas:', stats);
+            const productos = await productosIdoniService.getProductosPorHojaRuta();
+            const stats = await productosIdoniService.getEstadisticas();
 
             setProductosAgrupados(productos);
             setFilteredProductos(productos);
             setEstadisticas(stats);
+
+            console.log('Productos IDONI/BONCOR cargados:', productos.length, 'hojas de ruta');
+            console.log('Estadisticas:', stats);
         } catch (error) {
             console.error('Error cargando productos:', error);
         } finally {
@@ -49,22 +49,17 @@ const ConfirmacionProductosSection = () => {
         }
     };
 
-    const handleEscanearProductos = () => {
+    const handleEscanearProductos = async () => {
         setEscaneando(true);
         try {
-            const resultado = productosIdoniService.escanearProductosEnHojasExistentes();
+            // Simplemente recargar productos desde Supabase
+            // Ya no necesitamos escanear manualmente porque se detectan automáticamente al subir
+            await cargarProductos();
 
-            // Recargar productos después del escaneo
-            cargarProductos();
-
-            // Mostrar resultado
-            alert(`✅ Escaneo completado!\n\n` +
-                `Hojas escaneadas: ${resultado.hojasEscaneadas}\n` +
-                `Hojas actualizadas: ${resultado.hojasActualizadas}\n` +
-                `Productos detectados: ${resultado.productosDetectados}`);
+            alert('Productos recargados desde Supabase!');
         } catch (error) {
-            console.error('Error escaneando productos:', error);
-            alert('❌ Error al escanear productos. Revisa la consola para más detalles.');
+            console.error('Error recargando productos:', error);
+            alert('Error al recargar productos. Revisa la consola para mas detalles.');
         } finally {
             setEscaneando(false);
         }
@@ -160,7 +155,7 @@ const ConfirmacionProductosSection = () => {
                         style={{
                             padding: '10px 20px',
                             backgroundColor: filtroEstado !== 'todos' ? colors.primary : colors.surface,
-                            border: `1px solid ${filtroEstado !== 'todos' ? colors.primary : colors.border}`,
+                            border: `1px solid ${filtroEstado !== 'todos' ? colors.primary : colors.border} `,
                             borderRadius: '8px',
                             color: filtroEstado !== 'todos' ? 'white' : colors.text,
                             fontSize: '14px',
@@ -262,7 +257,7 @@ const ConfirmacionProductosSection = () => {
                             width: '100%',
                             padding: '12px 14px 12px 44px',
                             backgroundColor: colors.surface,
-                            border: `1px solid ${colors.border}`,
+                            border: `1px solid ${colors.border} `,
                             borderRadius: '8px',
                             color: colors.text,
                             fontSize: '14px',
@@ -291,7 +286,7 @@ const ConfirmacionProductosSection = () => {
                         transition={{ delay: index * 0.1 }}
                         style={{
                             backgroundColor: colors.card,
-                            border: `1px solid ${colors.border}`,
+                            border: `1px solid ${colors.border} `,
                             borderRadius: '12px',
                             padding: '20px',
                             display: 'flex',
@@ -325,7 +320,7 @@ const ConfirmacionProductosSection = () => {
                     transition={{ delay: 0.3 }}
                     style={{
                         backgroundColor: colors.card,
-                        border: `1px solid ${colors.border}`,
+                        border: `1px solid ${colors.border} `,
                         borderRadius: '12px',
                         padding: '60px 40px',
                         textAlign: 'center',
@@ -341,7 +336,7 @@ const ConfirmacionProductosSection = () => {
                         width: '80px',
                         height: '80px',
                         borderRadius: '50%',
-                        backgroundColor: `${colors.primary}15`,
+                        backgroundColor: `${colors.primary} 15`,
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
@@ -374,7 +369,7 @@ const ConfirmacionProductosSection = () => {
                     animate={{ opacity: 1, y: 0 }}
                     style={{
                         backgroundColor: colors.card,
-                        border: `1px solid ${colors.border}`,
+                        border: `1px solid ${colors.border} `,
                         borderRadius: '12px',
                         padding: '60px 40px',
                         textAlign: 'center',
