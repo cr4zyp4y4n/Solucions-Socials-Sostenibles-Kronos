@@ -1,10 +1,10 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { 
-  CheckCircle2, 
-  Circle, 
-  Clock, 
-  User, 
+import {
+  CheckCircle2,
+  Circle,
+  Clock,
+  User,
   AlertTriangle,
   CheckCircle,
   Play,
@@ -20,17 +20,19 @@ import {
 } from 'lucide-react';
 import { useTheme } from './ThemeContext';
 import { useAuth } from './AuthContext';
+import { supabase } from '../config/supabase';
 
-const ChecklistSection = ({ 
-  hojaRuta, 
-  onUpdateChecklist, 
+const ChecklistSection = ({
+  hojaRuta,
+  onUpdateChecklist,
   onCambiarEstado,
-  estadisticas 
+  estadisticas
 }) => {
   const { colors } = useTheme();
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState('general');
   const [activeSubTab, setActiveSubTab] = useState('preEvento');
+  const [productosIdoni, setProductosIdoni] = useState([]);
 
   if (!hojaRuta) return null;
 
@@ -59,11 +61,13 @@ const ChecklistSection = ({
   };
 
   const tabs = [
-    { id: 'general', label: 'General', icon: BarChart3, subTabs: [
-      { id: 'preEvento', label: 'Pre-Evento', icon: Clock },
-      { id: 'duranteEvento', label: 'Durante Evento', icon: Play },
-      { id: 'postEvento', label: 'Post-Evento', icon: Square }
-    ]},
+    {
+      id: 'general', label: 'General', icon: BarChart3, subTabs: [
+        { id: 'preEvento', label: 'Pre-Evento', icon: Clock },
+        { id: 'duranteEvento', label: 'Durante Evento', icon: Play },
+        { id: 'postEvento', label: 'Post-Evento', icon: Square }
+      ]
+    },
     { id: 'equipamiento', label: 'Equipamiento', icon: Utensils },
     { id: 'menus', label: 'Menús', icon: Coffee },
     { id: 'bebidas', label: 'Bebidas', icon: Wine },
@@ -82,7 +86,7 @@ const ChecklistSection = ({
       console.log('⚠️ Usuario básico no puede desmarcar tareas completadas');
       return; // No hacer nada, no permitir desmarcar
     }
-    
+
     console.log('🔄 Toggle tarea:', { tipo, fase, tareaId, completed });
     onUpdateChecklist(hojaRuta.id, tipo, fase, tareaId, completed, user?.name || user?.email || 'Usuario');
   };
@@ -96,16 +100,72 @@ const ChecklistSection = ({
     return new Date(fecha).toLocaleString('es-ES');
   };
 
+  // Cargar productos IDONI/BONCOR de esta hoja de ruta
+  useEffect(() => {
+    const cargarProductos = async () => {
+      if (!hojaRuta?.id) return;
+
+      try {
+        const { data, error } = await supabase
+          .from('productos_idoni')
+          .select('*')
+          .eq('hoja_ruta_id', hojaRuta.id);
+
+        if (!error && data) {
+          setProductosIdoni(data);
+        }
+      } catch (error) {
+        console.error('Error cargando productos IDONI:', error);
+      }
+    };
+
+    cargarProductos();
+  }, [hojaRuta?.id]);
+
+  // Función para obtener el estado de un producto por su nombre
+  const getProductoEstado = (nombreProducto) => {
+    const producto = productosIdoni.find(p =>
+      p.producto.toLowerCase() === nombreProducto.toLowerCase()
+    );
+    return producto?.estado || null;
+  };
+
+  // Función para obtener el color del estado
+  const getEstadoColor = (estado) => {
+    switch (estado) {
+      case 'disponible':
+        return '#10B981';
+      case 'no_disponible':
+        return '#EF4444';
+      case 'pendiente':
+      default:
+        return '#F59E0B';
+    }
+  };
+
+  // Función para obtener el label del estado
+  const getEstadoLabel = (estado) => {
+    switch (estado) {
+      case 'disponible':
+        return 'Disponible';
+      case 'no_disponible':
+        return 'No Disponible';
+      case 'pendiente':
+      default:
+        return 'Pendiente';
+    }
+  };
+
   // Función para verificar si un elemento es de IDONI
   const esIdoni = (item) => {
     if (!item) return false;
-    
+
     // Si es un string, buscar directamente
     if (typeof item === 'string') {
       const texto = item.toUpperCase();
       return texto.includes('IDONI');
     }
-    
+
     // Si es un objeto, buscar en todos los campos relevantes
     const campos = [
       item.item,
@@ -115,7 +175,7 @@ const ChecklistSection = ({
       item.descripcion,
       item.notas
     ].filter(Boolean); // Filtrar valores nulos/undefined
-    
+
     // Buscar en todos los campos
     return campos.some(campo => {
       const texto = String(campo).toUpperCase();
@@ -128,7 +188,7 @@ const ChecklistSection = ({
     const equipamientoIdoni = (hojaRuta.equipamiento || []).filter(esIdoni);
     const menusIdoni = (hojaRuta.menus || []).filter(esIdoni);
     const bebidasIdoni = (hojaRuta.bebidas || []).filter(esIdoni);
-    
+
     // Debug: verificar qué se está detectando
     if (activeTab === 'idoni' || menusIdoni.length > 0) {
       console.log('🔍 [IDONI Debug]', {
@@ -142,7 +202,7 @@ const ChecklistSection = ({
         menusIdoniEjemplo: menusIdoni.slice(0, 2)
       });
     }
-    
+
     return {
       equipamiento: equipamientoIdoni,
       menus: menusIdoni,
@@ -157,7 +217,7 @@ const ChecklistSection = ({
     if (!hojaRuta.checklist) {
       return [];
     }
-    
+
     // Migrar estructura antigua si es necesario
     if (hojaRuta.checklist.preEvento && !hojaRuta.checklist.general) {
       hojaRuta.checklist = {
@@ -171,7 +231,7 @@ const ChecklistSection = ({
         bebidas: hojaRuta.checklist.bebidas || []
       };
     }
-    
+
     if (activeTab === 'general') {
       return hojaRuta.checklist.general?.[activeSubTab] || [];
     } else if (activeTab === 'idoni') {
@@ -198,9 +258,9 @@ const ChecklistSection = ({
         marginBottom: '24px'
       }}>
         <div>
-          <h3 style={{ 
-            fontSize: '20px', 
-            fontWeight: 'bold', 
+          <h3 style={{
+            fontSize: '20px',
+            fontWeight: 'bold',
             color: colors.text,
             margin: '0 0 8px 0',
             display: 'flex',
@@ -210,7 +270,7 @@ const ChecklistSection = ({
             <BarChart3 size={24} color={colors.primary} />
             Checklist de Servicio
           </h3>
-          
+
           {/* Estadísticas generales */}
           <div style={{
             display: 'flex',
@@ -268,7 +328,7 @@ const ChecklistSection = ({
         {tabs.map(tab => {
           const Icon = tab.icon;
           let tabStats;
-          
+
           if (tab.id === 'general') {
             tabStats = estadisticas?.porFase?.[activeSubTab];
           } else if (tab.id === 'idoni') {
@@ -280,9 +340,9 @@ const ChecklistSection = ({
           } else {
             tabStats = estadisticas?.porElemento?.[tab.id];
           }
-          
+
           const isActive = activeTab === tab.id;
-          
+
           return (
             <motion.button
               key={tab.id}
@@ -340,7 +400,7 @@ const ChecklistSection = ({
             const Icon = subTab.icon;
             const tabStats = estadisticas?.porFase?.[subTab.id];
             const isActive = activeSubTab === subTab.id;
-            
+
             return (
               <motion.button
                 key={subTab.id}
@@ -474,67 +534,93 @@ const ChecklistSection = ({
                 gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
                 gap: '12px'
               }}>
-                {elementosIdoni.menus.map((menu, index) => (
-                  <motion.div
-                    key={index}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: index * 0.05 }}
-                    style={{
-                      padding: '16px',
-                      backgroundColor: colors.background,
-                      borderRadius: '8px',
-                      border: `1px solid ${colors.border}`
-                    }}
-                  >
-                    <div style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      marginBottom: '8px'
-                    }}>
-                      <p style={{
-                        fontSize: '15px',
-                        fontWeight: '600',
-                        color: colors.text,
-                        margin: 0
+                {elementosIdoni.menus.map((menu, index) => {
+                  const estadoProducto = getProductoEstado(menu.item);
+
+                  return (
+                    <motion.div
+                      key={index}
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: index * 0.05 }}
+                      style={{
+                        padding: '16px',
+                        backgroundColor: colors.background,
+                        borderRadius: '8px',
+                        border: `1px solid ${colors.border}`
+                      }}
+                    >
+                      <div style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        marginBottom: '8px',
+                        gap: '8px'
                       }}>
-                        {menu.item}
-                      </p>
-                      {menu.proveedor && (
-                        <span style={{
-                          fontSize: '12px',
-                          color: colors.primary,
-                          fontWeight: '500',
-                          padding: '4px 8px',
-                          backgroundColor: colors.primary + '15',
-                          borderRadius: '4px'
+                        <p style={{
+                          fontSize: '15px',
+                          fontWeight: '600',
+                          color: colors.text,
+                          margin: 0,
+                          flex: 1
                         }}>
-                          {menu.proveedor}
-                        </span>
+                          {menu.item}
+                        </p>
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          flexShrink: 0
+                        }}>
+                          {estadoProducto && (
+                            <span style={{
+                              fontSize: '11px',
+                              fontWeight: '600',
+                              padding: '4px 8px',
+                              borderRadius: '4px',
+                              backgroundColor: `${getEstadoColor(estadoProducto)}15`,
+                              color: getEstadoColor(estadoProducto),
+                              whiteSpace: 'nowrap'
+                            }}>
+                              {getEstadoLabel(estadoProducto)}
+                            </span>
+                          )}
+                          {menu.proveedor && (
+                            <span style={{
+                              fontSize: '12px',
+                              color: colors.primary,
+                              fontWeight: '500',
+                              padding: '4px 8px',
+                              backgroundColor: colors.primary + '15',
+                              borderRadius: '4px'
+                            }}>
+                              {menu.proveedor}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      {menu.cantidad && (
+                        <p style={{
+                          fontSize: '13px',
+                          color: colors.textSecondary,
+                          margin: '0 0 4px 0'
+                        }}>
+                          Cantidad: <strong>{menu.cantidad}</strong>
+                        </p>
                       )}
-                    </div>
-                    {menu.cantidad && (
-                      <p style={{
-                        fontSize: '13px',
-                        color: colors.textSecondary,
-                        margin: '0 0 4px 0'
-                      }}>
-                        Cantidad: <strong>{menu.cantidad}</strong>
-                      </p>
-                    )}
-                    {menu.tipo && (
-                      <p style={{
-                        fontSize: '12px',
-                        color: colors.textSecondary,
-                        margin: 0,
-                        textTransform: 'capitalize'
-                      }}>
-                        Tipo: {menu.tipo.replace('_', ' ')}
-                      </p>
-                    )}
-                  </motion.div>
-                ))}
+                      {menu.tipo && (
+                        <p style={{
+                          fontSize: '12px',
+                          color: colors.textSecondary,
+                          margin: 0,
+                          textTransform: 'capitalize'
+                        }}>
+                          Tipo: {menu.tipo.replace('_', ' ')}
+                        </p>
+                      )}
+                    </motion.div>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -633,122 +719,122 @@ const ChecklistSection = ({
           gap: '12px'
         }}>
           {tareasActuales.map((tarea, index) => (
-          <motion.div
-            key={tarea.id}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: index * 0.1 }}
-            style={{
-              padding: '16px',
-              backgroundColor: colors.background,
-              borderRadius: '8px',
-              border: `1px solid ${colors.border}`,
-              display: 'flex',
-              alignItems: 'center',
-              gap: '12px',
-              opacity: tarea.completed ? 0.7 : 1
-            }}
-          >
-            {/* Checkbox */}
-            <motion.button
-              whileHover={{ scale: esUsuarioBasico && tarea.completed ? 1 : 1.1 }}
-              whileTap={{ scale: esUsuarioBasico && tarea.completed ? 1 : 0.9 }}
-              onClick={() => {
-                // Si es usuario básico y la tarea ya está completada, no hacer nada
-                if (esUsuarioBasico && tarea.completed) {
-                  return;
-                }
-                const tipo = activeTab === 'general' ? 'general' : activeTab;
-                const fase = activeTab === 'general' ? activeSubTab : '';
-                handleToggleTarea(tipo, fase, tarea.id, !tarea.completed, tarea);
-              }}
+            <motion.div
+              key={tarea.id}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: index * 0.1 }}
               style={{
-                backgroundColor: 'transparent',
-                border: 'none',
-                cursor: esUsuarioBasico && tarea.completed ? 'not-allowed' : 'pointer',
-                padding: '4px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                opacity: esUsuarioBasico && tarea.completed ? 0.6 : 1
-              }}
-              title={esUsuarioBasico && tarea.completed ? 'No puedes desmarcar tareas completadas' : undefined}
-            >
-              {tarea.completed ? (
-                <CheckCircle2 size={24} color={colors.success} />
-              ) : (
-                <Circle size={24} color={colors.textSecondary} />
-              )}
-            </motion.button>
-
-            {/* Contenido de la tarea */}
-            <div style={{ flex: 1 }}>
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                marginBottom: '4px'
-              }}>
-                <span style={{
-                  fontSize: '16px',
-                  fontWeight: '500',
-                  color: tarea.completed ? colors.textSecondary : colors.text,
-                  textDecoration: tarea.completed ? 'line-through' : 'none'
-                }}>
-                  {tarea.task}
-                </span>
-                
-                {/* Indicador de prioridad */}
-                <div style={{
-                  width: '8px',
-                  height: '8px',
-                  borderRadius: '50%',
-                  backgroundColor: coloresPrioridad[tarea.priority]
-                }} />
-                
-                <span style={{
-                  fontSize: '12px',
-                  color: colors.textSecondary,
-                  textTransform: 'uppercase',
-                  fontWeight: '600'
-                }}>
-                  {tarea.priority}
-                </span>
-              </div>
-
-              {/* Información adicional */}
-              <div style={{
+                padding: '16px',
+                backgroundColor: colors.background,
+                borderRadius: '8px',
+                border: `1px solid ${colors.border}`,
                 display: 'flex',
                 alignItems: 'center',
                 gap: '12px',
-                fontSize: '12px',
-                color: colors.textSecondary
-              }}>
-                {tarea.assignedTo && (
-                  <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '4px'
-                  }}>
-                    <User size={12} />
-                    <span>{tarea.assignedTo}</span>
-                  </div>
+                opacity: tarea.completed ? 0.7 : 1
+              }}
+            >
+              {/* Checkbox */}
+              <motion.button
+                whileHover={{ scale: esUsuarioBasico && tarea.completed ? 1 : 1.1 }}
+                whileTap={{ scale: esUsuarioBasico && tarea.completed ? 1 : 0.9 }}
+                onClick={() => {
+                  // Si es usuario básico y la tarea ya está completada, no hacer nada
+                  if (esUsuarioBasico && tarea.completed) {
+                    return;
+                  }
+                  const tipo = activeTab === 'general' ? 'general' : activeTab;
+                  const fase = activeTab === 'general' ? activeSubTab : '';
+                  handleToggleTarea(tipo, fase, tarea.id, !tarea.completed, tarea);
+                }}
+                style={{
+                  backgroundColor: 'transparent',
+                  border: 'none',
+                  cursor: esUsuarioBasico && tarea.completed ? 'not-allowed' : 'pointer',
+                  padding: '4px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  opacity: esUsuarioBasico && tarea.completed ? 0.6 : 1
+                }}
+                title={esUsuarioBasico && tarea.completed ? 'No puedes desmarcar tareas completadas' : undefined}
+              >
+                {tarea.completed ? (
+                  <CheckCircle2 size={24} color={colors.success} />
+                ) : (
+                  <Circle size={24} color={colors.textSecondary} />
                 )}
-                
-                {tarea.completedAt && (
-                  <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '4px'
+              </motion.button>
+
+              {/* Contenido de la tarea */}
+              <div style={{ flex: 1 }}>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  marginBottom: '4px'
+                }}>
+                  <span style={{
+                    fontSize: '16px',
+                    fontWeight: '500',
+                    color: tarea.completed ? colors.textSecondary : colors.text,
+                    textDecoration: tarea.completed ? 'line-through' : 'none'
                   }}>
-                    <CheckCircle size={12} />
-                    <span>{formatFecha(tarea.completedAt)}</span>
-                  </div>
-                )}
+                    {tarea.task}
+                  </span>
+
+                  {/* Indicador de prioridad */}
+                  <div style={{
+                    width: '8px',
+                    height: '8px',
+                    borderRadius: '50%',
+                    backgroundColor: coloresPrioridad[tarea.priority]
+                  }} />
+
+                  <span style={{
+                    fontSize: '12px',
+                    color: colors.textSecondary,
+                    textTransform: 'uppercase',
+                    fontWeight: '600'
+                  }}>
+                    {tarea.priority}
+                  </span>
+                </div>
+
+                {/* Información adicional */}
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '12px',
+                  fontSize: '12px',
+                  color: colors.textSecondary
+                }}>
+                  {tarea.assignedTo && (
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}>
+                      <User size={12} />
+                      <span>{tarea.assignedTo}</span>
+                    </div>
+                  )}
+
+                  {tarea.completedAt && (
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}>
+                      <CheckCircle size={12} />
+                      <span>{formatFecha(tarea.completedAt)}</span>
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
-          </motion.div>
-        ))}
+            </motion.div>
+          ))}
         </div>
       )}
 
