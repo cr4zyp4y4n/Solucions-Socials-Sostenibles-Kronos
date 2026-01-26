@@ -99,6 +99,22 @@ const HojaTecnicaModal = ({ isOpen, onClose, hoja, onSave }) => {
         setImagenPreview(preview);
     };
 
+    // Refs for auto-focus
+    const nameInputRefs = React.useRef([]);
+    const prevIngredientesLength = React.useRef(0);
+
+    // Auto-focus new ingredient input
+    useEffect(() => {
+        if (ingredientes.length > prevIngredientesLength.current) {
+            // New ingredient added
+            const lastIndex = ingredientes.length - 1;
+            if (nameInputRefs.current[lastIndex]) {
+                nameInputRefs.current[lastIndex].focus();
+            }
+        }
+        prevIngredientesLength.current = ingredientes.length;
+    }, [ingredientes.length]);
+
     const handleRemoveImage = () => {
         if (imagenPreview && imagenPreview.startsWith('blob:')) {
             revokeImagePreview(imagenPreview);
@@ -554,6 +570,7 @@ const HojaTecnicaModal = ({ isOpen, onClose, hoja, onSave }) => {
                                         >
                                             <input
                                                 type="text"
+                                                ref={(el) => (nameInputRefs.current[index] = el)}
                                                 value={ing.nombre_ingrediente}
                                                 onChange={(e) => handleIngredienteChange(index, 'nombre_ingrediente', e.target.value)}
                                                 onKeyDown={(e) => {
