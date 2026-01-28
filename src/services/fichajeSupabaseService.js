@@ -108,9 +108,10 @@ class FichajeSupabaseService {
   /**
    * Cerrar automáticamente un fichaje pendiente
    * @param {string} fichajeId - ID del fichaje
+   * @param {string} motivo - Motivo del cierre automático (opcional)
    * @returns {Promise<Object>} Fichaje cerrado
    */
-  async cerrarFichajeAutomaticamente(fichajeId) {
+  async cerrarFichajeAutomaticamente(fichajeId, motivo = null) {
     try {
       // Usar la función RPC para cerrar el fichaje
       const { data, error } = await supabase.rpc('registrar_salida_fichaje', {
@@ -122,6 +123,8 @@ class FichajeSupabaseService {
       // Marcar como modificado automáticamente por el servidor
       const fichajeCerrado = data && data.length > 0 ? data[0] : null;
       if (fichajeCerrado) {
+        const motivoCierre = motivo || 'Cerrado automáticamente por el servidor al fichar entrada en otro día';
+        
         const { error: updateError } = await supabase
           .from('fichajes')
           .update({
@@ -131,7 +134,8 @@ class FichajeSupabaseService {
             valor_original: {
               hora_salida: null,
               cerrado_automaticamente: true,
-              motivo: 'Cerrado automáticamente por el servidor al fichar entrada en otro día'
+              motivo: motivoCierre,
+              aviso: '⚠️ Este fichaje fue cerrado automáticamente porque se detectó que el empleado olvidó fichar la salida.'
             }
           })
           .eq('id', fichajeId);

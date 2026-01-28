@@ -1,5 +1,4 @@
 import fichajeSupabaseService from './fichajeSupabaseService';
-import fichajeDescansosService from './fichajeDescansosService';
 import holdedEmployeesService from './holdedEmployeesService';
 import { supabase } from '../config/supabase';
 
@@ -30,30 +29,7 @@ class FichajeService {
       }
 
       // ANTES de crear el nuevo fichaje, cerrar automáticamente cualquier fichaje pendiente
-      const { data: fichajesPendientes } = await fichajeSupabaseService.obtenerFichajesPendientes(empleadoId);
-      
-      if (fichajesPendientes && fichajesPendientes.length > 0) {
-        console.log(`⚠️ Se encontraron ${fichajesPendientes.length} fichaje(s) pendiente(s). Cerrando automáticamente...`);
-        
-        for (const fichajePendiente of fichajesPendientes) {
-          // Solo cerrar fichajes de días anteriores (no el de hoy)
-          const fechaFichaje = new Date(fichajePendiente.fecha);
-          fechaFichaje.setHours(0, 0, 0, 0);
-          const hoyLimpio = new Date(hoy);
-          hoyLimpio.setHours(0, 0, 0, 0);
-          
-          if (fechaFichaje < hoyLimpio) {
-            console.log(`🔒 Cerrando automáticamente fichaje del ${fichajePendiente.fecha}`);
-            const resultadoCierre = await fichajeSupabaseService.cerrarFichajeAutomaticamente(fichajePendiente.id);
-            
-            if (resultadoCierre.success) {
-              console.log(`✅ Fichaje del ${fichajePendiente.fecha} cerrado automáticamente`);
-            } else {
-              console.warn(`⚠️ No se pudo cerrar el fichaje del ${fichajePendiente.fecha}:`, resultadoCierre.error);
-            }
-          }
-        }
-      }
+      await this.verificarYcerrarFichajesOlvidados(empleadoId);
 
       // Crear nuevo fichaje
       const resultado = await fichajeSupabaseService.crearFichajeEntrada(empleadoId, hoy, userId);
@@ -248,6 +224,125 @@ class FichajeService {
   }
 
   /**
+   * Verificar y cerrar fichajes olvidados para todos los empleados (para admin)
+   * @returns {Promise<Object>} Resultado de la verificación
+   */
+  async verificarYcerrarFichajesOlvidadosTodos() {
+    try {
+      // Obtener todos los fichajes pendientes (sin hora_salida) de todos los empleados
+      const { data: todosFichajesPendientes, error } = await supabase
+        .from('fichajes')
+        .select('empleado_id')
+        .is('hora_salida', null)
+        .order('fecha', { ascending: false });
+
+      if (error) throw error;
+
+      // Obtener empleados únicos
+      const empleadosUnicos = [...new Set(todosFichajesPendientes.map(f => f.empleado_id))];
+      
+      let totalCerrados = 0;
+      let totalErrores = 0;
+
+      // Verificar fichajes olvidados para cada empleado
+      for (const empleadoId of empleadosUnicos) {
+        try {
+          await this.verificarYcerrarFichajesOlvidados(empleadoId);
+          // Contar cuántos se cerraron (esto se hace dentro de la función)
+        } catch (err) {
+          console.error(`Error verificando fichajes olvidados para empleado ${empleadoId}:`, err);
+          totalErrores++;
+        }
+      }
+
+      return {
+        success: true,
+        message: `Verificación completada para ${empleadosUnicos.length} empleado(s)`,
+        empleadosVerificados: empleadosUnicos.length
+      };
+    } catch (error) {
+      console.error('Error verificando fichajes olvidados de todos los empleados:', error);
+      return {
+        success: false,
+        error: error.message || 'Error al verificar fichajes olvidados'
+      };
+    }
+  }
+
+  /**
+   * Verificar y cerrar fichajes olvidados (del mismo día que llevan demasiado tiempo abiertos)
+   * @param {string} empleadoId - ID del empleado
+   * @private
+   */
+  async verificarYcerrarFichajesOlvidados(empleadoId) {
+    try {
+      const ahora = new Date();
+      const hoy = new Date();
+      hoy.setHours(0, 0, 0, 0);
+      
+      // Obtener fichajes pendientes
+      const { data: fichajesPendientes } = await fichajeSupabaseService.obtenerFichajesPendientes(empleadoId);
+      
+      if (!fichajesPendientes || fichajesPendientes.length === 0) {
+        return;
+      }
+      
+      // Verificar cada fichaje pendiente
+      for (const fichaje of fichajesPendientes) {
+        // Verificar si hay pausas activas - si las hay, no cerrar el fichaje
+        const { data: pausaActiva } = await fichajeSupabaseService.obtenerPausaActiva(fichaje.id);
+        if (pausaActiva) {
+          console.log(`⏸️ Fichaje del ${fichaje.fecha} tiene una pausa activa. No se cerrará automáticamente.`);
+          continue; // Saltar este fichaje si tiene pausa activa
+        }
+        
+        const fechaFichaje = new Date(fichaje.fecha);
+        fechaFichaje.setHours(0, 0, 0, 0);
+        const esHoy = fechaFichaje.getTime() === hoy.getTime();
+        
+        // Si es de hoy, verificar si lleva más de 14 horas abierto
+        if (esHoy && fichaje.hora_entrada) {
+          const horaEntrada = new Date(fichaje.hora_entrada);
+          const horasAbierto = (ahora - horaEntrada) / (1000 * 60 * 60); // Horas en decimal
+          
+          // Si lleva más de 14 horas abierto, cerrarlo automáticamente
+          if (horasAbierto >= 14) {
+            console.log(`⚠️ Fichaje del día actual lleva ${horasAbierto.toFixed(2)} horas abierto. Cerrando automáticamente...`);
+            
+            const resultadoCierre = await fichajeSupabaseService.cerrarFichajeAutomaticamente(
+              fichaje.id,
+              `Cerrado automáticamente: el fichaje llevaba ${horasAbierto.toFixed(2)} horas abierto sin registrar salida. El empleado olvidó fichar la salida.`
+            );
+            
+            if (resultadoCierre.success) {
+              console.log(`✅ Fichaje del ${fichaje.fecha} cerrado automáticamente (llevaba ${horasAbierto.toFixed(2)} horas abierto)`);
+            } else {
+              console.warn(`⚠️ No se pudo cerrar el fichaje del ${fichaje.fecha}:`, resultadoCierre.error);
+            }
+          }
+        }
+        // Si es de días anteriores, cerrarlo automáticamente
+        else if (fechaFichaje < hoy) {
+          console.log(`🔒 Cerrando automáticamente fichaje del ${fichaje.fecha} (día anterior)`);
+          const resultadoCierre = await fichajeSupabaseService.cerrarFichajeAutomaticamente(
+            fichaje.id,
+            'Cerrado automáticamente por el servidor: fichaje de día anterior sin salida registrada.'
+          );
+          
+          if (resultadoCierre.success) {
+            console.log(`✅ Fichaje del ${fichaje.fecha} cerrado automáticamente`);
+          } else {
+            console.warn(`⚠️ No se pudo cerrar el fichaje del ${fichaje.fecha}:`, resultadoCierre.error);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error verificando fichajes olvidados:', error);
+      // No fallar, solo loguear el error
+    }
+  }
+
+  /**
    * Obtener estado actual del fichaje del día
    * @param {string} empleadoId - ID del empleado
    * @returns {Promise<Object>} Estado del fichaje
@@ -258,33 +353,8 @@ class FichajeService {
       const hoyLimpio = new Date(hoy);
       hoyLimpio.setHours(0, 0, 0, 0);
       
-      // Verificar si hay fichajes pendientes de días anteriores y cerrarlos automáticamente
-      const { data: fichajesPendientes } = await fichajeSupabaseService.obtenerFichajesPendientes(empleadoId);
-      
-      if (fichajesPendientes && fichajesPendientes.length > 0) {
-        // Filtrar solo fichajes de días anteriores (no el de hoy)
-        const fichajesAnterioresPendientes = fichajesPendientes.filter(fp => {
-          const fechaFichaje = new Date(fp.fecha);
-          fechaFichaje.setHours(0, 0, 0, 0);
-          return fechaFichaje < hoyLimpio;
-        });
-        
-        // Cerrar automáticamente fichajes anteriores pendientes
-        if (fichajesAnterioresPendientes.length > 0) {
-          console.log(`⚠️ Se encontraron ${fichajesAnterioresPendientes.length} fichaje(s) pendiente(s) de días anteriores. Cerrando automáticamente...`);
-          
-          for (const fichajePendiente of fichajesAnterioresPendientes) {
-            console.log(`🔒 Cerrando automáticamente fichaje del ${fichajePendiente.fecha}`);
-            const resultadoCierre = await fichajeSupabaseService.cerrarFichajeAutomaticamente(fichajePendiente.id);
-            
-            if (resultadoCierre.success) {
-              console.log(`✅ Fichaje del ${fichajePendiente.fecha} cerrado automáticamente`);
-            } else {
-              console.warn(`⚠️ No se pudo cerrar el fichaje del ${fichajePendiente.fecha}:`, resultadoCierre.error);
-            }
-          }
-        }
-      }
+      // PRIMERO: Verificar y cerrar fichajes olvidados (del mismo día o anteriores)
+      await this.verificarYcerrarFichajesOlvidados(empleadoId);
       
       // Obtener fichaje del día
       const { data: fichaje } = await fichajeSupabaseService.obtenerFichajeDia(empleadoId, hoy);
@@ -307,128 +377,8 @@ class FichajeService {
       const { data: pausas } = await fichajeSupabaseService.obtenerPausas(fichaje.id);
       const { data: pausaActiva } = await fichajeSupabaseService.obtenerPausaActiva(fichaje.id);
 
-      // Verificar y gestionar descansos automáticos (solo si no tiene pausa activa y no ha fichado salida)
-      let descansoAutomatico = null;
-      if (!fichaje.hora_salida && fichaje.hora_entrada) {
-        // Calcular horas trabajadas hasta ahora
-        const ahora = new Date();
-        const horaEntrada = new Date(fichaje.hora_entrada);
-        const horasTrabajadas = (ahora - horaEntrada) / (1000 * 60 * 60); // Convertir a horas
-        
-        // Verificar regla de descanso
-        const verificacionDescanso = await fichajeDescansosService.verificarDescansoObligatorio(
-          empleadoId,
-          horasTrabajadas
-        );
-        
-        if (verificacionDescanso.success && verificacionDescanso.debeDescanso) {
-          // Verificar si ya hizo este descanso hoy (buscar pausas del mismo tipo ya finalizadas)
-          const pausasDescansoHoy = (pausas || []).filter(p => 
-            p.tipo === verificacionDescanso.tipo && 
-            p.fin !== null &&
-            p.duracion_minutos >= verificacionDescanso.duracionMinutos * 0.8 // Al menos 80% de la duración requerida
-          );
-          
-          if (pausasDescansoHoy.length === 0) {
-            // Verificar si hay una pausa activa del mismo tipo (puede estar en curso)
-            const pausaActivaMismoTipo = pausaActiva && pausaActiva.tipo === verificacionDescanso.tipo;
-            
-            if (!pausaActivaMismoTipo) {
-              // Calcular tiempo desde la entrada para descansos obligatorios
-              const minutosDesdeEntrada = (ahora - horaEntrada) / (1000 * 60);
-              
-              // Para descansos obligatorios (sin horas_minimas), iniciar después de 30 minutos desde entrada
-              // Para descansos condicionales (con horas_minimas), iniciar inmediatamente si cumple condición
-              const debeIniciarAhora = verificacionDescanso.horasMinimas === null || 
-                                       verificacionDescanso.horasMinimas === undefined ||
-                                       (verificacionDescanso.horasMinimas && horasTrabajadas >= verificacionDescanso.horasMinimas);
-              
-              // NOTA: Para pruebas, cambiado a 1 minuto. En producción debe ser 30 minutos
-              const tiempoMinimoEspera = 1; // 1 minuto para pruebas (en producción: 30 minutos)
-              
-              if (debeIniciarAhora && (verificacionDescanso.horasMinimas || minutosDesdeEntrada >= tiempoMinimoEspera)) {
-                // Debe hacer el descanso automático - iniciarlo ahora
-                descansoAutomatico = {
-                  debeHacer: true,
-                  tipo: verificacionDescanso.tipo,
-                  duracionMinutos: verificacionDescanso.duracionMinutos,
-                  horasTrabajadas: horasTrabajadas,
-                  motivo: verificacionDescanso.motivo
-                };
-                
-                console.log(`🔄 Iniciando descanso automático para empleado ${empleadoId}: ${verificacionDescanso.tipo} de ${verificacionDescanso.duracionMinutos} minutos`);
-                const resultadoDescanso = await fichajeSupabaseService.iniciarPausa(
-                  fichaje.id,
-                  verificacionDescanso.tipo,
-                  `Descanso automático obligatorio (${verificacionDescanso.motivo})`
-                );
-                
-                if (resultadoDescanso.success) {
-                  console.log(`✅ Descanso automático iniciado correctamente`);
-                  // Actualizar pausaActiva para reflejar el cambio
-                  const { data: nuevaPausaActiva } = await fichajeSupabaseService.obtenerPausaActiva(fichaje.id);
-                  if (nuevaPausaActiva) {
-                    // Programar verificación de finalización (se verificará en la próxima carga de estado)
-                    // La finalización se gestionará automáticamente al verificar el estado
-                  }
-                } else {
-                  console.warn('⚠️ No se pudo iniciar el descanso automático:', resultadoDescanso.error);
-                }
-              } else if (!verificacionDescanso.horasMinimas && minutosDesdeEntrada < tiempoMinimoEspera) {
-                // Descanso obligatorio pero aún no han pasado 30 minutos
-                descansoAutomatico = {
-                  debeHacer: true,
-                  tipo: verificacionDescanso.tipo,
-                  duracionMinutos: verificacionDescanso.duracionMinutos,
-                  horasTrabajadas: horasTrabajadas,
-                  motivo: `Se iniciará automáticamente en ${Math.ceil(tiempoMinimoEspera - minutosDesdeEntrada)} minutos`,
-                  pendiente: true
-                };
-              }
-            }
-          }
-        }
-        
-        // Verificar si hay pausas activas que deben finalizarse automáticamente
-        if (pausaActiva && pausaActiva.inicio) {
-          const inicioPausa = new Date(pausaActiva.inicio);
-          const minutosPausa = (ahora - inicioPausa) / (1000 * 60);
-          
-          // Obtener la duración esperada de la pausa desde la regla
-          const reglaDescanso = await fichajeDescansosService.obtenerReglaDescanso(empleadoId);
-          if (reglaDescanso.success && reglaDescanso.data && reglaDescanso.data.duracion_minutos) {
-            const duracionEsperada = reglaDescanso.data.duracion_minutos;
-            
-            // Si la pausa ha durado más de la duración esperada, finalizarla automáticamente
-            if (minutosPausa >= duracionEsperada) {
-              console.log(`⏰ Finalizando descanso automático después de ${duracionEsperada} minutos (actual: ${minutosPausa.toFixed(1)} minutos)`);
-              const resultadoFinalizar = await fichajeSupabaseService.finalizarPausa(pausaActiva.id);
-              
-              if (resultadoFinalizar.success) {
-                console.log(`✅ Descanso automático finalizado correctamente`);
-                // Recalcular horas trabajadas
-                await this.recalcularHoras(fichaje.id);
-                // Recargar pausas para reflejar el cambio
-                const { data: pausasActualizadas } = await fichajeSupabaseService.obtenerPausas(fichaje.id);
-                const { data: nuevaPausaActiva } = await fichajeSupabaseService.obtenerPausaActiva(fichaje.id);
-                return {
-                  success: true,
-                  data: {
-                    tieneFichaje: true,
-                    fichaje: fichaje,
-                    puedeFicharEntrada: false,
-                    puedeFicharSalida: !fichaje.hora_salida && !nuevaPausaActiva,
-                    puedeIniciarPausa: !fichaje.hora_salida && !nuevaPausaActiva,
-                    puedeFinalizarPausa: !!nuevaPausaActiva,
-                    pausaActiva: nuevaPausaActiva,
-                    pausas: pausasActualizadas || []
-                  }
-                };
-              }
-            }
-          }
-        }
-      }
+      // El trabajador debe iniciar y finalizar las pausas manualmente
+      // No hay descansos automáticos - cumplimiento normativa: registro manual por el trabajador
 
       return {
         success: true,
@@ -440,8 +390,7 @@ class FichajeService {
           puedeIniciarPausa: !fichaje.hora_salida && !pausaActiva,
           puedeFinalizarPausa: !!pausaActiva,
           pausaActiva: pausaActiva,
-          pausas: pausas || [],
-          descansoAutomatico: descansoAutomatico
+          pausas: pausas || []
         }
       };
     } catch (error) {

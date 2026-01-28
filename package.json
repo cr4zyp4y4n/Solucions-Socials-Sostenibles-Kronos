@@ -1,7 +1,7 @@
 {
   "name": "sss-kronos",
   "productName": "SSS Kronos",
-  "version": "2.1.16",
+  "version": "2.1.17",
   "description": "Aplicación de escritorio para la gestión avanzada de proveedores y análisis de facturas en Solucions Socials. Automatiza la importación de Excel, integra roles y permisos, y ofrece dashboards y auditoría en tiempo real para equipos de administración y gestión.",
   "main": ".webpack/main",
   "scripts": {

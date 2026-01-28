@@ -1898,6 +1898,12 @@ const AnalyticsPage = () => {
     setChannelSortConfig({ key, direction });
   };
 
+  // Menjar D'Hort: solo estas 4 facturas se clasifican como OBRADOR (no todas las que contienen "idoni")
+  const MENJAR_OBRADOR_EXPLICIT_INVOICE_NUMBERS = ['304T', '276T', '226T', '8115'];
+
+  // Solucions: facturas que deben ir a CATERING aunque descripción/cuenta no contengan "catering"
+  const SOLUCIONS_CATERING_EXPLICIT_INVOICE_NUMBERS = ['ES5005J4VMENPS'];
+
   // Encontrar índices de columnas importantes
   const columnIndices = useMemo(() => {
     const indices = {};
@@ -2317,15 +2323,19 @@ const AnalyticsPage = () => {
       let channel = 'Otros';
       
       if (selectedDataset === 'solucions') {
+        const invoiceNum = (row[columnIndices.invoiceNumber] || '').toString().trim();
+        const isExplicitCatering = columnIndices.invoiceNumber != null && SOLUCIONS_CATERING_EXPLICIT_INVOICE_NUMBERS.includes(invoiceNum);
         if (description.includes('estructura') || account.includes('estructura')) {
           channel = 'Estructura';
-        } else if (description.includes('catering') || account.includes('catering')) {
+        } else if (description.includes('catering') || account.includes('catering') || isExplicitCatering) {
           channel = 'Catering';
         } else if (description.includes('idoni') || account.includes('idoni')) {
           channel = 'IDONI';
         }
       } else if (selectedDataset === 'menjar') {
-        if (description.includes('obrador') || account.includes('obrador')) {
+        const invoiceNum = (row[columnIndices.invoiceNumber] || '').toString().trim();
+        const isExplicitObrador = columnIndices.invoiceNumber != null && MENJAR_OBRADOR_EXPLICIT_INVOICE_NUMBERS.includes(invoiceNum);
+        if (description.includes('obrador') || account.includes('obrador') || isExplicitObrador) {
           channel = 'OBRADOR';
         } else if (description.includes('estructura') || account.includes('estructura')) {
           channel = 'ESTRUCTURA';
@@ -2385,24 +2395,28 @@ const AnalyticsPage = () => {
       const account = (row[columnIndices.account] || '').toLowerCase();
       
       if (selectedDataset === 'solucions') {
+        const invoiceNum = (row[columnIndices.invoiceNumber] || '').toString().trim();
+        const isExplicitCatering = columnIndices.invoiceNumber != null && SOLUCIONS_CATERING_EXPLICIT_INVOICE_NUMBERS.includes(invoiceNum);
         switch (selectedChannel) {
           case 'Estructura':
             return description.includes('estructura') || account.includes('estructura');
           case 'Catering':
-            return description.includes('catering') || account.includes('catering');
+            return description.includes('catering') || account.includes('catering') || isExplicitCatering;
           case 'IDONI':
             return description.includes('idoni') || account.includes('idoni');
           case 'Otros':
             return !description.includes('estructura') && !description.includes('catering') && 
                    !description.includes('idoni') && !account.includes('estructura') && 
-                   !account.includes('catering') && !account.includes('idoni');
+                   !account.includes('catering') && !account.includes('idoni') && !isExplicitCatering;
           default:
             return false;
         }
       } else if (selectedDataset === 'menjar') {
+        const invoiceNum = (row[columnIndices.invoiceNumber] || '').toString().trim();
+        const isExplicitObrador = columnIndices.invoiceNumber != null && MENJAR_OBRADOR_EXPLICIT_INVOICE_NUMBERS.includes(invoiceNum);
         switch (selectedChannel) {
           case 'OBRADOR':
-            return description.includes('obrador') || account.includes('obrador');
+            return description.includes('obrador') || account.includes('obrador') || isExplicitObrador;
           case 'ESTRUCTURA':
             return description.includes('estructura') || account.includes('estructura');
           case 'CATERING':
@@ -2410,7 +2424,7 @@ const AnalyticsPage = () => {
           case 'Otros':
             return !description.includes('obrador') && !description.includes('estructura') && 
                    !description.includes('catering') && !account.includes('obrador') &&
-                   !account.includes('estructura') && !account.includes('catering');
+                   !account.includes('estructura') && !account.includes('catering') && !isExplicitObrador;
           default:
             return false;
         }
@@ -2664,24 +2678,28 @@ const AnalyticsPage = () => {
       const account = (row[columnIndices.account] || '').toLowerCase();
       
       if (selectedDataset === 'solucions') {
+        const invoiceNum = (row[columnIndices.invoiceNumber] || '').toString().trim();
+        const isExplicitCatering = columnIndices.invoiceNumber != null && SOLUCIONS_CATERING_EXPLICIT_INVOICE_NUMBERS.includes(invoiceNum);
         switch (channel) {
           case 'Estructura':
             return description.includes('estructura') || account.includes('estructura');
           case 'Catering':
-            return description.includes('catering') || account.includes('catering');
+            return description.includes('catering') || account.includes('catering') || isExplicitCatering;
           case 'IDONI':
             return description.includes('idoni') || account.includes('idoni');
           case 'Otros':
             return !description.includes('estructura') && !description.includes('catering') && 
                    !description.includes('idoni') && !account.includes('estructura') && 
-                   !account.includes('catering') && !account.includes('idoni');
+                   !account.includes('catering') && !account.includes('idoni') && !isExplicitCatering;
           default:
             return false;
         }
       } else if (selectedDataset === 'menjar') {
+        const invoiceNum = (row[columnIndices.invoiceNumber] || '').toString().trim();
+        const isExplicitObrador = columnIndices.invoiceNumber != null && MENJAR_OBRADOR_EXPLICIT_INVOICE_NUMBERS.includes(invoiceNum);
         switch (channel) {
           case 'OBRADOR':
-            return description.includes('obrador') || account.includes('obrador');
+            return description.includes('obrador') || account.includes('obrador') || isExplicitObrador;
           case 'ESTRUCTURA':
             return description.includes('estructura') || account.includes('estructura');
           case 'CATERING':
@@ -2689,7 +2707,7 @@ const AnalyticsPage = () => {
           case 'Otros':
             return !description.includes('obrador') && !description.includes('estructura') && 
                    !description.includes('catering') && !account.includes('obrador') &&
-                   !account.includes('estructura') && !account.includes('catering');
+                   !account.includes('estructura') && !account.includes('catering') && !isExplicitObrador;
           default:
             return false;
         }
@@ -4499,24 +4517,28 @@ const AnalyticsPage = () => {
             const account = (row[columnIndices.account] || '').toLowerCase();
             
             if (selectedDataset === 'solucions') {
+              const invoiceNum = (row[columnIndices.invoiceNumber] || '').toString().trim();
+              const isExplicitCatering = columnIndices.invoiceNumber != null && SOLUCIONS_CATERING_EXPLICIT_INVOICE_NUMBERS.includes(invoiceNum);
               switch (channel) {
                 case 'Estructura':
                   return description.includes('estructura') || account.includes('estructura');
                 case 'Catering':
-                  return description.includes('catering') || account.includes('catering');
+                  return description.includes('catering') || account.includes('catering') || isExplicitCatering;
                 case 'IDONI':
                   return description.includes('idoni') || account.includes('idoni');
                 case 'Otros':
                   return !description.includes('estructura') && !description.includes('catering') && 
                          !description.includes('idoni') && !account.includes('estructura') && 
-                         !account.includes('catering') && !account.includes('idoni');
+                         !account.includes('catering') && !account.includes('idoni') && !isExplicitCatering;
                 default:
                   return false;
               }
             } else if (selectedDataset === 'menjar') {
+              const invoiceNum = (row[columnIndices.invoiceNumber] || '').toString().trim();
+              const isExplicitObrador = columnIndices.invoiceNumber != null && MENJAR_OBRADOR_EXPLICIT_INVOICE_NUMBERS.includes(invoiceNum);
               switch (channel) {
                 case 'OBRADOR':
-                  return description.includes('obrador') || account.includes('obrador');
+                  return description.includes('obrador') || account.includes('obrador') || isExplicitObrador;
                 case 'ESTRUCTURA':
                   return description.includes('estructura') || account.includes('estructura');
                 case 'CATERING':
@@ -4524,7 +4546,7 @@ const AnalyticsPage = () => {
                 case 'Otros':
                   return !description.includes('obrador') && !description.includes('estructura') && 
                          !description.includes('catering') && !account.includes('obrador') &&
-                         !account.includes('estructura') && !account.includes('catering');
+                         !account.includes('estructura') && !account.includes('catering') && !isExplicitObrador;
                 default:
                   return false;
               }
@@ -4647,24 +4669,28 @@ const AnalyticsPage = () => {
             const account = (row[columnIndices.account] || '').toLowerCase();
             
             if (selectedDataset === 'solucions') {
+              const invoiceNum = (row[columnIndices.invoiceNumber] || '').toString().trim();
+              const isExplicitCatering = columnIndices.invoiceNumber != null && SOLUCIONS_CATERING_EXPLICIT_INVOICE_NUMBERS.includes(invoiceNum);
               switch (channel) {
                 case 'Estructura':
                   return description.includes('estructura') || account.includes('estructura');
                 case 'Catering':
-                  return description.includes('catering') || account.includes('catering');
+                  return description.includes('catering') || account.includes('catering') || isExplicitCatering;
                 case 'IDONI':
                   return description.includes('idoni') || account.includes('idoni');
                 case 'Otros':
                   return !description.includes('estructura') && !description.includes('catering') && 
                          !description.includes('idoni') && !account.includes('estructura') && 
-                         !account.includes('catering') && !account.includes('idoni');
+                         !account.includes('catering') && !account.includes('idoni') && !isExplicitCatering;
                 default:
                   return false;
               }
             } else if (selectedDataset === 'menjar') {
+              const invoiceNum = (row[columnIndices.invoiceNumber] || '').toString().trim();
+              const isExplicitObrador = columnIndices.invoiceNumber != null && MENJAR_OBRADOR_EXPLICIT_INVOICE_NUMBERS.includes(invoiceNum);
               switch (channel) {
                 case 'OBRADOR':
-                  return description.includes('obrador') || account.includes('obrador');
+                  return description.includes('obrador') || account.includes('obrador') || isExplicitObrador;
                 case 'ESTRUCTURA':
                   return description.includes('estructura') || account.includes('estructura');
                 case 'CATERING':
@@ -4672,7 +4698,7 @@ const AnalyticsPage = () => {
                 case 'Otros':
                   return !description.includes('obrador') && !description.includes('estructura') && 
                          !description.includes('catering') && !account.includes('obrador') &&
-                         !account.includes('estructura') && !account.includes('catering');
+                         !account.includes('estructura') && !account.includes('catering') && !isExplicitObrador;
                 default:
                   return false;
               }
@@ -8335,11 +8361,15 @@ const AnalyticsPage = () => {
                                 
                                 let channel = 'Otros';
                                 if (selectedDataset === 'solucions') {
+                                  const invoiceNum = (row[columnIndices.invoiceNumber] || '').toString().trim();
+                                  const isExplicitCatering = columnIndices.invoiceNumber != null && SOLUCIONS_CATERING_EXPLICIT_INVOICE_NUMBERS.includes(invoiceNum);
                                   if (descLower.includes('estructura') || accountLower.includes('estructura')) channel = 'Estructura';
-                                  else if (descLower.includes('catering') || accountLower.includes('catering')) channel = 'Catering';
+                                  else if (descLower.includes('catering') || accountLower.includes('catering') || isExplicitCatering) channel = 'Catering';
                                   else if (descLower.includes('idoni') || accountLower.includes('idoni')) channel = 'IDONI';
                                 } else if (selectedDataset === 'menjar') {
-                                  if (descLower.includes('obrador') || accountLower.includes('obrador')) channel = 'OBRADOR';
+                                  const invoiceNum = (row[columnIndices.invoiceNumber] || '').toString().trim();
+                                  const isExplicitObrador = columnIndices.invoiceNumber != null && MENJAR_OBRADOR_EXPLICIT_INVOICE_NUMBERS.includes(invoiceNum);
+                                  if (descLower.includes('obrador') || accountLower.includes('obrador') || isExplicitObrador) channel = 'OBRADOR';
                                   else if (descLower.includes('estructura') || accountLower.includes('estructura')) channel = 'ESTRUCTURA';
                                   else if (descLower.includes('catering') || accountLower.includes('catering')) channel = 'CATERING';
                                 }
