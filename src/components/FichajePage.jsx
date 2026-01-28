@@ -231,7 +231,7 @@ const FichajePage = () => {
       loadHistorial();
       buscarFichajesPendientes();
       
-      // Recargar cada 30 segundos para gestionar descansos automáticos
+      // Recargar cada 30 segundos para actualizar el estado del fichaje
       const interval = setInterval(() => {
         loadEstadoFichaje();
       }, 30000); // 30 segundos

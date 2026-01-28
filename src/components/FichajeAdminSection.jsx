@@ -18,6 +18,7 @@ import {
   FileDown
 } from 'lucide-react';
 import fichajeSupabaseService from '../services/fichajeSupabaseService';
+import fichajeService from '../services/fichajeService';
 import { formatTimeMadrid, formatDateShortMadrid } from '../utils/timeUtils';
 import holdedEmployeesService from '../services/holdedEmployeesService';
 import { useTheme } from './ThemeContext';
@@ -86,6 +87,15 @@ const FichajeAdminSection = () => {
     setLoading(true);
     setError('');
     try {
+      // PRIMERO: Verificar y cerrar fichajes olvidados de todos los empleados
+      // Esto asegura que cuando el admin vea los fichajes, los olvidados ya estén cerrados
+      try {
+        await fichajeService.verificarYcerrarFichajesOlvidadosTodos();
+      } catch (err) {
+        console.warn('Error verificando fichajes olvidados (no crítico):', err);
+        // No fallar si hay error, solo continuar
+      }
+
       const filtros = {
         fechaInicio: new Date(fechaInicio),
         fechaFin: new Date(fechaFin)
