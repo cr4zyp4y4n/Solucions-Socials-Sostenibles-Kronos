@@ -1,7 +1,8 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { FileText, DollarSign } from 'feather-icons-react';
+import { FileText, DollarSign, Download } from 'feather-icons-react';
 import { useTheme } from './ThemeContext';
+import { generateHojaTecnicaPDF } from '../utils/pdfGenerator';
 
 const HojaTecnicaCard = ({ hoja, onClick }) => {
     const { colors } = useTheme();
@@ -123,6 +124,42 @@ const HojaTecnicaCard = ({ hoja, onClick }) => {
                     <DollarSign size={16} />
                     {resumen_costes?.coste_total?.toFixed(2) || '0.00'}€
                 </div>
+
+                {/* Export PDF Button */}
+                <button
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        generateHojaTecnicaPDF(hoja);
+                    }}
+                    style={{
+                        marginTop: '8px',
+                        padding: '8px',
+                        borderRadius: '6px',
+                        border: `1px solid ${colors.primary}`,
+                        backgroundColor: 'transparent',
+                        color: colors.primary,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '8px',
+                        fontSize: '13px',
+                        fontWeight: '500',
+                        width: '100%',
+                        transition: 'all 0.2s',
+                    }}
+                    onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = colors.primary;
+                        e.currentTarget.style.color = '#fff';
+                    }}
+                    onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = 'transparent';
+                        e.currentTarget.style.color = colors.primary;
+                    }}
+                >
+                    <Download size={14} />
+                    Exportar a PDF
+                </button>
             </div>
         </motion.div>
     );
