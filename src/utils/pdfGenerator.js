@@ -1,6 +1,6 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import CompanyLogo from '../assets/Logo Minimalist SSS High Opacity.PNG';
+import CompanyLogo from '../assets/Logo IDONI (1).png';
 
 /**
  * Generates a PDF for a specific Hoja Técnica.
@@ -79,67 +79,66 @@ export const generateHojaTecnicaPDF = async (hoja) => {
 
     doc.setTextColor(0); // Reset color
 
-    // --- Ingredients ---
-    doc.setFontSize(16);
-    doc.text('Ingredientes', margin, yPos);
-    yPos += 5; // Spacing before table
+    // --- Split Layout: Ingredients (Left) and Allergens (Right) ---
+    const startY = yPos;
+    const colWidth = (pageWidth - (margin * 2) - 10) / 2; // Split width into two cols with 10 spacing
+
+    // --- Ingredients (Left Column) ---
+    doc.setFontSize(14);
+    doc.text('Ingredientes', margin, startY);
 
     const ingredientsData = (hoja.ingredientes || []).map(ing => [
-        ing.nombre_ingrediente || '-',
-        `${ing.peso_gramos || 0} g`,
-        // We could include cost but user asked for "Ingredientes del producto" specifically. 
-        // Often specs include quantity. I will include Name and Quantity (Weight).
+        ing.nombre_ingrediente || '-'
     ]);
 
-    // If there are no ingredients, show a message? Or just empty table?
-    // autoTable handles empty somewhat, but better to check.
-
-    // Check if autoTable is attached to doc or needs to be called directly
-    // With 'import autoTable from ...', we usually call autoTable(doc, options)
-
     autoTable(doc, {
-        startY: yPos,
-        head: [['Ingrediente', 'Cantidad (g)']],
+        startY: startY + 5,
+        head: [['Nombre']],
         body: ingredientsData,
         theme: 'striped',
-        headStyles: { fillColor: [74, 144, 226] }, // Example blueish color
-        margin: { top: 10, left: margin, right: margin },
+        headStyles: { fillColor: [74, 144, 226] },
+        margin: { left: margin },
+        tableWidth: colWidth,
     });
 
-    // Update yPos based on table end
-    yPos = doc.lastAutoTable.finalY + 15;
+    const ingredientsFinalY = doc.lastAutoTable.finalY;
 
-    // --- Allergens ---
-    // Check if we have enough space, otherwise add page? autoTable handles page breaks mostly, 
-    // but the header 'Alérgenos' might be stranded. 
-    // Simple check: if yPos > 250 (approx), add page. A4 height is ~297mm.
-    if (yPos > 270) {
-        doc.addPage();
-        yPos = 20;
-    }
+    // --- Allergens (Right Column) ---
+    const allergensX = margin + colWidth + 10;
 
-    doc.setFontSize(16);
-    doc.text('Alérgenos', margin, yPos);
-    yPos += 5;
+    doc.setFontSize(14);
+    doc.text('Alérgenos', allergensX, startY);
 
     const allergensData = (hoja.alergenos || []).map(al => [
         al.tipo_alergeno || '-'
     ]);
 
     if (allergensData.length === 0) {
-        doc.setFontSize(12);
+        doc.setFontSize(11);
         doc.setFont(undefined, 'italic');
-        doc.text('No contiene alérgenos registrados.', margin, yPos + 10);
+        doc.text('No contiene alérgenos.', allergensX, startY + 10);
+        // Mock finalY for comparison
+        // We need doc.lastAutoTable to be defined to access finalY, but since we didn't call autoTable here
+        // we should just rely on manual Y for comparison if we want.
+        // Or create a dummy object.
+        const headerY = startY + 15;
+        // ingredientsFinalY will be likely larger, so this is fine.
     } else {
         autoTable(doc, {
-            startY: yPos,
-            head: [['Tipo de Alérgeno']],
+            startY: startY + 5,
+            head: [['Tipo']],
             body: allergensData,
             theme: 'grid',
-            headStyles: { fillColor: [245, 158, 11] }, // Orange/Amber for allergens warning
-            margin: { top: 10, left: margin, right: margin },
+            headStyles: { fillColor: [245, 158, 11] },
+            margin: { left: allergensX },
+            tableWidth: colWidth,
         });
     }
+
+    const allergensFinalY = doc.lastAutoTable.finalY + 10;
+
+    // Update yPos to below the tallest column
+    yPos = Math.max(ingredientsFinalY, allergensFinalY) + 15;
 
     // --- Save ---
     const filename = `${(hoja.nombre_plato || 'Hoja_Tecnica').replace(/[^a-z0-9]/gi, '_').toLowerCase()}.pdf`;
