@@ -15,7 +15,7 @@ export const generateHojaTecnicaPDF = async (hoja) => {
 
     // Brand Level Colors
     // Brand Level Colors
-    const brandColor = [255, 36, 102]; // #ff2466
+    const brandColor = [187, 211, 117]; // #bbd375
     const darkText = [60, 60, 60];
     const lightText = [100, 100, 100];
 
