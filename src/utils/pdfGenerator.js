@@ -1,5 +1,6 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import CompanyLogo from '../assets/Logo Minimalist SSS High Opacity.PNG';
 
 /**
  * Generates a PDF for a specific Hoja Técnica.
@@ -10,6 +11,37 @@ export const generateHojaTecnicaPDF = async (hoja) => {
     const pageWidth = doc.internal.pageSize.getWidth();
     const margin = 15;
     let yPos = 20;
+
+    // --- Header (Company Details) ---
+    try {
+        const logoData = await getBase64ImageFromURL(CompanyLogo);
+        if (logoData) {
+            // Logo size
+            const logoWidth = 25;
+            const logoHeight = 25;
+            doc.addImage(logoData, 'PNG', margin, 10, logoWidth, logoHeight);
+
+            // Text Details next to logo
+            doc.setFontSize(10);
+            doc.setTextColor(80, 80, 80);
+
+            const textX = margin + logoWidth + 5;
+            let textY = 18; // Start aligning with top-mid of logo
+
+            doc.text("Av. de Mistral, 20 bis,", textX, textY);
+            textY += 5;
+            doc.text("Eixample, 08015 Barcelona", textX, textY);
+            textY += 5;
+            doc.text("Tel: 625 53 47 55", textX, textY);
+
+            // Move yPos down for Title
+            yPos = 45;
+        }
+    } catch (error) {
+        console.error('Error adding company logo to PDF:', error);
+        // Fallback: just text or nothing
+        yPos = 30; // Reset if logo fails
+    }
 
     // --- Title ---
     doc.setFontSize(22);
@@ -131,7 +163,8 @@ const getBase64ImageFromURL = (url) => {
             const ctx = canvas.getContext('2d');
             ctx.drawImage(img, 0, 0);
             try {
-                const dataURL = canvas.toDataURL('image/jpeg');
+                // Determine type from URL or just try common format
+                const dataURL = canvas.toDataURL('image/png');
                 resolve(dataURL);
             } catch (error) {
                 // Tainted canvas mostly
