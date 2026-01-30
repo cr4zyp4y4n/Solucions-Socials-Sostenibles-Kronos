@@ -115,6 +115,14 @@ const AnalyticsPage = () => {
   const [selectedProductosChart, setSelectedProductosChart] = useState('importe'); // 'importe', 'cantidadUnitaria', 'cantidadKg'
   const [productosChartLimit, setProductosChartLimit] = useState(20); // Número de productos a mostrar
 
+  // Tipo de facturas: compra (Holded) o venta (Holded)
+  const [invoiceType, setInvoiceType] = useState('purchase'); // 'purchase' | 'sale'
+  // Datos de facturas de venta (mismo formato que supabaseData para compras)
+  const [salesData, setSalesData] = useState({
+    solucions: { headers: [], data: [], loading: false },
+    menjar: { headers: [], data: [], loading: false }
+  });
+
   // Estados para visibilidad de facturas
   // Los datos de Solucions se manejan a través de supabaseData.solucions
 
@@ -253,13 +261,18 @@ const AnalyticsPage = () => {
   // Escuchar cambios en shouldReloadHolded para recargar datos
   useEffect(() => {
     if (shouldReloadHolded) {
-      loadDataFromHolded(); // Carga datos de Solucions y Menjar (todas las facturas, sin filtro de año)
+      if (invoiceType === 'sale') loadDataFromHoldedSales();
+      else loadDataFromHolded();
       setShouldReloadHolded(false);
     }
-  }, [shouldReloadHolded]);
+  }, [shouldReloadHolded, invoiceType]);
 
-  // NO recargar datos cuando cambie el año - solo filtrar en el frontend
-  // Los datos ya están cargados con todas las facturas, solo necesitamos filtrar
+  // Cargar facturas de venta al cambiar a "Facturas de venta" (una sola vez; filtro de año en frontend)
+  useEffect(() => {
+    if (invoiceType === 'sale' && canViewAllDatasets) {
+      loadDataFromHoldedSales();
+    }
+  }, [invoiceType]);
 
 
 
@@ -370,6 +383,39 @@ const AnalyticsPage = () => {
     } catch (error) {
       setError('Error al cargar los datos de Holded');
       console.error('Error en loadDataFromHolded:', error);
+      setLoading(false);
+    }
+  };
+
+  // Cargar facturas de VENTA de Holded (todas, sin filtro de año; el filtrado por año se hace en frontend)
+  const loadDataFromHoldedSales = async () => {
+    console.log('🔄 Cargando facturas de VENTA de Holded...');
+    setLoading(true);
+    setLoadingMessage('Descargando facturas de venta...');
+    setError('');
+    try {
+      const [solucionsSales, menjarSales] = await Promise.all([
+        holdedApi.getAllPendingAndOverdueSales('solucions', null).catch(err => {
+          console.error('❌ Error facturas venta Solucions:', err);
+          return [];
+        }),
+        holdedApi.getAllPendingAndOverdueSales('menjar', null).catch(err => {
+          console.error('❌ Error facturas venta Menjar:', err);
+          return [];
+        })
+      ]);
+      setLoadingMessage('Procesando facturas de venta...');
+      const processedSolucions = processHoldedSales(solucionsSales);
+      const processedMenjar = processHoldedSales(menjarSales);
+      setSalesData({
+        solucions: { headers: processedSolucions.headers, data: processedSolucions.data, loading: false },
+        menjar: { headers: processedMenjar.headers, data: processedMenjar.data, loading: false }
+      });
+      console.log(`✅ Facturas de venta: Solucions ${processedSolucions.data.length}, Menjar ${processedMenjar.data.length}`);
+      setTimeout(() => setLoading(false), 100);
+    } catch (err) {
+      setError('Error al cargar facturas de venta de Holded');
+      console.error('Error loadDataFromHoldedSales:', err);
       setLoading(false);
     }
   };
@@ -1438,6 +1484,67 @@ const AnalyticsPage = () => {
     return { headers: expectedHeaders, data: processedData };
   };
 
+  // Procesar facturas de VENTA de Holded (mismo formato de columnas que compras; "Proveïdor" = cliente)
+  const processHoldedSales = (saleInvoices) => {
+    if (!saleInvoices || saleInvoices.length === 0) {
+      return { headers: [], data: [] };
+    }
+    const expectedHeaders = [
+      "Data d'emissió",
+      'Núm',
+      'Núm. Intern',
+      'Data comptable',
+      'Venciment',
+      'Proveïdor',
+      'Descripció',
+      'Tags',
+      'Compte',
+      'Projecte',
+      'Subtotal',
+      'IVA',
+      'Retención',
+      'Empleados',
+      'Rec. de eq.',
+      'Total',
+      'Pagat',
+      'Pendents',
+      'Estat',
+      'Data de pagament',
+      'IBAN'
+    ];
+    const fieldToHeader = {
+      issue_date: "Data d'emissió",
+      invoice_number: 'Núm',
+      internal_number: 'Núm. Intern',
+      accounting_date: 'Data comptable',
+      due_date: 'Venciment',
+      client: 'Proveïdor',
+      description: 'Descripció',
+      tags: 'Tags',
+      account: 'Compte',
+      project: 'Projecte',
+      subtotal: 'Subtotal',
+      vat: 'IVA',
+      retention: 'Retención',
+      employees: 'Empleados',
+      equipment_recovery: 'Rec. de eq.',
+      total: 'Total',
+      paid: 'Pagat',
+      pending: 'Pendents',
+      status: 'Estat',
+      payment_date: 'Data de pagament',
+      iban: 'IBAN'
+    };
+    const processedData = saleInvoices.map(sale => {
+      return expectedHeaders.map(header => {
+        const key = Object.keys(fieldToHeader).find(k => fieldToHeader[k] === header);
+        const val = key && sale[key] !== undefined && sale[key] !== null ? sale[key] : null;
+        return val;
+      });
+    });
+    return { headers: expectedHeaders, data: processedData };
+  };
+
   // Función para enriquecer datos de facturas con IBAN de contactos
   const enrichDataWithContactIban = async (processedData, company) => {
     try {
@@ -1578,20 +1685,20 @@ const AnalyticsPage = () => {
     }
   };
 
-  // Obtener los datos y headers del dataset seleccionado (desde Supabase)
+  // Obtener los datos y headers del dataset seleccionado (compras o ventas según invoiceType)
   const currentHeaders = selectedDataset === 'solucions' 
-    ? supabaseData.solucions.headers
+    ? (invoiceType === 'sale' ? salesData.solucions.headers : supabaseData.solucions.headers)
     : selectedDataset === 'menjar'
-    ? supabaseData.menjar.headers
+    ? (invoiceType === 'sale' ? salesData.menjar.headers : supabaseData.menjar.headers)
     : selectedDataset === 'bruno'
     ? ['Número', 'Proveedor', 'Fecha', 'Total', 'Estado', 'Pendiente', 'Descripción', 'Vencimiento', 'Subtotal', 'IVA', 'Retención', 'Empleados', 'Equipos', 'Pago', 'Etiquetas', 'Cuenta', 'Proyecto', 'Holded ID', 'Contacto', 'Tipo']
     : supabaseData.idoni.headers;
   
-  // Datos base sin filtrar
+  // Datos base sin filtrar (compras o ventas según invoiceType)
   const baseData = selectedDataset === 'solucions' 
-    ? supabaseData.solucions.data
+    ? (invoiceType === 'sale' ? salesData.solucions.data : supabaseData.solucions.data)
     : selectedDataset === 'menjar'
-    ? supabaseData.menjar.data
+    ? (invoiceType === 'sale' ? salesData.menjar.data : supabaseData.menjar.data)
     : selectedDataset === 'bruno'
     ? brunoData
     : supabaseData.idoni.data;
@@ -2478,11 +2585,11 @@ const AnalyticsPage = () => {
     ? '(Obrador, Estructura, Catering)'
     : '(Ventas Diarias, Ventas por Hora, Análisis Mensual, Análisis por Día)';
 
-  const views = [
+  const views = useMemo(() => [
     { id: 'general', name: 'Vista General', description: 'Todas las facturas con columnas personalizables' },
     { id: 'sergi', name: 'Vista Sergi', description: `Análisis por canales ${sergiChannelsText}` },
-    { id: 'bruno', name: 'Vista Bruno', description: 'Análisis de deudas por proveedor' }
-  ];
+    { id: 'bruno', name: 'Vista Bruno', description: invoiceType === 'sale' ? 'Análisis de cobros por cliente' : 'Análisis de deudas por proveedor' }
+  ], [sergiChannelsText, invoiceType]);
 
   // Función mejorada para convertir fechas a formato legible
   function formatDate(dateValue) {
@@ -4490,6 +4597,11 @@ const AnalyticsPage = () => {
     }
 
     try {
+      // Etiquetas según tipo: venta (cliente/cobro) o compra (proveedor/pago)
+      const colProveedor = invoiceType === 'sale' ? 'Cliente' : 'Proveedor';
+      const colPendiente = invoiceType === 'sale' ? 'Pendiente de cobro' : 'Pendiente';
+      const conceptoTotalPendiente = invoiceType === 'sale' ? 'TOTAL PENDIENTE DE COBRO' : 'TOTAL PENDIENTE';
+
       // Crear workbook
       const wb = XLSX.utils.book_new();
       const datasetName = selectedDataset === 'solucions' ? 'Solucions Socials' : 'Menjar D\'Hort';
@@ -4567,13 +4679,13 @@ const AnalyticsPage = () => {
             return {
               'Fecha': formatDate(row[columnIndices.date]),
               'Número de Factura': row[columnIndices.invoiceNumber] || '-',
-              'Proveedor': row[columnIndices.provider] || '-',
+              [colProveedor]: row[columnIndices.provider] || '-',
               'Descripción': row[columnIndices.description] || '-',
               'Cuenta': row[columnIndices.account] || '-',
               'Total': total, // Total real de la factura
-              'Pendiente': columnIndices.pending ? pending : 0, // Monto pendiente
+              [colPendiente]: columnIndices.pending ? pending : 0, // Monto pendiente
               'Canal': channel,
-              'Estado': isPending(row, columnIndices) ? 'Pendiente' : 'Pagado'
+              'Estado': isPending(row, columnIndices) ? (invoiceType === 'sale' ? 'Pendiente de cobro' : 'Pendiente') : (invoiceType === 'sale' ? 'Cobrado' : 'Pagado')
             };
           });
 
@@ -4592,11 +4704,11 @@ const AnalyticsPage = () => {
           downloadData.push({
             'Fecha': '',
             'Número de Factura': '',
-            'Proveedor': '',
+            [colProveedor]: '',
             'Descripción': '',
             'Cuenta': '',
             'Total': '',
-            'Pendiente': '',
+            [colPendiente]: '',
             'Canal': '',
             'Estado': ''
           });
@@ -4605,11 +4717,11 @@ const AnalyticsPage = () => {
           downloadData.push({
             'Fecha': '',
             'Número de Factura': '',
-            'Proveedor': '',
+            [colProveedor]: '',
             'Descripción': '',
             'Cuenta': '',
             'Total': `TOTAL ${channel}`,
-            'Pendiente': pendingAmount,
+            [colPendiente]: pendingAmount,
             'Canal': '',
             'Estado': ''
           });
@@ -4620,10 +4732,11 @@ const AnalyticsPage = () => {
           const colWidths = [
             { wch: 12 }, // Fecha
             { wch: 15 }, // Número de Factura
-            { wch: 25 }, // Proveedor
+            { wch: 25 }, // Cliente/Proveedor
             { wch: 30 }, // Descripción
             { wch: 20 }, // Cuenta
             { wch: 12 }, // Total
+            { wch: 18 }, // Pendiente/Pendiente de cobro
             { wch: 15 }, // Canal
             { wch: 10 }  // Estado
           ];
@@ -4735,7 +4848,7 @@ const AnalyticsPage = () => {
         'Valor': ''
       });
       summaryData.push({
-        'Concepto': 'TOTAL PENDIENTE',
+        'Concepto': conceptoTotalPendiente,
         'Valor': totalPendienteGeneral
       });
       summaryData.push({
@@ -4746,7 +4859,7 @@ const AnalyticsPage = () => {
       // Crear hoja de resumen
       const summaryWs = XLSX.utils.json_to_sheet(summaryData);
       summaryWs['!cols'] = [
-        { wch: 25 }, // Concepto
+        { wch: 28 }, // Concepto (más ancho para "TOTAL PENDIENTE DE COBRO")
         { wch: 15 }  // Valor
       ];
       XLSX.utils.book_append_sheet(wb, summaryWs, 'Resumen');
@@ -4869,15 +4982,22 @@ const AnalyticsPage = () => {
     }
 
     try {
+      // Etiquetas según tipo: venta (cliente/cobro) o compra (proveedor/pago)
+      const colProveedor = invoiceType === 'sale' ? 'Cliente' : 'Proveedor';
+      const colValor = invoiceType === 'sale' ? 'Pendiente de cobro' : 'Valor a Pagar';
+      const sinProveedor = invoiceType === 'sale' ? 'Sin Cliente' : 'Sin Proveedor';
+      const nombreHoja = invoiceType === 'sale' ? 'Facturas por Cliente' : 'Facturas por Proveedor';
+      const conceptoTotalPendiente = invoiceType === 'sale' ? 'TOTAL PENDIENTE DE COBRO' : 'TOTAL PENDIENTE';
+
       // Crear workbook
       const wb = XLSX.utils.book_new();
       const datasetName = selectedDataset === 'solucions' ? 'Solucions Socials' : 'Menjar D\'Hort';
       const fileName = `Vista_Bruno_${datasetName}_${new Date().toISOString().split('T')[0]}.xlsx`;
 
-      // Agrupar datos por proveedor
+      // Agrupar datos por proveedor/cliente
       const groupedByProvider = {};
       dataToExport.forEach(row => {
-        const provider = row[columnIndices.provider] || 'Sin Proveedor';
+        const provider = row[columnIndices.provider] || sinProveedor;
         if (!groupedByProvider[provider]) {
           groupedByProvider[provider] = [];
         }
@@ -4905,19 +5025,19 @@ const AnalyticsPage = () => {
         const providerIban = firstInvoice[columnIndices.iban] || '-';
         const formattedIban = providerIban !== '-' ? formatIBAN(providerIban) : '-';
 
-        // Truncar nombre del proveedor si es muy largo (máximo 30 caracteres)
+        // Truncar nombre del proveedor/cliente si es muy largo (máximo 30 caracteres)
         const shortProviderName = provider.length > 30 ? provider.substring(0, 27) + '...' : provider;
         
-        // Agregar header del proveedor con mejor formato
+        // Agregar header del proveedor/cliente con mejor formato
         excelData.push({
           'Fecha': '',
-          'Proveedor': `📋 ${shortProviderName}`,
+          [colProveedor]: `📋 ${shortProviderName}`,
           'Número de Factura': '',
-          'Valor a Pagar': '',
+          [colValor]: '',
           'IBAN': '' // IBAN solo en el total
         });
 
-        // Agregar facturas del proveedor
+        // Agregar facturas del proveedor/cliente
         providerInvoices.forEach(row => {
           const total = parseFloat(row[columnIndices.total]) || 0;
           const pending = columnIndices.pending ? (parseFloat(row[columnIndices.pending]) || 0) : 0;
@@ -4926,37 +5046,37 @@ const AnalyticsPage = () => {
           
           excelData.push({
             'Fecha': formatDate(row[columnIndices.date]) || '-',
-            'Proveedor': row[columnIndices.provider] || '-',
+            [colProveedor]: row[columnIndices.provider] || '-',
             'Número de Factura': row[columnIndices.invoiceNumber] || '-',
-            'Valor a Pagar': valorAPagar,
-            'IBAN': '' // IBAN solo en el header del proveedor
+            [colValor]: valorAPagar,
+            'IBAN': '' // IBAN solo en el header
           });
         });
 
         // Agregar fila en blanco antes del total
         excelData.push({
           'Fecha': '',
-          'Proveedor': '',
+          [colProveedor]: '',
           'Número de Factura': '',
-          'Valor a Pagar': '',
+          [colValor]: '',
           'IBAN': ''
         });
 
-        // Agregar total del proveedor con mejor formato
+        // Agregar total del proveedor/cliente con mejor formato
         excelData.push({
           'Fecha': '',
-          'Proveedor': '',
+          [colProveedor]: '',
           'Número de Factura': 'TOTAL:',
-          'Valor a Pagar': providerValorAPagar,
+          [colValor]: providerValorAPagar,
           'IBAN': formattedIban
         });
 
-        // Agregar separador visual entre proveedores
+        // Agregar separador visual entre proveedores/clientes
         excelData.push({
           'Fecha': '─'.repeat(10),
-          'Proveedor': '─'.repeat(30),
+          [colProveedor]: '─'.repeat(30),
           'Número de Factura': '─'.repeat(15),
-          'Valor a Pagar': '─'.repeat(12),
+          [colValor]: '─'.repeat(18),
           'IBAN': '─'.repeat(20)
         });
       });
@@ -5008,15 +5128,15 @@ const AnalyticsPage = () => {
       // Configurar anchos de columna optimizados
       const colWidths = [
         { wch: 12 }, // Fecha
-        { wch: 35 }, // Proveedor (más ancho para nombres largos)
+        { wch: 35 }, // Cliente/Proveedor (más ancho para nombres largos)
         { wch: 20 }, // Número de Factura
-        { wch: 15 }, // Valor a Pagar
+        { wch: 18 }, // Valor a Pagar / Pendiente de cobro
         { wch: 30 }  // IBAN (más ancho para formato con espacios)
       ];
       ws['!cols'] = colWidths;
 
-      // Agregar hoja con facturas agrupadas por proveedor
-      XLSX.utils.book_append_sheet(wb, ws, 'Facturas por Proveedor');
+      // Agregar hoja con facturas agrupadas por proveedor/cliente
+      XLSX.utils.book_append_sheet(wb, ws, nombreHoja);
 
       // Crear hoja de resumen con totales
       const summaryData = [];
@@ -5041,7 +5161,8 @@ const AnalyticsPage = () => {
         'Valor': ''
       });
       
-      // Agregar totales por proveedor (solo pendiente, no total)
+      // Agregar totales por proveedor/cliente (solo pendiente, no total)
+      const labelPendiente = invoiceType === 'sale' ? 'Pendiente de cobro' : 'Pendiente';
       Object.keys(groupedByProvider).sort().forEach(provider => {
         const providerInvoices = groupedByProvider[provider];
         
@@ -5052,7 +5173,7 @@ const AnalyticsPage = () => {
 
         // Solo mostrar Pendiente, no Total
         summaryData.push({
-          'Concepto': `Pendiente ${provider}`,
+          'Concepto': `${labelPendiente} ${provider}`,
           'Valor': providerPendiente
         });
         summaryData.push({
@@ -5071,7 +5192,7 @@ const AnalyticsPage = () => {
         'Valor': ''
       });
       summaryData.push({
-        'Concepto': 'TOTAL PENDIENTE',
+        'Concepto': conceptoTotalPendiente,
         'Valor': totalPendienteGeneral
       });
       summaryData.push({
@@ -5284,8 +5405,50 @@ const AnalyticsPage = () => {
         transition={{ duration: 0.4, delay: 0.1 }}
         style={{ margin: '0 0 24px 0', color: colors.text, fontWeight: 700, fontSize: 28, lineHeight: 1.2 }}
       >
-        {canViewAllDatasets ? 'Análisis de Compras' : 'Análisis IDONI'}
+        {canViewAllDatasets ? (invoiceType === 'sale' ? 'Análisis de Ventas' : 'Análisis de Compras') : 'Análisis IDONI'}
       </motion.h2>
+
+      {/* Toggle Facturas de compra / Facturas de venta - Solo para Holded (Solucions/Menjar) */}
+      {canViewAllDatasets && (
+        <div style={{ marginBottom: '20px', display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+          <motion.button
+            type="button"
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={() => setInvoiceType('purchase')}
+            style={{
+              padding: '10px 20px',
+              borderRadius: 8,
+              border: invoiceType === 'purchase' ? `2px solid ${colors.primary}` : `1px solid ${colors.border}`,
+              background: invoiceType === 'purchase' ? colors.primary + '18' : colors.card,
+              color: invoiceType === 'purchase' ? colors.primary : colors.textSecondary,
+              fontWeight: invoiceType === 'purchase' ? 600 : 400,
+              fontSize: 14,
+              cursor: 'pointer',
+            }}
+          >
+            Facturas de compra
+          </motion.button>
+          <motion.button
+            type="button"
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={() => setInvoiceType('sale')}
+            style={{
+              padding: '10px 20px',
+              borderRadius: 8,
+              border: invoiceType === 'sale' ? `2px solid ${colors.primary}` : `1px solid ${colors.border}`,
+              background: invoiceType === 'sale' ? colors.primary + '18' : colors.card,
+              color: invoiceType === 'sale' ? colors.primary : colors.textSecondary,
+              fontWeight: invoiceType === 'sale' ? 600 : 400,
+              fontSize: 14,
+              cursor: 'pointer',
+            }}
+          >
+            Facturas de venta
+          </motion.button>
+        </div>
+      )}
 
       {/* Selector de Dataset - Solo visible para admin, manager y management */}
       {canViewAllDatasets && (
@@ -5378,7 +5541,9 @@ const AnalyticsPage = () => {
               color: selectedDataset === 'solucions' ? colors.primary : colors.textSecondary, 
               marginTop: 2 
             }}>
-              {supabaseData.solucions.data.length > 0 ? `${supabaseData.solucions.data.length} compras de Holded` : 'No hay compras cargadas'}
+              {invoiceType === 'sale'
+                ? (salesData.solucions.data.length > 0 ? `${salesData.solucions.data.length} ventas de Holded` : 'No hay ventas cargadas')
+                : (supabaseData.solucions.data.length > 0 ? `${supabaseData.solucions.data.length} compras de Holded` : 'No hay compras cargadas')}
             </span>
           </motion.div>
 
@@ -5450,7 +5615,9 @@ const AnalyticsPage = () => {
               color: selectedDataset === 'menjar' ? colors.primary : colors.textSecondary, 
               marginTop: 2 
             }}>
-              {supabaseData.menjar.data.length > 0 ? `${supabaseData.menjar.data.length} compras de Holded` : 'No hay compras cargadas'}
+              {invoiceType === 'sale'
+                ? (salesData.menjar.data.length > 0 ? `${salesData.menjar.data.length} ventas de Holded` : 'No hay ventas cargadas')
+                : (supabaseData.menjar.data.length > 0 ? `${supabaseData.menjar.data.length} compras de Holded` : 'No hay compras cargadas')}
             </span>
           </motion.div>
 
@@ -7541,7 +7708,7 @@ const AnalyticsPage = () => {
           </motion.div>
         ) : (
           <motion.div
-            key={`content-${selectedDataset}`}
+            key={`content-${selectedDataset}-${invoiceType}`}
             initial={{ opacity: 0, y: 20, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -20, scale: 0.98 }}
@@ -7566,7 +7733,7 @@ const AnalyticsPage = () => {
                 <div style={{ display: 'flex', gap: '24px', alignItems: 'center' }}>
                   <div>
                     <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', color: colors.textSecondary }}>
-                      Filtrar por proveedor:
+                      {invoiceType === 'sale' ? 'Filtrar por cliente:' : 'Filtrar por proveedor:'}
                     </label>
                     <select
                       value={selectedProvider}
@@ -7581,7 +7748,7 @@ const AnalyticsPage = () => {
                         color: colors.text
                       }}
                     >
-                      <option value="">Todos los proveedores</option>
+                      <option value="">{invoiceType === 'sale' ? 'Todos los clientes' : 'Todos los proveedores'}</option>
                       {uniqueProviders.map(provider => (
                         <option key={provider} value={provider} style={{ color: colors.text }}>{provider}</option>
                       ))}
@@ -8156,7 +8323,7 @@ const AnalyticsPage = () => {
                                 onSort={handleChannelSort}
                               />
                               <SortableHeader
-                                label={currentHeaders[columnIndices.provider] || 'Proveedor'}
+                                label={currentHeaders[columnIndices.provider] || (invoiceType === 'sale' ? 'Cliente' : 'Proveedor')}
                                 sortKey="provider"
                                 currentSortKey={channelSortConfig.key}
                                 currentDirection={channelSortConfig.direction}
@@ -8453,7 +8620,9 @@ const AnalyticsPage = () => {
               >
                 <div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                    <h3 style={{ margin: 0, color: colors.text, fontSize: 18, fontWeight: 600, lineHeight: 1.2 }}>Análisis de Deudas por Proveedor</h3>
+                    <h3 style={{ margin: 0, color: colors.text, fontSize: 18, fontWeight: 600, lineHeight: 1.2 }}>
+                      {invoiceType === 'sale' ? 'Análisis de cobros por cliente' : 'Análisis de Deudas por Proveedor'}
+                    </h3>
                     
                     <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
                       <motion.button
@@ -8526,26 +8695,32 @@ const AnalyticsPage = () => {
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px', marginBottom: '32px' }}>
                     <div style={{ background: colors.surface, padding: '20px', borderRadius: '8px' }}>
-                      <h4 style={{ margin: '0 0 12px 0', color: colors.text, fontSize: '16', fontWeight: 600, lineHeight: 1.2 }}>Total Pendiente</h4>
-                      <div style={{ fontSize: '24px', fontWeight: 'bold', color: colors.error, marginBottom: '8px' }}>
+                      <h4 style={{ margin: '0 0 12px 0', color: colors.text, fontSize: '16', fontWeight: 600, lineHeight: 1.2 }}>
+                        {invoiceType === 'sale' ? 'Total pendiente de cobro' : 'Total Pendiente'}
+                      </h4>
+                      <div style={{ fontSize: '24px', fontWeight: 'bold', color: invoiceType === 'sale' ? colors.primary : colors.error, marginBottom: '8px' }}>
                         {formatCurrency(providerStats.reduce((sum, stat) => sum + stat.totalPending, 0))}
                       </div>
                       <div style={{ fontSize: '14px', color: colors.textSecondary }}>
-                        Total a pagar a todos los proveedores
+                        {invoiceType === 'sale' ? 'Total pendiente de cobro de clientes' : 'Total a pagar a todos los proveedores'}
                       </div>
                     </div>
                     <div style={{ background: colors.surface, padding: '20px', borderRadius: '8px' }}>
-                      <h4 style={{ margin: '0 0 12px 0', color: colors.text, fontSize: '16', fontWeight: 600, lineHeight: 1.2 }}>Proveedores con Deuda</h4>
+                      <h4 style={{ margin: '0 0 12px 0', color: colors.text, fontSize: '16', fontWeight: 600, lineHeight: 1.2 }}>
+                        {invoiceType === 'sale' ? 'Clientes con cobro pendiente' : 'Proveedores con Deuda'}
+                      </h4>
                       <div style={{ fontSize: '24px', fontWeight: 'bold', color: colors.warning, marginBottom: '8px' }}>
                         {providerStats.filter(stat => stat.totalPending > 0).length}
                       </div>
                       <div style={{ fontSize: '14px', color: colors.textSecondary }}>
-                        Proveedores con facturas pendientes
+                        {invoiceType === 'sale' ? 'Clientes con facturas pendientes de cobro' : 'Proveedores con facturas pendientes'}
                       </div>
                     </div>
                   </div>
                   
-                  <h4 style={{ margin: '0 0 16px 0', color: colors.text, fontSize: '18px', fontWeight: 600, lineHeight: 1.2 }}>Detalle por Proveedor</h4>
+                  <h4 style={{ margin: '0 0 16px 0', color: colors.text, fontSize: '18px', fontWeight: 600, lineHeight: 1.2 }}>
+                    {invoiceType === 'sale' ? 'Detalle por Cliente' : 'Detalle por Proveedor'}
+                  </h4>
                   <div style={{ 
                     overflowX: 'auto',
                     scrollbarWidth: 'thin',
@@ -8554,10 +8729,10 @@ const AnalyticsPage = () => {
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
                       <thead>
                         <tr>
-                          <th style={{ borderBottom: `1px solid ${colors.border}`, padding: '12px 8px', textAlign: 'left', color: colors.primary, fontWeight: 600, background: colors.surface }}>Proveedor</th>
+                          <th style={{ borderBottom: `1px solid ${colors.border}`, padding: '12px 8px', textAlign: 'left', color: colors.primary, fontWeight: 600, background: colors.surface }}>{invoiceType === 'sale' ? 'Cliente' : 'Proveedor'}</th>
                           <th style={{ borderBottom: `1px solid ${colors.border}`, padding: '12px 8px', textAlign: 'left', color: colors.primary, fontWeight: 600, background: colors.surface }}>IBAN</th>
                           <th style={{ borderBottom: `1px solid ${colors.border}`, padding: '12px 8px', textAlign: 'left', color: colors.primary, fontWeight: 600, background: colors.surface }}>Total Facturas</th>
-                          <th style={{ borderBottom: `1px solid ${colors.border}`, padding: '12px 8px', textAlign: 'left', color: colors.primary, fontWeight: 600, background: colors.surface }}>Total Pendiente</th>
+                          <th style={{ borderBottom: `1px solid ${colors.border}`, padding: '12px 8px', textAlign: 'left', color: colors.primary, fontWeight: 600, background: colors.surface }}>{invoiceType === 'sale' ? 'Pendiente de cobro' : 'Total Pendiente'}</th>
                           <th style={{ borderBottom: `1px solid ${colors.border}`, padding: '12px 8px', textAlign: 'left', color: colors.primary, fontWeight: 600, background: colors.surface }}>Facturas</th>
                         </tr>
                       </thead>
@@ -8601,7 +8776,7 @@ const AnalyticsPage = () => {
                                 <td style={{ 
                                   borderBottom: `1px solid ${colors.border}`, 
                                   padding: '12px 8px', 
-                                  color: stat.totalPending > 0 ? colors.error : colors.text,
+                                  color: stat.totalPending > 0 ? (invoiceType === 'sale' ? colors.primary : colors.error) : colors.text,
                                   fontWeight: stat.totalPending > 0 ? '600' : '400'
                                 }}>
                                   {formatCurrency(stat.totalPending)}
@@ -8632,7 +8807,7 @@ const AnalyticsPage = () => {
                                           fontSize: '14px', 
                                           fontWeight: 600 
                                         }}>
-                                          Facturas de {stat.provider}
+                                          {invoiceType === 'sale' ? 'Facturas del cliente ' : 'Facturas del proveedor '}{stat.provider}
                                         </h5>
                                         <div style={{ 
                                           overflowX: 'auto',

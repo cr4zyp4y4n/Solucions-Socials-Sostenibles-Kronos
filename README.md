@@ -1,12 +1,12 @@
-# SSS Kronos v2.1.16
+# SSS Kronos v2.1.18
 
 
-🚀 **Release Notes - SSS Kronos v2.1.16**
+🚀 **Release Notes - SSS Kronos v2.1.18**
 
 ## 📦 Archivos de Distribución
 
 ### Windows
-- **Instalador:** SSS Kronos-2.1.16 Setup.exe (130 MB aprox.)
+- **Instalador:** SSS Kronos-2.1.18 Setup.exe (130 MB aprox.)
 - **Ubicación:** `out/make/squirrel.windows/x64/`
 - **Compatibilidad:** Windows 10/11 (64-bit)
 
@@ -14,6 +14,16 @@
 *Nota: Los instaladores para macOS y Linux se generarán en futuras versiones*
 
 ## ✨ Nuevas Características y Cambios Clave
+
+### 🆕 **v2.1.18 - Facturas de venta Holded, Socios (DNI/teléfono) y mejoras**
+- ✅ **Facturas de venta en Análisis:** Nueva sección idéntica a facturas de compra con toggle "Facturas de compra" / "Facturas de venta", mismo selector de año y vistas (General, Sergi, Bruno)
+- ✅ **API Holded ventas:** Integración con `documents/invoice` para facturas de venta pendientes y vencidas (Solucions y Menjar)
+- ✅ **Vista Bruno para ventas:** Textos adaptados (Cliente, Pendiente de cobro, Análisis de cobros por cliente, Detalle por Cliente, etc.) en lugar de terminología de proveedores/deuda
+- ✅ **Exportación Excel (Sergi y Bruno):** Etiquetas condicionales según tipo; en ventas: columna Cliente, Pendiente de cobro, hoja "Facturas por Cliente", "TOTAL PENDIENTE DE COBRO"
+- ✅ **Animación Inicio:** Transición (fade) al cambiar entre Facturas de compra y Facturas de venta en ambas direcciones
+- ✅ **Socios IDONI - DNI y teléfono:** Nuevos campos en BD, importación CSV (columnas DNI y MOVIL), visualización y edición en lista, formularios y modal; búsqueda por DNI y teléfono
+- ✅ **Socios - Fechas de registro:** Corrección de visualización de `socio_desde`; parseo como fecha local para evitar mostrar el día anterior por zona horaria UTC
+- ✅ **Utilidades de fecha:** `formatDateOnlyLocal`, `parseDateOnlyAsLocal` y `getYearFromDateOnly` en `timeUtils.js` para fechas solo-día sin desplazamiento
 
 ### 🆕 **v2.1.16 - Filtrado por Año en Analytics y Mejoras en Exportación Excel**
 - ✅ **Filtrado por año en Analytics:** Selector de año para visualizar facturas de 2025, 2026 o cualquier año disponible
@@ -369,6 +379,10 @@
 
 ### 🐞 Correcciones de Errores
 
+#### **v2.1.18 - Correcciones de Socios y Análisis**
+- ✅ **Corregidas fechas de registro de socios:** `socio_desde` ya no se muestra un día antes por interpretación UTC; parseo como fecha local (YYYY-MM-DD)
+- ✅ **Corregida animación Inicio Análisis:** Al cambiar de "Facturas de venta" a "Facturas de compra" ahora se muestra la misma transición (fade) que en el sentido contrario
+
 #### **v2.1.16 - Correcciones de Filtrado por Año y API Holded**
 - ✅ **Corregido problema de facturas de 2025:** Solucionado problema donde solo se mostraban facturas de 2026, ahora se obtienen correctamente facturas de 2025 y 2026
 - ✅ **Corregido formato de fechas:** Cambio de formato YYYY-MM-DD a timestamps Unix para compatibilidad correcta con API de Holded
@@ -514,7 +528,7 @@
 
 ### 📥 Descargar
 1. Ve a la sección Releases de este repositorio
-2. Descarga `SSS Kronos-2.1.16 Setup.exe`
+2. Descarga `SSS Kronos-2.1.18 Setup.exe`
 3. Ejecuta el instalador y sigue las instrucciones
 
 ### ⚡ Primera Ejecución
@@ -556,6 +570,14 @@
 - **Documentación:** docs.supabase.com
 
 ## 🔄 Próximas Versiones
+
+### 🎯 v2.1.18 ✅ **COMPLETADA**
+- ✅ Facturas de venta Holded en Análisis (toggle compra/venta, mismo diseño y selector de año) ✅
+- ✅ Vista Bruno y Sergi con textos cliente/cobro para ventas ✅
+- ✅ Exportación Excel con etiquetas condicionales (Cliente, Pendiente de cobro, etc.) ✅
+- ✅ Socios IDONI: campos DNI y teléfono, importación CSV e interfaz ✅
+- ✅ Corrección de fechas de registro de socios (socio_desde como fecha local) ✅
+- ✅ Animación al cambiar entre Facturas de compra y Facturas de venta ✅
 
 ### 🎯 v2.1.16 ✅ **COMPLETADA**
 - ✅ Filtrado por año en Analytics con selector dinámico ✅
