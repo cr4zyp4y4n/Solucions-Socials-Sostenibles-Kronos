@@ -12,11 +12,14 @@ import {
   UserPlus,
   Filter,
   RefreshCw,
-  Upload
+  Upload,
+  Phone,
+  CreditCard
 } from 'lucide-react';
 import { useTheme } from './ThemeContext';
 import { useAuth } from './AuthContext';
 import sociosService from '../services/sociosService';
+import { formatDateOnlyLocal } from '../utils/timeUtils';
 import SocioFormModal from './SocioFormModal';
 import SocioEditModal from './SocioEditModal';
 import ConfirmModal from './ConfirmModal';
@@ -87,11 +90,13 @@ const SociosPage = () => {
     if (!searchTerm.trim()) return socios;
     
     const termino = searchTerm.toLowerCase();
-    return socios.filter(socio => 
+    return socios.filter(socio =>
       socio.nombre.toLowerCase().includes(termino) ||
       socio.apellido.toLowerCase().includes(termino) ||
       socio.correo.toLowerCase().includes(termino) ||
-      socio.id_unico.toString().includes(termino)
+      socio.id_unico.toString().includes(termino) ||
+      (socio.dni && socio.dni.toLowerCase().includes(termino)) ||
+      (socio.telefono && socio.telefono.includes(termino))
     );
   }, [socios, searchTerm]);
 
@@ -179,15 +184,8 @@ const SociosPage = () => {
     }
   };
 
-  // Formatear fecha
-  const formatFecha = (fecha) => {
-    if (!fecha) return '';
-    return new Date(fecha).toLocaleDateString('es-ES', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
-    });
-  };
+  // Formatear fecha (solo día, sin cambio por zona horaria)
+  const formatFecha = (fecha) => formatDateOnlyLocal(fecha);
 
   if (loading) {
     return (
@@ -636,6 +634,18 @@ const SociosPage = () => {
                           <Calendar size={12} />
                           <span>Socio desde {formatFecha(socio.socio_desde)}</span>
                         </div>
+                        {socio.telefono && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <Phone size={12} />
+                            <span>{socio.telefono}</span>
+                          </div>
+                        )}
+                        {socio.dni && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <CreditCard size={12} />
+                            <span>{socio.dni}</span>
+                          </div>
+                        )}
                       </div>
                       
                       {/* Indicador de click */}

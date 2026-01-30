@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, RotateCcw, RotateCw, Printer, Download } from 'lucide-react';
 import { useTheme } from './ThemeContext';
+import { formatDateOnlyLocal } from '../utils/timeUtils';
 
 // Importar las imágenes del carnet
 import CarnetFront from '../assets/CarnetFront.svg';
@@ -13,14 +14,7 @@ const CarnetSocioModal = ({ isOpen, onClose, socio }) => {
 
   if (!isOpen || !socio) return null;
 
-  const formatFecha = (fecha) => {
-    if (!fecha) return '';
-    return new Date(fecha).toLocaleDateString('es-ES', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
-    });
-  };
+  const formatFecha = (fecha) => formatDateOnlyLocal(fecha);
 
   const flipCard = () => {
     setCurrentSide(currentSide === 'front' ? 'back' : 'front');
