@@ -1,4 +1,5 @@
 import { supabase } from '../config/supabase';
+import { getYearFromDateOnly } from '../utils/timeUtils';
 
 class SociosService {
   constructor() {
@@ -36,7 +37,9 @@ class SociosService {
         nombre: socioData.nombre.trim(),
         apellido: socioData.apellido.trim(),
         correo: socioData.correo.trim().toLowerCase(),
-        socio_desde: new Date().toISOString().split('T')[0] // Fecha actual en formato YYYY-MM-DD
+        socio_desde: new Date().toISOString().split('T')[0],
+        dni: (socioData.dni || '').trim() || null,
+        telefono: (socioData.telefono || '').trim() || null
       };
 
       const { data, error } = await supabase
@@ -63,7 +66,9 @@ class SociosService {
       const socio = {
         nombre: socioData.nombre.trim(),
         apellido: socioData.apellido.trim(),
-        correo: socioData.correo.trim().toLowerCase()
+        correo: socioData.correo.trim().toLowerCase(),
+        dni: (socioData.dni || '').trim() || null,
+        telefono: (socioData.telefono || '').trim() || null
       };
 
       const { data, error } = await supabase
@@ -156,36 +161,66 @@ class SociosService {
     }
   }
 
-  // Importar múltiples socios desde CSV
+  // Importar múltiples socios desde CSV (si ya existe por N° carnet, se actualiza; si no, se inserta)
   async importarSocios(sociosData) {
     try {
       const sociosImportados = [];
-      let ultimoId = await this.generarIdUnico() - 1; // Empezar desde el siguiente ID disponible
+      let ultimoId = await this.generarIdUnico() - 1;
 
       for (const socioData of sociosData) {
-        ultimoId++;
-        
-        const socio = {
-          id_unico: ultimoId,
-          nombre: socioData.nombre.trim(),
-          apellido: socioData.apellido.trim(),
-          correo: socioData.correo.trim().toLowerCase(),
-          socio_desde: socioData.socio_desde || new Date().toISOString().split('T')[0]
+        let idUnico;
+        if (socioData.id_unico !== undefined && socioData.id_unico !== null && socioData.id_unico !== '') {
+          const v = socioData.id_unico;
+          idUnico = typeof v === 'number' ? v : (parseInt(v, 10) || v);
+        } else {
+          ultimoId++;
+          idUnico = ultimoId;
+        }
+
+        const payload = {
+          nombre: (socioData.nombre || '').trim(),
+          apellido: (socioData.apellido || '').trim(),
+          correo: (socioData.correo || '').trim().toLowerCase(),
+          socio_desde: socioData.socio_desde || new Date().toISOString().split('T')[0],
+          dni: (socioData.dni || '').trim() || null,
+          telefono: (socioData.telefono || '').trim() || null
         };
 
-        const { data, error } = await supabase
+        const fromCsvId = socioData.id_unico !== undefined && socioData.id_unico !== null && socioData.id_unico !== '';
+        if (fromCsvId) {
+          const { data: existing } = await supabase
+            .from(this.tableName)
+            .select('id')
+            .eq('id_unico', idUnico)
+            .maybeSingle();
+
+          if (existing) {
+            const { data: updated, error: updateError } = await supabase
+              .from(this.tableName)
+              .update(payload)
+              .eq('id', existing.id)
+              .select()
+              .single();
+            if (updateError) {
+              console.error('❌ Error actualizando socio:', payload.nombre, updateError);
+              continue;
+            }
+            sociosImportados.push(updated);
+            continue;
+          }
+        }
+
+        const { data: inserted, error: insertError } = await supabase
           .from(this.tableName)
-          .insert([socio])
+          .insert([{ id_unico: idUnico, ...payload }])
           .select()
           .single();
 
-        if (error) {
-          console.error('❌ Error importando socio:', socio.nombre, error);
-          // Continuar con el siguiente socio en lugar de fallar completamente
+        if (insertError) {
+          console.error('❌ Error importando socio:', payload.nombre, insertError);
           continue;
         }
-
-        sociosImportados.push(data);
+        sociosImportados.push(inserted);
       }
 
       return sociosImportados;
@@ -213,8 +248,8 @@ class SociosService {
       // Contar socios por año
       const sociosPorAno = {};
       socios.forEach(socio => {
-        const ano = new Date(socio.socio_desde).getFullYear();
-        sociosPorAno[ano] = (sociosPorAno[ano] || 0) + 1;
+        const ano = getYearFromDateOnly(socio.socio_desde);
+        if (!isNaN(ano)) sociosPorAno[ano] = (sociosPorAno[ano] || 0) + 1;
       });
 
       // Obtener año con más socios

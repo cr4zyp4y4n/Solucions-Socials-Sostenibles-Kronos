@@ -42,18 +42,14 @@ const SubvencionItem = memo(({
   subvencion, 
   index, 
   colors, 
-  estados, 
+  getEstadoFaseLabel, 
   formatCurrency, 
-  getFasesActivas, 
   showSubvencionDetails, 
   handleEditSubvencion, 
   handleDeleteSubvencion, 
   isLast 
 }) => {
-  const estadoInfo = estados[subvencion.estado] || { color: colors.textSecondary, icon: AlertCircle, label: subvencion.estado };
-  const EstadoIcon = estadoInfo.icon;
-  // Pasar fasesProyecto o faseProyecto según la entidad
-  const fasesActivas = getFasesActivas(subvencion.fasesProyecto || subvencion.faseProyecto);
+  const estadoFaseLabel = getEstadoFaseLabel(subvencion);
 
   return (
     <motion.div
@@ -80,22 +76,22 @@ const SubvencionItem = memo(({
               display: 'flex',
               alignItems: 'center',
               padding: '6px 12px',
-              backgroundColor: estadoInfo.bgColor || estadoInfo.color + '20',
-              border: `1px solid ${estadoInfo.borderColor || estadoInfo.color}`,
+              backgroundColor: (colors.primary || '#3b82f6') + '20',
+              border: `1px solid ${colors.primary || '#3b82f6'}`,
               borderRadius: '8px',
               gap: '6px',
               boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
               transition: 'all 0.2s ease'
             }}>
-              <EstadoIcon size={14} color={estadoInfo.color} />
+              <Layers size={14} color={colors.primary || '#3b82f6'} />
               <span style={{ 
                 fontSize: '12px', 
                 fontWeight: '600', 
-                color: estadoInfo.color, 
+                color: colors.primary || '#3b82f6', 
                 userSelect: 'none',
                 letterSpacing: '0.025em'
               }}>
-                {estadoInfo.label}
+                {estadoFaseLabel}
               </span>
             </div>
           </div>
@@ -107,24 +103,6 @@ const SubvencionItem = memo(({
             <span><Calendar size={14} style={{ marginRight: '4px' }} />{subvencion.periodo}</span>
             <span><Euro size={14} style={{ marginRight: '4px' }} />{formatCurrency(subvencion.importeOtorgado)}</span>
           </div>
-          
-          {fasesActivas.length > 0 && (
-            <div style={{ 
-              display: 'flex', 
-              alignItems: 'center', 
-              gap: '8px', 
-              marginTop: '8px',
-              padding: '6px 12px',
-              backgroundColor: colors.primary + '15',
-              borderRadius: '6px',
-              width: 'fit-content'
-            }}>
-              <Layers size={14} color={colors.primary} />
-              <span style={{ fontSize: '12px', fontWeight: '500', color: colors.primary }}>
-                Fases: {fasesActivas.join(', ')}
-              </span>
-            </div>
-          )}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
           <div style={{ textAlign: 'right' }}>
@@ -786,6 +764,20 @@ const SubvencionesPage = () => {
     }
     
     return [];
+  }, []);
+
+  // Estado = fase de la subvención (para mostrar en lugar del campo "estado" del CSV)
+  const getEstadoFaseLabel = useCallback((subvencion) => {
+    if (!subvencion) return '—';
+    if (subvencion.faseProyecto && typeof subvencion.faseProyecto === 'string') {
+      const match = subvencion.faseProyecto.match(/FASE (\d+)/i);
+      return match ? `Fase ${match[1]}` : subvencion.faseProyecto;
+    }
+    if (subvencion.fasesProyecto && typeof subvencion.fasesProyecto === 'object') {
+      const fases = subvencionesService.analizarFasesProyecto(subvencion.fasesProyecto);
+      if (fases.length > 0) return fases[0].nombre;
+    }
+    return '—';
   }, []);
 
   // Exportar a Excel usando el servicio
@@ -1657,9 +1649,8 @@ const SubvencionesPage = () => {
                 subvencion={subvencion}
                 index={index}
                 colors={colors}
-                estados={estados}
+                getEstadoFaseLabel={getEstadoFaseLabel}
                 formatCurrency={formatCurrency}
-                getFasesActivas={getFasesActivas}
                 showSubvencionDetails={showSubvencionDetails}
                 handleEditSubvencion={handleEditSubvencion}
                 handleDeleteSubvencion={handleDeleteSubvencion}
@@ -1911,74 +1902,7 @@ const SubvencionesPage = () => {
                 </div>
               )}
 
-              {/* Fases del Proyecto (solo si hay alguna fase) */}
-              {(selectedSubvencion.fasesProyecto?.fase1 || selectedSubvencion.fasesProyecto?.fase2 || 
-                selectedSubvencion.fasesProyecto?.fase3 || selectedSubvencion.fasesProyecto?.fase4 ||
-                selectedSubvencion.fasesProyecto?.fase5 || selectedSubvencion.fasesProyecto?.fase6 ||
-                selectedSubvencion.fasesProyecto?.fase7 || selectedSubvencion.fasesProyecto?.fase8 ||
-                selectedSubvencion.faseProyecto) && (
-                <div style={{ padding: '16px', backgroundColor: colors.background, borderRadius: '8px' }}>
-                  <h3 style={{ fontSize: '16px', fontWeight: '600', color: colors.text, margin: '0 0 16px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <FileCheck size={18} color={colors.primary} />
-                    Fases del Proyecto
-                  </h3>
-                  <div style={{ display: 'grid', gap: '8px' }}>
-                    {(() => {
-                      // Para Menjar d'Hort (faseProyecto es un string simple)
-                      if (selectedSubvencion.faseProyecto && typeof selectedSubvencion.faseProyecto === 'string') {
-                        return (
-                          <div style={{
-                            padding: '12px 16px',
-                            backgroundColor: colors.success + '15',
-                            borderRadius: '8px',
-                            border: `2px solid ${colors.success}`,
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '16px'
-                          }}>
-                            <CheckCircle size={18} color={colors.success} />
-                            <div>
-                              <div style={{ fontSize: '16px', fontWeight: '600', color: colors.text }}>
-                                {selectedSubvencion.faseProyecto}
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      }
-                      
-                      // Para EI SSS (fasesProyecto es un objeto con fase1, fase2, etc.)
-                      if (selectedSubvencion.fasesProyecto) {
-                        const fasesAnalizadas = subvencionesService.analizarFasesProyecto(selectedSubvencion.fasesProyecto);
-                        return fasesAnalizadas.map((fase, index) => (
-                          <div key={fase.campo} style={{
-                            padding: '12px 16px',
-                            backgroundColor: colors.success + '15',
-                            borderRadius: '8px',
-                            border: `2px solid ${colors.success}`,
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '16px'
-                          }}>
-                            <CheckCircle size={18} color={colors.success} />
-                            <div>
-                              <div style={{ fontSize: '16px', fontWeight: '600', color: colors.text }}>
-                                {fase.nombre}
-                              </div>
-                              <div style={{ fontSize: '12px', color: colors.textSecondary }}>
-                                Campo: {fase.campo} | Contenido: {fase.contenido}
-                              </div>
-                            </div>
-                          </div>
-                        ));
-                      }
-                      
-                      return null;
-                    })()}
-                  </div>
-                </div>
-              )}
-              
-              {/* Estado y Seguimiento */}
+              {/* Estado y Seguimiento (Estado = fase de la subvención) */}
               <div style={{ padding: '16px', backgroundColor: colors.background, borderRadius: '8px' }}>
                 <h3 style={{ fontSize: '16px', fontWeight: '600', color: colors.text, margin: '0 0 16px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <BarChart3 size={18} color={colors.primary} />
@@ -1986,40 +1910,28 @@ const SubvencionesPage = () => {
                 </h3>
                 <div style={{ display: 'grid', gap: '16px' }}>
                   <div>
-                    <label style={{ fontSize: '14px', fontWeight: '500', color: colors.text, marginBottom: '4px' }}>Estado</label>
+                    <label style={{ fontSize: '14px', fontWeight: '500', color: colors.text, marginBottom: '4px' }}>Estado (Fase)</label>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      {(() => {
-                        const estadoInfo = estados[selectedSubvencion.estado] || { 
-                          color: colors.textSecondary, 
-                          icon: AlertCircle, 
-                          label: selectedSubvencion.estado,
-                          bgColor: colors.textSecondary + '20',
-                          borderColor: colors.textSecondary
-                        };
-                        const EstadoIcon = estadoInfo.icon;
-                        return (
-                          <div style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            padding: '8px 16px',
-                            backgroundColor: estadoInfo.bgColor || estadoInfo.color + '20',
-                            border: `1px solid ${estadoInfo.borderColor || estadoInfo.color}`,
-                            borderRadius: '8px',
-                            gap: '8px',
-                            boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
-                          }}>
-                            <EstadoIcon size={16} color={estadoInfo.color} />
-                            <span style={{ 
-                              fontSize: '14px', 
-                              color: estadoInfo.color, 
-                              fontWeight: '600',
-                              letterSpacing: '0.025em'
-                            }}>
-                              {estadoInfo.label}
-                            </span>
-                          </div>
-                        );
-                      })()}
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        padding: '8px 16px',
+                        backgroundColor: (colors.primary || '#3b82f6') + '20',
+                        border: `1px solid ${colors.primary || '#3b82f6'}`,
+                        borderRadius: '8px',
+                        gap: '8px',
+                        boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
+                      }}>
+                        <Layers size={16} color={colors.primary || '#3b82f6'} />
+                        <span style={{ 
+                          fontSize: '14px', 
+                          color: colors.primary || '#3b82f6', 
+                          fontWeight: '600',
+                          letterSpacing: '0.025em'
+                        }}>
+                          {getEstadoFaseLabel(selectedSubvencion)}
+                        </span>
+                      </div>
                     </div>
                   </div>
                   
@@ -2922,11 +2834,32 @@ const SubvencionesPage = () => {
                     </div>
                     <div>
                       <label style={{ fontSize: '14px', fontWeight: '500', color: colors.text, marginBottom: '6px', display: 'block' }}>
-                        Estado
+                        Estado (Fase)
                       </label>
                       <select
-                        value={editingSubvencion.estado || ''}
-                        onChange={(e) => setEditingSubvencion(prev => ({ ...prev, estado: e.target.value }))}
+                        value={(() => {
+                          if (editingSubvencion.faseProyecto && typeof editingSubvencion.faseProyecto === 'string') {
+                            const m = editingSubvencion.faseProyecto.match(/FASE (\d+)/i);
+                            return m ? m[1] : '';
+                          }
+                          if (editingSubvencion.fasesProyecto) {
+                            for (let i = 1; i <= 8; i++) {
+                              const v = editingSubvencion.fasesProyecto[`fase${i}`];
+                              if (v === true || (v && String(v).trim().toUpperCase() === 'X')) return String(i);
+                            }
+                          }
+                          return '';
+                        })()}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (editingSubvencion.faseProyecto !== undefined) {
+                            setEditingSubvencion(prev => ({ ...prev, faseProyecto: val ? `FASE ${val}` : '' }));
+                          } else {
+                            const fases = {};
+                            for (let i = 1; i <= 8; i++) fases[`fase${i}`] = val === String(i);
+                            setEditingSubvencion(prev => ({ ...prev, fasesProyecto: { ...prev.fasesProyecto, ...fases } }));
+                          }
+                        }}
                         style={{
                           width: '100%',
                           padding: '12px',
@@ -2937,13 +2870,10 @@ const SubvencionesPage = () => {
                           fontSize: '14px'
                         }}
                       >
-                        <option value="">Seleccionar estado</option>
-                        <option value="CERRADA">Cerrada</option>
-                        <option value="CERRAD PDTE INGRESO DEL SALDO">Cerrada - Pendiente Ingreso</option>
-                        <option value="CERRADA PDTE APROBACIÓN FINAL">Cerrada - Pendiente Aprobación</option>
-                        <option value="VIGENTE">Vigente</option>
-                        <option value="POR DEFINIR">Por Definir</option>
-                        <option value="CERRADA DESDE EL PROVEE">Cerrada - Proveedor</option>
+                        <option value="">—</option>
+                        {[1, 2, 3, 4, 5, 6, 7, 8].map(n => (
+                          <option key={n} value={String(n)}>Fase {n}</option>
+                        ))}
                       </select>
                     </div>
                   </div>
@@ -2968,128 +2898,6 @@ const SubvencionesPage = () => {
                       placeholder="Ej: Asentado"
                     />
                   </div>
-                </div>
-              </div>
-
-              {/* Fases del Proyecto */}
-              <div style={{ padding: '16px', backgroundColor: colors.background, borderRadius: '8px' }}>
-                <div style={{ marginBottom: '16px' }}>
-                  <h3 style={{ fontSize: '16px', fontWeight: '600', color: colors.text, margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <Layers size={18} color={colors.primary} />
-                    Fases del Proyecto
-                  </h3>
-                  <p style={{ fontSize: '13px', color: colors.textSecondary, margin: '4px 0 0 0' }}>
-                    {editingSubvencion.faseProyecto !== undefined 
-                      ? 'Selecciona una fase' 
-                      : 'Haz clic en las fases para activarlas o desactivarlas'}
-                  </p>
-                </div>
-                
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '12px' }}>
-                  {[1, 2, 3, 4, 5, 6, 7, 8].map(num => {
-                    // Manejar Menjar d'Hort (faseProyecto como string)
-                    if (editingSubvencion.faseProyecto !== undefined) {
-                      const currentFase = editingSubvencion.faseProyecto || '';
-                      const isActive = currentFase.includes(`FASE ${num}`);
-                      
-                      return (
-                        <div 
-                          key={num} 
-                          style={{ 
-                            padding: '12px 16px',
-                            backgroundColor: isActive ? (colors.success + '15') : colors.surface,
-                            border: `2px solid ${isActive ? colors.success : colors.border}`,
-                            borderRadius: '8px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '12px',
-                            cursor: 'pointer',
-                            transition: 'all 0.2s ease'
-                          }}
-                          onClick={() => {
-                            setEditingSubvencion(prev => ({
-                              ...prev,
-                              faseProyecto: `FASE ${num}`
-                            }));
-                          }}
-                        >
-                          <div style={{
-                            width: '20px',
-                            height: '20px',
-                            borderRadius: '4px',
-                            border: `2px solid ${isActive ? colors.success : colors.border}`,
-                            backgroundColor: isActive ? colors.success : 'transparent',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            flexShrink: 0
-                          }}>
-                            {isActive && <CheckCircle size={14} color="white" />}
-                          </div>
-                          <div style={{ flex: 1 }}>
-                            <div style={{ fontSize: '14px', fontWeight: '500', color: colors.text }}>
-                              Fase {num}
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    }
-                    
-                    // Manejar EI SSS (fasesProyecto como objeto)
-                    const faseValue = editingSubvencion.fasesProyecto?.[`fase${num}`];
-                    const isBoolean = typeof faseValue === 'boolean';
-                    const isActive = isBoolean ? faseValue : (faseValue && faseValue !== 'X' && faseValue !== 'x' && faseValue.trim() !== '');
-                    
-                    return (
-                      <div 
-                        key={num} 
-                        style={{ 
-                          padding: '12px 16px',
-                          backgroundColor: isActive ? (colors.success + '15') : colors.surface,
-                          border: `2px solid ${isActive ? colors.success : colors.border}`,
-                          borderRadius: '8px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '12px',
-                          cursor: 'pointer',
-                          transition: 'all 0.2s ease'
-                        }}
-                        onClick={() => {
-                          setEditingSubvencion(prev => ({
-                            ...prev,
-                            fasesProyecto: {
-                              ...prev.fasesProyecto,
-                              [`fase${num}`]: !isActive
-                            }
-                          }));
-                        }}
-                      >
-                        <div style={{
-                          width: '20px',
-                          height: '20px',
-                          borderRadius: '4px',
-                          border: `2px solid ${isActive ? colors.success : colors.border}`,
-                          backgroundColor: isActive ? colors.success : 'transparent',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          flexShrink: 0
-                        }}>
-                          {isActive && <CheckCircle size={14} color="white" />}
-                        </div>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontSize: '14px', fontWeight: '500', color: colors.text }}>
-                            Fase {num}
-                          </div>
-                          {!isBoolean && isActive && (
-                            <div style={{ fontSize: '12px', color: colors.textSecondary, marginTop: '2px' }}>
-                              {faseValue}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
                 </div>
               </div>
             </div>

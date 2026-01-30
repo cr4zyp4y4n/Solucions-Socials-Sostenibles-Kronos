@@ -85,84 +85,107 @@ const ImportSociosModal = ({
     }
   };
 
-  const parseCSV = (csvContent) => {
-    const lines = csvContent.split('\n');
-    const socios = [];
-    
-    // Saltar la primera línea (headers)
-    for (let i = 1; i < lines.length; i++) {
-      const line = lines[i].trim();
-      if (!line) continue;
+  // Parsear fecha en formato DD/MM/YYYY o DD/MM/YYYY HH:mm:ss (no usar new Date(string) con este formato)
+  const parseDateDDMMYYYY = (str) => {
+    if (!str || typeof str !== 'string') return null;
+    const s = str.trim();
+    const datePart = s.split(/\s+/)[0];
+    const parts = datePart.split('/');
+    if (parts.length !== 3) return null;
+    const day = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10) - 1;
+    const year = parseInt(parts[2], 10);
+    if (isNaN(day) || isNaN(month) || isNaN(year) || year < 1900 || year > 2100) return null;
+    const d = new Date(year, month, day);
+    if (isNaN(d.getTime())) return null;
+    return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  };
 
-      // Parsear línea CSV (manejar comillas)
+  const parseCSV = (csvContent) => {
+    const raw = (csvContent || '').replace(/^\uFEFF/, ''); // quitar BOM si existe
+    const lines = raw.split(/\r?\n/).filter(l => l.trim() !== '');
+    if (lines.length < 2) return [];
+
+    const parseLine = (line) => {
       const fields = [];
-      let currentField = '';
+      let current = '';
       let inQuotes = false;
-      
       for (let j = 0; j < line.length; j++) {
         const char = line[j];
-        
-        if (char === '"') {
-          inQuotes = !inQuotes;
-        } else if (char === ',' && !inQuotes) {
-          fields.push(currentField.trim());
-          currentField = '';
-        } else {
-          currentField += char;
-        }
+        if (char === '"') inQuotes = !inQuotes;
+        else if (char === ',' && !inQuotes) {
+          fields.push(current.trim());
+          current = '';
+        } else current += char;
       }
-      fields.push(currentField.trim());
+      fields.push(current.trim());
+      return fields;
+    };
 
-      // Solo tomar los primeros 4 campos: Horario de envío, Correo, Nombre, Apellido
-      if (fields.length >= 4) {
-        const [horarioEnvio, correo, nombre, apellido] = fields;
-        
-        // Solo procesar si tiene datos válidos
-        if (correo && nombre) {
-          // Si no hay apellido, intentar extraerlo del correo
-          let apellidoFinal = apellido;
-          if (!apellidoFinal || apellidoFinal.trim() === '') {
-            // Extraer apellido del correo (ej: angelspallares1@hotmail.com -> Angels Pallares)
-            const emailPart = correo.split('@')[0];
-            if (emailPart) {
-              // Casos específicos conocidos
-              if (emailPart.toLowerCase().includes('angelspallares')) {
-                apellidoFinal = 'Angels Pallares';
-              } else {
-                // Convertir a formato nombre: angelspallares -> Angels Pallares
-                apellidoFinal = emailPart
-                  .replace(/\d+/g, '') // Quitar números
-                  .replace(/([a-z])([A-Z])/g, '$1 $2') // Separar camelCase
-                  .split(' ')
-                  .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-                  .join(' ');
-              }
-            }
-          }
-          // Convertir fecha de creación desde "Horario de envío"
-          let fechaCreacion = new Date().toISOString().split('T')[0]; // Fecha actual por defecto
-          
-          if (horarioEnvio && horarioEnvio !== '') {
-            try {
-              const fechaOriginal = new Date(horarioEnvio);
-              if (!isNaN(fechaOriginal.getTime())) {
-                fechaCreacion = fechaOriginal.toISOString().split('T')[0];
-              }
-            } catch (e) {
-              console.warn('Error parseando fecha:', horarioEnvio);
-            }
-          }
+    const header = parseLine(lines[0]);
+    const headerLower = header.map(h => (h || '').toLowerCase());
+    const socios = [];
 
-          socios.push({
-            nombre: nombre.trim(),
-            apellido: apellidoFinal.trim(),
-            correo: correo.trim().toLowerCase(),
-            socio_desde: fechaCreacion
-          });
+    // Formato "Socios IDONI - Respuestas de formulario": Marca temporal, N° carnet, NOM, COGNOM, DNI, E-MAIL, MOVIL
+    const isFormularioFormat = headerLower.some(h => h.includes('n° carnet') || h.includes('nº carnet')) &&
+      (headerLower.some(h => h === 'nom') && headerLower.some(h => h.includes('cognom')));
+
+    for (let i = 1; i < lines.length; i++) {
+      const fields = parseLine(lines[i]);
+      if (fields.length < 4) continue;
+
+      let nombre, apellido, correo, socio_desde, id_unico, dni, telefono;
+
+      if (isFormularioFormat && fields.length >= 6) {
+        const idxMarca = headerLower.findIndex(h => h.includes('marca temporal'));
+        const idxCarnet = headerLower.findIndex(h => (h || '').includes('carnet'));
+        const idxNom = headerLower.findIndex(h => h === 'nom');
+        const idxCognom = headerLower.findIndex(h => (h || '').includes('cognom'));
+        const idxDni = headerLower.findIndex(h => (h || '') === 'dni');
+        const idxEmail = headerLower.findIndex(h => (h || '').includes('e-mail') || (h || '').includes('email'));
+        const idxMovil = headerLower.findIndex(h => (h || '').includes('movil') || (h || '').includes('móvil') || (h || '').includes('telefono'));
+
+        const get = (idx) => (idx >= 0 && idx < fields.length ? fields[idx] : '').trim();
+        nombre = get(idxNom);
+        apellido = get(idxCognom);
+        correo = get(idxEmail);
+        dni = get(idxDni);
+        telefono = get(idxMovil);
+        if (!nombre && !correo) continue;
+
+        const marca = get(idxMarca);
+        socio_desde = parseDateDDMMYYYY(marca) || new Date().toISOString().split('T')[0];
+
+        const carnetVal = get(idxCarnet);
+        if (carnetVal !== '') {
+          const n = parseInt(carnetVal, 10);
+          id_unico = isNaN(n) ? carnetVal : n;
         }
+      } else {
+        // Formato legacy: Horario de envío, Correo, Nombre, Apellido (4 columnas)
+        const [horarioEnvio, correoLegacy, nombreLegacy, apellidoLegacy] = fields;
+        if (!correoLegacy && !nombreLegacy) continue;
+        nombre = (nombreLegacy || '').trim();
+        apellido = (apellidoLegacy || '').trim();
+        correo = (correoLegacy || '').trim().toLowerCase();
+        if (!apellido && correo) {
+          const emailPart = correo.split('@')[0];
+          apellido = emailPart ? emailPart.replace(/\d+/g, '').split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ') : '';
+        }
+        socio_desde = parseDateDDMMYYYY(horarioEnvio) || new Date().toISOString().split('T')[0];
       }
+
+      socios.push({
+        nombre: nombre || '',
+        apellido: apellido || '',
+        correo: (correo || '').trim().toLowerCase(),
+        socio_desde: socio_desde || new Date().toISOString().split('T')[0],
+        ...(id_unico !== undefined && id_unico !== '' && { id_unico }),
+        ...(dni !== undefined && dni !== '' && { dni }),
+        ...(telefono !== undefined && telefono !== '' && { telefono })
+      });
     }
-    
+
     return socios;
   };
 

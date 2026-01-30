@@ -145,6 +145,62 @@ export function formatDateTimeMadrid(dateString) {
 }
 
 /**
+ * Parsea un valor "solo fecha" (YYYY-MM-DD o ISO con hora) como fecha LOCAL.
+ * - Si es YYYY-MM-DD: se interpreta como día local (no UTC).
+ * - Si es ISO con T (ej. 2024-01-14T23:00:00.000Z): se usa el día en hora local de ese instante.
+ * @param {string|Date} value - Fecha en formato YYYY-MM-DD o ISO
+ * @returns {Date|null} Date en hora local o null
+ */
+export function parseDateOnlyAsLocal(value) {
+  if (value == null) return null;
+  if (value instanceof Date) {
+    if (isNaN(value.getTime())) return null;
+    // Usar día local para no depender de UTC
+    return new Date(value.getFullYear(), value.getMonth(), value.getDate());
+  }
+  const s = String(value).trim();
+  // Si viene con hora (ISO), interpretar como instante y tomar día local
+  if (s.includes('T') || s.includes('Z') || /^\d{4}-\d{2}-\d{2}.+\d/.test(s)) {
+    const d = new Date(s);
+    if (!isNaN(d.getTime()))
+      return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    return null;
+  }
+  // Solo YYYY-MM-DD: interpretar como día local
+  const match = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (match) {
+    const y = parseInt(match[1], 10);
+    const m = parseInt(match[2], 10) - 1;
+    const d = parseInt(match[3], 10);
+    const date = new Date(y, m, d);
+    return isNaN(date.getTime()) ? null : date;
+  }
+  return null;
+}
+
+/**
+ * Formatea una fecha "solo día" (ej. socio_desde) en español, interpretando YYYY-MM-DD como fecha local.
+ * @param {string|Date} value - Fecha en formato YYYY-MM-DD o ISO
+ * @param {Object} [options] - Opciones de toLocaleDateString
+ * @returns {string} Fecha formateada o ''
+ */
+export function formatDateOnlyLocal(value, options = { year: 'numeric', month: 'long', day: 'numeric' }) {
+  const date = parseDateOnlyAsLocal(value);
+  if (!date) return '';
+  return date.toLocaleDateString('es-ES', options);
+}
+
+/**
+ * Obtiene el año de una fecha "solo día" (YYYY-MM-DD) como fecha local.
+ * @param {string|Date} value - Fecha en formato YYYY-MM-DD o ISO
+ * @returns {number} Año (ej. 2024) o NaN
+ */
+export function getYearFromDateOnly(value) {
+  const date = parseDateOnlyAsLocal(value);
+  return date ? date.getFullYear() : NaN;
+}
+
+/**
  * Obtiene la hora actual del servidor desde Supabase
  * @param {Object} supabase - Cliente de Supabase
  * @returns {Promise<Date>} Fecha actual del servidor en zona horaria de Madrid

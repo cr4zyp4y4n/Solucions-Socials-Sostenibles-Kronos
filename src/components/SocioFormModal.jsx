@@ -20,7 +20,9 @@ const SocioFormModal = ({
   const [formData, setFormData] = useState({
     nombre: '',
     apellido: '',
-    correo: ''
+    correo: '',
+    dni: '',
+    telefono: ''
   });
   
   const [loading, setLoading] = useState(false);
@@ -30,7 +32,7 @@ const SocioFormModal = ({
   // Resetear formulario al abrir/cerrar
   React.useEffect(() => {
     if (isOpen) {
-      setFormData({ nombre: '', apellido: '', correo: '' });
+      setFormData({ nombre: '', apellido: '', correo: '', dni: '', telefono: '' });
       setError(null);
       setSuccess(false);
     }
@@ -350,6 +352,40 @@ const SocioFormModal = ({
               </div>
             </div>
 
+            {/* DNI (opcional) */}
+            <div>
+              <label style={{ fontSize: '14px', fontWeight: '600', color: colors.text, marginBottom: '8px', display: 'block' }}>DNI/NIF</label>
+              <input
+                type="text"
+                name="dni"
+                value={formData.dni}
+                onChange={handleChange}
+                placeholder="Opcional"
+                disabled={loading}
+                style={{
+                  width: '100%', padding: '12px', border: `1px solid ${colors.border}`, borderRadius: '8px',
+                  backgroundColor: colors.background, color: colors.text, fontSize: '14px', outline: 'none',
+                  opacity: loading ? 0.6 : 1, boxSizing: 'border-box'
+                }}
+              />
+            </div>
+            {/* Teléfono (opcional) */}
+            <div>
+              <label style={{ fontSize: '14px', fontWeight: '600', color: colors.text, marginBottom: '8px', display: 'block' }}>Teléfono</label>
+              <input
+                type="text"
+                name="telefono"
+                value={formData.telefono}
+                onChange={handleChange}
+                placeholder="Opcional"
+                disabled={loading}
+                style={{
+                  width: '100%', padding: '12px', border: `1px solid ${colors.border}`, borderRadius: '8px',
+                  backgroundColor: colors.background, color: colors.text, fontSize: '14px', outline: 'none',
+                  opacity: loading ? 0.6 : 1, boxSizing: 'border-box'
+                }}
+              />
+            </div>
             {/* Info adicional */}
             <div style={{
               backgroundColor: colors.primary + '10',
