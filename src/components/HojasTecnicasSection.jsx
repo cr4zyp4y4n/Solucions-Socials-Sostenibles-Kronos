@@ -9,6 +9,7 @@ import HojaTecnicaModal from './HojaTecnicaModal';
 const HojasTecnicasSection = () => {
     const { colors } = useTheme();
     const [searchTerm, setSearchTerm] = useState('');
+    const [sortBy, setSortBy] = useState('date');
     const [hojasTecnicas, setHojasTecnicas] = useState([]);
     const [filteredHojas, setFilteredHojas] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -21,17 +22,29 @@ const HojasTecnicasSection = () => {
         loadHojasTecnicas();
     }, []);
 
-    // Filter hojas when search term changes
+    // Filter and sort hojas when search term or sort order changes
     useEffect(() => {
-        if (searchTerm.trim() === '') {
-            setFilteredHojas(hojasTecnicas);
-        } else {
-            const filtered = hojasTecnicas.filter(hoja =>
+        let result = [...hojasTecnicas];
+
+        // Filter
+        if (searchTerm.trim() !== '') {
+            result = result.filter(hoja =>
                 hoja.nombre_plato.toLowerCase().includes(searchTerm.toLowerCase())
             );
-            setFilteredHojas(filtered);
         }
-    }, [searchTerm, hojasTecnicas]);
+
+        // Sort
+        result.sort((a, b) => {
+            if (sortBy === 'date') {
+                return new Date(b.created_at) - new Date(a.created_at);
+            } else if (sortBy === 'alpha') {
+                return a.nombre_plato.localeCompare(b.nombre_plato);
+            }
+            return 0;
+        });
+
+        setFilteredHojas(result);
+    }, [searchTerm, hojasTecnicas, sortBy]);
 
     const loadHojasTecnicas = async () => {
         try {
@@ -98,7 +111,45 @@ const HojasTecnicasSection = () => {
                 <div style={{
                     display: 'flex',
                     gap: '12px',
+                    alignItems: 'center',
                 }}>
+                    <div style={{
+                        position: 'relative',
+                        display: 'flex',
+                        alignItems: 'center',
+                        backgroundColor: colors.surface,
+                        border: `1px solid ${colors.border}`,
+                        borderRadius: '8px',
+                        padding: '0 12px',
+                        height: '42px',
+                    }}>
+                        <span style={{
+                            fontSize: '14px',
+                            color: colors.textSecondary,
+                            marginRight: '8px',
+                            whiteSpace: 'nowrap',
+                        }}>
+                            Ordenar por:
+                        </span>
+                        <select
+                            value={sortBy}
+                            onChange={(e) => setSortBy(e.target.value)}
+                            style={{
+                                border: 'none',
+                                background: 'transparent',
+                                color: colors.text,
+                                fontSize: '14px',
+                                fontWeight: '500',
+                                outline: 'none',
+                                cursor: 'pointer',
+                                paddingRight: '4px',
+                            }}
+                        >
+                            <option value="date">Fecha de añadido</option>
+                            <option value="alpha">Orden alfabético</option>
+                        </select>
+                    </div>
+
                     <motion.button
                         whileHover={{ scale: 1.02 }}
                         whileTap={{ scale: 0.98 }}
@@ -114,6 +165,7 @@ const HojasTecnicasSection = () => {
                             display: 'flex',
                             alignItems: 'center',
                             gap: '8px',
+                            height: '42px',
                         }}
                     >
                         <Upload size={16} />
@@ -136,6 +188,7 @@ const HojasTecnicasSection = () => {
                             display: 'flex',
                             alignItems: 'center',
                             gap: '8px',
+                            height: '42px',
                         }}
                     >
                         <Plus size={16} />
