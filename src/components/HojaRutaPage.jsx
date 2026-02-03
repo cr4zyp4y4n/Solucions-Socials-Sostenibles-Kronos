@@ -28,6 +28,7 @@ import { useTheme } from './ThemeContext';
 import { useAuth } from './AuthContext';
 import { useNavigation } from './NavigationContext';
 import hojaRutaService from '../services/hojaRutaSupabaseService';
+import { supabase } from '../config/supabase';
 import HojaRutaUploadModal from './HojaRutaUploadModal';
 import HojaRutaEditModal from './HojaRutaEditModal';
 import HojaRutaHistoricoModal from './HojaRutaHistoricoModal';
@@ -36,6 +37,663 @@ import ChecklistSection from './ChecklistSection';
 import FirmaConfirmModal from './FirmaConfirmModal';
 import PersonalSection from './PersonalSection';
 import EmpleadoDetailModal from './EmpleadoDetailModal';
+
+// Componente para editar un elemento de equipamiento
+const EquipamientoItem = ({ item, hojaId, onUpdate, canEdit, colors }) => {
+  const [editando, setEditando] = useState(false);
+  const [itemEdit, setItemEdit] = useState(item.item || '');
+  const [cantidadEdit, setCantidadEdit] = useState(item.cantidad || '');
+
+  const handleGuardar = async () => {
+    try {
+      await hojaRutaService.updateEquipamientoItem(hojaId, item.id, {
+        item: itemEdit,
+        cantidad: cantidadEdit
+      });
+      onUpdate();
+      setEditando(false);
+    } catch (err) {
+      console.error('Error actualizando:', err);
+      alert('Error al actualizar el elemento');
+    }
+  };
+
+  const handleEliminar = async () => {
+    if (window.confirm('¿Eliminar este elemento?')) {
+      try {
+        await hojaRutaService.deleteEquipamientoItem(hojaId, item.id);
+        onUpdate();
+      } catch (err) {
+        console.error('Error eliminando:', err);
+        alert('Error al eliminar el elemento');
+      }
+    }
+  };
+
+  if (editando && canEdit) {
+    return (
+      <div style={{
+        padding: '12px',
+        backgroundColor: colors.background,
+        borderRadius: '8px',
+        border: `2px solid ${colors.primary}`,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '8px'
+      }}>
+        <input
+          type="text"
+          value={itemEdit}
+          onChange={(e) => setItemEdit(e.target.value)}
+          style={{
+            padding: '8px',
+            borderRadius: '6px',
+            border: `1px solid ${colors.border}`,
+            backgroundColor: colors.surface,
+            color: colors.text,
+            fontSize: '14px'
+          }}
+          placeholder="Elemento"
+        />
+        <input
+          type="text"
+          value={cantidadEdit}
+          onChange={(e) => setCantidadEdit(e.target.value)}
+          style={{
+            padding: '8px',
+            borderRadius: '6px',
+            border: `1px solid ${colors.border}`,
+            backgroundColor: colors.surface,
+            color: colors.text,
+            fontSize: '12px'
+          }}
+          placeholder="Cantidad"
+        />
+        <div style={{ display: 'flex', gap: '6px' }}>
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={handleGuardar}
+            style={{
+              flex: 1,
+              padding: '6px',
+              backgroundColor: colors.primary,
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontSize: '12px'
+            }}
+          >
+            Guardar
+          </motion.button>
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => {
+              setEditando(false);
+              setItemEdit(item.item || '');
+              setCantidadEdit(item.cantidad || '');
+            }}
+            style={{
+              flex: 1,
+              padding: '6px',
+              backgroundColor: colors.textSecondary + '20',
+              color: colors.textSecondary,
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontSize: '12px'
+            }}
+          >
+            Cancelar
+          </motion.button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      style={{
+        padding: '12px',
+        backgroundColor: colors.background,
+        borderRadius: '8px',
+        border: `1px solid ${colors.border}`,
+        position: 'relative'
+      }}
+    >
+      <p style={{ 
+        fontSize: '14px', 
+        fontWeight: '600',
+        color: colors.text,
+        margin: '0 0 4px 0'
+      }}>
+        {item.item}
+      </p>
+      {item.cantidad && (
+        <p style={{ 
+          fontSize: '12px', 
+          color: colors.textSecondary,
+          margin: 0
+        }}>
+          Cantidad: {item.cantidad}
+        </p>
+      )}
+      {canEdit && (
+        <div style={{ 
+          position: 'absolute', 
+          top: '8px', 
+          right: '8px', 
+          display: 'flex', 
+          gap: '4px' 
+        }}>
+          <motion.button
+            whileHover={{ scale: 1.1 }}
+            whileTap={{ scale: 0.9 }}
+            onClick={() => {
+              setEditando(true);
+              setItemEdit(item.item || '');
+              setCantidadEdit(item.cantidad || '');
+            }}
+            style={{
+              padding: '4px',
+              backgroundColor: colors.primary + '20',
+              color: colors.primary,
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
+          >
+            <Edit3 size={12} />
+          </motion.button>
+          <motion.button
+            whileHover={{ scale: 1.1 }}
+            whileTap={{ scale: 0.9 }}
+            onClick={handleEliminar}
+            style={{
+              padding: '4px',
+              backgroundColor: colors.error + '20',
+              color: colors.error,
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
+          >
+            <Trash2 size={12} />
+          </motion.button>
+        </div>
+      )}
+    </motion.div>
+  );
+};
+
+// Componente para editar un elemento de menú
+const MenuItem = ({ menu, hojaId, onUpdate, canEdit, colors }) => {
+  const [editando, setEditando] = useState(false);
+  const [itemEdit, setItemEdit] = useState(menu.item || '');
+  const [cantidadEdit, setCantidadEdit] = useState(menu.cantidad || '');
+  const [proveedorEdit, setProveedorEdit] = useState(menu.proveedor || '');
+
+  const handleGuardar = async () => {
+    try {
+      await hojaRutaService.updateMenuItem(hojaId, menu.id, {
+        tipo: menu.tipo,
+        hora: menu.hora || null,
+        item: itemEdit,
+        cantidad: cantidadEdit,
+        proveedor: proveedorEdit
+      });
+      onUpdate();
+      setEditando(false);
+    } catch (err) {
+      console.error('Error actualizando:', err);
+      alert('Error al actualizar el elemento');
+    }
+  };
+
+  const handleEliminar = async () => {
+    if (window.confirm('¿Eliminar este elemento?')) {
+      try {
+        await hojaRutaService.deleteMenuItem(hojaId, menu.id);
+        onUpdate();
+      } catch (err) {
+        console.error('Error eliminando:', err);
+        alert('Error al eliminar el elemento');
+      }
+    }
+  };
+
+  if (editando && canEdit) {
+    return (
+      <div style={{
+        padding: '12px',
+        backgroundColor: colors.background,
+        borderRadius: '8px',
+        border: `2px solid ${colors.primary}`,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '8px'
+      }}>
+        <input
+          type="text"
+          value={itemEdit}
+          onChange={(e) => setItemEdit(e.target.value)}
+          style={{
+            padding: '8px',
+            borderRadius: '6px',
+            border: `1px solid ${colors.border}`,
+            backgroundColor: colors.surface,
+            color: colors.text,
+            fontSize: '14px'
+          }}
+          placeholder="Item del menú"
+        />
+        <input
+          type="text"
+          value={cantidadEdit}
+          onChange={(e) => setCantidadEdit(e.target.value)}
+          style={{
+            padding: '8px',
+            borderRadius: '6px',
+            border: `1px solid ${colors.border}`,
+            backgroundColor: colors.surface,
+            color: colors.text,
+            fontSize: '12px'
+          }}
+          placeholder="Cantidad"
+        />
+        <input
+          type="text"
+          value={proveedorEdit}
+          onChange={(e) => setProveedorEdit(e.target.value)}
+          style={{
+            padding: '8px',
+            borderRadius: '6px',
+            border: `1px solid ${colors.border}`,
+            backgroundColor: colors.surface,
+            color: colors.text,
+            fontSize: '12px'
+          }}
+          placeholder="Proveedor"
+        />
+        <div style={{ display: 'flex', gap: '6px' }}>
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={handleGuardar}
+            style={{
+              flex: 1,
+              padding: '6px',
+              backgroundColor: colors.primary,
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontSize: '12px'
+            }}
+          >
+            Guardar
+          </motion.button>
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => {
+              setEditando(false);
+              setItemEdit(menu.item || '');
+              setCantidadEdit(menu.cantidad || '');
+              setProveedorEdit(menu.proveedor || '');
+            }}
+            style={{
+              flex: 1,
+              padding: '6px',
+              backgroundColor: colors.textSecondary + '20',
+              color: colors.textSecondary,
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontSize: '12px'
+            }}
+          >
+            Cancelar
+          </motion.button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{
+      padding: '12px',
+      backgroundColor: colors.background,
+      borderRadius: '8px',
+      border: `1px solid ${colors.border}`,
+      position: 'relative',
+      paddingRight: canEdit ? '50px' : '12px' // Espacio para los botones
+    }}>
+      {/* Botones en la esquina superior derecha */}
+      {canEdit && (
+        <div style={{ 
+          position: 'absolute', 
+          top: '8px', 
+          right: '8px', 
+          display: 'flex', 
+          gap: '4px',
+          zIndex: 10
+        }}>
+          <motion.button
+            whileHover={{ scale: 1.1 }}
+            whileTap={{ scale: 0.9 }}
+            onClick={() => {
+              setEditando(true);
+              setItemEdit(menu.item || '');
+              setCantidadEdit(menu.cantidad || '');
+              setProveedorEdit(menu.proveedor || '');
+            }}
+            style={{
+              padding: '4px',
+              backgroundColor: colors.primary + '20',
+              color: colors.primary,
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0
+            }}
+          >
+            <Edit3 size={12} />
+          </motion.button>
+          <motion.button
+            whileHover={{ scale: 1.1 }}
+            whileTap={{ scale: 0.9 }}
+            onClick={handleEliminar}
+            style={{
+              padding: '4px',
+              backgroundColor: colors.error + '20',
+              color: colors.error,
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0
+            }}
+          >
+            <Trash2 size={12} />
+          </motion.button>
+        </div>
+      )}
+      
+      {/* Contenido principal */}
+      <div style={{ flex: 1 }}>
+        <p style={{ 
+          fontSize: '14px', 
+          fontWeight: '600',
+          color: colors.text,
+          margin: '0 0 4px 0',
+          wordBreak: 'break-word'
+        }}>
+          {menu.item}
+        </p>
+        {menu.cantidad && (
+          <p style={{ 
+            fontSize: '12px', 
+            color: colors.textSecondary,
+            margin: '0 0 4px 0'
+          }}>
+            Cantidad: {menu.cantidad}
+          </p>
+        )}
+        {menu.proveedor && (
+          <p style={{ 
+            fontSize: '12px', 
+            color: colors.primary,
+            fontWeight: '500',
+            margin: 0
+          }}>
+            {menu.proveedor}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// Componente para editar un elemento de bebida
+const BebidaItem = ({ bebida, hojaId, onUpdate, canEdit, colors }) => {
+  const [editando, setEditando] = useState(false);
+  const [itemEdit, setItemEdit] = useState(bebida.item || '');
+  const [cantidadEdit, setCantidadEdit] = useState(bebida.cantidad || '');
+  const [unidadEdit, setUnidadEdit] = useState(bebida.unidad || '');
+
+  const handleGuardar = async () => {
+    try {
+      await hojaRutaService.updateBebidaItem(hojaId, bebida.id, {
+        item: itemEdit,
+        cantidad: cantidadEdit,
+        unidad: unidadEdit
+      });
+      onUpdate();
+      setEditando(false);
+    } catch (err) {
+      console.error('Error actualizando:', err);
+      alert('Error al actualizar el elemento');
+    }
+  };
+
+  const handleEliminar = async () => {
+    if (window.confirm('¿Eliminar este elemento?')) {
+      try {
+        await hojaRutaService.deleteBebidaItem(hojaId, bebida.id);
+        onUpdate();
+      } catch (err) {
+        console.error('Error eliminando:', err);
+        alert('Error al eliminar el elemento');
+      }
+    }
+  };
+
+  if (editando && canEdit) {
+    return (
+      <div style={{
+        padding: '12px',
+        backgroundColor: colors.background,
+        borderRadius: '8px',
+        border: `2px solid ${colors.primary}`,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '8px'
+      }}>
+        <input
+          type="text"
+          value={itemEdit}
+          onChange={(e) => setItemEdit(e.target.value)}
+          style={{
+            padding: '8px',
+            borderRadius: '6px',
+            border: `1px solid ${colors.border}`,
+            backgroundColor: colors.surface,
+            color: colors.text,
+            fontSize: '14px'
+          }}
+          placeholder="Bebida"
+        />
+        <input
+          type="text"
+          value={cantidadEdit}
+          onChange={(e) => setCantidadEdit(e.target.value)}
+          style={{
+            padding: '8px',
+            borderRadius: '6px',
+            border: `1px solid ${colors.border}`,
+            backgroundColor: colors.surface,
+            color: colors.text,
+            fontSize: '12px'
+          }}
+          placeholder="Cantidad"
+        />
+        <input
+          type="text"
+          value={unidadEdit}
+          onChange={(e) => setUnidadEdit(e.target.value)}
+          style={{
+            padding: '8px',
+            borderRadius: '6px',
+            border: `1px solid ${colors.border}`,
+            backgroundColor: colors.surface,
+            color: colors.text,
+            fontSize: '12px'
+          }}
+          placeholder="Unidad"
+        />
+        <div style={{ display: 'flex', gap: '6px' }}>
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={handleGuardar}
+            style={{
+              flex: 1,
+              padding: '6px',
+              backgroundColor: colors.primary,
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontSize: '12px'
+            }}
+          >
+            Guardar
+          </motion.button>
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => {
+              setEditando(false);
+              setItemEdit(bebida.item || '');
+              setCantidadEdit(bebida.cantidad || '');
+              setUnidadEdit(bebida.unidad || '');
+            }}
+            style={{
+              flex: 1,
+              padding: '6px',
+              backgroundColor: colors.textSecondary + '20',
+              color: colors.textSecondary,
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontSize: '12px'
+            }}
+          >
+            Cancelar
+          </motion.button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      style={{
+        padding: '12px',
+        backgroundColor: colors.background,
+        borderRadius: '8px',
+        border: `1px solid ${colors.border}`,
+        position: 'relative'
+      }}
+    >
+      <p style={{ 
+        fontSize: '14px', 
+        fontWeight: '600',
+        color: colors.text,
+        margin: '0 0 4px 0'
+      }}>
+        {bebida.item}
+      </p>
+      {bebida.cantidad && (
+        <p style={{ 
+          fontSize: '12px', 
+          color: colors.textSecondary,
+          margin: '0 0 4px 0'
+        }}>
+          Cantidad: {bebida.cantidad}
+        </p>
+      )}
+      {bebida.unidad && (
+        <p style={{ 
+          fontSize: '12px', 
+          color: colors.textSecondary,
+          margin: 0
+        }}>
+          Unidad: {bebida.unidad}
+        </p>
+      )}
+      {canEdit && (
+        <div style={{ 
+          position: 'absolute', 
+          top: '8px', 
+          right: '8px', 
+          display: 'flex', 
+          gap: '4px' 
+        }}>
+          <motion.button
+            whileHover={{ scale: 1.1 }}
+            whileTap={{ scale: 0.9 }}
+            onClick={() => {
+              setEditando(true);
+              setItemEdit(bebida.item || '');
+              setCantidadEdit(bebida.cantidad || '');
+              setUnidadEdit(bebida.unidad || '');
+            }}
+            style={{
+              padding: '4px',
+              backgroundColor: colors.primary + '20',
+              color: colors.primary,
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
+          >
+            <Edit3 size={12} />
+          </motion.button>
+          <motion.button
+            whileHover={{ scale: 1.1 }}
+            whileTap={{ scale: 0.9 }}
+            onClick={handleEliminar}
+            style={{
+              padding: '4px',
+              backgroundColor: colors.error + '20',
+              color: colors.error,
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
+          >
+            <Trash2 size={12} />
+          </motion.button>
+        </div>
+      )}
+    </motion.div>
+  );
+};
 
 const HojaRutaPage = () => {
   const { colors, isDark } = useTheme();
@@ -109,10 +767,14 @@ const HojaRutaPage = () => {
     }
   };
 
-  // Verificar si el usuario es jefe
-  const isJefe = useMemo(() => {
-    return user && ['jefe', 'admin', 'administrador'].includes(user.role?.toLowerCase());
+  // Verificar si el usuario puede editar (admin, jefe, management)
+  const canEdit = useMemo(() => {
+    const userRole = (user?.user_metadata?.role || user?.role || '').toLowerCase();
+    return ['admin', 'jefe', 'manager', 'management', 'administrador'].includes(userRole);
   }, [user]);
+
+  // Verificar si el usuario es jefe (para compatibilidad)
+  const isJefe = canEdit;
 
   // Cargar datos iniciales
   useEffect(() => {
@@ -131,6 +793,67 @@ const HojaRutaPage = () => {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSection]);
+
+  // Suscripción en tiempo real para actualizar cuando otros usuarios hacen cambios
+  useEffect(() => {
+    if (!hojaActual?.id) return;
+
+    const channel = supabase
+      .channel(`hoja-ruta-${hojaActual.id}`)
+      .on('postgres_changes', 
+        { 
+          event: '*', // INSERT, UPDATE, DELETE
+          schema: 'public', 
+          table: 'hojas_ruta_equipamiento',
+          filter: `hoja_ruta_id=eq.${hojaActual.id}`
+        }, 
+        async (payload) => {
+          console.log('🔄 Cambio detectado en equipamiento:', payload);
+          // Recargar la hoja completa
+          const hojaActualizada = await hojaRutaService.getHojaRuta(hojaActual.id);
+          if (hojaActualizada) {
+            setHojaActual(hojaActualizada);
+          }
+        }
+      )
+      .on('postgres_changes', 
+        { 
+          event: '*',
+          schema: 'public', 
+          table: 'hojas_ruta_menus',
+          filter: `hoja_ruta_id=eq.${hojaActual.id}`
+        }, 
+        async (payload) => {
+          console.log('🔄 Cambio detectado en menús:', payload);
+          const hojaActualizada = await hojaRutaService.getHojaRuta(hojaActual.id);
+          if (hojaActualizada) {
+            setHojaActual(hojaActualizada);
+          }
+        }
+      )
+      .on('postgres_changes', 
+        { 
+          event: '*',
+          schema: 'public', 
+          table: 'hojas_ruta_bebidas',
+          filter: `hoja_ruta_id=eq.${hojaActual.id}`
+        }, 
+        async (payload) => {
+          console.log('🔄 Cambio detectado en bebidas:', payload);
+          const hojaActualizada = await hojaRutaService.getHojaRuta(hojaActual.id);
+          if (hojaActualizada) {
+            setHojaActual(hojaActualizada);
+          }
+        }
+      )
+      .subscribe((status) => {
+        console.log('📡 Estado de suscripción:', status);
+      });
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [hojaActual?.id]);
 
   // Generar checklists automáticas cuando se carga una hoja de ruta
   useEffect(() => {
@@ -1057,23 +1780,28 @@ const HojaRutaPage = () => {
             </motion.div>
 
             {/* Equipamiento */}
-            {hojaActual.equipamiento && hojaActual.equipamiento.length > 0 && (
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5, delay: 0.5 }}
-                style={{
-                backgroundColor: colors.surface,
-                borderRadius: '12px',
-                padding: '24px',
-                border: `1px solid ${colors.border}`,
-                marginBottom: '24px'
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.5 }}
+              style={{
+              backgroundColor: colors.surface,
+              borderRadius: '12px',
+              padding: '24px',
+              border: `1px solid ${colors.border}`,
+              marginBottom: '24px'
+            }}>
+              <div style={{ 
+                display: 'flex', 
+                justifyContent: 'space-between', 
+                alignItems: 'center',
+                marginBottom: '20px'
               }}>
                 <h3 style={{ 
                   fontSize: '18px', 
                   fontWeight: 'bold', 
                   color: colors.text,
-                  margin: '0 0 20px 0',
+                  margin: 0,
                   display: 'flex',
                   alignItems: 'center',
                   gap: '12px'
@@ -1081,71 +1809,92 @@ const HojaRutaPage = () => {
                   <Utensils size={20} color={colors.primary} />
                   Equipamiento y Material
                 </h3>
+                {canEdit && (
+                  <motion.button
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={async () => {
+                      const nuevoItem = { item: 'Nuevo elemento', cantidad: '' };
+                      try {
+                        await hojaRutaService.addEquipamientoItem(hojaActual.id, nuevoItem);
+                        const hojaActualizada = await hojaRutaService.getHojaRuta(hojaActual.id);
+                        setHojaActual(hojaActualizada);
+                      } catch (err) {
+                        console.error('Error añadiendo equipamiento:', err);
+                        setError('Error al añadir el elemento');
+                      }
+                    }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '8px 12px',
+                      backgroundColor: colors.primary,
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      fontSize: '13px',
+                      fontWeight: '500'
+                    }}
+                  >
+                    <Plus size={14} />
+                    Añadir
+                  </motion.button>
+                )}
+              </div>
 
+              {hojaActual.equipamiento && hojaActual.equipamiento.length > 0 ? (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '12px' }}>
                   {hojaActual.equipamiento.map((item, index) => (
-                    <motion.div
-                      key={index}
-                      initial={{ opacity: 0, scale: 0.95 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      transition={{ duration: 0.3, delay: 0.5 + index * 0.05 }}
-                      style={{
-                      padding: '12px',
-                      backgroundColor: colors.background,
-                      borderRadius: '8px',
-                      border: `1px solid ${colors.border}`
-                    }}>
-                      <p style={{ 
-                        fontSize: '14px', 
-                        fontWeight: '600',
-                        color: colors.text,
-                        margin: '0 0 4px 0'
-                      }}>
-                        {item.item}
-                      </p>
-                      {item.cantidad && (
-                        <p style={{ 
-                          fontSize: '12px', 
-                          color: colors.textSecondary,
-                          margin: '0 0 4px 0'
-                        }}>
-                          Cantidad: {item.cantidad}
-                        </p>
-                      )}
-                      {item.notas && (
-                        <p style={{ 
-                          fontSize: '12px', 
-                          color: colors.warning,
-                          margin: 0,
-                          fontStyle: 'italic'
-                        }}>
-                          {item.notas}
-                        </p>
-                      )}
-                    </motion.div>
+                    <EquipamientoItem
+                      key={item.id || index}
+                      item={item}
+                      hojaId={hojaActual.id}
+                      onUpdate={async () => {
+                        const hojaActualizada = await hojaRutaService.getHojaRuta(hojaActual.id);
+                        setHojaActual(hojaActualizada);
+                      }}
+                      canEdit={canEdit}
+                      colors={colors}
+                    />
                   ))}
                 </div>
-              </motion.div>
-            )}
+              ) : (
+                <p style={{ 
+                  color: colors.textSecondary, 
+                  fontStyle: 'italic', 
+                  textAlign: 'center',
+                  padding: '20px'
+                }}>
+                  No hay equipamiento registrado
+                </p>
+              )}
+            </motion.div>
 
             {/* Menús */}
-            {hojaActual.menus && hojaActual.menus.length > 0 && (
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5, delay: 0.6 }}
-                style={{
-                backgroundColor: colors.surface,
-                borderRadius: '12px',
-                padding: '24px',
-                border: `1px solid ${colors.border}`,
-                marginBottom: '24px'
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.6 }}
+              style={{
+              backgroundColor: colors.surface,
+              borderRadius: '12px',
+              padding: '24px',
+              border: `1px solid ${colors.border}`,
+              marginBottom: '24px'
+            }}>
+              <div style={{ 
+                display: 'flex', 
+                justifyContent: 'space-between', 
+                alignItems: 'center',
+                marginBottom: '20px'
               }}>
                 <h3 style={{ 
                   fontSize: '18px', 
                   fontWeight: 'bold', 
                   color: colors.text,
-                  margin: '0 0 20px 0',
+                  margin: 0,
                   display: 'flex',
                   alignItems: 'center',
                   gap: '12px'
@@ -1153,9 +1902,44 @@ const HojaRutaPage = () => {
                   <Coffee size={20} color={colors.primary} />
                   Menús
                 </h3>
+                {canEdit && (
+                  <motion.button
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={async () => {
+                      const nuevoMenu = { tipo: 'welcome', item: 'Nuevo elemento', cantidad: '', proveedor: '' };
+                      try {
+                        await hojaRutaService.addMenuItem(hojaActual.id, nuevoMenu);
+                        const hojaActualizada = await hojaRutaService.getHojaRuta(hojaActual.id);
+                        setHojaActual(hojaActualizada);
+                      } catch (err) {
+                        console.error('Error añadiendo menú:', err);
+                        setError('Error al añadir el elemento');
+                      }
+                    }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '8px 12px',
+                      backgroundColor: colors.primary,
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      fontSize: '13px',
+                      fontWeight: '500'
+                    }}
+                  >
+                    <Plus size={14} />
+                    Añadir
+                  </motion.button>
+                )}
+              </div>
 
-                {/* Agrupar menús por tipo */}
-                {Object.entries(
+              {hojaActual.menus && hojaActual.menus.length > 0 ? (
+                /* Agrupar menús por tipo */
+                Object.entries(
                   hojaActual.menus.reduce((groups, menu) => {
                     const tipo = menu.tipo;
                     if (!groups[tipo]) groups[tipo] = [];
@@ -1184,66 +1968,56 @@ const HojaRutaPage = () => {
                     {/* Items del menú */}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginLeft: '16px' }}>
                       {menus.map((menu, index) => (
-                        <div key={index} style={{
-                          padding: '12px',
-                          backgroundColor: colors.background,
-                          borderRadius: '8px',
-                          border: `1px solid ${colors.border}`
-                        }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                            <p style={{ 
-                              fontSize: '14px', 
-                              fontWeight: '600',
-                              color: colors.text,
-                              margin: 0
-                            }}>
-                              {menu.item}
-                            </p>
-                            {menu.proveedor && (
-                              <span style={{ 
-                                fontSize: '12px', 
-                                color: colors.primary,
-                                fontWeight: '500'
-                              }}>
-                                {menu.proveedor}
-                              </span>
-                            )}
-                          </div>
-                          {menu.cantidad && (
-                            <p style={{ 
-                              fontSize: '12px', 
-                              color: colors.textSecondary,
-                              margin: 0
-                            }}>
-                              Cantidad: {menu.cantidad}
-                            </p>
-                          )}
-                        </div>
+                        <MenuItem
+                          key={menu.id || index}
+                          menu={menu}
+                          hojaId={hojaActual.id}
+                          onUpdate={async () => {
+                            const hojaActualizada = await hojaRutaService.getHojaRuta(hojaActual.id);
+                            setHojaActual(hojaActualizada);
+                          }}
+                          canEdit={canEdit}
+                          colors={colors}
+                        />
                       ))}
                     </div>
                   </div>
-                ))}
-              </motion.div>
-            )}
+                ))
+              ) : (
+                <p style={{ 
+                  color: colors.textSecondary, 
+                  fontStyle: 'italic', 
+                  textAlign: 'center',
+                  padding: '20px'
+                }}>
+                  No hay menús registrados
+                </p>
+              )}
+            </motion.div>
 
             {/* Bebidas */}
-            {hojaActual.bebidas && hojaActual.bebidas.length > 0 && (
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5, delay: 0.7 }}
-                style={{
-                backgroundColor: colors.surface,
-                borderRadius: '12px',
-                padding: '24px',
-                border: `1px solid ${colors.border}`,
-                marginBottom: '24px'
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.7 }}
+              style={{
+              backgroundColor: colors.surface,
+              borderRadius: '12px',
+              padding: '24px',
+              border: `1px solid ${colors.border}`,
+              marginBottom: '24px'
+            }}>
+              <div style={{ 
+                display: 'flex', 
+                justifyContent: 'space-between', 
+                alignItems: 'center',
+                marginBottom: '20px'
               }}>
                 <h3 style={{ 
                   fontSize: '18px', 
                   fontWeight: 'bold', 
                   color: colors.text,
-                  margin: '0 0 20px 0',
+                  margin: 0,
                   display: 'flex',
                   alignItems: 'center',
                   gap: '12px'
@@ -1251,51 +2025,68 @@ const HojaRutaPage = () => {
                   <Wine size={20} color={colors.primary} />
                   Bebidas
                 </h3>
+                {canEdit && (
+                  <motion.button
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={async () => {
+                      const nuevaBebida = { item: 'Nueva bebida', cantidad: '', unidad: '' };
+                      try {
+                        await hojaRutaService.addBebidaItem(hojaActual.id, nuevaBebida);
+                        const hojaActualizada = await hojaRutaService.getHojaRuta(hojaActual.id);
+                        setHojaActual(hojaActualizada);
+                      } catch (err) {
+                        console.error('Error añadiendo bebida:', err);
+                        setError('Error al añadir el elemento');
+                      }
+                    }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '8px 12px',
+                      backgroundColor: colors.primary,
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      fontSize: '13px',
+                      fontWeight: '500'
+                    }}
+                  >
+                    <Plus size={14} />
+                    Añadir
+                  </motion.button>
+                )}
+              </div>
 
+              {hojaActual.bebidas && hojaActual.bebidas.length > 0 ? (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '12px' }}>
                   {hojaActual.bebidas.map((bebida, index) => (
-                    <motion.div
-                      key={index}
-                      initial={{ opacity: 0, scale: 0.95 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      transition={{ duration: 0.3, delay: 0.7 + index * 0.05 }}
-                      style={{
-                      padding: '12px',
-                      backgroundColor: colors.background,
-                      borderRadius: '8px',
-                      border: `1px solid ${colors.border}`
-                    }}>
-                      <p style={{ 
-                        fontSize: '14px', 
-                        fontWeight: '600',
-                        color: colors.text,
-                        margin: '0 0 4px 0'
-                      }}>
-                        {bebida.item}
-                      </p>
-                      {bebida.cantidad && (
-                        <p style={{ 
-                          fontSize: '12px', 
-                          color: colors.textSecondary,
-                          margin: '0 0 4px 0'
-                        }}>
-                          Cantidad: {bebida.cantidad}
-                        </p>
-                      )}
-                      {bebida.unidad && (
-                        <p style={{ 
-                          fontSize: '12px', 
-                          color: colors.textSecondary,
-                          margin: 0
-                        }}>
-                          Unidad: {bebida.unidad}
-                        </p>
-                      )}
-                    </motion.div>
+                    <BebidaItem
+                      key={bebida.id || index}
+                      bebida={bebida}
+                      hojaId={hojaActual.id}
+                      onUpdate={async () => {
+                        const hojaActualizada = await hojaRutaService.getHojaRuta(hojaActual.id);
+                        setHojaActual(hojaActualizada);
+                      }}
+                      canEdit={canEdit}
+                      colors={colors}
+                    />
                   ))}
                 </div>
-              </motion.div>
-            )}
+              ) : (
+                <p style={{ 
+                  color: colors.textSecondary, 
+                  fontStyle: 'italic', 
+                  textAlign: 'center',
+                  padding: '20px'
+                }}>
+                  No hay bebidas registradas
+                </p>
+              )}
+            </motion.div>
           </div>
 
           {/* Sidebar con estadísticas y notas */}

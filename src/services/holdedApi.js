@@ -808,39 +808,6 @@ class HoldedApiService {
     }
   }
 
-  // Obtener TODAS las facturas de venta pendientes (todas las páginas)
-  // Igual que getAllPendingPurchasesPages - usa getPendingSalesIncludingPartial
-  async getAllPendingSalesPages(company = 'solucions') {
-    const allSales = [];
-    let page = 1;
-    let hasMorePages = true;
-    const limit = 100; // Máximo por página
-
-    while (hasMorePages) {
-      try {
-        const sales = await this.getPendingSalesIncludingPartial(page, limit, company);
-        
-        if (sales && sales.length > 0) {
-          allSales.push(...sales);
-          
-          // Si obtenemos menos del límite, significa que es la última página
-          if (sales.length < limit) {
-            hasMorePages = false;
-          } else {
-            page++;
-          }
-        } else {
-          hasMorePages = false;
-        }
-      } catch (error) {
-        console.error(`Error obteniendo facturas de venta pendientes en página ${page}:`, error);
-        hasMorePages = false;
-      }
-    }
-
-    return allSales;
-  }
-
   // Obtener TODAS las facturas de venta parcialmente pagadas (todas las páginas)
   async getAllPartiallyPaidSalesPages(company = 'solucions') {
     const allPartiallyPaidSales = [];
@@ -874,71 +841,99 @@ class HoldedApiService {
   }
 
   // Obtener facturas de venta pendientes incluyendo parcialmente pagadas
-  // Igual que getPendingPurchasesIncludingPartial
-  async getPendingSalesIncludingPartial(page = 1, limit = 100, company = 'solucions') {
-    // Obtener todas las facturas de venta de esta página
-    const allSales = await this.getSales({
-      page,
-      limit,
-      sort: 'created-desc'
-    }, company);
-    
-    // Filtrar solo las que realmente son pendientes
-    const pendingSales = allSales.filter(sale => {
-      // Incluir:
-      // 1. Las facturas con paid=false (no pagadas)
-      // 2. Las facturas con status=2 que tienen paymentsPending > 0 (parcialmente pagadas)
-      
-      const isUnpaid = sale.paid === false || sale.paid === 0 || sale.paid === '0';
-      const isPartiallyPaid = sale.status === 2 && (sale.paymentsPending > 0 || sale.pending > 0);
-      
-      return isUnpaid || isPartiallyPaid;
-    });
-    
-    return pendingSales;
+  // Igual que getPendingPurchasesIncludingPartial, con soporte de año
+  async getPendingSalesIncludingPartial(page = 1, limit = 100, company = 'solucions', year = null) {
+    const paramsUnpaid = { page, limit, paid: '0', sort: 'created-desc' };
+    const paramsPartiallyPaid = { page, limit, paid: '2', sort: 'created-desc' };
+    if (year) {
+      const startDate = new Date(`${year}-01-01T00:00:00Z`);
+      const endDate = new Date(`${year}-12-31T23:59:59Z`);
+      const starttmp = Math.floor(startDate.getTime() / 1000);
+      const endtmp = Math.floor(endDate.getTime() / 1000);
+      paramsUnpaid.starttmp = starttmp;
+      paramsUnpaid.endtmp = endtmp;
+      paramsPartiallyPaid.starttmp = starttmp;
+      paramsPartiallyPaid.endtmp = endtmp;
+    }
+    const [unpaidSales, partiallyPaidSales] = await Promise.all([
+      this.getSales(paramsUnpaid, company),
+      this.getSales(paramsPartiallyPaid, company)
+    ]);
+    const all = [...unpaidSales, ...partiallyPaidSales];
+    return all.filter((s, i, arr) => arr.findIndex(x => x.id === s.id) === i);
   }
 
-  // Obtener facturas de venta vencidas (pendientes con fecha de vencimiento pasada)
-  async getOverdueSales(page = 1, limit = 100, company = 'solucions') {
-    const today = new Date().toISOString().split('T')[0];
-    return this.getSales({
-      page,
-      limit,
-      paid: '0', // no pagadas
-      endtmp: today // hasta hoy (vencidas)
-    }, company);
+  // Obtener facturas de venta vencidas (pendientes con fecha de vencimiento pasada), con año opcional
+  async getOverdueSales(page = 1, limit = 100, company = 'solucions', year = null) {
+    const params = { page, limit, paid: '0', sort: 'created-desc' };
+    if (year) {
+      const startDate = new Date(`${year}-01-01T00:00:00Z`);
+      const endDate = new Date(`${year}-12-31T23:59:59Z`);
+      params.starttmp = Math.floor(startDate.getTime() / 1000);
+      params.endtmp = Math.floor(endDate.getTime() / 1000);
+    }
+    return this.getSales(params, company);
   }
 
-  // Obtener TODAS las facturas de venta vencidas (todas las páginas)
-  async getAllOverdueSalesPages(company = 'solucions') {
+  // Obtener TODAS las facturas de venta pendientes (todas las páginas), con año opcional
+  async getAllPendingSalesPages(company = 'solucions', year = null) {
     const allSales = [];
     let page = 1;
-    let hasMorePages = true;
-    const limit = 100; // Máximo por página
-
-    while (hasMorePages) {
-      try {
-        const sales = await this.getOverdueSales(page, limit, company);
-        
-        if (sales && sales.length > 0) {
-          allSales.push(...sales);
-          
-          // Si obtenemos menos del límite, significa que es la última página
-          if (sales.length < limit) {
-            hasMorePages = false;
-          } else {
-            page++;
-          }
-        } else {
-          hasMorePages = false;
-        }
-      } catch (error) {
-        console.error(`Error obteniendo facturas de venta vencidas en página ${page}:`, error);
-        hasMorePages = false;
-      }
+    const limit = 100;
+    while (true) {
+      const sales = await this.getPendingSalesIncludingPartial(page, limit, company, year);
+      if (!sales || sales.length === 0) break;
+      allSales.push(...sales);
+      if (sales.length < limit) break;
+      page++;
     }
-
     return allSales;
+  }
+
+  // Obtener TODAS las facturas de venta vencidas (todas las páginas), con año opcional
+  async getAllOverdueSalesPages(company = 'solucions', year = null) {
+    const allSales = [];
+    let page = 1;
+    const limit = 100;
+    while (true) {
+      const sales = await this.getOverdueSales(page, limit, company, year);
+      if (!sales || sales.length === 0) break;
+      allSales.push(...sales);
+      if (sales.length < limit) break;
+      page++;
+    }
+    return allSales;
+  }
+
+  // Obtener TODAS las facturas de venta pendientes y vencidas (mismo patrón que getAllPendingAndOverduePurchases)
+  async getAllPendingAndOverdueSales(company = 'solucions', year = null) {
+    try {
+      if (year) {
+        const [pending, overdue] = await Promise.all([
+          this.getAllPendingSalesPages(company, year),
+          this.getAllOverdueSalesPages(company, year)
+        ]);
+        const all = [...pending, ...overdue];
+        const unique = all.filter((doc, i, self) => self.findIndex(d => d.id === doc.id) === i);
+        return unique.map(doc => this.transformHoldedDocumentToSaleInvoice(doc));
+      }
+      const currentYear = new Date().getFullYear();
+      const yearsToFetch = [currentYear - 1, currentYear];
+      const allYearResults = await Promise.all(
+        yearsToFetch.map(yr =>
+          Promise.all([
+            this.getAllPendingSalesPages(company, yr),
+            this.getAllOverdueSalesPages(company, yr)
+          ]).then(([p, o]) => [...p, ...o])
+        )
+      );
+      const all = allYearResults.flat();
+      const unique = all.filter((doc, i, self) => self.findIndex(d => d.id === doc.id) === i);
+      return unique.map(doc => this.transformHoldedDocumentToSaleInvoice(doc));
+    } catch (error) {
+      console.error(`[Holded API] getAllPendingAndOverdueSales ${company}:`, error);
+      throw error;
+    }
   }
 
   // Obtener facturas de venta de tipo "salesreceipt" (tickets de venta/TPV)
@@ -1325,7 +1320,7 @@ class HoldedApiService {
     cleaned.paid = Boolean(cleaned.paid);
     
     // Limpiar campos de texto
-    const textFields = ['invoice_number', 'internal_number', 'provider', 'description', 'tags', 'account', 'project', 'status'];
+    const textFields = ['invoice_number', 'internal_number', 'provider', 'client', 'description', 'tags', 'account', 'project', 'status'];
     textFields.forEach(field => {
       if (cleaned[field] !== null && cleaned[field] !== undefined) {
         cleaned[field] = String(cleaned[field]).trim();

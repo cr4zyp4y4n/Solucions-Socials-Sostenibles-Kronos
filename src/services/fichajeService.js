@@ -28,6 +28,9 @@ class FichajeService {
         };
       }
 
+      // ANTES de crear el nuevo fichaje, cerrar automáticamente cualquier fichaje pendiente
+      await this.verificarYcerrarFichajesOlvidados(empleadoId);
+
       // Crear nuevo fichaje
       const resultado = await fichajeSupabaseService.crearFichajeEntrada(empleadoId, hoy, userId);
       
@@ -221,6 +224,125 @@ class FichajeService {
   }
 
   /**
+   * Verificar y cerrar fichajes olvidados para todos los empleados (para admin)
+   * @returns {Promise<Object>} Resultado de la verificación
+   */
+  async verificarYcerrarFichajesOlvidadosTodos() {
+    try {
+      // Obtener todos los fichajes pendientes (sin hora_salida) de todos los empleados
+      const { data: todosFichajesPendientes, error } = await supabase
+        .from('fichajes')
+        .select('empleado_id')
+        .is('hora_salida', null)
+        .order('fecha', { ascending: false });
+
+      if (error) throw error;
+
+      // Obtener empleados únicos
+      const empleadosUnicos = [...new Set(todosFichajesPendientes.map(f => f.empleado_id))];
+      
+      let totalCerrados = 0;
+      let totalErrores = 0;
+
+      // Verificar fichajes olvidados para cada empleado
+      for (const empleadoId of empleadosUnicos) {
+        try {
+          await this.verificarYcerrarFichajesOlvidados(empleadoId);
+          // Contar cuántos se cerraron (esto se hace dentro de la función)
+        } catch (err) {
+          console.error(`Error verificando fichajes olvidados para empleado ${empleadoId}:`, err);
+          totalErrores++;
+        }
+      }
+
+      return {
+        success: true,
+        message: `Verificación completada para ${empleadosUnicos.length} empleado(s)`,
+        empleadosVerificados: empleadosUnicos.length
+      };
+    } catch (error) {
+      console.error('Error verificando fichajes olvidados de todos los empleados:', error);
+      return {
+        success: false,
+        error: error.message || 'Error al verificar fichajes olvidados'
+      };
+    }
+  }
+
+  /**
+   * Verificar y cerrar fichajes olvidados (del mismo día que llevan demasiado tiempo abiertos)
+   * @param {string} empleadoId - ID del empleado
+   * @private
+   */
+  async verificarYcerrarFichajesOlvidados(empleadoId) {
+    try {
+      const ahora = new Date();
+      const hoy = new Date();
+      hoy.setHours(0, 0, 0, 0);
+      
+      // Obtener fichajes pendientes
+      const { data: fichajesPendientes } = await fichajeSupabaseService.obtenerFichajesPendientes(empleadoId);
+      
+      if (!fichajesPendientes || fichajesPendientes.length === 0) {
+        return;
+      }
+      
+      // Verificar cada fichaje pendiente
+      for (const fichaje of fichajesPendientes) {
+        // Verificar si hay pausas activas - si las hay, no cerrar el fichaje
+        const { data: pausaActiva } = await fichajeSupabaseService.obtenerPausaActiva(fichaje.id);
+        if (pausaActiva) {
+          console.log(`⏸️ Fichaje del ${fichaje.fecha} tiene una pausa activa. No se cerrará automáticamente.`);
+          continue; // Saltar este fichaje si tiene pausa activa
+        }
+        
+        const fechaFichaje = new Date(fichaje.fecha);
+        fechaFichaje.setHours(0, 0, 0, 0);
+        const esHoy = fechaFichaje.getTime() === hoy.getTime();
+        
+        // Si es de hoy, verificar si lleva más de 14 horas abierto
+        if (esHoy && fichaje.hora_entrada) {
+          const horaEntrada = new Date(fichaje.hora_entrada);
+          const horasAbierto = (ahora - horaEntrada) / (1000 * 60 * 60); // Horas en decimal
+          
+          // Si lleva más de 14 horas abierto, cerrarlo automáticamente
+          if (horasAbierto >= 14) {
+            console.log(`⚠️ Fichaje del día actual lleva ${horasAbierto.toFixed(2)} horas abierto. Cerrando automáticamente...`);
+            
+            const resultadoCierre = await fichajeSupabaseService.cerrarFichajeAutomaticamente(
+              fichaje.id,
+              `Cerrado automáticamente: el fichaje llevaba ${horasAbierto.toFixed(2)} horas abierto sin registrar salida. El empleado olvidó fichar la salida.`
+            );
+            
+            if (resultadoCierre.success) {
+              console.log(`✅ Fichaje del ${fichaje.fecha} cerrado automáticamente (llevaba ${horasAbierto.toFixed(2)} horas abierto)`);
+            } else {
+              console.warn(`⚠️ No se pudo cerrar el fichaje del ${fichaje.fecha}:`, resultadoCierre.error);
+            }
+          }
+        }
+        // Si es de días anteriores, cerrarlo automáticamente
+        else if (fechaFichaje < hoy) {
+          console.log(`🔒 Cerrando automáticamente fichaje del ${fichaje.fecha} (día anterior)`);
+          const resultadoCierre = await fichajeSupabaseService.cerrarFichajeAutomaticamente(
+            fichaje.id,
+            'Cerrado automáticamente por el servidor: fichaje de día anterior sin salida registrada.'
+          );
+          
+          if (resultadoCierre.success) {
+            console.log(`✅ Fichaje del ${fichaje.fecha} cerrado automáticamente`);
+          } else {
+            console.warn(`⚠️ No se pudo cerrar el fichaje del ${fichaje.fecha}:`, resultadoCierre.error);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error verificando fichajes olvidados:', error);
+      // No fallar, solo loguear el error
+    }
+  }
+
+  /**
    * Obtener estado actual del fichaje del día
    * @param {string} empleadoId - ID del empleado
    * @returns {Promise<Object>} Estado del fichaje
@@ -228,6 +350,11 @@ class FichajeService {
   async obtenerEstadoFichaje(empleadoId) {
     try {
       const hoy = new Date();
+      const hoyLimpio = new Date(hoy);
+      hoyLimpio.setHours(0, 0, 0, 0);
+      
+      // PRIMERO: Verificar y cerrar fichajes olvidados (del mismo día o anteriores)
+      await this.verificarYcerrarFichajesOlvidados(empleadoId);
       
       // Obtener fichaje del día
       const { data: fichaje } = await fichajeSupabaseService.obtenerFichajeDia(empleadoId, hoy);
@@ -249,6 +376,9 @@ class FichajeService {
       // Obtener pausas
       const { data: pausas } = await fichajeSupabaseService.obtenerPausas(fichaje.id);
       const { data: pausaActiva } = await fichajeSupabaseService.obtenerPausaActiva(fichaje.id);
+
+      // El trabajador debe iniciar y finalizar las pausas manualmente
+      // No hay descansos automáticos - cumplimiento normativa: registro manual por el trabajador
 
       return {
         success: true,

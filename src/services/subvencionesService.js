@@ -83,38 +83,38 @@ class SubvencionesService {
 
   // Procesar datos de una subvención específica
   processSubvencionData(jsonData, columnIndex, subvencionName) {
-    // Mapeo de filas del CSV (actualizado para el nuevo formato)
+    // Mapeo de filas del CSV (alineado con Subvenciones EISSS.csv)
     const rowMap = {
-      proyecto: 8,           // Fila 9 - PROYECTO
+      proyecto: 8,            // Fila 9 - PROYECTO
       imputacion: 9,         // Fila 10 - IMPUTACIÓN
       expediente: 10,        // Fila 11 - No. EXPEDIENTE
       codigo: 11,            // Fila 12 - COD. SUBVENCIÓN
       modalidad: 12,         // Fila 13 - MODALIDAD
-      fechaAdjudicacion: 13, // Fila 14 - FECHA PRESENTACIÓN
+      fechaAdjudicacion: 13, // Fila 14 - FECHA PRESENTACIÓN (BRUNO)
       importeSolicitado: 14, // Fila 15 - IMPORTE SOLICITADO
-      periodo: 15,           // Fila 16 - PERIODO DE EJECUCIÓN
+      periodo: 15,            // Fila 16 - PERIODO DE EJECUCIÓN
       importeOtorgado: 16,   // Fila 17 - IMPORTE OTORGADO
-      socL1Acomp: 17,        // Fila 18 - SOC: L1 ACOMP
-      socL2Contrat: 18,      // Fila 19 - SOC: L2 CONTRAT. TRABAJ
-      primerAbono: 20,       // Fila 21 - 1r ABONO
-      fechaPrimerAbono: 21,  // Fila 22 - FECHA/CTA
-      segundoAbono: 22,      // Fila 23 - 2o ABONO
-      fechaSegundoAbono: 23, // Fila 24 - FECHA/CTA (segundo abono)
-      fase1: 24,             // Fila 25 - FASE DEL PROYECTO 1
-      fase2: 25,             // Fila 26 - FASE DEL PROYECTO 2
-      fase3: 26,             // Fila 27 - FASE DEL PROYECTO 3
-      fase4: 27,             // Fila 28 - FASE DEL PROYECTO 4
-      fase5: 28,             // Fila 29 - FASE DEL PROYECTO 5
-      fase6: 29,             // Fila 30 - FASE DEL PROYECTO 6
-      fase7: 30,             // Fila 31 - FASE DEL PROYECTO 7
-      fase8: 31,             // Fila 32 - FASE DEL PROYECTO 8
-      saldoPendiente: 33,    // Fila 34 - SALDO PDTE DE ABONO
-      previsionPago: 34,     // Fila 35 - PREVISIÓN PAGO TOTAL
-      fechaJustificacion: 35, // Fila 36 - FECHA JUSTIFICACIÓN
-      revisadoGestoria: 41,  // Fila 42 - REV. GESTORIA
-      estado: 54,            // Fila 55 - ESTADO
-      holdedAsentamiento: 65, // Fila 66 - HOLDED ASENTAM.
-      importesPorCobrar: 66  // Fila 67 - IMPORTES POR COBRAR
+      socL1Acomp: 18,        // Fila 19 - SOC: L1 ACOMP
+      socL2Contrat: 19,      // Fila 20 - SOC: L2 CONTRAT. TRABAJ
+      primerAbono: 21,       // Fila 22 - 1r ABONO
+      fechaPrimerAbono: 22,  // Fila 23 - FECHA/CTA (1r abono)
+      segundoAbono: 23,      // Fila 24 - 2o ABONO
+      fechaSegundoAbono: 24, // Fila 25 - FECHA/CTA (2o abono)
+      fase1: 25,              // Fila 26 - FASE DEL PROYECTO 1
+      fase2: 26,              // Fila 27 - FASE DEL PROYECTO 2
+      fase3: 27,              // Fila 28 - FASE DEL PROYECTO 3
+      fase4: 28,              // Fila 29 - FASE DEL PROYECTO 4
+      fase5: 29,              // Fila 30 - FASE DEL PROYECTO 5
+      fase6: 30,              // Fila 31 - FASE DEL PROYECTO 6
+      fase7: 31,              // Fila 32 - FASE DEL PROYECTO 7
+      fase8: 32,              // Fila 33 - FASE DEL PROYECTO 8
+      saldoPendiente: 34,    // Fila 35 - SALDO PDTE DE ABONO
+      previsionPago: 35,     // Fila 36 - PREVISIÓN PAGO TOTAL
+      fechaJustificacion: 36, // Fila 37 - FECHA JUSTIFICACIÓN
+      revisadoGestoria: 42,  // Fila 43 - REV. GESTORIA
+      estado: 48,            // Fila 49 - ESTADO
+      holdedAsentamiento: 59, // Fila 60 - HOLDED ASENTAM.
+      importesPorCobrar: 60  // Fila 61 - IMPORTES POR COBRAR
     };
 
     const subvencionData = {
@@ -223,8 +223,10 @@ class SubvencionesService {
 
   // Parsear moneda
   parseCurrency(value) {
-    if (!value || value === '') return 0;
-    
+    if (value === null || value === undefined || value === '') return 0;
+    // Si es un número muy grande, suele ser fecha serial de Excel en una celda de importe → ignorar
+    if (typeof value === 'number' && (value > 1e10 || value < -1e10)) return 0;
+
     const str = value.toString().trim();
     
     // Si contiene texto descriptivo, devolver 0
@@ -643,30 +645,43 @@ class SubvencionesService {
   }
 
   /**
-   * Parsea una fecha en formato DD/MM/YYYY o YYYY-MM-DD
-   * @param {string} dateStr - String de fecha
+   * Parsea una fecha en formato DD/MM/YYYY, YYYY-MM-DD o número serial (Excel)
+   * @param {string|number} dateStr - String de fecha o número serial Excel
    * @returns {Date|null}
    */
   parseDate(dateStr) {
-    if (!dateStr) return null;
-    
+    if (dateStr === null || dateStr === undefined || dateStr === '') return null;
+
+    // Si viene como número (fecha serial de Excel)
+    if (typeof dateStr === 'number') {
+      if (isNaN(dateStr)) return null;
+      // Excel: días desde 30/12/1899. 25569 = días de 1900-01-01 a 1970-01-01
+      const date = new Date((dateStr - 25569) * 86400 * 1000);
+      return isNaN(date.getTime()) ? null : date;
+    }
+
+    const str = String(dateStr).trim();
+    if (!str) return null;
+
     // Formato DD/MM/YYYY
-    if (dateStr.includes('/')) {
-      const partes = dateStr.split('/');
+    if (str.includes('/')) {
+      const partes = str.split('/');
       if (partes.length === 3) {
-        const dia = parseInt(partes[0]);
-        const mes = parseInt(partes[1]) - 1; // Los meses en JS van de 0-11
-        const año = parseInt(partes[2]);
-        return new Date(año, mes, dia);
+        const dia = parseInt(partes[0], 10);
+        const mes = parseInt(partes[1], 10) - 1; // Los meses en JS van de 0-11
+        const año = parseInt(partes[2], 10);
+        if (!isNaN(dia) && !isNaN(mes) && !isNaN(año)) {
+          return new Date(año, mes, dia);
+        }
       }
     }
-    
+
     // Formato YYYY-MM-DD
-    if (dateStr.includes('-')) {
-      const fecha = new Date(dateStr);
+    if (str.includes('-')) {
+      const fecha = new Date(str);
       return isNaN(fecha.getTime()) ? null : fecha;
     }
-    
+
     return null;
   }
 

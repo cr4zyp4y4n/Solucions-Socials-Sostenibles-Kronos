@@ -84,6 +84,76 @@ class FichajeSupabaseService {
   }
 
   /**
+   * Obtener fichajes pendientes (sin hora de salida) de un empleado
+   * @param {string} empleadoId - ID del empleado
+   * @returns {Promise<Object>} Lista de fichajes pendientes
+   */
+  async obtenerFichajesPendientes(empleadoId) {
+    try {
+      const { data, error } = await supabase
+        .from('fichajes')
+        .select('*')
+        .eq('empleado_id', empleadoId)
+        .is('hora_salida', null)
+        .order('fecha', { ascending: false });
+
+      if (error) throw error;
+      return { success: true, data: data || [] };
+    } catch (error) {
+      console.error('Error obteniendo fichajes pendientes:', error);
+      return { success: false, error: error.message, data: [] };
+    }
+  }
+
+  /**
+   * Cerrar automáticamente un fichaje pendiente
+   * @param {string} fichajeId - ID del fichaje
+   * @param {string} motivo - Motivo del cierre automático (opcional)
+   * @returns {Promise<Object>} Fichaje cerrado
+   */
+  async cerrarFichajeAutomaticamente(fichajeId, motivo = null) {
+    try {
+      // Usar la función RPC para cerrar el fichaje
+      const { data, error } = await supabase.rpc('registrar_salida_fichaje', {
+        p_fichaje_id: fichajeId
+      });
+
+      if (error) throw error;
+      
+      // Marcar como modificado automáticamente por el servidor
+      const fichajeCerrado = data && data.length > 0 ? data[0] : null;
+      if (fichajeCerrado) {
+        const motivoCierre = motivo || 'Cerrado automáticamente por el servidor al fichar entrada en otro día';
+        
+        const { error: updateError } = await supabase
+          .from('fichajes')
+          .update({
+            es_modificado: true,
+            modificado_por: null, // null indica que fue el servidor
+            fecha_modificacion: new Date().toISOString(),
+            valor_original: {
+              hora_salida: null,
+              cerrado_automaticamente: true,
+              motivo: motivoCierre,
+              aviso: '⚠️ Este fichaje fue cerrado automáticamente porque se detectó que el empleado olvidó fichar la salida.'
+            }
+          })
+          .eq('id', fichajeId);
+
+        if (updateError) {
+          console.warn('Error marcando fichaje como cerrado automáticamente:', updateError);
+          // No fallar si no se puede marcar, el fichaje ya está cerrado
+        }
+      }
+
+      return { success: true, data: fichajeCerrado };
+    } catch (error) {
+      console.error('Error cerrando fichaje automáticamente:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
    * Obtener todos los fichajes de un empleado en un rango de fechas
    * @param {string} empleadoId - ID del empleado
    * @param {Date} fechaInicio - Fecha de inicio

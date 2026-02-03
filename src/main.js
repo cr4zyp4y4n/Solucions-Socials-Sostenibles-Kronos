@@ -436,7 +436,8 @@ const createWindow = () => {
     },
   });
 
-  // Configurar Content Security Policy
+  // Configurar Content Security Policy (muy permisiva para permitir Tesseract workers)
+  // Asegurarse de que worker-src permita blob: explícitamente
   mainWindow.webContents.session.webRequest.onHeadersReceived((details, callback) => {
     callback({
       responseHeaders: {

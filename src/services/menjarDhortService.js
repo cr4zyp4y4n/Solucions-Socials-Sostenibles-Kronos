@@ -11,32 +11,32 @@ import { supabase } from '../config/supabase';
 
 const TABLE_NAME = 'subvenciones_menjar_dhort';
 
-// Mapeo de filas del CSV (índice basado en 0)
+// Mapeo de filas del CSV (índice 0 = primera línea), alineado con Subvenciones MH.csv
 const ROW_MAPPING = {
-  SUBVENCION: 5,           // Línea 6: Nombre de la subvención
-  PROYECTO: 6,             // Línea 7
-  IMPUTACION: 7,           // Línea 8
-  EXPEDIENTE: 8,           // Línea 9
-  COD_SUBVENCION: 9,       // Línea 10
-  MODALIDAD: 10,           // Línea 11 (puede tener múltiples líneas)
-  FECHA_ADJUDICACION: 12,  // Línea 13
-  IMPORTE_SOLICITADO: 13,  // Línea 14
-  PERIODO_EJECUCION: 14,   // Línea 15
-  IMPORTE_OTORGADO: 15,    // Línea 16
-  SOC_L1: 16,              // Línea 17
-  SOC_L2: 17,              // Línea 18
-  ARRELS_L3: 18,           // Línea 19
-  PRIMER_ABONO: 19,        // Línea 20
-  FECHA_PRIMER_ABONO: 20,  // Línea 21
-  SEGUNDO_ABONO: 21,       // Línea 22
-  FECHA_SEGUNDO_ABONO: 22, // Línea 23
-  SALDO_PENDIENTE: 23,     // Línea 24
-  PREVISION_PAGO: 24,      // Línea 25
-  FECHA_JUSTIFICACION: 25, // Línea 26
-  HOLDED_ASENTAMIENTO: 35, // Línea 36
-  IMPORTES_POR_COBRAR: 36, // Línea 37
-  ADM_DIFERENCIAS: 39,     // Línea 40
-  FASE_PROYECTO: 48        // Línea 49
+  SUBVENCION: 5,            // Línea 6: SUBVENCIÓN
+  PROYECTO: 6,              // Línea 7
+  IMPUTACION: 7,            // Línea 8
+  EXPEDIENTE: 8,            // Línea 9
+  COD_SUBVENCION: 9,        // Línea 10
+  MODALIDAD: 10,            // Línea 11 (línea 12 puede continuar modalidad)
+  FECHA_ADJUDICACION: 12,   // Línea 13: FECHA FINAL ADJUDICACIÓN
+  IMPORTE_SOLICITADO: 13,   // Línea 14
+  PERIODO_EJECUCION: 14,    // Línea 15
+  IMPORTE_OTORGADO: 15,     // Línea 16
+  SOC_L1: 16,               // Línea 17
+  SOC_L2: 17,               // Línea 18
+  ARRELS_L3: 18,            // Línea 19
+  PRIMER_ABONO: 19,         // Línea 20: 1r ABONO
+  FECHA_PRIMER_ABONO: 20,   // Línea 21: FECHA/CTA
+  SEGUNDO_ABONO: 21,        // Línea 22: 2o ABONO
+  FECHA_SEGUNDO_ABONO: 22,  // Línea 23: FECHA/CTA
+  SALDO_PENDIENTE: 33,      // Línea 34: SALDO PDTE DE ABONO
+  PREVISION_PAGO: 34,       // Línea 35: PREVISIÓN PAGO TOTAL
+  FECHA_JUSTIFICACION: 35,  // Línea 36: FECHA JUSTIFICACIÓN
+  HOLDED_ASENTAMIENTO: 45,   // Línea 46: HOLDED ASENTAM.
+  IMPORTES_POR_COBRAR: 46,   // Línea 47: IMPORTES POR COBRAR
+  ADM_DIFERENCIAS: 49,       // Línea 50: ADM. DIFERENCIAS
+  FASE_PROYECTO: 58         // Línea 59: FASE DEL PROYECTO - ESTADO
 };
 
 // ============================================================================
@@ -47,17 +47,14 @@ const ROW_MAPPING = {
  * Parsea precio/importe con formato español
  */
 function parseCurrency(value) {
-  if (!value || value === '') return null;
-  
+  if (value === null || value === undefined || value === '') return null;
+  if (typeof value === 'number' && (value > 1e10 || value < -1e10)) return null;
   const str = value.toString().trim();
-  
-  // Si contiene texto descriptivo, intentar extraer solo el número
   const cleaned = str
     .replace(/€/g, '')
     .replace(/\s+/g, '')
-    .replace(/\./g, '') // Eliminar separadores de miles
-    .replace(',', '.'); // Convertir coma decimal a punto
-  
+    .replace(/\./g, '')
+    .replace(',', '.');
   const parsed = parseFloat(cleaned);
   return isNaN(parsed) ? null : parsed;
 }
@@ -68,19 +65,16 @@ function parseCurrency(value) {
 export function processHorizontalCSV(csvText) {
   console.log('📋 Procesando CSV horizontal de Menjar d\'Hort...');
   
-  // Dividir en líneas
-  const lines = csvText.split('\n').map(line => {
-    // Parsear CSV simple (split por comas, respetando comillas)
+  // Dividir en líneas; Subvenciones MH.csv usa punto y coma (;) como delimitador
+  const lines = csvText.split(/\r?\n/).map(line => {
     const result = [];
     let current = '';
     let inQuotes = false;
-    
     for (let i = 0; i < line.length; i++) {
       const char = line[i];
-      
       if (char === '"') {
         inQuotes = !inQuotes;
-      } else if (char === ',' && !inQuotes) {
+      } else if (char === ';' && !inQuotes) {
         result.push(current.trim());
         current = '';
       } else {
@@ -88,22 +82,15 @@ export function processHorizontalCSV(csvText) {
       }
     }
     result.push(current.trim());
-    
     return result;
   });
-  
+
   console.log(`📄 Total de líneas: ${lines.length}`);
-  
-  // Determinar número de subvenciones (columnas con datos)
-  const headerRow = lines[ROW_MAPPING.SUBVENCION];
-  const numSubvenciones = Math.floor(headerRow.length / 2); // Cada subvención ocupa 2 columnas (dato + vacío)
-  
-  console.log(`📊 Subvenciones detectadas: ${numSubvenciones}`);
-  
+
+  const headerRow = lines[ROW_MAPPING.SUBVENCION] || [];
+  // MH: una subvención por columna; saltar columna 0 (etiqueta). Nombres en 1, 3, 5... o consecutivos
   const subvenciones = [];
-  
-  // Procesar cada columna (cada subvención)
-  for (let col = 1; col < headerRow.length; col += 2) {
+  for (let col = 1; col < headerRow.length; col++) {
     const nombre = headerRow[col];
     
     // Si no hay nombre, saltar esta columna
@@ -139,25 +126,15 @@ export function processHorizontalCSV(csvText) {
       revisadoGestoria: false
     };
     
-    // Agregar notas adicionales (líneas extra de comentarios)
+    // Notas: líneas entre FECHA JUSTIFICACIÓN (35) y HOLDED (45), y entre IMPORTES (46) y FASE (58)
     const notas = [];
-    for (let i = 26; i < 35; i++) {
+    for (let i = 36; i <= 44; i++) {
       const nota = lines[i]?.[col];
-      if (nota && nota.trim() !== '') {
-        notas.push(nota.trim());
-      }
+      if (nota && nota.trim() !== '') notas.push(nota.trim());
     }
-    for (let i = 37; i < 39; i++) {
+    for (let i = 48; i < 58; i++) {
       const nota = lines[i]?.[col];
-      if (nota && nota.trim() !== '') {
-        notas.push(nota.trim());
-      }
-    }
-    for (let i = 40; i < 48; i++) {
-      const nota = lines[i]?.[col];
-      if (nota && nota.trim() !== '') {
-        notas.push(nota.trim());
-      }
+      if (nota && nota.trim() !== '') notas.push(nota.trim());
     }
     subvencion.notas = notas.join('\n');
     

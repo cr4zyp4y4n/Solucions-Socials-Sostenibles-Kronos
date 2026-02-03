@@ -31,13 +31,15 @@ import {
 } from 'feather-icons-react';
 import { supabase } from '../config/supabase';
 import FichajeAdminSection from './FichajeAdminSection';
+import FichajeCodigosAdmin from './FichajeCodigosAdmin';
+import FichajeDescansosAdmin from './FichajeDescansosAdmin';
 
 const AdminPanel = () => {
   const { user } = useAuth();
   const { colors } = useTheme();
 
   // Estados principales
-  const [activeTab, setActiveTab] = useState('usuarios'); // 'usuarios' o 'fichajes'
+  const [activeTab, setActiveTab] = useState('usuarios'); // 'usuarios', 'fichajes', 'codigos-fichaje' o 'descansos-fichaje'
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -463,6 +465,46 @@ const AdminPanel = () => {
           <Clock size={18} />
           Fichajes
         </button>
+        <button
+          onClick={() => setActiveTab('codigos-fichaje')}
+          style={{
+            padding: '12px 24px',
+            backgroundColor: 'transparent',
+            border: 'none',
+            borderBottom: activeTab === 'codigos-fichaje' ? `3px solid ${colors.primary}` : '3px solid transparent',
+            color: activeTab === 'codigos-fichaje' ? colors.primary : colors.textSecondary,
+            fontSize: '15px',
+            fontWeight: activeTab === 'codigos-fichaje' ? '600' : '500',
+            cursor: 'pointer',
+            transition: 'all 0.2s',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px'
+          }}
+        >
+          <Key size={18} />
+          Códigos de Fichaje
+        </button>
+        <button
+          onClick={() => setActiveTab('descansos-fichaje')}
+          style={{
+            padding: '12px 24px',
+            backgroundColor: 'transparent',
+            border: 'none',
+            borderBottom: activeTab === 'descansos-fichaje' ? `3px solid ${colors.primary}` : '3px solid transparent',
+            color: activeTab === 'descansos-fichaje' ? colors.primary : colors.textSecondary,
+            fontSize: '15px',
+            fontWeight: activeTab === 'descansos-fichaje' ? '600' : '500',
+            cursor: 'pointer',
+            transition: 'all 0.2s',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px'
+          }}
+        >
+          <Clock size={18} />
+          Reglas de Descanso
+        </button>
       </div>
 
       {/* Mensajes */}
@@ -537,6 +579,10 @@ const AdminPanel = () => {
       {/* Contenido según pestaña activa */}
       {activeTab === 'fichajes' ? (
         <FichajeAdminSection />
+      ) : activeTab === 'codigos-fichaje' ? (
+        <FichajeCodigosAdmin />
+      ) : activeTab === 'descansos-fichaje' ? (
+        <FichajeDescansosAdmin />
       ) : (
         <>
           {/* Estadísticas */}

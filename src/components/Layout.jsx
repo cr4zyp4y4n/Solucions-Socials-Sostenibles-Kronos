@@ -26,7 +26,8 @@ import {
   Download,
   CheckCircle,
   X,
-  Clock
+  Clock,
+  Image
 } from 'feather-icons-react';
 import { useTheme } from './ThemeContext';
 import { useAuth } from './AuthContext';
@@ -54,6 +55,7 @@ import SalesInvoicesPage from './SalesInvoicesPage';
 import InventoryPage from './InventoryPage';
 import FichajePage from './FichajePage';
 import GestionTiendaPage from './GestionTiendaPage';
+import AlbaranOCRPage from './AlbaranOCRPage';
 
 
 // Componente visual de acceso denegado reutilizable
@@ -123,11 +125,12 @@ const Layout = () => {
     fetchUserProfile();
   }, [user]);
 
-  // Verificar roles del usuario
-  const isAdmin = userProfile?.role === 'admin';
-  const isManager = userProfile?.role === 'manager';
-  const isTienda = userProfile?.role === 'tienda';
-  const isManagementOrManager = userProfile?.role === 'management' || isManager;
+  // Verificar rol del usuario (prioridad: DB, fallback: metadata)
+  const effectiveRole = (userProfile?.role || user?.user_metadata?.role || '').toLowerCase();
+  const isAdmin = effectiveRole === 'admin';
+  const isManager = effectiveRole === 'manager';
+  const isTienda = effectiveRole === 'tienda';
+  const isManagementOrManager = effectiveRole === 'management' || effectiveRole === 'manager';
   const isUser = !isAdmin && !isManagementOrManager && !isTienda;
 
   // Limpiar eventId cuando se navega a otra sección
@@ -525,6 +528,8 @@ const Layout = () => {
           return <AccessDenied message="No tienes permisos para acceder a Gestión Tienda." />;
         }
         return <GestionTiendaPage />;
+      case 'albaran-ocr':
+        return <AlbaranOCRPage />;
       case 'settings':
         return <SettingsPage />;
       case 'users':

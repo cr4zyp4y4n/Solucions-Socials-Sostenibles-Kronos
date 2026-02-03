@@ -9,6 +9,7 @@ import {
   CheckCircle
 } from 'lucide-react';
 import { useTheme } from './ThemeContext';
+import { formatDateOnlyLocal } from '../utils/timeUtils';
 
 const SocioEditModal = ({ 
   isOpen, 
@@ -21,7 +22,9 @@ const SocioEditModal = ({
   const [formData, setFormData] = useState({
     nombre: '',
     apellido: '',
-    correo: ''
+    correo: '',
+    dni: '',
+    telefono: ''
   });
   
   const [loading, setLoading] = useState(false);
@@ -34,7 +37,9 @@ const SocioEditModal = ({
       setFormData({
         nombre: socio.nombre || '',
         apellido: socio.apellido || '',
-        correo: socio.correo || ''
+        correo: socio.correo || '',
+        dni: socio.dni || '',
+        telefono: socio.telefono || ''
       });
     }
     setError(null);
@@ -227,7 +232,9 @@ const SocioEditModal = ({
         }}>
           <p style={{ margin: 0 }}>
             <strong>ID Único:</strong> {socio.id_unico}<br/>
-            <strong>Socio desde:</strong> {new Date(socio.socio_desde).toLocaleDateString('es-ES')}
+            <strong>Socio desde:</strong> {formatDateOnlyLocal(socio.socio_desde)}
+            {socio.dni && <><br/><strong>DNI:</strong> {socio.dni}</>}
+            {socio.telefono && <><br/><strong>Teléfono:</strong> {socio.telefono}</>}
           </p>
         </div>
 
@@ -367,6 +374,41 @@ const SocioEditModal = ({
                   }}
                 />
               </div>
+            </div>
+
+            {/* DNI (opcional) */}
+            <div>
+              <label style={{ fontSize: '14px', fontWeight: '600', color: colors.text, marginBottom: '8px', display: 'block' }}>DNI/NIF</label>
+              <input
+                type="text"
+                name="dni"
+                value={formData.dni}
+                onChange={handleChange}
+                placeholder="Opcional"
+                disabled={loading}
+                style={{
+                  width: '100%', padding: '12px', border: `1px solid ${colors.border}`, borderRadius: '8px',
+                  backgroundColor: colors.background, color: colors.text, fontSize: '14px', outline: 'none',
+                  opacity: loading ? 0.6 : 1, boxSizing: 'border-box'
+                }}
+              />
+            </div>
+            {/* Teléfono (opcional) */}
+            <div>
+              <label style={{ fontSize: '14px', fontWeight: '600', color: colors.text, marginBottom: '8px', display: 'block' }}>Teléfono</label>
+              <input
+                type="text"
+                name="telefono"
+                value={formData.telefono}
+                onChange={handleChange}
+                placeholder="Opcional"
+                disabled={loading}
+                style={{
+                  width: '100%', padding: '12px', border: `1px solid ${colors.border}`, borderRadius: '8px',
+                  backgroundColor: colors.background, color: colors.text, fontSize: '14px', outline: 'none',
+                  opacity: loading ? 0.6 : 1, boxSizing: 'border-box'
+                }}
+              />
             </div>
           </div>
 
