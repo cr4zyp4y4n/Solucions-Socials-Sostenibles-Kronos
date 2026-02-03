@@ -138,5 +138,11 @@ export const dbService = {
       .order('created_at', { ascending: false })
       .limit(1);
     return { data, error };
+  },
+
+  // Obtener tamaño de la base de datos
+  async getDatabaseSize() {
+    const { data, error } = await supabase.rpc('get_database_size');
+    return { data, error };
   }
 }; 

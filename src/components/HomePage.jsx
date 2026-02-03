@@ -1,10 +1,10 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import * as XLSX from 'xlsx';
-import { 
-  Upload, 
-  Users, 
-  BarChart2, 
+import {
+  Upload,
+  Users,
+  BarChart2,
   FileText,
   TrendingUp,
   DollarSign,
@@ -138,7 +138,7 @@ const HomePage = () => {
   const [uploadProgress, setUploadProgress] = useState(0);
   const fileInputRef = useRef();
   const menjarFileInputRef = useRef();
-  const { 
+  const {
     solucionsHeaders, setSolucionsHeaders, solucionsData, setSolucionsData,
     menjarHeaders, setMenjarHeaders, menjarData, setMenjarData,
     setShouldReloadHolded,
@@ -186,18 +186,18 @@ const HomePage = () => {
   // Función para cargar datos desde Holded con caché
   const loadDataFromHolded = async () => {
     setLoadingData(true);
-    
+
     try {
       // Verificar si tenemos datos en caché válidos
       const cachedSolucions = getCachedData('solucions');
       const cachedMenjar = getCachedData('menjar');
-      
+
       let solucionsPurchases = cachedSolucions;
       let menjarPurchases = cachedMenjar;
-      
+
       // Array de promesas para cargar datos que no están en caché
       const loadPromises = [];
-      
+
       // Cargar datos de Solucions si no están en caché
       if (!cachedSolucions) {
         setLoading('solucions', true);
@@ -215,7 +215,7 @@ const HomePage = () => {
             .catch(error => {
               console.error('Error cargando datos de Solucions:', error);
               setLoading('solucions', false);
-              
+
               // Rastrear error de suscripción
               if (error.message.includes('Error 402')) {
                 setSubscriptionErrors(prev => ({
@@ -230,12 +230,12 @@ const HomePage = () => {
                 }));
                 showAlert(`Error cargando datos de Solucions Socials: ${error.message}`, 'error');
               }
-              
+
               return [];
             })
         );
       }
-      
+
       // Cargar datos de Menjar si no están en caché
       if (!cachedMenjar) {
         setLoading('menjar', true);
@@ -253,7 +253,7 @@ const HomePage = () => {
             .catch(error => {
               console.error('Error cargando datos de Menjar:', error);
               setLoading('menjar', false);
-              
+
               // Rastrear error de suscripción
               if (error.message.includes('Error 402')) {
                 setSubscriptionErrors(prev => ({
@@ -268,19 +268,19 @@ const HomePage = () => {
                 }));
                 showAlert(`Error cargando datos de Menjar D'Hort: ${error.message}`, 'error');
               }
-              
+
               return [];
             })
         );
       }
-      
+
       // Si hay datos para cargar, esperar a que se completen
       if (loadPromises.length > 0) {
         const [newSolucions, newMenjar] = await Promise.all(loadPromises);
         if (!cachedSolucions) solucionsPurchases = newSolucions;
         if (!cachedMenjar) menjarPurchases = newMenjar;
       }
-      
+
       // Procesar datos de cada empresa
       const processedSolucions = processHoldedPurchases(solucionsPurchases || []);
       const processedMenjar = processHoldedPurchases(menjarPurchases || []);
@@ -398,15 +398,15 @@ const HomePage = () => {
       return { status: 'active', message: `Conexión exitosa con ${company}` };
     } catch (error) {
       if (error.message.includes('Error 402')) {
-        return { 
-          status: 'payment_required', 
+        return {
+          status: 'payment_required',
           message: `La cuenta de ${company} necesita actualizar la suscripción de Holded`,
           details: 'Para continuar usando la API, es necesario actualizar el plan de suscripción en Holded.'
         };
       }
-      return { 
-        status: 'error', 
-        message: `Error de conexión con ${company}: ${error.message}` 
+      return {
+        status: 'error',
+        message: `Error de conexión con ${company}: ${error.message}`
       };
     }
   };
@@ -883,7 +883,7 @@ const HomePage = () => {
     const solucionsData = supabaseData.solucions.data;
     const menjarData = supabaseData.menjar.data;
     const totalData = [...solucionsData, ...menjarData];
-    
+
     if (totalData.length === 0) {
       return [
         { icon: Users, label: 'Total Proveedores', value: '0', color: colors.primary },
@@ -897,7 +897,7 @@ const HomePage = () => {
     const headers = supabaseData.solucions.headers;
     const providerIndex = headers.findIndex(h => h === 'Proveïdor');
     const totalIndex = headers.findIndex(h => h === 'Total');
-    
+
     const providers = new Set();
     let totalAmount = 0;
     let validRows = 0;
@@ -915,28 +915,28 @@ const HomePage = () => {
     const averageAmount = validRows > 0 ? totalAmount / validRows : 0;
 
     return [
-      { 
-        icon: Users, 
-        label: 'Total Proveedores', 
-        value: providers.size.toString(), 
+      {
+        icon: Users,
+        label: 'Total Proveedores',
+        value: providers.size.toString(),
         color: colors.primary
       },
-      { 
-        icon: FileText, 
-        label: 'Compras Procesadas', 
-        value: totalData.length.toString(), 
+      {
+        icon: FileText,
+        label: 'Compras Procesadas',
+        value: totalData.length.toString(),
         color: '#2196F3'
       },
-      { 
-        icon: DollarSign, 
-        label: 'Total a Pagar', 
-        value: formatCurrency(totalAmount), 
+      {
+        icon: DollarSign,
+        label: 'Total a Pagar',
+        value: formatCurrency(totalAmount),
         color: colors.warning
       },
-      { 
-        icon: TrendingUp, 
-        label: 'Promedio por Compra', 
-        value: formatCurrency(averageAmount), 
+      {
+        icon: TrendingUp,
+        label: 'Promedio por Compra',
+        value: formatCurrency(averageAmount),
         color: '#9C27B0'
       },
     ];
@@ -949,22 +949,22 @@ const HomePage = () => {
     const now = Date.now();
     const solucionsCache = holdedCache.solucions;
     const menjarCache = holdedCache.menjar;
-    
+
     const getCacheStatus = (cache, company) => {
       // Priorizar mostrar estado de carga si está activo
       if (cache.loading) return 'Actualizando datos...';
-      
+
       // Si hay error de suscripción, mostrar ese estado
       if (subscriptionErrors[company]) {
         return subscriptionErrors[company];
       }
-      
+
       if (!cache.data) return 'Sin datos';
       if (!cache.timestamp) return 'Sin timestamp';
-      
+
       const age = now - cache.timestamp;
       const ageMinutes = Math.floor(age / 60000);
-      
+
       if (age < CACHE_DURATION) {
         return `Válido (${ageMinutes} min)`;
       } else {
@@ -1017,8 +1017,127 @@ const HomePage = () => {
   ];
   */
 
+  // Check if user has "tienda" role
+  const isTiendaRole = user?.user_metadata?.role === 'tienda';
+
+  // Render simplified view for "tienda" role
+  if (isTiendaRole) {
+    return (
+      <div style={{
+        width: '100%',
+        padding: '24px',
+        backgroundColor: colors.background,
+        minHeight: '100%',
+        boxSizing: 'border-box',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center'
+      }}>
+        {/* Welcome Section for Tienda */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+          style={{
+            textAlign: 'center',
+            marginBottom: '40px',
+          }}
+        >
+          <h2 style={{
+            fontSize: 36,
+            fontWeight: 700,
+            color: colors.text,
+            margin: '0 0 15px 0',
+            lineHeight: 1.2
+          }}>
+            Bienvenido a Kronos
+          </h2>
+        </motion.div>
+
+        {/* Navigation Buttons for Tienda */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.1 }}
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '20px',
+            width: '100%',
+            maxWidth: '400px',
+          }}
+        >
+          {/* Ir al Inventario Button */}
+          <motion.button
+            whileHover={{ scale: 1.02, y: -2 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={() => navigateTo('inventory')}
+            style={{
+              backgroundColor: colors.primary,
+              color: 'white',
+              padding: '20px 30px',
+              borderRadius: '12px',
+              border: 'none',
+              fontSize: '18px',
+              fontWeight: '600',
+              cursor: 'pointer',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+              transition: 'all 0.2s ease',
+            }}
+          >
+            Ir al Inventario
+          </motion.button>
+
+          {/* Ir a Fichaje Button */}
+          <motion.button
+            whileHover={{ scale: 1.02, y: -2 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={() => navigateTo('fichaje')}
+            style={{
+              backgroundColor: colors.primary,
+              color: 'white',
+              padding: '20px 30px',
+              borderRadius: '12px',
+              border: 'none',
+              fontSize: '18px',
+              fontWeight: '600',
+              cursor: 'pointer',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+              transition: 'all 0.2s ease',
+            }}
+          >
+            Ir a Fichaje
+          </motion.button>
+
+          {/* Gestion de la Tienda Button */}
+          <motion.button
+            whileHover={{ scale: 1.02, y: -2 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={() => navigateTo('gestion-tienda')}
+            style={{
+              backgroundColor: colors.primary,
+              color: 'white',
+              padding: '20px 30px',
+              borderRadius: '12px',
+              border: 'none',
+              fontSize: '18px',
+              fontWeight: '600',
+              cursor: 'pointer',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+              transition: 'all 0.2s ease',
+            }}
+          >
+            Gestion de la Tienda
+          </motion.button>
+        </motion.div>
+      </div>
+    );
+  }
+
+  // Original full dashboard for all other roles
   return (
-    <div style={{ 
+    <div style={{
       width: '100%',
       padding: '24px',
       backgroundColor: colors.background,
@@ -1173,7 +1292,7 @@ const HomePage = () => {
                 background: colors.border,
                 animation: 'pulse 1.5s ease-in-out infinite'
               }} />
-              
+
               {/* Skeleton content */}
               <div style={{ flex: 1 }}>
                 <div style={{
@@ -1268,7 +1387,7 @@ const HomePage = () => {
         }}>
           Estado del Caché
         </h3>
-        
+
         <div style={{
           display: 'flex',
           flexWrap: 'wrap',
@@ -1309,12 +1428,12 @@ const HomePage = () => {
                 borderRadius: '20px',
                 fontSize: '12px',
                 fontWeight: '500',
-                backgroundColor: cacheInfo.solucions.loading ? '#FF9800' + '15' : 
-                               cacheInfo.solucions.hasError ? '#F44336' + '15' :
-                               cacheInfo.solucions.status.includes('Válido') ? '#4CAF50' + '15' : '#F44336' + '15',
-                color: cacheInfo.solucions.loading ? '#FF9800' : 
-                       cacheInfo.solucions.hasError ? '#F44336' :
-                       cacheInfo.solucions.status.includes('Válido') ? '#4CAF50' : '#F44336',
+                backgroundColor: cacheInfo.solucions.loading ? '#FF9800' + '15' :
+                  cacheInfo.solucions.hasError ? '#F44336' + '15' :
+                    cacheInfo.solucions.status.includes('Válido') ? '#4CAF50' + '15' : '#F44336' + '15',
+                color: cacheInfo.solucions.loading ? '#FF9800' :
+                  cacheInfo.solucions.hasError ? '#F44336' :
+                    cacheInfo.solucions.status.includes('Válido') ? '#4CAF50' : '#F44336',
               }}>
                 {cacheInfo.solucions.loading ? 'Cargando...' : cacheInfo.solucions.status}
               </div>
@@ -1364,12 +1483,12 @@ const HomePage = () => {
                 borderRadius: '20px',
                 fontSize: '12px',
                 fontWeight: '500',
-                backgroundColor: cacheInfo.menjar.loading ? '#FF9800' + '15' : 
-                               cacheInfo.menjar.hasError ? '#F44336' + '15' :
-                               cacheInfo.menjar.status.includes('Válido') ? '#4CAF50' + '15' : '#F44336' + '15',
-                color: cacheInfo.menjar.loading ? '#FF9800' : 
-                       cacheInfo.menjar.hasError ? '#F44336' :
-                       cacheInfo.menjar.status.includes('Válido') ? '#4CAF50' : '#F44336',
+                backgroundColor: cacheInfo.menjar.loading ? '#FF9800' + '15' :
+                  cacheInfo.menjar.hasError ? '#F44336' + '15' :
+                    cacheInfo.menjar.status.includes('Válido') ? '#4CAF50' + '15' : '#F44336' + '15',
+                color: cacheInfo.menjar.loading ? '#FF9800' :
+                  cacheInfo.menjar.hasError ? '#F44336' :
+                    cacheInfo.menjar.status.includes('Válido') ? '#4CAF50' : '#F44336',
               }}>
                 {cacheInfo.menjar.loading ? 'Cargando...' : cacheInfo.menjar.status}
               </div>
@@ -1401,7 +1520,7 @@ const HomePage = () => {
         }}>
           Acciones Rápidas
         </h3>
-        
+
         <div style={{
           display: 'flex',
           flexWrap: 'wrap',
@@ -1428,7 +1547,7 @@ const HomePage = () => {
                 // Marcar ambas empresas como cargando
                 setLoading('solucions', true);
                 setLoading('menjar', true);
-                
+
                 // Actualizar datos de ambas empresas
                 const [solucionsPurchases, menjarPurchases] = await Promise.all([
                   holdedApi.getAllPendingAndOverduePurchases('solucions').catch(error => {
@@ -1449,10 +1568,10 @@ const HomePage = () => {
 
                 const totalPurchases = solucionsPurchases.length + menjarPurchases.length;
                 showAlert(`Actualizadas ${totalPurchases} compras (Solucions: ${solucionsPurchases.length}, Menjar: ${menjarPurchases.length})`, 'success');
-                
+
                 // Recargar datos en la página actual
                 await loadDataFromHolded();
-                
+
                 // Activar recarga en AnalyticsPage
                 setShouldReloadHolded(true);
               } catch (error) {
@@ -1518,7 +1637,7 @@ const HomePage = () => {
             onClick={async () => {
               try {
                 showAlert('Verificando estado de las cuentas de Holded...', 'info');
-                
+
                 const [solucionsStatus, menjarStatus] = await Promise.all([
                   checkHoldedSubscriptionStatus('solucions'),
                   checkHoldedSubscriptionStatus('menjar')

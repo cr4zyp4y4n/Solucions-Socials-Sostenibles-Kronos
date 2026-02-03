@@ -1,12 +1,12 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { 
-  X, 
-  Calendar, 
-  Users, 
-  Clock, 
-  MapPin, 
-  Phone, 
+import {
+  X,
+  Calendar,
+  Users,
+  Clock,
+  MapPin,
+  Phone,
   Truck,
   FileText,
   AlertCircle,
@@ -17,13 +17,72 @@ import {
   Pen
 } from 'lucide-react';
 import { useTheme } from './ThemeContext';
+import productosIdoniService from '../services/productosIdoniSupabaseService';
+import { supabase } from '../config/supabase';
 
-const HojaRutaViewModal = ({ 
-  isOpen, 
-  onClose, 
-  hojaRuta 
+const HojaRutaViewModal = ({
+  isOpen,
+  onClose,
+  hojaRuta
 }) => {
   const { colors } = useTheme();
+  const [productosIdoni, setProductosIdoni] = useState([]);
+
+  // Cargar productos IDONI/BONCOR de esta hoja de ruta
+  useEffect(() => {
+    const cargarProductos = async () => {
+      if (!hojaRuta?.id || !isOpen) return;
+
+      try {
+        const { data, error } = await supabase
+          .from('productos_idoni')
+          .select('*')
+          .eq('hoja_ruta_id', hojaRuta.id);
+
+        if (!error && data) {
+          setProductosIdoni(data);
+        }
+      } catch (error) {
+        console.error('Error cargando productos IDONI:', error);
+      }
+    };
+
+    cargarProductos();
+  }, [isOpen, hojaRuta]);
+
+  // Función para obtener el estado de un producto por su nombre
+  const getProductoEstado = (nombreProducto) => {
+    const producto = productosIdoni.find(p =>
+      p.producto.toLowerCase() === nombreProducto.toLowerCase()
+    );
+    return producto?.estado || null;
+  };
+
+  // Función para obtener el color del estado
+  const getEstadoColor = (estado) => {
+    switch (estado) {
+      case 'disponible':
+        return '#10B981';
+      case 'no_disponible':
+        return '#EF4444';
+      case 'pendiente':
+      default:
+        return '#F59E0B';
+    }
+  };
+
+  // Función para obtener el label del estado
+  const getEstadoLabel = (estado) => {
+    switch (estado) {
+      case 'disponible':
+        return 'Disponible';
+      case 'no_disponible':
+        return 'No Disponible';
+      case 'pendiente':
+      default:
+        return 'Pendiente';
+    }
+  };
 
   if (!isOpen || !hojaRuta) return null;
 
@@ -126,9 +185,9 @@ const HojaRutaViewModal = ({
                 border: `1px solid ${colors.border}`,
                 marginBottom: '20px'
               }}>
-                <h3 style={{ 
-                  fontSize: '16px', 
-                  fontWeight: 'bold', 
+                <h3 style={{
+                  fontSize: '16px',
+                  fontWeight: 'bold',
                   color: colors.text,
                   margin: '0 0 16px 0',
                   display: 'flex',
@@ -141,9 +200,9 @@ const HojaRutaViewModal = ({
 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
                   <div>
-                    <label style={{ 
-                      fontSize: '11px', 
-                      fontWeight: '600', 
+                    <label style={{
+                      fontSize: '11px',
+                      fontWeight: '600',
                       color: colors.textSecondary,
                       textTransform: 'uppercase',
                       letterSpacing: '0.5px',
@@ -152,9 +211,9 @@ const HojaRutaViewModal = ({
                     }}>
                       Fecha del Servicio
                     </label>
-                    <p style={{ 
-                      fontSize: '14px', 
-                      fontWeight: '500', 
+                    <p style={{
+                      fontSize: '14px',
+                      fontWeight: '500',
                       color: colors.text,
                       margin: 0
                     }}>
@@ -163,9 +222,9 @@ const HojaRutaViewModal = ({
                   </div>
 
                   <div>
-                    <label style={{ 
-                      fontSize: '11px', 
-                      fontWeight: '600', 
+                    <label style={{
+                      fontSize: '11px',
+                      fontWeight: '600',
                       color: colors.textSecondary,
                       textTransform: 'uppercase',
                       letterSpacing: '0.5px',
@@ -174,9 +233,9 @@ const HojaRutaViewModal = ({
                     }}>
                       Cliente
                     </label>
-                    <p style={{ 
-                      fontSize: '14px', 
-                      fontWeight: '500', 
+                    <p style={{
+                      fontSize: '14px',
+                      fontWeight: '500',
                       color: colors.text,
                       margin: 0
                     }}>
@@ -185,9 +244,9 @@ const HojaRutaViewModal = ({
                   </div>
 
                   <div>
-                    <label style={{ 
-                      fontSize: '11px', 
-                      fontWeight: '600', 
+                    <label style={{
+                      fontSize: '11px',
+                      fontWeight: '600',
                       color: colors.textSecondary,
                       textTransform: 'uppercase',
                       letterSpacing: '0.5px',
@@ -196,9 +255,9 @@ const HojaRutaViewModal = ({
                     }}>
                       Nº Personas
                     </label>
-                    <p style={{ 
-                      fontSize: '14px', 
-                      fontWeight: '500', 
+                    <p style={{
+                      fontSize: '14px',
+                      fontWeight: '500',
                       color: colors.text,
                       margin: 0,
                       display: 'flex',
@@ -211,9 +270,9 @@ const HojaRutaViewModal = ({
                   </div>
 
                   <div>
-                    <label style={{ 
-                      fontSize: '11px', 
-                      fontWeight: '600', 
+                    <label style={{
+                      fontSize: '11px',
+                      fontWeight: '600',
                       color: colors.textSecondary,
                       textTransform: 'uppercase',
                       letterSpacing: '0.5px',
@@ -222,9 +281,9 @@ const HojaRutaViewModal = ({
                     }}>
                       Responsable
                     </label>
-                    <p style={{ 
-                      fontSize: '14px', 
-                      fontWeight: '500', 
+                    <p style={{
+                      fontSize: '14px',
+                      fontWeight: '500',
                       color: colors.text,
                       margin: 0
                     }}>
@@ -235,9 +294,9 @@ const HojaRutaViewModal = ({
                   {/* Verificación de Listas y Material */}
                   {hojaRuta.firmaInfo?.firmado && (
                     <div style={{ gridColumn: '1 / -1' }}>
-                      <label style={{ 
-                        fontSize: '11px', 
-                        fontWeight: '600', 
+                      <label style={{
+                        fontSize: '11px',
+                        fontWeight: '600',
                         color: colors.textSecondary,
                         textTransform: 'uppercase',
                         letterSpacing: '0.5px',
@@ -265,7 +324,7 @@ const HojaRutaViewModal = ({
                           <CheckCircle size={20} />
                           <span>FIRMADA</span>
                         </div>
-                        
+
                         <div style={{ flex: 1 }}>
                           <div style={{
                             fontSize: '14px',
@@ -287,9 +346,9 @@ const HojaRutaViewModal = ({
                   )}
 
                   <div>
-                    <label style={{ 
-                      fontSize: '11px', 
-                      fontWeight: '600', 
+                    <label style={{
+                      fontSize: '11px',
+                      fontWeight: '600',
                       color: colors.textSecondary,
                       textTransform: 'uppercase',
                       letterSpacing: '0.5px',
@@ -298,9 +357,9 @@ const HojaRutaViewModal = ({
                     }}>
                       Transportista
                     </label>
-                    <p style={{ 
-                      fontSize: '14px', 
-                      fontWeight: '500', 
+                    <p style={{
+                      fontSize: '14px',
+                      fontWeight: '500',
                       color: colors.text,
                       margin: 0,
                       display: 'flex',
@@ -313,9 +372,9 @@ const HojaRutaViewModal = ({
                   </div>
 
                   <div>
-                    <label style={{ 
-                      fontSize: '11px', 
-                      fontWeight: '600', 
+                    <label style={{
+                      fontSize: '11px',
+                      fontWeight: '600',
                       color: colors.textSecondary,
                       textTransform: 'uppercase',
                       letterSpacing: '0.5px',
@@ -324,9 +383,9 @@ const HojaRutaViewModal = ({
                     }}>
                       Personal
                     </label>
-                    <p style={{ 
-                      fontSize: '14px', 
-                      fontWeight: '500', 
+                    <p style={{
+                      fontSize: '14px',
+                      fontWeight: '500',
                       color: colors.text,
                       margin: 0
                     }}>
@@ -338,9 +397,9 @@ const HojaRutaViewModal = ({
                 {/* Contacto y Dirección */}
                 <div style={{ marginTop: '16px' }}>
                   <div style={{ marginBottom: '8px' }}>
-                    <label style={{ 
-                      fontSize: '11px', 
-                      fontWeight: '600', 
+                    <label style={{
+                      fontSize: '11px',
+                      fontWeight: '600',
                       color: colors.textSecondary,
                       textTransform: 'uppercase',
                       letterSpacing: '0.5px',
@@ -349,8 +408,8 @@ const HojaRutaViewModal = ({
                     }}>
                       Contacto
                     </label>
-                    <p style={{ 
-                      fontSize: '12px', 
+                    <p style={{
+                      fontSize: '12px',
                       color: colors.text,
                       margin: 0,
                       display: 'flex',
@@ -363,9 +422,9 @@ const HojaRutaViewModal = ({
                   </div>
 
                   <div>
-                    <label style={{ 
-                      fontSize: '11px', 
-                      fontWeight: '600', 
+                    <label style={{
+                      fontSize: '11px',
+                      fontWeight: '600',
                       color: colors.textSecondary,
                       textTransform: 'uppercase',
                       letterSpacing: '0.5px',
@@ -374,8 +433,8 @@ const HojaRutaViewModal = ({
                     }}>
                       Dirección
                     </label>
-                    <p style={{ 
-                      fontSize: '12px', 
+                    <p style={{
+                      fontSize: '12px',
                       color: colors.text,
                       margin: 0,
                       display: 'flex',
@@ -398,9 +457,9 @@ const HojaRutaViewModal = ({
                   border: `1px solid ${colors.border}`,
                   marginBottom: '20px'
                 }}>
-                  <h3 style={{ 
-                    fontSize: '16px', 
-                    fontWeight: 'bold', 
+                  <h3 style={{
+                    fontSize: '16px',
+                    fontWeight: 'bold',
                     color: colors.text,
                     margin: '0 0 16px 0',
                     display: 'flex',
@@ -419,9 +478,9 @@ const HojaRutaViewModal = ({
                         borderRadius: '8px',
                         border: `1px solid ${colors.border}`
                       }}>
-                        <label style={{ 
-                          fontSize: '10px', 
-                          fontWeight: '600', 
+                        <label style={{
+                          fontSize: '10px',
+                          fontWeight: '600',
                           color: colors.textSecondary,
                           textTransform: 'uppercase',
                           letterSpacing: '0.5px',
@@ -430,9 +489,9 @@ const HojaRutaViewModal = ({
                         }}>
                           {key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())}
                         </label>
-                        <p style={{ 
-                          fontSize: '14px', 
-                          fontWeight: '500', 
+                        <p style={{
+                          fontSize: '14px',
+                          fontWeight: '500',
                           color: colors.text,
                           margin: 0
                         }}>
@@ -453,9 +512,9 @@ const HojaRutaViewModal = ({
                   border: `1px solid ${colors.border}`,
                   marginBottom: '20px'
                 }}>
-                  <h3 style={{ 
-                    fontSize: '16px', 
-                    fontWeight: 'bold', 
+                  <h3 style={{
+                    fontSize: '16px',
+                    fontWeight: 'bold',
                     color: colors.text,
                     margin: '0 0 16px 0',
                     display: 'flex',
@@ -474,8 +533,8 @@ const HojaRutaViewModal = ({
                         borderRadius: '6px',
                         border: `1px solid ${colors.border}`
                       }}>
-                        <p style={{ 
-                          fontSize: '12px', 
+                        <p style={{
+                          fontSize: '12px',
                           fontWeight: '600',
                           color: colors.text,
                           margin: '0 0 2px 0'
@@ -483,8 +542,8 @@ const HojaRutaViewModal = ({
                           {item.item}
                         </p>
                         {item.cantidad && (
-                          <p style={{ 
-                            fontSize: '10px', 
+                          <p style={{
+                            fontSize: '10px',
                             color: colors.textSecondary,
                             margin: 0
                           }}>
@@ -509,9 +568,9 @@ const HojaRutaViewModal = ({
                   border: `1px solid ${colors.border}`,
                   marginBottom: '20px'
                 }}>
-                  <h3 style={{ 
-                    fontSize: '16px', 
-                    fontWeight: 'bold', 
+                  <h3 style={{
+                    fontSize: '16px',
+                    fontWeight: 'bold',
                     color: colors.text,
                     margin: '0 0 16px 0',
                     display: 'flex',
@@ -541,37 +600,64 @@ const HojaRutaViewModal = ({
                           backgroundColor: colors.primary + '10',
                           borderRadius: '4px'
                         }}>
-                          {hojaRuta.menuTitles && hojaRuta.menuTitles[tipo] 
+                          {hojaRuta.menuTitles && hojaRuta.menuTitles[tipo]
                             ? hojaRuta.menuTitles[tipo]
                             : tipo.replace('_', ' ').toUpperCase()
                           }
                         </h4>
                         <div style={{ marginLeft: '8px' }}>
-                          {menus.map((menu, index) => (
-                            <div key={index} style={{
-                              padding: '6px',
-                              backgroundColor: colors.surface,
-                              borderRadius: '4px',
-                              marginBottom: '4px',
-                              fontSize: '11px'
-                            }}>
-                              <p style={{ 
-                                fontWeight: '600',
-                                color: colors.text,
-                                margin: '0 0 2px 0'
+                          {menus.map((menu, index) => {
+                            const proveedorUpper = menu.proveedor?.trim().toUpperCase() || '';
+                            const esProductoIdoni = proveedorUpper.includes('IDONI') || proveedorUpper.includes('BONCOR');
+                            const estadoProducto = esProductoIdoni ? getProductoEstado(menu.item) : null;
+
+                            return (
+                              <div key={index} style={{
+                                padding: '6px',
+                                backgroundColor: colors.surface,
+                                borderRadius: '4px',
+                                marginBottom: '4px',
+                                fontSize: '11px'
                               }}>
-                                {menu.item}
-                              </p>
-                              {menu.cantidad && (
-                                <p style={{ 
-                                  color: colors.textSecondary,
-                                  margin: 0
+                                <div style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '8px',
+                                  marginBottom: '2px'
                                 }}>
-                                  {menu.cantidad} {menu.proveedor && `- ${menu.proveedor}`}
-                                </p>
-                              )}
-                            </div>
-                          ))}
+                                  <p style={{
+                                    fontWeight: '600',
+                                    color: colors.text,
+                                    margin: 0,
+                                    flex: 1
+                                  }}>
+                                    {menu.item}
+                                  </p>
+                                  {estadoProducto && (
+                                    <span style={{
+                                      fontSize: '9px',
+                                      fontWeight: '600',
+                                      padding: '2px 6px',
+                                      borderRadius: '4px',
+                                      backgroundColor: `${getEstadoColor(estadoProducto)}15`,
+                                      color: getEstadoColor(estadoProducto),
+                                      whiteSpace: 'nowrap'
+                                    }}>
+                                      {getEstadoLabel(estadoProducto)}
+                                    </span>
+                                  )}
+                                </div>
+                                {menu.cantidad && (
+                                  <p style={{
+                                    color: colors.textSecondary,
+                                    margin: 0
+                                  }}>
+                                    {menu.cantidad} {menu.proveedor && `- ${menu.proveedor}`}
+                                  </p>
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
                     ))}
@@ -587,9 +673,9 @@ const HojaRutaViewModal = ({
                   padding: '20px',
                   border: `1px solid ${colors.border}`
                 }}>
-                  <h3 style={{ 
-                    fontSize: '16px', 
-                    fontWeight: 'bold', 
+                  <h3 style={{
+                    fontSize: '16px',
+                    fontWeight: 'bold',
                     color: colors.text,
                     margin: '0 0 16px 0',
                     display: 'flex',
@@ -608,8 +694,8 @@ const HojaRutaViewModal = ({
                         borderRadius: '6px',
                         border: `1px solid ${colors.warning + '30'}`
                       }}>
-                        <p style={{ 
-                          fontSize: '11px', 
+                        <p style={{
+                          fontSize: '11px',
                           color: colors.text,
                           margin: 0,
                           fontWeight: '500'

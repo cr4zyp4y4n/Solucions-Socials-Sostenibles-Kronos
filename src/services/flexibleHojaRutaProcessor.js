@@ -14,16 +14,16 @@ function createFlexibleProcessor() {
       // Detectar separador
       const separators = [',', ';', '\t', '|'];
       const separatorCounts = {};
-      
+
       separators.forEach(sep => {
         const count = lines.slice(0, 5).reduce((acc, line) => {
           return acc + (line.split(sep).length - 1);
         }, 0);
         separatorCounts[sep] = count;
       });
-      
+
       format.separator = Object.entries(separatorCounts)
-        .sort(([,a], [,b]) => b - a)[0][0];
+        .sort(([, a], [, b]) => b - a)[0][0];
 
       // Detectar campos por patrones flexibles
       const fieldPatterns = {
@@ -40,16 +40,16 @@ function createFlexibleProcessor() {
       // Buscar campos en las líneas
       lines.slice(0, 20).forEach((line, lineIndex) => {
         const lowerLine = line.toLowerCase();
-        
+
         Object.entries(fieldPatterns).forEach(([field, patterns]) => {
           patterns.forEach(pattern => {
             if (lowerLine.includes(pattern)) {
               const parts = line.split(format.separator);
               // Buscar el valor en las columnas adyacentes
-              const fieldIndex = parts.findIndex(part => 
+              const fieldIndex = parts.findIndex(part =>
                 part.toLowerCase().includes(pattern)
               );
-              
+
               if (fieldIndex !== -1) {
                 // El valor suele estar en la siguiente columna o en la columna 3
                 const valueIndex = fieldIndex + 1 < parts.length ? fieldIndex + 1 : 3;
@@ -97,17 +97,18 @@ function createFlexibleProcessor() {
         equipamiento: [],
         menus: [],
         bebidas: [],
-        notas: []
+        notas: [],
+        productosIdoni: [] // Productos de proveedores IDONI/BONCOR
       };
 
       // Procesar campos detectados
       Object.entries(format.fieldMappings).forEach(([field, mapping]) => {
         const line = lines[mapping.line];
         const parts = line.split(format.separator);
-        
+
         if (parts[mapping.valueIndex]) {
           const value = parts[mapping.valueIndex].trim();
-          
+
           switch (field) {
             case 'fecha':
               data.fechaServicio = this.parseFlexibleDate(value);
@@ -149,7 +150,7 @@ function createFlexibleProcessor() {
       lines.forEach(line => {
         const lowerLine = line.toLowerCase();
         const parts = line.split(format.separator);
-        
+
         Object.entries(horarioPatterns).forEach(([horario, patterns]) => {
           patterns.forEach(pattern => {
             if (lowerLine.includes(pattern) && lowerLine.includes('hora')) {
@@ -167,7 +168,7 @@ function createFlexibleProcessor() {
       lines.forEach(line => {
         const parts = line.split(format.separator);
         const firstColumn = parts[0]?.trim();
-        
+
         if (firstColumn) {
           // Equipamiento - cualquier item que parezca material
           if (this.looksLikeEquipment(firstColumn)) {
@@ -178,7 +179,7 @@ function createFlexibleProcessor() {
               orden: data.equipamiento.length
             });
           }
-          
+
           // Menús - cualquier item que parezca comida
           if (this.looksLikeMenu(firstColumn)) {
             data.menus.push({
@@ -190,7 +191,7 @@ function createFlexibleProcessor() {
               orden: data.menus.length
             });
           }
-          
+
           // Bebidas
           if (this.looksLikeBeverage(firstColumn)) {
             data.bebidas.push({
@@ -201,6 +202,41 @@ function createFlexibleProcessor() {
             });
           }
         }
+
+        // Detectar productos IDONI/BONCOR - buscar proveedor en columna 6 (índice 6)
+        const proveedorCol6 = parts[6]?.trim().toUpperCase() || '';
+
+        if (proveedorCol6 && (proveedorCol6.includes('IDONI') || proveedorCol6.includes('BONCOR'))) {
+          const productoText = parts[3]?.trim() || '';
+          const cantidadText = parts[5]?.trim() || '';
+
+          // Solo añadir si hay producto válido
+          // NO filtrar por títulos de menú - queremos TODOS los productos IDONI/BONCOR
+          if (productoText && productoText.length > 0) {
+            data.productosIdoni.push({
+              id: Date.now().toString(36) + Math.random().toString(36).substr(2),
+              producto: productoText,
+              cantidad: cantidadText,
+              proveedor: proveedorCol6,
+              estado: 'pendiente',
+              fechaActualizacion: null,
+              orden: data.productosIdoni.length
+            });
+
+            console.log('✅ Producto IDONI/BONCOR detectado (flexible):', {
+              producto: productoText,
+              cantidad: cantidadText,
+              proveedor: proveedorCol6,
+              linea: line
+            });
+          }
+        }
+      });
+
+      console.log('🔍 Procesamiento flexible completado:', {
+        cliente: data.cliente,
+        productosIdoni: data.productosIdoni.length,
+        productos: data.productosIdoni
       });
 
       return data;
@@ -209,14 +245,14 @@ function createFlexibleProcessor() {
     // Funciones auxiliares
     parseFlexibleDate(dateStr) {
       if (!dateStr) return '';
-      
+
       // Intentar diferentes formatos de fecha
       const formats = [
         /(\d{1,2})[\/\.\-](\d{1,2})[\/\.\-](\d{4})/, // DD/MM/YYYY o DD.MM.YYYY
         /(\d{4})[\/\.\-](\d{1,2})[\/\.\-](\d{1,2})/, // YYYY/MM/DD
         /(\d{1,2})\s+de\s+(\w+)\s+de\s+(\d{4})/i, // DD de MMMM de YYYY
       ];
-      
+
       for (const format of formats) {
         const match = dateStr.match(format);
         if (match) {
@@ -240,7 +276,7 @@ function createFlexibleProcessor() {
                 date = new Date(`${match[3]}-${month}-${match[1].padStart(2, '0')}`);
               }
             }
-            
+
             if (date && !isNaN(date.getTime())) {
               return date.toISOString().split('T')[0];
             }
@@ -249,7 +285,7 @@ function createFlexibleProcessor() {
           }
         }
       }
-      
+
       return dateStr; // Devolver original si no se puede parsear
     },
 
@@ -259,8 +295,8 @@ function createFlexibleProcessor() {
         'plato', 'cuchara', 'tenedor', 'cuchillo', 'servilleta', 'bandeja',
         'termo', 'calentador', 'display', 'roll', 'decoracion'
       ];
-      
-      return equipmentKeywords.some(keyword => 
+
+      return equipmentKeywords.some(keyword =>
         item.toLowerCase().includes(keyword)
       );
     },
@@ -271,8 +307,8 @@ function createFlexibleProcessor() {
         'panet', 'fruita', 'iogurt', 'truita', 'broqueta', 'croqueta',
         'coca', 'petit four', 'refresco', 'vi', 'cava', 'brou'
       ];
-      
-      return menuKeywords.some(keyword => 
+
+      return menuKeywords.some(keyword =>
         item.toLowerCase().includes(keyword)
       );
     },
@@ -282,8 +318,8 @@ function createFlexibleProcessor() {
         'refresco', 'coca cola', 'fanta', 'vino', 'cava', 'cerveza',
         'agua', 'zumo', 'botella', 'lata', 'hielo', 'bebida'
       ];
-      
-      return beverageKeywords.some(keyword => 
+
+      return beverageKeywords.some(keyword =>
         item.toLowerCase().includes(keyword)
       );
     }

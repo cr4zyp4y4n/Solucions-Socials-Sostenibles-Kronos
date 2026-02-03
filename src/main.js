@@ -63,7 +63,7 @@ function setupAutoUpdaterEvents() {
     console.log('📁 Archivos del release:', info.files || 'No disponible');
     console.log('🔧 Información completa:', JSON.stringify(info, null, 2));
     console.log('🔄 Iniciando descarga automática...');
-    
+
     // Iniciar descarga automáticamente
     try {
       autoUpdater.downloadUpdate();
@@ -71,7 +71,7 @@ function setupAutoUpdaterEvents() {
     } catch (error) {
       console.error('❌ Error iniciando descarga automática:', error);
     }
-    
+
     // Enviar notificación al renderer
     if (mainWindow) {
       mainWindow.webContents.send('update-available', info);
@@ -100,18 +100,18 @@ function setupAutoUpdaterEvents() {
   });
 
   autoUpdater.on('download-progress', (progressObj) => {
-  console.log('⬇️ Progreso de descarga:', progressObj);
-  console.log('📊 Porcentaje:', progressObj.percent);
-  console.log('🚀 Velocidad:', progressObj.bytesPerSecond);
-  console.log('📦 Tamaño total:', progressObj.total);
-  console.log('📥 Bytes descargados:', progressObj.transferred);
-  console.log('🔗 URL del archivo:', progressObj.url || 'No disponible');
-  console.log('📁 Nombre del archivo:', progressObj.filename || 'No disponible');
-  // Enviar progreso al renderer
-  if (mainWindow) {
-    mainWindow.webContents.send('download-progress', progressObj);
-  }
-});
+    console.log('⬇️ Progreso de descarga:', progressObj);
+    console.log('📊 Porcentaje:', progressObj.percent);
+    console.log('🚀 Velocidad:', progressObj.bytesPerSecond);
+    console.log('📦 Tamaño total:', progressObj.total);
+    console.log('📥 Bytes descargados:', progressObj.transferred);
+    console.log('🔗 URL del archivo:', progressObj.url || 'No disponible');
+    console.log('📁 Nombre del archivo:', progressObj.filename || 'No disponible');
+    // Enviar progreso al renderer
+    if (mainWindow) {
+      mainWindow.webContents.send('download-progress', progressObj);
+    }
+  });
 
   autoUpdater.on('update-downloaded', (info) => {
     console.log('✅ Actualización descargada:', info);
@@ -220,8 +220,8 @@ function setupIpcHandlers() {
       });
 
       // 2. Buscar el archivo ejecutable (.exe o Setup.exe)
-      const executableAsset = releaseInfo.assets?.find(asset => 
-        asset.name.endsWith('.exe') && 
+      const executableAsset = releaseInfo.assets?.find(asset =>
+        asset.name.endsWith('.exe') &&
         (asset.name.includes('Setup') || asset.name.includes('SSS Kronos'))
       );
 
@@ -249,7 +249,7 @@ function setupIpcHandlers() {
       // 4. Descargar el archivo
       return new Promise((resolve, reject) => {
         const file = fs.createWriteStream(filePath);
-        
+
         https.get(executableAsset.browser_download_url, {
           headers: {
             'User-Agent': 'SSS-Kronos-App',
@@ -268,8 +268,8 @@ function setupIpcHandlers() {
               redirectResponse.on('end', () => {
                 file.close();
                 console.log('✅ Archivo descargado exitosamente:', filePath);
-                resolve({ 
-                  success: true, 
+                resolve({
+                  success: true,
                   message: 'Archivo descargado exitosamente',
                   filePath: filePath,
                   version: releaseInfo.tag_name
@@ -284,8 +284,8 @@ function setupIpcHandlers() {
             response.on('end', () => {
               file.close();
               console.log('✅ Archivo descargado exitosamente:', filePath);
-              resolve({ 
-                success: true, 
+              resolve({
+                success: true,
                 message: 'Archivo descargado exitosamente',
                 filePath: filePath,
                 version: releaseInfo.tag_name
@@ -306,9 +306,9 @@ function setupIpcHandlers() {
 
     } catch (error) {
       console.error('❌ Error descargando ejecutable:', error);
-      return { 
-        success: false, 
-        message: `Error al descargar: ${error.message}` 
+      return {
+        success: false,
+        message: `Error al descargar: ${error.message}`
       };
     }
   });
@@ -337,7 +337,7 @@ ipcMain.handle('get-exchange-rates', async () => {
 ipcMain.handle('make-holded-request', async (event, { url, options }) => {
   return new Promise((resolve, reject) => {
     const urlObj = new URL(url);
-    
+
     const requestOptions = {
       hostname: urlObj.hostname,
       port: urlObj.port || 443,
@@ -357,7 +357,7 @@ ipcMain.handle('make-holded-request', async (event, { url, options }) => {
         // Algunos servidores pueden devolver JSON válido sin el header correcto
         let responseData;
         let isJsonValid = false;
-        
+
         try {
           // Si la respuesta está vacía, tratar como array vacío
           if (data.trim() === '') {
@@ -371,33 +371,33 @@ ipcMain.handle('make-holded-request', async (event, { url, options }) => {
           // No es JSON válido, verificar el Content-Type y el código de estado
           const contentType = res.headers['content-type'] || '';
           const isJsonContentType = contentType.includes('application/json');
-          
+
           // Si el Content-Type dice JSON pero no se puede parsear, es un error real
           if (isJsonContentType) {
             const errorPreview = data.substring(0, 200).replace(/\s+/g, ' ');
             reject(new Error(`Error parsing JSON response: ${e.message}. Respuesta recibida: ${errorPreview}...`));
             return;
           }
-          
+
           // Si no es JSON y es un error del servidor (5xx) o gateway (502, 503, 504)
           if (res.statusCode >= 500 || res.statusCode === 502 || res.statusCode === 503 || res.statusCode === 504) {
             const errorPreview = data.substring(0, 100).replace(/\s+/g, ' ');
             reject(new Error(`Error del servidor Holded (${res.statusCode}): ${res.statusMessage}. Respuesta: ${errorPreview}...`));
             return;
           }
-          
+
           // Si es un error de autenticación (401) o no autorizado (403)
           if (res.statusCode === 401 || res.statusCode === 403) {
             reject(new Error(`Error de autenticación Holded (${res.statusCode}): API key inválida o no autorizada.`));
             return;
           }
-          
+
           // Para otros errores, mostrar el contenido truncado
           const errorPreview = data.substring(0, 200).replace(/\s+/g, ' ');
           reject(new Error(`Error en respuesta Holded (${res.statusCode}): La respuesta no es JSON válido. Contenido: ${errorPreview}...`));
           return;
         }
-        
+
         // Si llegamos aquí, el JSON es válido
         resolve({
           ok: res.statusCode >= 200 && res.statusCode < 300,
@@ -439,33 +439,36 @@ const createWindow = () => {
   // Configurar Content Security Policy (muy permisiva para permitir Tesseract workers)
   // Asegurarse de que worker-src permita blob: explícitamente
   mainWindow.webContents.session.webRequest.onHeadersReceived((details, callback) => {
-    // Eliminar cualquier CSP existente y aplicar una muy permisiva
-    const responseHeaders = { ...details.responseHeaders };
-    
-    // Eliminar CSP existente si existe
-    if (responseHeaders['Content-Security-Policy']) {
-      delete responseHeaders['Content-Security-Policy'];
-    }
-    if (responseHeaders['content-security-policy']) {
-      delete responseHeaders['content-security-policy'];
-    }
-    
-    // Aplicar CSP muy permisiva que permita blob: para workers
-    responseHeaders['Content-Security-Policy'] = [
-      "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; " +
-      "script-src * 'unsafe-inline' 'unsafe-eval' blob: data:; " +
-      "worker-src * blob: data: 'unsafe-inline' 'unsafe-eval'; " +
-      "style-src * 'unsafe-inline'; " +
-      "connect-src *; " +
-      "img-src * data: blob:;"
-    ];
-    
-    console.log('🔍 [CSP] Aplicando CSP permisiva para Tesseract workers');
-    callback({ responseHeaders });
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Content-Security-Policy': [
+          "default-src 'self' 'unsafe-inline' data:; " +
+          "script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +
+          "style-src 'self' 'unsafe-inline'; " +
+          "connect-src 'self' https://v6.exchangerate-api.com https://api.exchangerate-api.com https://zalnsacawwekmibhoiba.supabase.co https://*.supabase.co wss://zalnsacawwekmibhoiba.supabase.co wss://*.supabase.co https://api.holded.com https://api.github.com; " +
+          "img-src 'self' data: blob: https://zalnsacawwekmibhoiba.supabase.co https://*.supabase.co;"
+        ]
+      }
+    });
   });
 
   // and load the index.html of the app.
   mainWindow.loadURL(MAIN_WINDOW_WEBPACK_ENTRY);
+
+  // Abrir DevTools automáticamente en desarrollo
+  if (process.env.NODE_ENV === 'development' || process.argv.includes('--dev')) {
+    mainWindow.webContents.openDevTools();
+  }
+
+  // Permitir abrir DevTools con F12 o Ctrl+Shift+I
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    if (input.key === 'F12' ||
+      (input.control && input.shift && input.key === 'I') ||
+      (input.control && input.shift && input.key === 'i')) {
+      mainWindow.webContents.toggleDevTools();
+    }
+  });
 
   // Permitir abrir DevTools solo bajo demanda (por IPC)
   ipcMain.on('open-devtools', () => {
@@ -474,7 +477,7 @@ const createWindow = () => {
 
   // Configurar eventos del auto-updater después de crear la ventana
   setupAutoUpdaterEvents();
-  
+
   // Configurar handlers IPC
   setupIpcHandlers();
   console.log('✅ Handlers IPC configurados correctamente');

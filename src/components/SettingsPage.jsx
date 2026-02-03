@@ -12,7 +12,9 @@ import {
   RefreshCw,
   Shield,
   Slash,
-  Zap
+  Zap,
+  Database,
+  Cloud
 } from 'feather-icons-react';
 import { useTheme } from './ThemeContext';
 import { useDataContext } from './DataContext';
@@ -21,6 +23,7 @@ import ConnectionTest from './ConnectionTest';
 import holdedApi from '../services/holdedApi';
 import HoldedTest from './HoldedTest';
 import { useAuth } from './AuthContext';
+import { dbService, supabase } from '../config/supabase';
 
 console.log('SettingsPage');
 
@@ -141,6 +144,41 @@ function useHoldedMenjarConnectionStatus() {
   return { status, error };
 }
 
+// Hook para obtener el uso de la base de datos
+function useDatabaseUsage(isAdmin) {
+  const [sizeBytes, setSizeBytes] = useReactState(0);
+  const [loading, setLoading] = useReactState(false);
+  const [error, setError] = useReactState(null);
+
+  React.useEffect(() => {
+    if (!isAdmin) return;
+
+    let isMounted = true;
+    async function fetchSize() {
+      setLoading(true);
+      try {
+        const { data, error } = await dbService.getDatabaseSize();
+        if (!isMounted) return;
+        
+        if (error) throw error;
+        setSizeBytes(data || 0);
+        setError(null);
+      } catch (err) {
+        if (!isMounted) return;
+        console.error('Error fetching DB size:', err);
+        setError(err.message);
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    }
+
+    fetchSize();
+    return () => { isMounted = false; };
+  }, [isAdmin]);
+
+  return { sizeBytes, loading, error };
+}
+
 const SettingsPage = () => {
   const { colors } = useTheme();
   const { currency, setCurrency, currencies, loading, lastUpdate, refreshRates } = useCurrency();
@@ -226,8 +264,49 @@ const SettingsPage = () => {
     }
   }, [appVersion]);
 
-  // Verificar si el usuario es admin
-  const isAdmin = user?.role === 'authenticated' && user?.user_metadata?.role === 'admin';
+  // Verificar si el usuario es admin (async check robusto)
+  const [isAdmin, setIsAdmin] = useState(false);
+  
+  useEffect(() => {
+    const checkAdminStatus = async () => {
+      if (!user?.id) {
+        setIsAdmin(false);
+        return;
+      }
+      
+      // 1. Check metadata (fast)
+      if (user?.user_metadata?.role === 'admin') {
+        setIsAdmin(true);
+        // We can still verify with DB in background if needed, but usually metadata is enough if consistent.
+        // However, sticking to the robust pattern from UserManagement:
+      }
+
+      try {
+        const { data, error } = await supabase
+          .from('user_profiles')
+          .select('role')
+          .eq('id', user.id)
+          .single();
+          
+        if (!error && (data?.role === 'admin' || user?.user_metadata?.role === 'admin')) {
+          setIsAdmin(true);
+        } else {
+          // If metadata said yes but DB said no? Usually DB wins or we keep metadata.
+          // Let's stick to: if EITHER says admin, you are admin, as per UserManagement logic.
+          if (user?.user_metadata?.role === 'admin') {
+             setIsAdmin(true);
+          } else {
+             setIsAdmin(false);
+          }
+        }
+      } catch (e) {
+        // Fallback to metadata
+        setIsAdmin(user?.user_metadata?.role === 'admin');
+      }
+    };
+    
+    checkAdminStatus();
+  }, [user]);
   // Verificar si el usuario puede instalar actualizaciones (admin, management, manager, user)
   const canInstallUpdates = user?.role === 'authenticated' && 
     ['admin', 'management', 'manager', 'user'].includes(user?.user_metadata?.role);
@@ -245,6 +324,24 @@ const SettingsPage = () => {
 
   // Estado de conexión Holded Menjar (badge)
   const { status: holdedMenjarStatus, error: holdedMenjarError } = useHoldedMenjarConnectionStatus();
+
+  // Estado de uso de base de datos
+  const { sizeBytes: dbSizeBytes, loading: dbLoading } = useDatabaseUsage(isAdmin);
+  
+  // Format bytes to legible string
+  const formatBytes = (bytes, decimals = 2) => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const dm = decimals < 0 ? 0 : decimals;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+  };
+
+  // Calculate percentage based on 500MB free tier limit (adjust as needed)
+  const TIER_LIMIT_MB = 500;
+  const TIER_LIMIT_BYTES = TIER_LIMIT_MB * 1024 * 1024;
+  const usagePercentage = Math.min((dbSizeBytes / TIER_LIMIT_BYTES) * 100, 100);
 
   const showAlertMessage = (message, type = 'success') => {
     setAlertMessage(message);
@@ -777,6 +874,66 @@ const SettingsPage = () => {
                 </div>
               </motion.div>
             ))}
+          </div>
+        </motion.div>
+      );
+    }
+    return null;
+  };
+
+  // Sección de Almacenamiento (Database Usage)
+  const renderStorageSection = () => {
+    if (isAdmin) {
+      return (
+         <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.5 }}
+          style={{ 
+            background: colors.card, 
+            borderRadius: 8, 
+            boxShadow: '0 2px 8px rgba(0,0,0,0.04)', 
+            padding: '24px',
+            marginBottom: '32px'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', marginBottom: '16px' }}>
+            <Database size={20} color={colors.text} style={{ marginRight: '10px' }} />
+            <h3 style={{ color: colors.text, fontSize: 18, fontWeight: 600, margin: 0 }}>Almacenamiento</h3>
+          </div>
+          
+          <div style={{ marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+            <span style={{ fontSize: '14px', color: colors.text, fontWeight: '500' }}>
+              Uso de Base de Datos
+            </span>
+            <span style={{ fontSize: '13px', color: colors.textSecondary }}>
+              {formatBytes(dbSizeBytes)} utilizados
+            </span>
+          </div>
+
+          {/* Progress Bar Container */}
+          <div style={{ 
+            height: '8px', 
+            width: '100%', 
+            backgroundColor: colors.border, 
+            borderRadius: '4px',
+            overflow: 'hidden',
+            marginBottom: '8px'
+          }}>
+            <motion.div 
+              initial={{ width: 0 }}
+              animate={{ width: `${usagePercentage}%` }}
+              transition={{ duration: 1, ease: "easeOut" }}
+              style={{
+                height: '100%',
+                backgroundColor: usagePercentage > 90 ? colors.error : usagePercentage > 75 ? colors.warning : colors.primary,
+                borderRadius: '4px'
+              }}
+            />
+          </div>
+
+          <div style={{ fontSize: '12px', color: colors.textSecondary }}>
+             {usagePercentage.toFixed(1)}% de {TIER_LIMIT_MB}MB (Plan Básico estimado)
           </div>
         </motion.div>
       );
@@ -1508,10 +1665,12 @@ const SettingsPage = () => {
         {renderDivisaSection()}
         {renderInfoApp()}
         {renderEstadoConexiones()}
+        {renderPruebasTecnicas()}
         {renderUpdateSection()}
+        {renderStorageSection()}
       </motion.div>
     </motion.div>
   );
 };
 
-export default SettingsPage; 
+export default SettingsPage;

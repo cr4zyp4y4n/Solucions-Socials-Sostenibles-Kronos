@@ -19,11 +19,11 @@ class HojaRutaSupabaseService {
         try {
           const data = new Uint8Array(e.target.result);
           const workbook = XLSX.read(data, { type: 'array' });
-          
+
           // Obtener la primera hoja
           const sheetName = workbook.SheetNames[0];
           const worksheet = workbook.Sheets[sheetName];
-          
+
           // Convertir a CSV
           const csvContent = XLSX.utils.sheet_to_csv(worksheet);
           resolve(csvContent);
@@ -60,7 +60,7 @@ class HojaRutaSupabaseService {
   processCSV(csvContent) {
     try {
       const lines = csvContent.split('\n');
-      
+
       // Intentar primero el procesamiento estándar (como el servicio original)
       try {
         const standardData = this.processCSVStandard(lines);
@@ -71,12 +71,12 @@ class HojaRutaSupabaseService {
       } catch (error) {
         console.log('⚠️ Procesamiento estándar falló, intentando procesamiento flexible...', error);
       }
-      
+
       // Si el estándar falla, usar procesamiento flexible
       console.log('🔄 Usando procesamiento flexible...');
       const format = this.flexibleProcessor.detectFormat(lines);
       const flexibleData = this.flexibleProcessor.processWithFormat(lines, format);
-      
+
       console.log('📊 Campos detectados:', Object.keys(format.fieldMappings));
       console.log('📋 Datos extraídos:', {
         cliente: flexibleData.cliente,
@@ -84,9 +84,9 @@ class HojaRutaSupabaseService {
         responsable: flexibleData.responsable,
         numPersonas: flexibleData.numPersonas
       });
-      
+
       return flexibleData;
-      
+
     } catch (error) {
       console.error('Error procesando CSV:', error);
       throw new Error('Error al procesar el archivo CSV');
@@ -157,13 +157,13 @@ class HojaRutaSupabaseService {
 
     // Procesar línea por línea
     let currentMenuType = null;
-    
+
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i].trim();
       if (!line) continue;
 
       const parts = this.parseCSVLine(line);
-        
+
       // Información general
       if (parts[0] === 'Fecha' && parts[3]) {
         data.fechaServicio = this.parseFecha(parts[3]);
@@ -251,10 +251,10 @@ class HojaRutaSupabaseService {
     const result = [];
     let current = '';
     let inQuotes = false;
-    
+
     for (let i = 0; i < line.length; i++) {
       const char = line[i];
-      
+
       if (char === '"') {
         inQuotes = !inQuotes;
       } else if (char === ',' && !inQuotes) {
@@ -265,7 +265,7 @@ class HojaRutaSupabaseService {
       }
     }
     result.push(current.trim());
-    
+
     return result;
   }
 
@@ -369,46 +369,46 @@ class HojaRutaSupabaseService {
   async uploadFile(file, userId) {
     try {
       let csvContent;
-      
+
       // Determinar el tipo de archivo
       const fileName = file.name.toLowerCase();
       const isExcel = fileName.endsWith('.xlsx') || fileName.endsWith('.xls');
       const isCSV = fileName.endsWith('.csv');
-      
+
       if (!isExcel && !isCSV) {
         throw new Error('Solo se permiten archivos Excel (.xlsx, .xls) o CSV (.csv)');
       }
-      
+
       // Procesar según el tipo
       if (isExcel) {
         csvContent = await this.processExcel(file);
       } else {
         csvContent = await this.readFileAsText(file);
       }
-      
+
       const hojaRutaData = this.processCSV(csvContent);
-      
+
       console.log('📋 Datos procesados del CSV:', hojaRutaData);
-      
+
       // Validar que tenemos datos esenciales
       if (!hojaRutaData.cliente || (typeof hojaRutaData.cliente === 'string' && hojaRutaData.cliente.trim() === '')) {
         console.warn('⚠️ No se encontró cliente en los datos. Datos disponibles:', Object.keys(hojaRutaData));
       }
-      
+
       // Añadir metadatos
       hojaRutaData.creadoPor = userId;
       hojaRutaData.nombreArchivo = file.name;
       hojaRutaData.tipoArchivo = isExcel ? 'excel' : 'csv';
-      
+
       // Asegurar que tiene estructura completa
       hojaRutaData.horasPersonal = hojaRutaData.horasPersonal || [];
-      
+
       // Si no hay cliente, intentar usar el nombre del archivo o un valor por defecto
       if (!hojaRutaData.cliente || hojaRutaData.cliente.trim() === '') {
         console.warn('⚠️ Cliente vacío, usando valor por defecto');
         hojaRutaData.cliente = file.name.replace(/\.(xlsx|xls|csv)$/i, '') || 'Cliente sin nombre';
       }
-      
+
       hojaRutaData.checklist = hojaRutaData.checklist || {
         general: {
           preEvento: [
@@ -437,15 +437,15 @@ class HojaRutaSupabaseService {
         menus: [],
         bebidas: []
       };
-      
+
       // Crear hoja de ruta en Supabase
       const hojaCreada = await this.createHojaRuta(hojaRutaData, userId);
-      
+
       // Generar checklists automáticas basadas en elementos
       if (hojaCreada) {
         await this.actualizarChecklistElementos(hojaCreada.id);
       }
-      
+
       return hojaCreada;
     } catch (error) {
       console.error('❌ Error subiendo archivo:', error);
@@ -736,7 +736,7 @@ class HojaRutaSupabaseService {
       let cliente = hojaData.cliente;
       if (!cliente || (typeof cliente === 'string' && cliente.trim() === '')) {
         // Intentar otras fuentes
-        cliente = hojaData.nombreArchivo 
+        cliente = hojaData.nombreArchivo
           ? hojaData.nombreArchivo.replace(/\.(xlsx|xls|csv)$/i, '').trim()
           : 'Cliente sin nombre';
         console.warn('⚠️ Cliente no encontrado, usando:', cliente);
@@ -793,7 +793,8 @@ class HojaRutaSupabaseService {
         this.insertEquipamiento(hojaId, hojaData.equipamiento || []),
         this.insertMenus(hojaId, hojaData.menus || []),
         this.insertBebidas(hojaId, hojaData.bebidas || []),
-        this.insertChecklist(hojaId, hojaData.checklist)
+        this.insertChecklist(hojaId, hojaData.checklist),
+        this.insertProductosIdoni(hojaId, hojaData.menus || []) // Detectar productos IDONI/BONCOR
       ]);
 
       return await this.getHojaRuta(hojaId);
@@ -927,7 +928,7 @@ class HojaRutaSupabaseService {
 
       // Obtener notas actuales o inicializar array vacío
       const notasActuales = hoja?.notas_servicio || [];
-      
+
       // Añadir la nueva nota
       const nuevasNotas = [...notasActuales, nota.trim()];
 
@@ -960,7 +961,7 @@ class HojaRutaSupabaseService {
 
       // Obtener notas actuales
       const notasActuales = hoja?.notas_servicio || [];
-      
+
       // Verificar que el índice es válido
       if (indice < 0 || indice >= notasActuales.length) {
         throw new Error('Índice de nota inválido');
@@ -999,7 +1000,7 @@ class HojaRutaSupabaseService {
 
       // Obtener notas actuales
       const notasActuales = hoja?.notas_servicio || [];
-      
+
       // Verificar que el índice es válido
       if (indice < 0 || indice >= notasActuales.length) {
         throw new Error('Índice de nota inválido');
@@ -1079,6 +1080,55 @@ class HojaRutaSupabaseService {
       .insert(menusData);
 
     if (error) throw error;
+  }
+
+  async insertProductosIdoni(hojaId, menus) {
+    if (!menus || menus.length === 0) return;
+
+    console.log('🔍 Buscando productos IDONI/BONCOR en menús...');
+
+    const productosIdoni = [];
+    let orden = 0;
+
+    menus.forEach(menu => {
+      const proveedor = menu.proveedor?.trim().toUpperCase() || '';
+
+      if (proveedor && (proveedor.includes('IDONI') || proveedor.includes('BONCOR'))) {
+        const producto = menu.item?.trim() || '';
+        const cantidad = menu.cantidad?.trim() || '';
+
+        if (producto && producto.length > 0) {
+          productosIdoni.push({
+            hoja_ruta_id: hojaId,
+            producto: producto,
+            cantidad: cantidad,
+            proveedor: menu.proveedor?.trim() || '',
+            estado: 'pendiente',
+            orden: orden++,
+            fecha_actualizacion: null
+          });
+
+          console.log(`✅ Producto IDONI/BONCOR detectado: ${producto} (${proveedor})`);
+        }
+      }
+    });
+
+    if (productosIdoni.length > 0) {
+      console.log(`📦 Insertando ${productosIdoni.length} productos IDONI/BONCOR en Supabase...`);
+
+      const { error } = await supabase
+        .from('productos_idoni')
+        .insert(productosIdoni);
+
+      if (error) {
+        console.error('❌ Error insertando productos IDONI:', error);
+        throw error;
+      }
+
+      console.log(`✅ ${productosIdoni.length} productos IDONI/BONCOR guardados correctamente`);
+    } else {
+      console.log('ℹ️ No se encontraron productos IDONI/BONCOR en esta hoja de ruta');
+    }
   }
 
   async insertBebidas(hojaId, bebidas) {
@@ -1430,7 +1480,7 @@ class HojaRutaSupabaseService {
   async obtenerHistorialServicios(empleadoId) {
     try {
       console.log('🔍 Buscando histórico para empleado ID:', empleadoId);
-      
+
       // Primero obtener el personal con empleado_id
       const { data: personalData, error: personalError } = await supabase
         .from('hojas_ruta_personal')
@@ -1471,7 +1521,7 @@ class HojaRutaSupabaseService {
         .map(personal => {
           const hoja = hojasData?.find(h => h.id === personal.hoja_ruta_id);
           if (!hoja) return null;
-          
+
           return {
             hojaId: hoja.id,
             fechaServicio: hoja.fecha_servicio,
@@ -1505,8 +1555,8 @@ class HojaRutaSupabaseService {
       const estadisticas = {
         totalServicios: historial.length,
         totalHoras: historial.reduce((sum, servicio) => sum + servicio.horas, 0),
-        promedioHoras: historial.length > 0 
-          ? Math.round((historial.reduce((sum, servicio) => sum + servicio.horas, 0) / historial.length) * 10) / 10 
+        promedioHoras: historial.length > 0
+          ? Math.round((historial.reduce((sum, servicio) => sum + servicio.horas, 0) / historial.length) * 10) / 10
           : 0,
         serviciosCompletados: historial.filter(s => s.estado === 'completado').length,
         ultimoServicio: historial.length > 0 ? historial[0].fechaServicio : null
