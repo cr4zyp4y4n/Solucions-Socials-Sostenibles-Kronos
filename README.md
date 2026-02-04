@@ -1,12 +1,12 @@
-# SSS Kronos v2.1.18
+# SSS Kronos v2.1.19
 
 
-🚀 **Release Notes - SSS Kronos v2.1.18**
+🚀 **Release Notes - SSS Kronos v2.1.19**
 
 ## 📦 Archivos de Distribución
 
 ### Windows
-- **Instalador:** SSS Kronos-2.1.18 Setup.exe (130 MB aprox.)
+- **Instalador:** SSS Kronos-2.1.19 Setup.exe (130 MB aprox.)
 - **Ubicación:** `out/make/squirrel.windows/x64/`
 - **Compatibilidad:** Windows 10/11 (64-bit)
 
@@ -14,6 +14,13 @@
 *Nota: Los instaladores para macOS y Linux se generarán en futuras versiones*
 
 ## ✨ Nuevas Características y Cambios Clave
+
+### 🆕 **v2.1.19 - Gestión Tienda y dependencias PDF**
+- ✅ **Página Gestión Tienda:** Nueva sección con dos pestañas: **Hojas Técnicas** y **Confirmación Productos Tienda** (ruta `/gestion-tienda`, roles: admin, manager, tienda).
+- ✅ **Hojas Técnicas:** CRUD de fichas técnicas de platos (nombre, imagen, ingredientes con peso/coste/gastos, alérgenos), almacenamiento en Supabase y bucket `dish-images`, exportación a PDF con logo IDONI.
+- ✅ **Confirmación Productos Tienda:** Listado de productos IDONI/BONCOR por hoja de ruta con filtros por estado (pendientes, disponibles, no disponibles) y estadísticas.
+- ✅ **Dependencias PDF:** Generación de PDF con `jspdf` y `jspdf-autotable`; corrección de error de compilación "Module not found" instalando/verificando dependencias (`npm install jspdf jspdf-autotable` o `npm install`).
+- 📄 **Documentación:** [docs/GESTION_TIENDA.md](docs/GESTION_TIENDA.md).
 
 ### 🆕 **v2.1.18 - Facturas de venta Holded, Socios (DNI/teléfono) y mejoras**
 - ✅ **Facturas de venta en Análisis:** Nueva sección idéntica a facturas de compra con toggle "Facturas de compra" / "Facturas de venta", mismo selector de año y vistas (General, Sergi, Bruno)
@@ -528,7 +535,7 @@
 
 ### 📥 Descargar
 1. Ve a la sección Releases de este repositorio
-2. Descarga `SSS Kronos-2.1.18 Setup.exe`
+2. Descarga `SSS Kronos-2.1.19 Setup.exe`
 3. Ejecuta el instalador y sigue las instrucciones
 
 ### ⚡ Primera Ejecución
@@ -559,6 +566,7 @@
 
 - **README principal:** Instrucciones de instalación y uso
 - **Documentación técnica:** Carpeta `docs/` con soluciones detalladas
+- **Gestión Tienda:** [docs/GESTION_TIENDA.md](docs/GESTION_TIENDA.md) — Hojas Técnicas, Confirmación Productos, dependencias PDF (jspdf)
 - **Configuración:** Guías para desarrolladores
 - **Scripts SQL:** `/database` para limpieza y mantenimiento
 - **Esquema IDONI:** `database/idoni_schema.sql` para configuración de base de datos
@@ -570,6 +578,11 @@
 - **Documentación:** docs.supabase.com
 
 ## 🔄 Próximas Versiones
+
+### 🎯 v2.1.19 ✅ **COMPLETADA**
+- ✅ Módulo Gestión Tienda (Hojas Técnicas + Confirmación Productos Tienda) ✅
+- ✅ Dependencias PDF (jspdf, jspdf-autotable) y corrección de error de compilación ✅
+- ✅ Documentación [docs/GESTION_TIENDA.md](docs/GESTION_TIENDA.md) ✅
 
 ### 🎯 v2.1.18 ✅ **COMPLETADA**
 - ✅ Facturas de venta Holded en Análisis (toggle compra/venta, mismo diseño y selector de año) ✅
