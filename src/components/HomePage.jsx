@@ -24,6 +24,8 @@ import { useNavigation } from './NavigationContext';
 import { supabase } from '../config/supabase';
 import holdedApi from '../services/holdedApi';
 
+import TiendaDashboard from './TiendaDashboard';
+
 const EXPECTED_HEADERS = [
   "Data d'emissió", 'Núm', 'Núm. Intern', 'Data comptable', 'Venciment', 'Proveïdor',
   'Descripció', 'Tags', 'Compte', 'Projecte', 'Subtotal', 'IVA', 'Retención', 'Empleados',
@@ -169,6 +171,14 @@ const HomePage = () => {
     solucions: null,
     menjar: null
   });
+
+  // Verificar rol de tienda
+  const isTienda = (user?.user_metadata?.role === 'tienda') || (user?.role === 'tienda');
+
+  // Si es tienda, mostrar dashboard simplificado
+  if (isTienda) {
+    return <TiendaDashboard />;
+  }
 
   // Cargar datos desde Holded al montar el componente
   useEffect(() => {

@@ -50,10 +50,10 @@ const SociosPage = () => {
   const canManageSocios = useMemo(() => {
     // Si no hay usuario pero estamos autenticados, permitir gestión temporalmente
     const isAuthenticated = user || (typeof window !== 'undefined' && localStorage.getItem('supabase.auth.token'));
-    const userRole = user?.role?.toLowerCase();
+    const userRole = (user?.user_metadata?.role || user?.role || '').toLowerCase();
     const canManage = isAuthenticated && (
       !userRole || // Si no hay rol definido, permitir (temporal)
-      ['admin', 'administrador', 'jefe', 'tienda'].includes(userRole)
+      ['admin', 'administrador', 'jefe', 'tienda', 'manager'].includes(userRole)
     );
     
     return canManage;

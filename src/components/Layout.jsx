@@ -458,7 +458,7 @@ const Layout = () => {
     { key: 'empleados', label: 'Empleados', path: '/empleados', icon: Users, roles: ['admin', 'management', 'manager'] },
     { key: 'hoja-ruta', label: 'Hoja de Ruta', path: '/hoja-ruta', icon: Calendar, roles: ['admin', 'management', 'manager'] },
     { key: 'fichaje', label: 'Fichaje', path: '/fichaje', icon: Clock, roles: ['admin', 'manager', 'tienda'] },
-    { key: 'socios', label: 'Socios IDONI', path: '/socios', icon: Users, roles: ['admin', 'management', 'manager'] },
+    { key: 'socios', label: 'Socios IDONI', path: '/socios', icon: Users, roles: ['admin', 'management', 'manager', 'tienda'] },
     { key: 'gestion-tienda', label: 'Gestión Tienda', path: '/gestion-tienda', icon: ShoppingBag, roles: ['admin', 'manager', 'tienda'] },
     { key: 'contacts', label: 'Contactos', path: '/contacts', icon: CreditCard, roles: ['admin', 'management', 'manager'] },
     { key: 'settings', label: 'Configuración', path: '/settings', icon: Settings, roles: ['admin', 'management', 'manager', 'user', 'tienda'] },
