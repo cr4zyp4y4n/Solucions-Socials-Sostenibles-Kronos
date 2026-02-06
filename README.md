@@ -1,12 +1,12 @@
-# SSS Kronos v2.1.19
+# SSS Kronos v2.1.21
 
 
-🚀 **Release Notes - SSS Kronos v2.1.19**
+🚀 **Release Notes - SSS Kronos v2.1.21**
 
 ## 📦 Archivos de Distribución
 
 ### Windows
-- **Instalador:** SSS Kronos-2.1.19 Setup.exe (130 MB aprox.)
+- **Instalador:** SSS Kronos-2.1.21 Setup.exe (130 MB aprox.)
 - **Ubicación:** `out/make/squirrel.windows/x64/`
 - **Compatibilidad:** Windows 10/11 (64-bit)
 
@@ -14,6 +14,12 @@
 *Nota: Los instaladores para macOS y Linux se generarán en futuras versiones*
 
 ## ✨ Nuevas Características y Cambios Clave
+
+### 🆕 **v2.1.21 - Panel Fichajes y eliminación de usuarios**
+- ✅ **Panel de Fichajes:** Los empleados que están trabajando en ese momento aparecen primero en la lista (orden por "trabajando ahora").
+- ✅ **Eliminación de usuarios desde Admin:** Uso de la RPC `complete_delete_user_cascade` en lugar de `auth.admin.deleteUser`, evitando el error 403 (User not allowed) con la clave anon.
+- ✅ **Migración FK para borrado de usuarios:** Script `database/fix_audit_logs_notifications_cascade_delete.sql` para ejecutar en Supabase (ON DELETE CASCADE en `audit_logs` y `notifications` hacia `auth.users`), de modo que el borrado desde el panel de Supabase o por trigger no falle por restricción de clave foránea.
+- 📄 **Documentación:** [docs/README.md](docs/README.md) (índice con cambios v2.1.21).
 
 ### 🆕 **v2.1.19 - Gestión Tienda y dependencias PDF**
 - ✅ **Página Gestión Tienda:** Nueva sección con dos pestañas: **Hojas Técnicas** y **Confirmación Productos Tienda** (ruta `/gestion-tienda`, roles: admin, manager, tienda).
