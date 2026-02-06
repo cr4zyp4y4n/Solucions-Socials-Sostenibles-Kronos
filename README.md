@@ -20,7 +20,8 @@
 - ✅ **Hojas Técnicas:** CRUD de fichas técnicas de platos (nombre, imagen, ingredientes con peso/coste/gastos, alérgenos), almacenamiento en Supabase y bucket `dish-images`, exportación a PDF con logo IDONI.
 - ✅ **Confirmación Productos Tienda:** Listado de productos IDONI/BONCOR por hoja de ruta con filtros por estado (pendientes, disponibles, no disponibles) y estadísticas.
 - ✅ **Dependencias PDF:** Generación de PDF con `jspdf` y `jspdf-autotable`; corrección de error de compilación "Module not found" instalando/verificando dependencias (`npm install jspdf jspdf-autotable` o `npm install`).
-- 📄 **Documentación:** [docs/GESTION_TIENDA.md](docs/GESTION_TIENDA.md).
+- ✅ **Panel de Fichajes:** Documentación del módulo Panel de Fichajes (resumen por empleado, estado en tiempo real) y enlace **"Abrir Panel Fichajes"** desde Admin > Fichajes para ir directamente a `/panel-fichajes`.
+- 📄 **Documentación:** [docs/GESTION_TIENDA.md](docs/GESTION_TIENDA.md), [docs/PANEL_FICHAJES.md](docs/PANEL_FICHAJES.md).
 
 ### 🆕 **v2.1.18 - Facturas de venta Holded, Socios (DNI/teléfono) y mejoras**
 - ✅ **Facturas de venta en Análisis:** Nueva sección idéntica a facturas de compra con toggle "Facturas de compra" / "Facturas de venta", mismo selector de año y vistas (General, Sergi, Bruno)

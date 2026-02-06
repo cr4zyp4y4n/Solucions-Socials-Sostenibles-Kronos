@@ -54,6 +54,7 @@ import SociosPage from './SociosPage';
 import SalesInvoicesPage from './SalesInvoicesPage';
 import InventoryPage from './InventoryPage';
 import FichajePage from './FichajePage';
+import PanelFichajesPage from './PanelFichajesPage';
 import GestionTiendaPage from './GestionTiendaPage';
 import AlbaranOCRPage from './AlbaranOCRPage';
 
@@ -458,6 +459,7 @@ const Layout = () => {
     { key: 'empleados', label: 'Empleados', path: '/empleados', icon: Users, roles: ['admin', 'management', 'manager'] },
     { key: 'hoja-ruta', label: 'Hoja de Ruta', path: '/hoja-ruta', icon: Calendar, roles: ['admin', 'management', 'manager'] },
     { key: 'fichaje', label: 'Fichaje', path: '/fichaje', icon: Clock, roles: ['admin', 'manager', 'tienda'] },
+    { key: 'panel-fichajes', label: 'Panel Fichajes', path: '/panel-fichajes', icon: Activity, roles: ['admin', 'management', 'manager'] },
     { key: 'socios', label: 'Socios IDONI', path: '/socios', icon: Users, roles: ['admin', 'management', 'manager', 'tienda'] },
     { key: 'gestion-tienda', label: 'Gestión Tienda', path: '/gestion-tienda', icon: ShoppingBag, roles: ['admin', 'manager', 'tienda'] },
     { key: 'contacts', label: 'Contactos', path: '/contacts', icon: CreditCard, roles: ['admin', 'management', 'manager'] },
@@ -521,6 +523,11 @@ const Layout = () => {
           return <AccessDenied message="No tienes permisos para acceder al Fichaje." />;
         }
         return <FichajePage />;
+      case 'panel-fichajes':
+        if (!isAdmin && !isManagementOrManager) {
+          return <AccessDenied message="No tienes permisos para acceder al Panel de Fichajes." />;
+        }
+        return <PanelFichajesPage />;
       case 'socios':
         return <SociosPage />;
       case 'gestion-tienda':

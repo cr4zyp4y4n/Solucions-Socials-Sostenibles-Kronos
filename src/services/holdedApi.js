@@ -637,6 +637,56 @@ class HoldedApiService {
     }
   }
 
+  /**
+   * Obtener todos los contactos de ambas empresas (Solucions y Menjar)
+   * @returns {Promise<Array>} Array de contactos con propiedad _company indicando la empresa
+   */
+  async getAllContactsBothCompanies() {
+    const [solucions, menjar] = await Promise.all([
+      this.getAllContacts('solucions').then(list => (list || []).map(c => ({ ...c, _company: 'Solucions' }))).catch(() => []),
+      this.getAllContacts('menjar').then(list => (list || []).map(c => ({ ...c, _company: 'Menjar d\'Hort' }))).catch(() => [])
+    ]);
+    return [...solucions, ...menjar];
+  }
+
+  /**
+   * Normalizar IBAN para comparación (quitar espacios, guiones, guión bajo; mayúsculas)
+   * @param {string} iban
+   * @returns {string}
+   */
+  static normalizeIban(iban) {
+    if (!iban || typeof iban !== 'string') return '';
+    return iban.replace(/[\s\-_]/g, '').toUpperCase();
+  }
+
+  /**
+   * Extraer IBAN de un contacto (busca en todos los campos habituales de Holded)
+   * @param {Object} contact
+   * @returns {string}
+   */
+  static getContactIban(contact) {
+    if (!contact) return '';
+    const raw = contact.iban || contact.bankAccount || contact.bank_account ||
+      contact.accountNumber || contact.account_number || contact.bankDetails ||
+      contact.bank_details || contact.paymentInfo || contact.payment_info || '';
+    return typeof raw === 'string' ? raw : String(raw);
+  }
+
+  /**
+   * Buscar contactos que tengan un IBAN concreto (en ambas empresas)
+   * @param {string} ibanSearch - IBAN a buscar (puede llevar espacios)
+   * @returns {Promise<Array>} Lista de contactos que tienen ese IBAN
+   */
+  async findContactsByIban(ibanSearch) {
+    const normalizedSearch = HoldedApiService.normalizeIban(ibanSearch);
+    if (!normalizedSearch) return [];
+    const all = await this.getAllContactsBothCompanies();
+    return all.filter(contact => {
+      const contactIban = HoldedApiService.getContactIban(contact);
+      return HoldedApiService.normalizeIban(contactIban) === normalizedSearch;
+    });
+  }
+
   // Crear un nuevo contacto
   async createContact(contactData, company = 'solucions') {
     try {
@@ -905,31 +955,64 @@ class HoldedApiService {
     return allSales;
   }
 
+  // Enriquecer documentos de venta con contacto (IBAN) por contact.id o por nombre (misma lógica que compras)
+  async _enrichSalesDocumentsWithContacts(documents, company) {
+    if (!documents || documents.length === 0) return documents;
+    const allContacts = await this.getAllContacts(company);
+    const contactsById = new Map();
+    allContacts.forEach(c => { if (c.id) contactsById.set(c.id, c); });
+    const contactsMapByName = new Map();
+    allContacts.forEach(contact => {
+      const name = contact.name || contact.company || '';
+      const normalizedName = name.toLowerCase().trim();
+      if (normalizedName && !contactsMapByName.has(normalizedName)) {
+        contactsMapByName.set(normalizedName, contact);
+      }
+    });
+    return documents.map(doc => {
+      let contactInfo = null;
+      if (doc.contact?.id) contactInfo = contactsById.get(doc.contact.id);
+      if (!contactInfo) {
+        const providerName = doc.contact?.name || doc.contactName || '';
+        const normalized = providerName.toLowerCase().trim();
+        contactInfo = normalized ? contactsMapByName.get(normalized) : null;
+      }
+      if (!contactInfo) return doc;
+      let iban = HoldedApiService.getContactIban(contactInfo);
+      return {
+        ...doc,
+        contact: { ...doc.contact, ...contactInfo, iban }
+      };
+    });
+  }
+
   // Obtener TODAS las facturas de venta pendientes y vencidas (mismo patrón que getAllPendingAndOverduePurchases)
   async getAllPendingAndOverdueSales(company = 'solucions', year = null) {
     try {
+      let unique;
       if (year) {
         const [pending, overdue] = await Promise.all([
           this.getAllPendingSalesPages(company, year),
           this.getAllOverdueSalesPages(company, year)
         ]);
         const all = [...pending, ...overdue];
-        const unique = all.filter((doc, i, self) => self.findIndex(d => d.id === doc.id) === i);
-        return unique.map(doc => this.transformHoldedDocumentToSaleInvoice(doc));
+        unique = all.filter((doc, i, self) => self.findIndex(d => d.id === doc.id) === i);
+      } else {
+        const currentYear = new Date().getFullYear();
+        const yearsToFetch = [currentYear - 1, currentYear];
+        const allYearResults = await Promise.all(
+          yearsToFetch.map(yr =>
+            Promise.all([
+              this.getAllPendingSalesPages(company, yr),
+              this.getAllOverdueSalesPages(company, yr)
+            ]).then(([p, o]) => [...p, ...o])
+          )
+        );
+        const all = allYearResults.flat();
+        unique = all.filter((doc, i, self) => self.findIndex(d => d.id === doc.id) === i);
       }
-      const currentYear = new Date().getFullYear();
-      const yearsToFetch = [currentYear - 1, currentYear];
-      const allYearResults = await Promise.all(
-        yearsToFetch.map(yr =>
-          Promise.all([
-            this.getAllPendingSalesPages(company, yr),
-            this.getAllOverdueSalesPages(company, yr)
-          ]).then(([p, o]) => [...p, ...o])
-        )
-      );
-      const all = allYearResults.flat();
-      const unique = all.filter((doc, i, self) => self.findIndex(d => d.id === doc.id) === i);
-      return unique.map(doc => this.transformHoldedDocumentToSaleInvoice(doc));
+      const enriched = await this._enrichSalesDocumentsWithContacts(unique, company);
+      return enriched.map(doc => this.transformHoldedDocumentToSaleInvoice(doc));
     } catch (error) {
       console.error(`[Holded API] getAllPendingAndOverdueSales ${company}:`, error);
       throw error;
@@ -1156,9 +1239,10 @@ class HoldedApiService {
   transformHoldedDocumentToSaleInvoice(holdedDocument) {
     // Transformando documento de venta
     
-    // Obtener información del cliente
+    // Obtener información del cliente (puede venir enriquecida con IBAN por contact.id)
     const contactInfo = holdedDocument.contact || {};
     const contactName = contactInfo.name || contactInfo.company || holdedDocument.contactName || 'Cliente Holded';
+    const contactIban = contactInfo.iban || contactInfo.bankAccount || contactInfo.bank_account || contactInfo.accountNumber || contactInfo.account_number || contactInfo.bankDetails || contactInfo.bank_details || contactInfo.paymentInfo || contactInfo.payment_info || '';
 
     // Construir descripción con todos los productos (name y desc)
     const productsDescriptions = [];
@@ -1268,6 +1352,7 @@ class HoldedApiService {
       payment_date: this.convertHoldedDate(holdedDocument.paymentDate),
       holded_id: holdedDocument.id, // ID original de Holded para referencia
       holded_contact_id: holdedDocument.contact?.id,
+      iban: typeof contactIban === 'string' ? contactIban : String(contactIban || ''),
       document_type: 'sale' // Tipo: factura de venta
     };
     
@@ -1601,29 +1686,41 @@ class HoldedApiService {
 
       // Resumen de datos procesados
 
-      // Obtener todos los contactos de una vez para hacer match por nombre
+      // Obtener todos los contactos de una vez para hacer match por ID (prioritario) o por nombre (fallback)
       const allContacts = await this.getAllContacts(company);
-      
-      // Crear un mapa de contactos por nombre (normalizado)
-      const contactsMap = new Map();
+
+      // Map por ID de contacto: es la fuente fiable (cada factura tiene contact.id en Holded)
+      const contactsById = new Map();
       allContacts.forEach(contact => {
-        const name = contact.name || contact.company || '';
-        const normalizedName = name.toLowerCase().trim();
-        if (normalizedName) {
-          contactsMap.set(normalizedName, contact);
+        if (contact.id) {
+          contactsById.set(contact.id, contact);
         }
       });
 
-      // Enriquecer documentos con información de contactos
+      // Map por nombre (normalizado) solo como fallback cuando el documento no trae contact.id.
+      // Si dos contactos tienen el mismo nombre, no sobrescribir (primero gana) para evitar asignar el IBAN de un proveedor a otro.
+      const contactsMapByName = new Map();
+      allContacts.forEach(contact => {
+        const name = contact.name || contact.company || '';
+        const normalizedName = name.toLowerCase().trim();
+        if (normalizedName && !contactsMapByName.has(normalizedName)) {
+          contactsMapByName.set(normalizedName, contact);
+        }
+      });
+
+      // Enriquecer documentos con información de contactos (prioridad: contact.id, luego nombre)
       const enrichedDocuments = uniqueDocuments.map((doc) => {
         try {
-          // Obtener el nombre del proveedor del documento
-          const providerName = doc.contact?.name || doc.contactName || '';
-          const normalizedProviderName = providerName.toLowerCase().trim();
-          
-          // Buscar el contacto en el mapa
-          const contactInfo = contactsMap.get(normalizedProviderName);
-          
+          let contactInfo = null;
+          if (doc.contact?.id) {
+            contactInfo = contactsById.get(doc.contact.id);
+          }
+          if (!contactInfo) {
+            const providerName = doc.contact?.name || doc.contactName || '';
+            const normalizedProviderName = providerName.toLowerCase().trim();
+            contactInfo = normalizedProviderName ? contactsMapByName.get(normalizedProviderName) : null;
+          }
+
           if (contactInfo) {
             // Buscar IBAN en los datos del contacto
             let iban = '';

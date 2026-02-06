@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from './AuthContext';
 import { useTheme } from './ThemeContext';
+import { useNavigation } from './NavigationContext';
 import {
   Users,
   UserPlus,
@@ -27,7 +28,8 @@ import {
   AlertCircle,
   CheckCircle,
   BarChart2,
-  TrendingUp
+  TrendingUp,
+  ExternalLink
 } from 'feather-icons-react';
 import { supabase } from '../config/supabase';
 import FichajeAdminSection from './FichajeAdminSection';
@@ -37,6 +39,7 @@ import FichajeDescansosAdmin from './FichajeDescansosAdmin';
 const AdminPanel = () => {
   const { user } = useAuth();
   const { colors } = useTheme();
+  const { navigateTo } = useNavigation();
 
   // Estados principales
   const [activeTab, setActiveTab] = useState('usuarios'); // 'usuarios', 'fichajes', 'codigos-fichaje' o 'descansos-fichaje'
@@ -285,7 +288,7 @@ const AdminPanel = () => {
     }
   };
 
-  // Eliminar usuario
+  // Eliminar usuario (usa RPC que borra audit_logs, notifications, user_profiles y auth.users en orden; auth.admin requiere service_role y daría 403)
   const handleDeleteUser = async (userId) => {
     if (!isAdmin) return;
 
@@ -299,7 +302,7 @@ const AdminPanel = () => {
     }
 
     try {
-      const { error } = await supabase.auth.admin.deleteUser(userId);
+      const { error } = await supabase.rpc('complete_delete_user_cascade', { target_user_id: userId });
       if (error) throw error;
 
       setSuccess('Usuario eliminado correctamente');
@@ -578,7 +581,45 @@ const AdminPanel = () => {
 
       {/* Contenido según pestaña activa */}
       {activeTab === 'fichajes' ? (
-        <FichajeAdminSection />
+        <>
+          <div style={{
+            marginBottom: '20px',
+            padding: '16px',
+            backgroundColor: colors.surface,
+            borderRadius: '12px',
+            border: `1px solid ${colors.border}`,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: '12px'
+          }}>
+            <span style={{ fontSize: '14px', color: colors.textSecondary }}>
+              Vista resumida de fichajes por empleado y período. Para el panel completo con estado en tiempo real y resumen por empleado:
+            </span>
+            <button
+              type="button"
+              onClick={() => navigateTo('panel-fichajes')}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '10px 18px',
+                backgroundColor: colors.primary,
+                color: '#fff',
+                border: 'none',
+                borderRadius: '8px',
+                fontSize: '14px',
+                fontWeight: '600',
+                cursor: 'pointer'
+              }}
+            >
+              <ExternalLink size={18} />
+              Abrir Panel Fichajes
+            </button>
+          </div>
+          <FichajeAdminSection />
+        </>
       ) : activeTab === 'codigos-fichaje' ? (
         <FichajeCodigosAdmin />
       ) : activeTab === 'descansos-fichaje' ? (

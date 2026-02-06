@@ -1579,7 +1579,8 @@ const AnalyticsPage = () => {
           iban = contact.payment_info;
         }
         
-        if (normalizedName && iban) {
+        // No sobrescribir: si dos contactos tienen el mismo nombre normalizado, mantener el primero (evita asignar IBAN de un proveedor a otro)
+        if (normalizedName && iban && !contactsMap.has(normalizedName)) {
           contactsMap.set(normalizedName, iban);
         }
       });
@@ -1608,29 +1609,10 @@ const AnalyticsPage = () => {
         const providerName = row[5]; // Índice del proveedor en las columnas
         if (providerName) {
           const normalizedProviderName = normalizeProviderName(providerName);
-          let contactIban = contactsMap.get(normalizedProviderName);
+          // Solo coincidencia exacta por nombre normalizado (no coincidencia parcial por palabras para evitar asignar IBAN erróneo)
+          const contactIban = contactsMap.get(normalizedProviderName);
           
-          // Si no encontramos coincidencia exacta, buscar coincidencias parciales
-          if (!contactIban) {
-            // Buscar coincidencias que contengan palabras clave del proveedor
-            const providerWords = normalizedProviderName.split(' ').filter(word => word.length > 2);
-            
-            for (const [contactName, iban] of contactsMap.entries()) {
-              const contactWords = contactName.split(' ').filter(word => word.length > 2);
-              
-              // Verificar si al menos 2 palabras coinciden
-              const matchingWords = providerWords.filter(word => 
-                contactWords.some(contactWord => contactWord.includes(word) || word.includes(contactWord))
-              );
-              
-              if (matchingWords.length >= 2) {
-                contactIban = iban;
-                break;
-              }
-            }
-          }
-          
-          // Si encontramos un IBAN del contacto y no hay uno en la factura, usarlo
+          // Solo rellenar si la fila no tiene IBAN (el correcto viene ya de Holded por contact.id)
           if (contactIban && (!row[20] || row[20] === '' || row[20] === null)) {
             const newRow = [...row];
             newRow[20] = contactIban; // Índice del IBAN

@@ -39,6 +39,11 @@ const ProvidersContacts = () => {
     withoutIban: 0
   });
 
+  // Búsqueda por IBAN (en ambas empresas Holded)
+  const [searchIbanValue, setSearchIbanValue] = useState('');
+  const [searchIbanLoading, setSearchIbanLoading] = useState(false);
+  const [searchIbanResult, setSearchIbanResult] = useState(null); // null = no buscado, [] = no encontrado, [contacts] = encontrados
+
   // Estados de paginación
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(25);
@@ -122,6 +127,24 @@ const ProvidersContacts = () => {
     
     return matchesSearch && matchesIbanFilter;
   });
+
+  // Buscar contacto(s) por IBAN en ambas empresas (Holded API)
+  const searchContactByIban = async () => {
+    const iban = searchIbanValue.trim();
+    if (!iban) return;
+    setSearchIbanLoading(true);
+    setSearchIbanResult(null);
+    try {
+      const found = await holdedApi.findContactsByIban(iban);
+      setSearchIbanResult(found);
+    } catch (err) {
+      console.error('Error buscando por IBAN:', err);
+      setSearchIbanResult([]);
+      setError(err.message || 'Error al buscar por IBAN');
+    } finally {
+      setSearchIbanLoading(false);
+    }
+  };
 
   // Calcular datos de paginación
   const totalPages = Math.ceil(filteredContacts.length / itemsPerPage);
@@ -497,6 +520,99 @@ const ProvidersContacts = () => {
           </div>
         </motion.div>
       </div>
+
+      {/* Buscar contacto por IBAN (API Holded - ambas empresas) */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4 }}
+        style={{
+          marginBottom: '24px',
+          padding: '20px',
+          backgroundColor: colors.card,
+          border: `1px solid ${colors.border}`,
+          borderRadius: '12px'
+        }}
+      >
+        <div style={{ fontSize: '14px', fontWeight: '600', color: colors.text, marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <CreditCard size={18} color={colors.primary} />
+          Buscar contacto por IBAN (en Solucions y Menjar d'Hort)
+        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '12px' }}>
+          <input
+            type="text"
+            placeholder="Ej: ES67 2100 0679 1602 0059 6818"
+            value={searchIbanValue}
+            onChange={(e) => setSearchIbanValue(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && searchContactByIban()}
+            style={{
+              flex: '1',
+              minWidth: '280px',
+              padding: '12px 16px',
+              border: `1px solid ${colors.border}`,
+              borderRadius: '8px',
+              fontSize: '14px',
+              color: colors.text,
+              backgroundColor: colors.background,
+              outline: 'none',
+              fontFamily: 'monospace'
+            }}
+          />
+          <button
+            onClick={searchContactByIban}
+            disabled={searchIbanLoading || !searchIbanValue.trim()}
+            style={{
+              padding: '12px 20px',
+              backgroundColor: colors.primary,
+              color: 'white',
+              border: 'none',
+              borderRadius: '8px',
+              fontSize: '14px',
+              fontWeight: '600',
+              cursor: searchIbanLoading || !searchIbanValue.trim() ? 'not-allowed' : 'pointer',
+              opacity: searchIbanLoading || !searchIbanValue.trim() ? 0.6 : 1,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}
+          >
+            {searchIbanLoading ? (
+              <RefreshCw size={18} style={{ animation: 'spin 1s linear infinite' }} />
+            ) : (
+              <Search size={18} />
+            )}
+            {searchIbanLoading ? 'Buscando...' : 'Buscar'}
+          </button>
+        </div>
+        {searchIbanResult !== null && (
+          <div
+            style={{
+              marginTop: '14px',
+              padding: '12px 16px',
+              borderRadius: '8px',
+              backgroundColor: searchIbanResult.length > 0 ? colors.success + '18' : colors.error + '18',
+              border: `1px solid ${searchIbanResult.length > 0 ? colors.success : colors.error}`,
+              fontSize: '14px',
+              color: colors.text
+            }}
+          >
+            {searchIbanResult.length > 0 ? (
+              <>
+                <strong>Encontrado: {searchIbanResult.length} contacto(s) con este IBAN</strong>
+                <ul style={{ margin: '8px 0 0', paddingLeft: '20px' }}>
+                  {searchIbanResult.map((c) => (
+                    <li key={c.id}>
+                      {c.name || c.company || 'Sin nombre'} {c.company && c.name ? `(${c.company})` : ''} — {c._company || 'Holded'}
+                    </li>
+                  ))}
+                </ul>
+              </>
+            ) : (
+              <strong>No hay ningún contacto con este IBAN en Holded</strong>
+            )}
+          </div>
+        )}
+      </motion.div>
 
       {/* Controles de filtro */}
       <motion.div 
