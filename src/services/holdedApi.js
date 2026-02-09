@@ -114,27 +114,11 @@ class HoldedApiService {
     if (paid !== undefined) endpoint += `&paid=${paid}`;
     if (billed !== undefined) endpoint += `&billed=${billed}`;
 
-    console.log(`📡 [Holded API] ${company} - Petición: ${endpoint}`);
-    if (starttmp || endtmp) {
-      const startDate = starttmp ? new Date(starttmp * 1000).toISOString() : 'N/A';
-      const endDate = endtmp ? new Date(endtmp * 1000).toISOString() : 'N/A';
-      console.log(`   📅 Filtros de fecha: ${startDate} a ${endDate}`);
-    }
-
     const result = await this.makeRequest(endpoint, {}, company);
-    
-    console.log(`   ✅ Respuesta: ${Array.isArray(result) ? result.length : 0} facturas en página ${page}`);
-    if (Array.isArray(result) && result.length > 0) {
-      // Mostrar fechas de las primeras y últimas facturas
-      const dates = result
-        .map(doc => doc.date ? new Date(doc.date * 1000).toISOString().split('T')[0] : null)
-        .filter(Boolean)
-        .sort();
-      if (dates.length > 0) {
-        console.log(`   📆 Rango de fechas: ${dates[0]} a ${dates[dates.length - 1]}`);
-      }
+    const count = Array.isArray(result) ? result.length : 0;
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[Holded API] ${company} - ${endpoint} → ${count} facturas`);
     }
-    
     return result;
   }
 
@@ -168,7 +152,6 @@ class HoldedApiService {
 
   // Obtener TODAS las compras parcialmente pagadas (todas las páginas)
   async getAllPartiallyPaidPurchasesPages(company = 'solucions', year = null) {
-    console.log(`🔄 [Holded API] ${company} - Obteniendo todas las compras parcialmente pagadas${year ? ` (año ${year})` : ' (sin filtro de año)'}...`);
     const allPartiallyPaidPurchases = [];
     let page = 1;
     let hasMorePages = true;
@@ -224,7 +207,6 @@ class HoldedApiService {
     // Si year es null, NO aplicamos filtro de fecha para obtener todas las facturas no pagadas
     
     const unpaidPurchases = await this.getPurchases(paramsUnpaid, company);
-    console.log(`   💰 [getPendingPurchasesIncludingPartial] ${company} - Página ${page}: ${unpaidPurchases.length} facturas no pagadas (paid=0)`);
     allPendingPurchases.push(...unpaidPurchases);
     
     // También obtener facturas parcialmente pagadas (paid=2) de esta misma página
@@ -244,7 +226,6 @@ class HoldedApiService {
     // Si year es null, NO aplicamos filtro de fecha
     
     const partiallyPaidPurchases = await this.getPurchases(paramsPartiallyPaid, company);
-    console.log(`   💰 [getPendingPurchasesIncludingPartial] ${company} - Página ${page}: ${partiallyPaidPurchases.length} facturas parcialmente pagadas (paid=2)`);
     allPendingPurchases.push(...partiallyPaidPurchases);
     
     // Eliminar duplicados
@@ -392,7 +373,6 @@ class HoldedApiService {
   // Obtener TODAS las compras pendientes (todas las páginas)
   // NOTA: Cuando year es null, obtenemos TODAS las facturas pendientes de cualquier año
   async getAllPendingPurchasesPages(company = 'solucions', year = null) {
-    console.log(`🔄 [Holded API] ${company} - Obteniendo todas las compras pendientes${year ? ` (año ${year})` : ' (sin filtro de año - TODAS las facturas pendientes)'}...`);
     const allPurchases = [];
     let page = 1;
     let hasMorePages = true;
@@ -407,15 +387,10 @@ class HoldedApiService {
         if (purchases && purchases.length > 0) {
           consecutiveEmptyPages = 0; // Resetear contador
           allPurchases.push(...purchases);
-          console.log(`   📄 Página ${page}: ${purchases.length} facturas (Total acumulado: ${allPurchases.length})`);
-          
-          // Si obtenemos menos del límite, puede ser la última página
-          // Pero continuamos por si hay más páginas con menos resultados
           if (purchases.length < limit) {
             consecutiveEmptyPages++;
             if (consecutiveEmptyPages >= maxEmptyPages) {
               hasMorePages = false;
-              console.log(`   ✅ Última página alcanzada (${purchases.length} < ${limit}, ${consecutiveEmptyPages} páginas vacías consecutivas)`);
             } else {
               page++;
             }
@@ -426,7 +401,6 @@ class HoldedApiService {
           consecutiveEmptyPages++;
           if (consecutiveEmptyPages >= maxEmptyPages) {
             hasMorePages = false;
-            console.log(`   ⚠️ Página ${page} vacía, finalizando (${consecutiveEmptyPages} páginas vacías consecutivas)`);
           } else {
             page++;
           }
@@ -437,14 +411,14 @@ class HoldedApiService {
       }
     }
 
-    console.log(`   ✅ Total de compras pendientes obtenidas: ${allPurchases.length}`);
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[Holded API] ${company} - Compras pendientes: ${allPurchases.length} facturas`);
+    }
     return allPurchases;
   }
 
   // Obtener TODAS las compras parcialmente pagadas (todas las páginas)
   async getAllPartiallyPaidPurchasesPages(company = 'solucions', year = null) {
-    console.log(`🔄 [Holded API] ${company} - Obteniendo todas las compras parcialmente pagadas${year ? ` (año ${year})` : ' (sin filtro de año)'}...`);
-    
     const allPartiallyPaidPurchases = [];
     let page = 1;
     let hasMorePages = true;
@@ -457,18 +431,13 @@ class HoldedApiService {
         
         if (purchases && purchases.length > 0) {
           allPartiallyPaidPurchases.push(...purchases);
-          console.log(`   📄 Página ${page}: ${purchases.length} facturas (Total acumulado: ${allPartiallyPaidPurchases.length})`);
-          
-          // Si obtenemos menos del límite, significa que es la última página
           if (purchases.length < limit) {
             hasMorePages = false;
-            console.log(`   ✅ Última página alcanzada (${purchases.length} < ${limit})`);
           } else {
             page++;
           }
         } else {
           hasMorePages = false;
-          console.log(`   ⚠️ Página ${page} vacía, finalizando`);
         }
       } catch (error) {
         console.error(`   ❌ Error en página ${page}:`, error);
@@ -489,13 +458,14 @@ class HoldedApiService {
       throw firstError;
     }
 
-    console.log(`   ✅ Total de compras parcialmente pagadas obtenidas: ${allPartiallyPaidPurchases.length}`);
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[Holded API] ${company} - Compras parcialmente pagadas: ${allPartiallyPaidPurchases.length} facturas`);
+    }
     return allPartiallyPaidPurchases;
   }
 
   // Obtener TODAS las compras vencidas (todas las páginas)
   async getAllOverduePurchasesPages(company = 'solucions', year = null) {
-    console.log(`🔄 [Holded API] ${company} - Obteniendo todas las compras vencidas${year ? ` (año ${year})` : ' (sin filtro de año)'}...`);
     const allPurchases = [];
     let page = 1;
     let hasMorePages = true;
@@ -507,26 +477,23 @@ class HoldedApiService {
         
         if (purchases && purchases.length > 0) {
           allPurchases.push(...purchases);
-          console.log(`   📄 Página ${page}: ${purchases.length} facturas (Total acumulado: ${allPurchases.length})`);
-          
-          // Si obtenemos menos del límite, significa que es la última página
           if (purchases.length < limit) {
             hasMorePages = false;
-            console.log(`   ✅ Última página alcanzada (${purchases.length} < ${limit})`);
           } else {
             page++;
           }
         } else {
           hasMorePages = false;
-          console.log(`   ⚠️ Página ${page} vacía, finalizando`);
         }
       } catch (error) {
-        console.error(`   ❌ Error en página ${page}:`, error);
+        console.error(`[Holded API] Error compras vencidas página ${page}:`, error.message);
         hasMorePages = false;
       }
     }
 
-    console.log(`   ✅ Total de compras vencidas obtenidas: ${allPurchases.length}`);
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[Holded API] ${company} - Compras vencidas: ${allPurchases.length} facturas`);
+    }
     return allPurchases;
   }
 
@@ -1065,7 +1032,6 @@ class HoldedApiService {
       ]);
 
       // También obtener tickets de venta (salesreceipt) que pueden ser las facturas que faltan
-      console.log(`🔍 [Holded API] Buscando tickets de venta (salesreceipt) para ${company}...`);
       let allSalesReceipts = [];
       let page = 1;
       let hasMorePages = true;
@@ -1096,8 +1062,6 @@ class HoldedApiService {
         }
       }
 
-      console.log(`📄 [Holded API] Tickets de venta obtenidos: ${allSalesReceipts.length}`);
-
       // Filtrar tickets de venta pendientes o vencidos
       const today = new Date();
       today.setHours(0, 0, 0, 0);
@@ -1121,20 +1085,11 @@ class HoldedApiService {
         return isPending || isOverdue;
       });
 
-      console.log(`📄 [Holded API] Tickets de venta pendientes/vencidos: ${pendingReceipts.length}`);
-
       // Combinar facturas normales y tickets de venta, y eliminar duplicados basándose en el ID
       const allDocuments = [...pendingSales, ...partiallyPaidSales, ...overdueSales, ...pendingReceipts];
       const uniqueDocuments = allDocuments.filter((doc, index, self) => 
         index === self.findIndex(d => d.id === doc.id)
       );
-
-      console.log(`✅ [Holded API] Facturas de venta para ${company}:`);
-      console.log(`  - Pendientes: ${pendingSales.length}`);
-      console.log(`  - Parcialmente pagadas: ${partiallyPaidSales.length}`);
-      console.log(`  - Vencidas: ${overdueSales.length}`);
-      console.log(`  - Tickets de venta pendientes/vencidos: ${pendingReceipts.length}`);
-      console.log(`  - Total únicas: ${uniqueDocuments.length}`);
 
       // Búsqueda de respaldo para facturas específicas que puedan faltar
       // (por ejemplo, facturas con estados especiales o formatos de número diferentes)
@@ -1145,8 +1100,6 @@ class HoldedApiService {
       );
 
       if (stillMissing.length > 0) {
-        console.log(`🔍 Buscando facturas faltantes: ${stillMissing.join(', ')}`);
-        
         // Buscar en todas las facturas sin filtros
         try {
           let searchPage = 1;
@@ -1186,15 +1139,8 @@ class HoldedApiService {
                     }
                     
                     if (isUnpaid || isPartiallyPaid || isOverdue) {
-                      console.log(`  ✅ Encontrada y añadida: ${missingNum}`);
                       uniqueDocuments.push(found);
                       foundMissing.push(missingNum);
-                    } else {
-                      console.log(`  ⚠️ Encontrada pero no cumple criterios: ${missingNum}`, {
-                        paid: found.paid,
-                        status: found.status,
-                        pending: found.pending
-                      });
                     }
                   }
                 });
@@ -1216,15 +1162,8 @@ class HoldedApiService {
         }
       }
 
-      // Log simplificado de facturas de venta
-      console.log(`📊 [Holded API] Facturas de Venta obtenidas (${company}): ${uniqueDocuments.length} facturas`);
-      
-      // Mostrar 1 factura aleatoria con TODOS los campos que devuelve la API
-      if (uniqueDocuments.length > 0) {
-        const randomIndex = Math.floor(Math.random() * uniqueDocuments.length);
-        const randomInvoice = uniqueDocuments[randomIndex];
-        console.log(`\n🔍 Factura aleatoria (índice ${randomIndex}) - TODOS los campos de la API:`);
-        console.log(JSON.stringify(randomInvoice, null, 2));
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`[Holded API] ${company} - Facturas de venta: ${uniqueDocuments.length} (pend: ${pendingSales.length}, parcial: ${partiallyPaidSales.length}, venc: ${overdueSales.length}, tickets: ${pendingReceipts.length})`);
       }
 
       return uniqueDocuments.map(doc => this.transformHoldedDocumentToSaleInvoice(doc));
@@ -1266,18 +1205,14 @@ class HoldedApiService {
     let resolvedDescription;
     if (productsDescriptions.length > 0) {
       resolvedDescription = productsDescriptions.join(' | ');
-      console.log(`🔍 [Holded] Descripción de productos para ${holdedDocument.docNumber || holdedDocument.id}:`, resolvedDescription);
     } else {
       // Solo si no hay productos, usar otros campos
       resolvedDescription = [
         holdedDocument.notes,
         holdedDocument.description,
         holdedDocument.desc,
-      ].find(value => typeof value === 'string' && value.trim() !== '') || 
+      ].find(value => typeof value === 'string' && value.trim() !== '') ||
       `Venta - ${contactName}`;
-      if (holdedDocument.products && holdedDocument.products.length > 0) {
-        console.log(`⚠️ [Holded] Hay ${holdedDocument.products.length} productos pero no se extrajo descripción para ${holdedDocument.docNumber || holdedDocument.id}`);
-      }
     }
 
     // Determinar si está pagada basándose en paymentsPending y status
@@ -1623,7 +1558,6 @@ class HoldedApiService {
     try {
       // Si se especifica un año, solo obtener facturas de ese año
       if (year) {
-        console.log(`🚀 [Holded API] ${company} - Iniciando carga de facturas para el año ${year}...`);
         const [pendingPurchases, partiallyPaidPurchases, overduePurchases] = await Promise.all([
           this.getAllPendingPurchasesPages(company, year),
           this.getAllPartiallyPaidPurchasesPages(company, year),
@@ -1639,16 +1573,12 @@ class HoldedApiService {
       }
       
       // Si no se especifica año, obtener facturas de los últimos 2 años (2025 y 2026)
-      console.log(`🚀 [Holded API] ${company} - Iniciando carga de facturas para 2025 y 2026...`);
       const currentYear = new Date().getFullYear();
       const yearsToFetch = [currentYear - 1, currentYear]; // [2025, 2026]
-      
-      console.log(`   📅 Obteniendo facturas de los años: ${yearsToFetch.join(', ')}`);
-      
+
       // Obtener facturas de cada año en paralelo
       const allYearResults = await Promise.all(
         yearsToFetch.map(async (yearToFetch) => {
-          console.log(`   🔍 Obteniendo facturas de ${yearToFetch}...`);
           const [pending, partiallyPaid, overdue] = await Promise.all([
             this.getAllPendingPurchasesPages(company, yearToFetch),
             this.getAllPartiallyPaidPurchasesPages(company, yearToFetch),
@@ -1656,33 +1586,27 @@ class HoldedApiService {
           ]);
           
           const yearDocuments = [...pending, ...partiallyPaid, ...overdue];
-          console.log(`   ✅ ${yearToFetch}: ${yearDocuments.length} facturas obtenidas`);
           return yearDocuments;
         })
       );
-      
+
       // Combinar todas las facturas de todos los años
       const allDocuments = allYearResults.flat();
-      
-      console.log(`📊 [Holded API] ${company} - Resumen de facturas obtenidas:`);
-      console.log(`   - Total antes de eliminar duplicados: ${allDocuments.length}`);
 
       // Eliminar duplicados basándose en el ID
-      const uniqueDocuments = allDocuments.filter((doc, index, self) => 
+      const uniqueDocuments = allDocuments.filter((doc, index, self) =>
         index === self.findIndex(d => d.id === doc.id)
       );
-      
-      console.log(`   - Total después de eliminar duplicados: ${uniqueDocuments.length}`);
-      
-      // Analizar años presentes en las facturas
-      const years = new Set();
-      uniqueDocuments.forEach(doc => {
-        if (doc.date) {
-          const date = new Date(doc.date * 1000);
-          years.add(date.getFullYear());
-        }
-      });
-      console.log(`   - Años encontrados: ${Array.from(years).sort().join(', ')}`);
+
+      if (process.env.NODE_ENV === 'development') {
+        const years = new Set();
+        uniqueDocuments.forEach(doc => {
+          if (doc.date) {
+            years.add(new Date(doc.date * 1000).getFullYear());
+          }
+        });
+        console.log(`[Holded API] ${company} - Facturas compra: ${uniqueDocuments.length} (años: ${Array.from(years).sort().join(', ')})`);
+      }
 
       // Resumen de datos procesados
 
@@ -1991,16 +1915,12 @@ class HoldedApiService {
       let hasMorePages = true;
       const limit = 100; // Límite por página (ajustar si es necesario)
       
-      console.log(`🔍 [Holded API] Obteniendo todos los productos para ${company}...`);
-      
       while (hasMorePages) {
         try {
           const products = await this.getProducts({ page, limit }, company);
-          
+
           if (products && products.length > 0) {
             allProducts.push(...products);
-            console.log(`📦 [Holded API] Página ${page}: ${products.length} productos (Total acumulado: ${allProducts.length})`);
-            
             // Si recibimos menos productos que el límite, no hay más páginas
             if (products.length < limit) {
               hasMorePages = false;
@@ -2015,8 +1935,10 @@ class HoldedApiService {
           hasMorePages = false;
         }
       }
-      
-      console.log(`✅ [Holded API] Total de productos obtenidos para ${company}: ${allProducts.length}`);
+
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`[Holded API] ${company} - Productos: ${allProducts.length}`);
+      }
       return allProducts;
     } catch (error) {
       console.error(`Error obteniendo todos los productos de Holded (${company}):`, error);

@@ -28,9 +28,6 @@ class HoldedEmployeesService {
         ...options.headers
       };
 
-      console.log(`🔗 Haciendo petición a: ${url}`);
-      console.log(`🔑 Usando API key: ${apiKey.substring(0, 8)}...`);
-
       const response = await fetch(url, {
         method: 'GET',
         headers: headers,
@@ -46,7 +43,9 @@ class HoldedEmployeesService {
       }
 
       const data = await response.json();
-      console.log(`✅ Respuesta exitosa de ${endpoint}:`, data);
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`[Holded Employees] ${company} - ${endpoint} → OK`);
+      }
       return data;
     } catch (error) {
       console.error(`Error en la petición a Holded API (${company}):`, error);
@@ -110,12 +109,8 @@ class HoldedEmployeesService {
   // Intentar obtener información sobre lugares de trabajo
   async getWorkplaces(company = 'solucions') {
     try {
-      console.log('🔍 Intentando obtener lugares de trabajo...');
-      const workplaces = await this.makeRequest('/workplaces', {}, company);
-      console.log('✅ Lugares de trabajo obtenidos:', workplaces);
-      return workplaces;
+      return await this.makeRequest('/workplaces', {}, company);
     } catch (error) {
-      console.log('⚠️ No se pudieron obtener lugares de trabajo:', error.message);
       return [];
     }
   }
@@ -123,12 +118,8 @@ class HoldedEmployeesService {
   // Intentar obtener información sobre equipos/teams
   async getTeams(company = 'solucions') {
     try {
-      console.log('🔍 Intentando obtener equipos...');
-      const teams = await this.makeRequest('/teams', {}, company);
-      console.log('✅ Equipos obtenidos:', teams);
-      return teams;
+      return await this.makeRequest('/teams', {}, company);
     } catch (error) {
-      console.log('⚠️ No se pudieron obtener equipos:', error.message);
       return [];
     }
   }
@@ -136,12 +127,8 @@ class HoldedEmployeesService {
   // Intentar obtener información sobre políticas de vacaciones
   async getTimeOffPolicies(company = 'solucions') {
     try {
-      console.log('🔍 Intentando obtener políticas de vacaciones...');
-      const policies = await this.makeRequest('/timeoff/policies', {}, company);
-      console.log('✅ Políticas de vacaciones obtenidas:', policies);
-      return policies;
+      return await this.makeRequest('/timeoff/policies', {}, company);
     } catch (error) {
-      console.log('⚠️ No se pudieron obtener políticas de vacaciones:', error.message);
       return [];
     }
   }
@@ -149,12 +136,8 @@ class HoldedEmployeesService {
   // Intentar obtener información sobre supervisores
   async getSupervisors(company = 'solucions') {
     try {
-      console.log('🔍 Intentando obtener supervisores...');
-      const supervisors = await this.makeRequest('/supervisors', {}, company);
-      console.log('✅ Supervisores obtenidos:', supervisors);
-      return supervisors;
+      return await this.makeRequest('/supervisors', {}, company);
     } catch (error) {
-      console.log('⚠️ No se pudieron obtener supervisores:', error.message);
       return [];
     }
   }
@@ -191,36 +174,29 @@ class HoldedEmployeesService {
       '/role'
     ];
 
-    console.log('🔍 EXPLORANDO ENDPOINTS DISPONIBLES...');
     const results = {};
 
     for (const endpoint of endpointsToTry) {
       try {
-        console.log(`├── Probando: ${endpoint}`);
         const data = await this.makeRequest(endpoint, {}, company);
         results[endpoint] = {
           success: true,
           data: data,
           count: Array.isArray(data) ? data.length : (data ? 1 : 0)
         };
-        console.log(`│   ✅ Éxito: ${results[endpoint].count} elementos`);
       } catch (error) {
         results[endpoint] = {
           success: false,
           error: error.message
         };
-        console.log(`│   ❌ Error: ${error.message}`);
       }
     }
 
-    console.log('📊 RESUMEN DE ENDPOINTS:');
-    Object.entries(results).forEach(([endpoint, result]) => {
-      if (result.success) {
-        console.log(`├── ${endpoint}: ✅ (${result.count} elementos)`);
-      } else {
-        console.log(`├── ${endpoint}: ❌`);
-      }
-    });
+    if (process.env.NODE_ENV === 'development') {
+      const ok = Object.values(results).filter(r => r.success).length;
+      const total = endpointsToTry.length;
+      console.log(`[Holded Employees] ${company} - Endpoints: ${ok}/${total} OK`);
+    }
 
     return results;
   }
@@ -283,89 +259,6 @@ class HoldedEmployeesService {
       codigoPostal = toString(employee.postalCode || employee.zipCode);
       pais = toString(employee.country);
     }
-
-    // Log detallado para debugging - ver todos los campos disponibles
-    console.log('🔍 ===== INFORMACIÓN COMPLETA DEL EMPLEADO =====');
-    console.log('👤 Empleado:', employee.name || employee.id || 'Sin nombre');
-    console.log('📋 Datos RAW completos:', employee);
-    
-    // Mostrar todos los campos disponibles de forma organizada
-    console.log('📊 CAMPOS DISPONIBLES EN HOLDED:');
-    console.log('├── 📝 Datos Personales:');
-    console.log('│   ├── id:', employee.id);
-    console.log('│   ├── name:', employee.name);
-    console.log('│   ├── surname:', employee.surname);
-    console.log('│   ├── email:', employee.email);
-    console.log('│   ├── mobile:', employee.mobile);
-    console.log('│   ├── phone:', employee.phone);
-    console.log('│   ├── dni:', employee.dni);
-    console.log('│   ├── nif:', employee.nif);
-    console.log('│   ├── birthDate:', employee.birthDate);
-    console.log('│   ├── gender:', employee.gender);
-    console.log('│   └── maritalStatus:', employee.maritalStatus);
-    
-    console.log('├── 🏢 Datos Laborales:');
-    console.log('│   ├── position:', employee.position);
-    console.log('│   ├── department:', employee.department);
-    console.log('│   ├── startDate:', employee.startDate);
-    console.log('│   ├── endDate:', employee.endDate);
-    console.log('│   ├── contractType:', employee.contractType);
-    console.log('│   ├── salary:', employee.salary);
-    console.log('│   ├── weeklyHours:', employee.weeklyHours);
-    console.log('│   ├── weekly_hours:', employee.weekly_hours);
-    console.log('│   ├── hoursPerWeek:', employee.hoursPerWeek);
-    console.log('│   ├── percentageHours:', employee.percentageHours);
-    console.log('│   ├── percentage_hours:', employee.percentage_hours);
-    console.log('│   ├── workPercentage:', employee.workPercentage);
-    console.log('│   └── contractCode:', employee.contractCode);
-    
-    console.log('├── 🏠 Datos de Dirección:');
-    console.log('│   ├── address:', employee.address);
-    console.log('│   ├── city:', employee.city);
-    console.log('│   ├── postalCode:', employee.postalCode);
-    console.log('│   ├── zipCode:', employee.zipCode);
-    console.log('│   ├── province:', employee.province);
-    console.log('│   └── country:', employee.country);
-    
-    console.log('├── 💰 Datos Financieros:');
-    console.log('│   ├── iban:', employee.iban);
-    console.log('│   └── socialSecurityNumber:', employee.socialSecurityNumber);
-    
-    console.log('├── 📋 Datos Adicionales:');
-    console.log('│   ├── photo:', employee.photo);
-    console.log('│   ├── avatar:', employee.avatar);
-    console.log('│   ├── notes:', employee.notes);
-    console.log('│   ├── collective:', employee.collective);
-    console.log('│   ├── targetGroup:', employee.targetGroup);
-    console.log('│   ├── socialService:', employee.socialService);
-    console.log('│   ├── social_service:', employee.social_service);
-    console.log('│   ├── previousSubsidy:', employee.previousSubsidy);
-    console.log('│   ├── previous_subsidy:', employee.previous_subsidy);
-    console.log('│   ├── subsidyStartDate:', employee.subsidyStartDate);
-    console.log('│   └── subsidyEndDate:', employee.subsidyEndDate);
-    
-    console.log('└── 🔧 Campos Personalizados (si existen):');
-    // Mostrar cualquier campo adicional que no esté en la lista anterior
-    const camposConocidos = [
-      'id', 'name', 'surname', 'email', 'mobile', 'phone', 'dni', 'nif', 'birthDate', 'gender', 'maritalStatus',
-      'position', 'department', 'startDate', 'endDate', 'contractType', 'salary', 'weeklyHours', 'weekly_hours', 
-      'hoursPerWeek', 'percentageHours', 'percentage_hours', 'workPercentage', 'contractCode',
-      'address', 'city', 'postalCode', 'zipCode', 'province', 'country',
-      'iban', 'socialSecurityNumber', 'nss',
-      'photo', 'avatar', 'notes', 'collective', 'targetGroup', 'socialService', 'social_service',
-      'previousSubsidy', 'previous_subsidy', 'subsidyStartDate', 'subsidyEndDate'
-    ];
-    
-    const camposAdicionales = Object.keys(employee).filter(key => !camposConocidos.includes(key));
-    if (camposAdicionales.length > 0) {
-      camposAdicionales.forEach(campo => {
-        console.log(`│   ├── ${campo}:`, employee[campo]);
-      });
-    } else {
-      console.log('│   └── No hay campos adicionales');
-    }
-    
-    console.log('🔍 ===== FIN INFORMACIÓN DEL EMPLEADO =====');
 
     return {
       // Datos básicos (usando campos reales de Holded)
@@ -457,127 +350,15 @@ class HoldedEmployeesService {
   // Obtener empleados con transformación
   async getEmployeesTransformed(company = 'solucions') {
     try {
-      console.log('🚀 ===== INICIANDO CARGA DE EMPLEADOS =====');
-      console.log('🏢 Empresa:', company);
-      
       const employees = await this.getEmployees(company);
-      
-      console.log('📊 RESUMEN DE EMPLEADOS ENCONTRADOS:');
-      console.log('├── Total empleados:', employees.length);
-      console.log('├── Empleados activos:', employees.filter(emp => !emp.endDate || emp.endDate === 0).length);
-      console.log('├── Empleados inactivos:', employees.filter(emp => emp.endDate && emp.endDate !== 0).length);
-      console.log('└── Departamentos únicos:', [...new Set(employees.map(emp => emp.department).filter(d => d))].length);
-      
-      // Analizar códigos únicos encontrados
-      console.log('🔍 ANÁLISIS DE CÓDIGOS ÚNICOS:');
-      
-      // Lugares de trabajo únicos
-      const lugaresTrabajo = [...new Set(employees.map(emp => emp.workplace).filter(w => w))];
-      console.log('├── Lugares de trabajo únicos:', lugaresTrabajo.length);
-      lugaresTrabajo.forEach((lugar, index) => {
-        console.log(`│   ${index + 1}. ${lugar}`);
-      });
-      
-      // Equipos únicos
-      const equipos = [...new Set(employees.flatMap(emp => emp.teamIds || []))];
-      console.log('├── Equipos únicos:', equipos.length);
-      equipos.forEach((equipo, index) => {
-        console.log(`│   ${index + 1}. ${equipo}`);
-      });
-      
-      // Políticas de vacaciones únicas
-      const politicasVacaciones = [...new Set(employees.map(emp => emp.timeOffPolicyId).filter(p => p))];
-      console.log('├── Políticas de vacaciones únicas:', politicasVacaciones.length);
-      politicasVacaciones.forEach((politica, index) => {
-        console.log(`│   ${index + 1}. ${politica}`);
-      });
-      
-      // Supervisores únicos
-      const supervisores = [...new Set(employees.map(emp => emp.reportingTo).filter(s => s))];
-      console.log('├── Supervisores únicos:', supervisores.length);
-      supervisores.forEach((supervisor, index) => {
-        console.log(`│   ${index + 1}. ${supervisor}`);
-      });
-      
-      console.log('└── Total códigos únicos analizados:', lugaresTrabajo.length + equipos.length + politicasVacaciones.length + supervisores.length);
-      
-      console.log('🔄 Transformando empleados...');
       const transformedEmployees = employees.map(emp => this.transformEmployee(emp));
-      
-      // Intentar obtener información específica de empleados individuales
-      console.log('🔍 INTENTANDO OBTENER INFORMACIÓN ESPECÍFICA DE EMPLEADOS...');
-      
-      // Intentar obtener información detallada de algunos empleados específicos
-      const empleadosConCodigos = employees.filter(emp => emp.workplace || emp.teamIds?.length > 0);
-      console.log('👥 Empleados con códigos específicos encontrados:', empleadosConCodigos.length);
-      
-      for (const empleado of empleadosConCodigos.slice(0, 3)) { // Solo los primeros 3
-        try {
-          console.log(`🔍 Obteniendo información detallada de: ${empleado.name} ${empleado.lastName || ''}`);
-          const empleadoDetallado = await this.getEmployee(empleado.id, company);
-          if (empleadoDetallado) {
-            console.log(`📋 Información detallada de ${empleado.name}:`, empleadoDetallado);
-            
-            // Buscar campos que puedan contener información del puesto o contrato
-            const camposInteresantes = Object.keys(empleadoDetallado).filter(key => 
-              key.toLowerCase().includes('position') || 
-              key.toLowerCase().includes('contract') || 
-              key.toLowerCase().includes('job') ||
-              key.toLowerCase().includes('role') ||
-              key.toLowerCase().includes('title') ||
-              key.toLowerCase().includes('workplace') ||
-              key.toLowerCase().includes('department')
-            );
-            
-            if (camposInteresantes.length > 0) {
-              console.log(`🎯 Campos interesantes encontrados en ${empleado.name}:`);
-              camposInteresantes.forEach(campo => {
-                console.log(`│   ├── ${campo}: ${empleadoDetallado[campo]}`);
-              });
-            }
-          }
-        } catch (error) {
-          console.log(`⚠️ Error obteniendo información detallada de ${empleado.name}:`, error.message);
-        }
+
+      if (process.env.NODE_ENV === 'development') {
+        const activos = employees.filter(emp => !emp.endDate || emp.endDate === 0).length;
+        const inactivos = employees.filter(emp => emp.endDate && emp.endDate !== 0).length;
+        console.log(`[Holded Employees] ${company} - Empleados: ${transformedEmployees.length} (activos: ${activos}, inactivos: ${inactivos})`);
       }
-      
-      // Intentar obtener información de puestos únicos
-      const puestosUnicos = [...new Set(employees.map(emp => emp.title).filter(p => p))];
-      console.log('👔 Puestos únicos encontrados:', puestosUnicos.length);
-      puestosUnicos.forEach((puesto, index) => {
-        console.log(`│   ${index + 1}. ${puesto}`);
-      });
-      
-      // Mostrar información de empleados con códigos específicos
-      console.log('👥 EMPLEADOS CON CÓDIGOS ESPECÍFICOS:');
-      employees.forEach((emp, index) => {
-        if (emp.workplace || emp.teamIds?.length > 0 || emp.timeOffPolicyId) {
-          console.log(`│   ${index + 1}. ${emp.name} ${emp.lastName || ''}`);
-          console.log(`│       ├── Puesto (title): ${emp.title || 'No especificado'}`);
-          console.log(`│       ├── Puesto (position): ${emp.position || 'No especificado'}`);
-          console.log(`│       ├── Lugar trabajo: ${emp.workplace || 'No especificado'}`);
-          console.log(`│       ├── Equipos: ${emp.teamIds?.join(', ') || 'No especificado'}`);
-          console.log(`│       ├── Política vacaciones: ${emp.timeOffPolicyId || 'No especificado'}`);
-          console.log(`│       ├── Supervisor: ${emp.reportingTo || 'No especificado'}`);
-          console.log(`│       ├── Contrato actual: ${emp.currentContract?.length > 0 ? 'Sí' : 'No'}`);
-          if (emp.currentContract?.length > 0) {
-            console.log(`│       │   └── Contrato ID: ${emp.currentContract[0]?.id || 'No especificado'}`);
-            console.log(`│       │   └── Contrato tipo: ${emp.currentContract[0]?.type || 'No especificado'}`);
-            console.log(`│       │   └── Contrato puesto: ${emp.currentContract[0]?.position || 'No especificado'}`);
-          }
-          console.log(`│       └── Campos adicionales disponibles:`);
-          const camposAdicionales = Object.keys(emp).filter(key => 
-            !['id', 'name', 'lastName', 'email', 'mobile', 'address', 'iban', 'gender', 'nationality', 'languages', 'mainLanguage', 'code', 'mainEmail', 'teamIds', 'workplace', 'files', 'currentContract', 'reportingTo', 'timeOffSupervisors', 'timeOffPolicyId', 'terminated', 'terminatedType', 'terminatedReason', 'fiscalResidence', 'fiscalAddress', 'title', 'tags', 'companyPhone', 'customFields', 'payrollAccounts', 'dateOfBirth', 'socialSecurityNum', 'academicLevel'].includes(key)
-          );
-          camposAdicionales.forEach(campo => {
-            console.log(`│           ├── ${campo}: ${emp[campo]}`);
-          });
-        }
-      });
-      
-      console.log('✅ ===== CARGA DE EMPLEADOS COMPLETADA =====');
-      console.log('📋 Empleados transformados:', transformedEmployees.length);
-      
+
       return transformedEmployees;
     } catch (error) {
       console.error('❌ Error en getEmployeesTransformed:', error);
