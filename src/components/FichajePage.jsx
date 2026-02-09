@@ -13,7 +13,9 @@ import {
   CheckCircle,
   XCircle,
   AlertCircle,
-  RefreshCw
+  RefreshCw,
+  Delete,
+  Eraser
 } from 'lucide-react';
 import fichajeService from '../services/fichajeService';
 import fichajeSupabaseService from '../services/fichajeSupabaseService';
@@ -476,6 +478,151 @@ const FichajePage = () => {
               }}>
                 Introduce el código único asignado para fichar. El jefe puede fichar por cualquier empleado.
               </p>
+            </motion.div>
+          )}
+
+          {/* Numpad: fuera del div del input, centrado en la sección */}
+          {!empleadoId && (
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3, ease: 'easeOut', delay: 0.15 }}
+              style={{
+                display: 'flex',
+                justifyContent: 'center',
+                alignItems: 'center',
+                marginTop: '24px',
+                marginBottom: '24px'
+              }}
+            >
+              <div style={{
+                padding: '20px',
+                borderRadius: '12px',
+                backgroundColor: colors.surface,
+                border: `1px solid ${colors.border}`,
+                boxShadow: '0 2px 12px rgba(0,0,0,0.08)'
+              }}>
+                <span style={{
+                  display: 'block',
+                  fontSize: '13px',
+                  fontWeight: '500',
+                  color: colors.textSecondary,
+                  marginBottom: '14px',
+                  textAlign: 'center'
+                }}>
+                </span>
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(3, 1fr)',
+                  gap: '12px',
+                  width: '100%'
+                }}>
+                  {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
+                    <motion.button
+                      key={n}
+                      type="button"
+                      disabled={validandoCodigo}
+                      onClick={() => {
+                        setCodigoFichaje((prev) => (prev + String(n)).toUpperCase());
+                        setError('');
+                      }}
+                      whileTap={{ scale: validandoCodigo ? 1 : 0.92 }}
+                      whileHover={validandoCodigo ? {} : { scale: 1.03 }}
+                      transition={{ duration: 0.1 }}
+                      style={{
+                        padding: '16px',
+                        fontSize: '22px',
+                        fontWeight: '600',
+                        border: `1px solid ${colors.border}`,
+                        borderRadius: '10px',
+                        backgroundColor: colors.background,
+                        color: colors.text,
+                        cursor: validandoCodigo ? 'not-allowed' : 'pointer',
+                        opacity: validandoCodigo ? 0.6 : 1,
+                        minWidth: '56px'
+                      }}
+                    >
+                      {n}
+                    </motion.button>
+                  ))}
+                  <motion.button
+                    type="button"
+                    disabled={validandoCodigo}
+                    onClick={() => {
+                      setCodigoFichaje((prev) => (prev + '0').toUpperCase());
+                      setError('');
+                    }}
+                    whileTap={{ scale: validandoCodigo ? 1 : 0.92 }}
+                    whileHover={validandoCodigo ? {} : { scale: 1.03 }}
+                    transition={{ duration: 0.1 }}
+                    style={{
+                      padding: '16px',
+                      fontSize: '22px',
+                      fontWeight: '600',
+                      border: `1px solid ${colors.border}`,
+                      borderRadius: '10px',
+                      backgroundColor: colors.background,
+                      color: colors.text,
+                      cursor: validandoCodigo ? 'not-allowed' : 'pointer',
+                      opacity: validandoCodigo ? 0.6 : 1,
+                      minWidth: '56px'
+                    }}
+                  >
+                    0
+                  </motion.button>
+                  <motion.button
+                    type="button"
+                    title="Borrar último"
+                    disabled={validandoCodigo || !codigoFichaje.length}
+                    onClick={() => setCodigoFichaje((prev) => prev.slice(0, -1))}
+                    whileTap={validandoCodigo || !codigoFichaje.length ? {} : { scale: 0.92 }}
+                    whileHover={validandoCodigo || !codigoFichaje.length ? {} : { scale: 1.03 }}
+                    transition={{ duration: 0.1 }}
+                    style={{
+                      padding: '16px',
+                      border: `1px solid ${colors.border}`,
+                      borderRadius: '10px',
+                      backgroundColor: colors.surface,
+                      color: colors.text,
+                      cursor: validandoCodigo || !codigoFichaje.length ? 'not-allowed' : 'pointer',
+                      opacity: validandoCodigo || !codigoFichaje.length ? 0.6 : 1,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      minWidth: '56px'
+                    }}
+                  >
+                    <Delete size={22} />
+                  </motion.button>
+                  <motion.button
+                    type="button"
+                    title="Limpiar"
+                    disabled={validandoCodigo || !codigoFichaje.length}
+                    onClick={() => {
+                      setCodigoFichaje('');
+                      setError('');
+                    }}
+                    whileTap={validandoCodigo || !codigoFichaje.length ? {} : { scale: 0.92 }}
+                    whileHover={validandoCodigo || !codigoFichaje.length ? {} : { scale: 1.03 }}
+                    transition={{ duration: 0.1 }}
+                    style={{
+                      padding: '16px',
+                      border: `1px solid ${colors.border}`,
+                      borderRadius: '10px',
+                      backgroundColor: colors.surface,
+                      color: colors.text,
+                      cursor: validandoCodigo || !codigoFichaje.length ? 'not-allowed' : 'pointer',
+                      opacity: validandoCodigo || !codigoFichaje.length ? 0.6 : 1,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      minWidth: '56px'
+                    }}
+                  >
+                    <Eraser size={22} />
+                  </motion.button>
+                </div>
+              </div>
             </motion.div>
           )}
 
