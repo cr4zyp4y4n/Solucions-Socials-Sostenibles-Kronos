@@ -19,7 +19,6 @@ import {
 } from 'lucide-react';
 import fichajeService from '../services/fichajeService';
 import fichajeSupabaseService from '../services/fichajeSupabaseService';
-import holdedEmployeesService from '../services/holdedEmployeesService';
 import fichajeCodigosService from '../services/fichajeCodigosService';
 import FichajeModal from './FichajeModal';
 import FichajeNotificacionModal from './FichajeNotificacionModal';
@@ -62,58 +61,18 @@ const FichajePage = () => {
       const resultado = await fichajeCodigosService.buscarEmpleadoPorCodigo(codigo);
       
       if (resultado.success) {
-        // Buscar información del empleado en Holded (intentar ambas empresas)
-        let empleado = null;
-        let empleadoEncontrado = false;
-        
-        // Intentar primero en solucions
-        try {
-          const empleadoSolucions = await holdedEmployeesService.getEmployee(resultado.data.empleadoId, 'solucions');
-          if (empleadoSolucions) {
-            empleado = empleadoSolucions;
-            empleadoEncontrado = true;
-          }
-        } catch (err) {
-          // Si falla, intentar en menjar
-          console.log(`Empleado no encontrado en solucions, intentando en menjar...`);
-        }
-        
-        // Si no se encontró en solucions, intentar en menjar
-        if (!empleadoEncontrado) {
-          try {
-            const empleadoMenjar = await holdedEmployeesService.getEmployee(resultado.data.empleadoId, 'menjar');
-            if (empleadoMenjar) {
-              empleado = empleadoMenjar;
-              empleadoEncontrado = true;
-            }
-          } catch (err) {
-            console.log(`Empleado no encontrado en menjar tampoco`);
-          }
-        }
-        
-        if (empleado) {
-          setEmpleadoId(resultado.data.empleadoId);
-          setEmpleadoInfo({
-            id: resultado.data.empleadoId,
-            nombreCompleto: empleado.nombreCompleto || empleado.name || 'Empleado',
-            email: empleado.email,
-            codigo: resultado.data.codigo
-          });
-          setSuccess('Código válido');
-          setTimeout(() => setSuccess(''), 2000);
-        } else {
-          // Si no se encuentra en Holded, usar el código igualmente (puede ser un empleado nuevo)
-          console.warn('Empleado no encontrado en Holded, pero el código es válido. Usando información básica.');
-          setEmpleadoId(resultado.data.empleadoId);
-          setEmpleadoInfo({
-            id: resultado.data.empleadoId,
-            nombreCompleto: 'Empleado (ID: ' + resultado.data.empleadoId.substring(0, 8) + '...)',
-            email: null,
-            codigo: resultado.data.codigo
-          });
-          setSuccess('Código válido');
-          setTimeout(() => setSuccess(''), 2000);
-        }
+        // Usar solo datos de KRONOS (tabla fichajes_codigos): no llamar a Holded
+        // El nombre se muestra desde descripcion (lo rellena el admin al asignar el código)
+        const nombreCompleto = resultado.data.descripcion?.trim() || `Empleado (código ${resultado.data.codigo})`;
+        setEmpleadoId(resultado.data.empleadoId);
+        setEmpleadoInfo({
+          id: resultado.data.empleadoId,
+          nombreCompleto,
+          email: null,
+          codigo: resultado.data.codigo
+        });
+        setSuccess('Código válido');
+        setTimeout(() => setSuccess(''), 2000);
       } else {
         setError(resultado.error || 'Código no válido');
         setEmpleadoId(null);
@@ -419,13 +378,16 @@ const FichajePage = () => {
                     setCodigoFichaje(e.target.value.toUpperCase());
                     setError('');
                   }}
-                  onKeyPress={(e) => {
-                    if (e.key === 'Enter' && !validandoCodigo) {
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !validandoCodigo && codigoFichaje.trim()) {
+                      e.preventDefault();
                       validarCodigo(codigoFichaje);
                     }
                   }}
                   placeholder="Ej: 1234"
                   disabled={validandoCodigo}
+                  autoComplete="off"
+                  aria-label="Código de fichaje"
                   style={{
                     flex: 1,
                     padding: '12px',
@@ -476,7 +438,7 @@ const FichajePage = () => {
                 marginTop: '8px',
                 marginBottom: 0
               }}>
-                Introduce el código único asignado para fichar. El jefe puede fichar por cualquier empleado.
+                Introduce el código único asignado para fichar. Pulsa <strong>Enter</strong> o el botón Validar. El jefe puede fichar por cualquier empleado.
               </p>
             </motion.div>
           )}

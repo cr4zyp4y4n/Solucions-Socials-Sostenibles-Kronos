@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Key, 
@@ -44,6 +44,8 @@ const FichajeCodigosAdmin = () => {
   const [importFile, setImportFile] = useState(null);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState(null);
+
+  const syncedDescripcionesRef = useRef(false);
 
   // Cargar empleados
   useEffect(() => {
@@ -91,6 +93,25 @@ const FichajeCodigosAdmin = () => {
     loadCodigos();
   }, []);
 
+  // Sincronizar nombres a la BD: cuando tenemos códigos y empleados, rellenar descripción vacía con el nombre del empleado
+  // Así en Fichaje se muestra el nombre sin llamar a Holded. El nombre en la tabla Admin sale de Holded (empleados en memoria).
+  useEffect(() => {
+    if (codigos.length === 0 || empleados.length === 0 || syncedDescripcionesRef.current) return;
+    syncedDescripcionesRef.current = true;
+    const sync = async () => {
+      const sinDescripcion = codigos.filter(c => !c.descripcion?.trim());
+      for (const codigo of sinDescripcion) {
+        const emp = empleados.find(e => e.id === codigo.empleado_id);
+        const nombre = emp?.nombreCompleto || emp?.name;
+        if (nombre) {
+          await fichajeCodigosService.actualizarDescripcion(codigo.id, nombre);
+        }
+      }
+      if (sinDescripcion.length > 0) loadCodigos();
+    };
+    sync();
+  }, [codigos, empleados]);
+
   // Obtener nombre del empleado
   const getEmpleadoNombre = (empleadoId) => {
     const empleado = empleados.find(e => e.id === empleadoId);
@@ -101,10 +122,11 @@ const FichajeCodigosAdmin = () => {
   const openModal = (codigo = null) => {
     if (codigo) {
       setEditingCodigo(codigo);
+      const descripcion = codigo.descripcion?.trim() || getEmpleadoNombre(codigo.empleado_id);
       setFormData({
         codigo: codigo.codigo,
         empleadoId: codigo.empleado_id,
-        descripcion: codigo.descripcion || ''
+        descripcion: descripcion === 'Empleado no encontrado' ? '' : descripcion
       });
     } else {
       setEditingCodigo(null);
@@ -132,10 +154,13 @@ const FichajeCodigosAdmin = () => {
     setError('');
     
     try {
+      // Guardar nombre del empleado en descripción para que salga en Fichaje (si descripción vacía)
+      const nombreEmpleado = getEmpleadoNombre(formData.empleadoId);
+      const descripcionToSave = (formData.descripcion?.trim() || nombreEmpleado) || null;
       const resultado = await fichajeCodigosService.crearOActualizarCodigo(
         formData.codigo,
         formData.empleadoId,
-        formData.descripcion || null,
+        descripcionToSave,
         user?.id
       );
       

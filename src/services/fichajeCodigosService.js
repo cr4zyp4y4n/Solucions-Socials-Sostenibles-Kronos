@@ -181,6 +181,33 @@ class FichajeCodigosService {
   }
 
   /**
+   * Actualizar solo la descripción de un código (para guardar el nombre del empleado)
+   * @param {string} codigoId - ID del registro en fichajes_codigos
+   * @param {string} descripcion - Nueva descripción (ej. nombre del empleado)
+   * @returns {Promise<Object>} Resultado
+   */
+  async actualizarDescripcion(codigoId, descripcion) {
+    try {
+      if (!codigoId || !descripcion?.trim()) {
+        return { success: true };
+      }
+      const { error } = await supabase
+        .from('fichajes_codigos')
+        .update({
+          descripcion: descripcion.trim(),
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', codigoId);
+
+      if (error) throw error;
+      return { success: true };
+    } catch (error) {
+      console.error('Error actualizando descripción:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
    * Desactivar un código
    * @param {string} codigoId - ID del código
    * @returns {Promise<Object>} Resultado de la operación
