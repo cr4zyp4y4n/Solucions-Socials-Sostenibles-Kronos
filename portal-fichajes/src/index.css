@@ -10,3 +10,47 @@ body {
 #root {
   min-height: 100vh;
 }
+
+/* Responsive: móviles y tablets */
+@media (max-width: 768px) {
+  .portal-page {
+    padding: 16px !important;
+  }
+  .portal-header {
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 12px 16px !important;
+  }
+  .portal-header-title {
+    font-size: 14px !important;
+    width: 100%;
+  }
+  .portal-header-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    gap: 8px;
+  }
+  .portal-header-email {
+    font-size: 12px !important;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 160px;
+  }
+  .portal-grid-empleados {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .portal-page {
+    padding: 12px !important;
+  }
+  .portal-header {
+    padding: 10px 12px !important;
+  }
+  .portal-header-email {
+    max-width: 120px;
+  }
+}

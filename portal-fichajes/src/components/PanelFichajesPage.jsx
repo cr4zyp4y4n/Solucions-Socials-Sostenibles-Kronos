@@ -144,7 +144,7 @@ export default function PanelFichajesPage() {
 
   if (selectedEmpleado) {
     return (
-      <div style={{ padding: '24px', maxWidth: 1200, margin: '0 auto' }}>
+      <div className="portal-page" style={{ padding: '24px', maxWidth: 1200, margin: '0 auto' }}>
         <FichajeEmpleadoPerfilView
           empleado={selectedEmpleado}
           onBack={() => setSelectedEmpleado(null)}
@@ -154,7 +154,7 @@ export default function PanelFichajesPage() {
   }
 
   return (
-    <div style={{ padding: '24px', maxWidth: 1200, margin: '0 auto' }}>
+    <div className="portal-page" style={{ padding: '24px', maxWidth: 1200, margin: '0 auto' }}>
       <motion.div
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -248,9 +248,10 @@ export default function PanelFichajesPage() {
         </div>
       ) : (
         <div
+          className="portal-grid-empleados"
           style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
             gap: 16,
           }}
         >

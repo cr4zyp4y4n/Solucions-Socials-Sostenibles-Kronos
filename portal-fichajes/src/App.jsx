@@ -48,6 +48,7 @@ export default function App() {
   return (
     <div style={{ minHeight: '100vh', background: colors.background }}>
       <header
+        className="portal-header"
         style={{
           padding: '12px 24px',
           borderBottom: `1px solid ${colors.border}`,
@@ -57,11 +58,11 @@ export default function App() {
           justifyContent: 'space-between',
         }}
       >
-        <span style={{ fontSize: 16, fontWeight: 600, color: colors.text }}>
+        <span className="portal-header-title" style={{ fontSize: 16, fontWeight: 600, color: colors.text }}>
           Panel de Fichajes · Solo lectura
         </span>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <span style={{ fontSize: 13, color: colors.textSecondary }}>{user.email}</span>
+        <div className="portal-header-actions" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <span className="portal-header-email" style={{ fontSize: 13, color: colors.textSecondary }} title={user.email}>{user.email}</span>
           <button
             type="button"
             onClick={handleLogout}
