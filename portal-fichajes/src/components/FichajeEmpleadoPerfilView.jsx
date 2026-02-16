@@ -313,36 +313,37 @@ export default function FichajeEmpleadoPerfilView({ empleado, onBack }) {
             Cargando calendario...
           </div>
         ) : (
-          <>
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(7, 1fr)',
-                gap: 4,
-                marginBottom: 8,
-              }}
-            >
-              {WEEKDAYS.map((day) => (
-                <div
-                  key={day}
-                  style={{
-                    textAlign: 'center',
-                    fontSize: 12,
-                    fontWeight: 600,
-                    color: colors.textSecondary,
-                  }}
-                >
-                  {day}
-                </div>
-              ))}
-            </div>
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(7, 1fr)',
-                gap: 4,
-              }}
-            >
+          <div className="portal-calendario-wrapper">
+            <div className="portal-calendario-inner">
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(7, 1fr)',
+                  gap: 4,
+                  marginBottom: 8,
+                }}
+              >
+                {WEEKDAYS.map((day) => (
+                  <div
+                    key={day}
+                    style={{
+                      textAlign: 'center',
+                      fontSize: 12,
+                      fontWeight: 600,
+                      color: colors.textSecondary,
+                    }}
+                  >
+                    {day}
+                  </div>
+                ))}
+              </div>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(7, 1fr)',
+                  gap: 4,
+                }}
+              >
               {days.map((day, idx) => {
                 const dateKey = format(day, 'yyyy-MM-dd');
                 const dayFichajes = fichajesPorFecha[dateKey] || [];
@@ -424,8 +425,9 @@ export default function FichajeEmpleadoPerfilView({ empleado, onBack }) {
                   </div>
                 );
               })}
+              </div>
             </div>
-          </>
+          </div>
         )}
       </div>
 
