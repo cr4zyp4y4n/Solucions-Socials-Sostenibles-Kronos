@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Clock, 
@@ -7,7 +7,7 @@ import {
   Coffee,
   Play,
   Pause,
-  Calendar,
+  Calendar as CalendarIcon,
   Plus,
   FileText,
   CheckCircle,
@@ -15,16 +15,23 @@ import {
   AlertCircle,
   RefreshCw,
   Delete,
-  Eraser
+  Eraser,
+  MapPin
 } from 'lucide-react';
+import { startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, format, isSameMonth, isToday, isFuture } from 'date-fns';
+import { es } from 'date-fns/locale';
 import fichajeService from '../services/fichajeService';
 import fichajeSupabaseService from '../services/fichajeSupabaseService';
 import fichajeCodigosService from '../services/fichajeCodigosService';
 import FichajeModal from './FichajeModal';
 import FichajeNotificacionModal from './FichajeNotificacionModal';
+import FichajeDetailsModal from './FichajeDetailsModal';
+import FichajeEditModal from './FichajeEditModal';
 import { useTheme } from './ThemeContext';
 import { useAuth } from './AuthContext';
 import { formatTimeMadrid, formatDateMadrid } from '../utils/timeUtils';
+
+const WEEKDAYS_SHORT = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
 
 const FichajePage = () => {
   const { colors } = useTheme();
@@ -46,6 +53,11 @@ const FichajePage = () => {
   // Historial mensual
   const [historial, setHistorial] = useState([]);
   const [resumenMensual, setResumenMensual] = useState(null);
+  const [showFullCalendarModal, setShowFullCalendarModal] = useState(false);
+  const [selectedFichaje, setSelectedFichaje] = useState(null);
+  const [showDetailsModal, setShowDetailsModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const ubicacionCachedRef = useRef(null);
 
   // Validar código de fichaje
   const validarCodigo = async (codigo) => {
@@ -210,11 +222,13 @@ const FichajePage = () => {
     
     setLoading(true);
     setError('');
+    // Usar ubicación ya obtenida en segundo plano al entrar al perfil (sin preguntar al hacer clic)
+    const ubicacion = ubicacionCachedRef.current || null;
     try {
-      const resultado = await fichajeService.ficharEntrada(empleadoId, user?.id);
+      const resultado = await fichajeService.ficharEntrada(empleadoId, user?.id, ubicacion);
       
       if (resultado.success) {
-        setSuccess('Entrada registrada correctamente');
+        setSuccess(ubicacion ? 'Entrada registrada (con ubicación)' : 'Entrada registrada correctamente');
         setTimeout(() => setSuccess(''), 3000);
         await loadEstadoFichaje();
         await loadHistorial();
@@ -312,6 +326,74 @@ const FichajePage = () => {
   // Formatear fecha (usando zona horaria de Madrid)
   const formatDate = formatDateMadrid;
 
+  // Abrir modal detalle/edición de un fichaje (igual que panel fichajes)
+  const openFichaje = (fichaje, edit = false) => {
+    setSelectedFichaje(fichaje);
+    setShowDetailsModal(!edit);
+    setShowEditModal(edit);
+  };
+
+  const handleCloseFichajeModals = () => {
+    setShowDetailsModal(false);
+    setShowEditModal(false);
+    setSelectedFichaje(null);
+    loadHistorial();
+  };
+
+  // Pre-fetch ubicación en segundo plano al entrar al perfil (para guardar "sin preguntar" al fichar)
+  useEffect(() => {
+    if (!empleadoId || !navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        ubicacionCachedRef.current = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+      },
+      () => {},
+      { enableHighAccuracy: false, timeout: 8000, maximumAge: 300000 }
+    );
+  }, [empleadoId]);
+
+  // Para perfil: agrupar historial por fecha (mini calendario)
+  const fichajesPorFecha = useMemo(() => {
+    const map = {};
+    (historial || []).forEach((f) => {
+      const key = f.fecha;
+      if (!map[key]) map[key] = [];
+      map[key].push(f);
+    });
+    return map;
+  }, [historial]);
+
+  const mesActual = new Date();
+  // Semana actual (Lun–Dom) para vista compacta del perfil (se recalcula cada render para reflejar "hoy")
+  const weekDays = useMemo(() => {
+    const start = startOfWeek(mesActual, { weekStartsOn: 1 });
+    const end = endOfWeek(mesActual, { weekStartsOn: 1 });
+    return eachDayOfInterval({ start, end });
+  }, [mesActual.getTime()]);
+
+  // Días del mes completo (para modal calendario)
+  const calendarDays = useMemo(() => {
+    const start = startOfMonth(mesActual);
+    const end = endOfMonth(mesActual);
+    const daysInMonth = eachDayOfInterval({ start, end });
+    const startWeekday = (start.getDay() + 6) % 7;
+    const paddingStart = Array.from({ length: startWeekday }, (_, i) => {
+      const d = new Date(start);
+      d.setDate(d.getDate() - (startWeekday - i));
+      return d;
+    });
+    const allDays = [...paddingStart, ...daysInMonth];
+    const rest = allDays.length % 7 === 0 ? 0 : 7 - (allDays.length % 7);
+    if (rest > 0) {
+      const lastDay = allDays[allDays.length - 1];
+      for (let i = 1; i <= rest; i++) {
+        const d = new Date(lastDay);
+        d.setDate(d.getDate() + i);
+        allDays.push(d);
+      }
+    }
+    return allDays;
+  }, []);
 
   return (
     <div style={{ 
@@ -907,129 +989,405 @@ const FichajePage = () => {
             )}
           </motion.div>
 
-          {/* Resumen mensual */}
+          {/* Resumen visual: Total trabajado + Media diaria */}
           {resumenMensual && (
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.4, ease: 'easeOut', delay: 0.2 }}
-              style={{
-                backgroundColor: colors.surface,
-                padding: '24px',
-                borderRadius: '12px',
-                marginBottom: '24px',
-                border: `1px solid ${colors.border}`
-              }}
+              style={{ marginBottom: '20px' }}
             >
-              <h2 style={{ 
-                fontSize: '20px', 
-                fontWeight: '600', 
-                color: colors.text,
-                marginBottom: '20px'
-              }}>
-                Resumen del Mes
-              </h2>
               <div style={{
                 display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+                gridTemplateColumns: 'repeat(2, 1fr)',
                 gap: '16px'
               }}>
-                <div>
-                  <div style={{ fontSize: '12px', color: colors.textSecondary, marginBottom: '4px' }}>
-                    Días trabajados
+                {/* Tarjeta Total trabajado */}
+                <div style={{
+                  backgroundColor: colors.surface,
+                  padding: '20px',
+                  borderRadius: '12px',
+                  border: `1px solid ${colors.border}`,
+                  textAlign: 'center'
+                }}>
+                  <div style={{ fontSize: '13px', color: colors.textSecondary, marginBottom: '8px', fontWeight: '500' }}>
+                    Total trabajado
                   </div>
-                  <div style={{ fontSize: '24px', fontWeight: '700', color: colors.text }}>
-                    {resumenMensual.totalDias}
-                  </div>
-                </div>
-                <div>
-                  <div style={{ fontSize: '12px', color: colors.textSecondary, marginBottom: '4px' }}>
-                    Horas totales
-                  </div>
-                  <div style={{ fontSize: '24px', fontWeight: '700', color: colors.primary }}>
-                    {fichajeService.formatearHoras(resumenMensual.totalHoras)}
-                  </div>
-                </div>
-                <div>
-                  <div style={{ fontSize: '12px', color: colors.textSecondary, marginBottom: '4px' }}>
-                    Días completos
-                  </div>
-                  <div style={{ fontSize: '24px', fontWeight: '700', color: colors.success }}>
-                    {resumenMensual.diasCompletos}
-                  </div>
-                </div>
-                {resumenMensual.diasIncompletos > 0 && (
-                  <div>
-                    <div style={{ fontSize: '12px', color: colors.textSecondary, marginBottom: '4px' }}>
-                      Días incompletos
+                  <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <svg width="80" height="80" viewBox="0 0 80 80" style={{ transform: 'rotate(-90deg)' }}>
+                      <circle cx="40" cy="40" r="34" fill="none" stroke={colors.border} strokeWidth="6" />
+                      <circle
+                        cx="40" cy="40" r="34"
+                        fill="none"
+                        stroke={colors.primary}
+                        strokeWidth="6"
+                        strokeDasharray={`${2 * Math.PI * 34}`}
+                        strokeDashoffset={2 * Math.PI * 34 * (1 - Math.min(1, (resumenMensual.totalHoras || 0) / 160))}
+                        strokeLinecap="round"
+                        style={{ transition: 'stroke-dashoffset 0.4s ease' }}
+                      />
+                    </svg>
+                    <div style={{
+                      position: 'absolute',
+                      fontSize: (fichajeService.formatearHoras(resumenMensual.totalHoras).length > 6) ? '14px' : '20px',
+                      fontWeight: '700',
+                      color: colors.text,
+                      lineHeight: 1.2,
+                      textAlign: 'center',
+                      maxWidth: '70px'
+                    }}>
+                      {fichajeService.formatearHoras(resumenMensual.totalHoras)}
                     </div>
-                    <div style={{ fontSize: '24px', fontWeight: '700', color: colors.warning }}>
-                      {resumenMensual.diasIncompletos}
+                  </div>
+                  <div style={{ marginTop: '6px', fontSize: '11px', color: colors.textSecondary }}>horas este mes</div>
+                </div>
+                {/* Tarjeta Media diaria */}
+                <div style={{
+                  backgroundColor: colors.surface,
+                  padding: '20px',
+                  borderRadius: '12px',
+                  border: `1px solid ${colors.border}`,
+                  textAlign: 'center'
+                }}>
+                  <div style={{ fontSize: '13px', color: colors.textSecondary, marginBottom: '8px', fontWeight: '500' }}>
+                    Media diaria
+                  </div>
+                  <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <svg width="80" height="80" viewBox="0 0 80 80" style={{ transform: 'rotate(-90deg)' }}>
+                      <circle cx="40" cy="40" r="34" fill="none" stroke={colors.border} strokeWidth="6" />
+                      <circle
+                        cx="40" cy="40" r="34"
+                        fill="none"
+                        stroke={colors.primary}
+                        strokeWidth="6"
+                        strokeDasharray={`${2 * Math.PI * 34}`}
+                        strokeDashoffset={2 * Math.PI * 34 * (1 - Math.min(1, ((resumenMensual.totalHoras || 0) / Math.max(1, resumenMensual.totalDias)) / 8))}
+                        strokeLinecap="round"
+                        style={{ transition: 'stroke-dashoffset 0.4s ease' }}
+                      />
+                    </svg>
+                    <div style={{ position: 'absolute', fontSize: '20px', fontWeight: '700', color: colors.text }}>
+                      {(resumenMensual.totalHoras / Math.max(1, resumenMensual.totalDias)).toFixed(1)}
                     </div>
                   </div>
-                )}
+                  <div style={{ marginTop: '6px', fontSize: '11px', color: colors.textSecondary }}>h/día (ref. 8h)</div>
+                </div>
               </div>
             </motion.div>
           )}
 
-          {/* Historial */}
+          {/* Vista semana actual (mismo diseño que panel fichajes) + botón calendario completo */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, ease: 'easeOut', delay: 0.22 }}
+            style={{
+              backgroundColor: colors.surface,
+              padding: '14px',
+              borderRadius: '12px',
+              marginBottom: '20px',
+              border: `1px solid ${colors.border}`
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <CalendarIcon size={16} color={colors.primary} />
+                <span style={{ fontSize: '14px', fontWeight: '600', color: colors.text, textTransform: 'capitalize' }}>
+                  Semana {format(weekDays[0], 'd')}–{format(weekDays[6], 'd')} {format(mesActual, 'MMM yyyy', { locale: es })}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowFullCalendarModal(true)}
+                style={{
+                  padding: '6px 12px',
+                  fontSize: '12px',
+                  fontWeight: '600',
+                  color: colors.primary,
+                  backgroundColor: colors.primary + '18',
+                  border: `1px solid ${colors.primary}`,
+                  borderRadius: '8px',
+                  cursor: 'pointer'
+                }}
+              >
+                Ver calendario completo
+              </button>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px' }}>
+              {weekDays.map((day, idx) => {
+                const dateKey = format(day, 'yyyy-MM-dd');
+                const dayFichajes = fichajesPorFecha[dateKey] || [];
+                const isCurrentMonth = isSameMonth(day, mesActual);
+                const isTodayDate = isToday(day);
+                const isFutureDate = isFuture(day) && !isTodayDate;
+                return (
+                  <div
+                    key={idx}
+                    style={{
+                      minHeight: '64px',
+                      padding: '6px',
+                      borderRadius: '8px',
+                      backgroundColor: !isCurrentMonth ? colors.surface : isTodayDate ? colors.primary + '15' : 'transparent',
+                      border: isTodayDate ? `2px solid ${colors.primary}` : `1px solid ${colors.border}`,
+                      opacity: isFutureDate ? 0.6 : 1
+                    }}
+                  >
+                    <div style={{
+                      fontSize: '13px',
+                      fontWeight: isTodayDate ? '700' : '500',
+                      color: isTodayDate ? colors.primary : colors.text,
+                      marginBottom: '4px'
+                    }}>
+                      {format(day, 'd')}
+                    </div>
+                    {dayFichajes.length > 0 && !isFutureDate && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                        {dayFichajes.slice(0, 2).map((f) => (
+                          <button
+                            key={f.id}
+                            type="button"
+                            onClick={() => openFichaje(f)}
+                            style={{
+                              fontSize: '10px',
+                              padding: '4px 6px',
+                              borderRadius: '4px',
+                              border: 'none',
+                              backgroundColor: f.hora_salida ? colors.success + '25' : colors.warning + '25',
+                              color: colors.text,
+                              whiteSpace: 'nowrap',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              textAlign: 'left',
+                              cursor: 'pointer'
+                            }}
+                            title={`${formatTime(f.hora_entrada)} - ${f.hora_salida ? formatTime(f.hora_salida) : '...'} (clic para ver)`}
+                          >
+                            {formatTime(f.hora_entrada)}–{f.hora_salida ? formatTime(f.hora_salida) : '...'}
+                          </button>
+                        ))}
+                        {dayFichajes.length > 2 && (
+                          <span style={{ fontSize: '10px', color: colors.textSecondary }}>+{dayFichajes.length - 2}</span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </motion.div>
+
+          {/* Modal calendario completo del mes */}
+          {showFullCalendarModal && (
+            <div
+              style={{
+                position: 'fixed',
+                inset: 0,
+                backgroundColor: 'rgba(0,0,0,0.5)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: 1000,
+                padding: '20px'
+              }}
+              onClick={() => setShowFullCalendarModal(false)}
+            >
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                style={{
+                  backgroundColor: colors.surface,
+                  borderRadius: '12px',
+                  padding: '20px',
+                  maxWidth: '560px',
+                  width: '100%',
+                  maxHeight: '90vh',
+                  overflow: 'auto',
+                  border: `1px solid ${colors.border}`
+                }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+                  <span style={{ fontSize: '18px', fontWeight: '700', color: colors.text, textTransform: 'capitalize' }}>
+                    {format(mesActual, 'MMMM yyyy', { locale: es })}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setShowFullCalendarModal(false)}
+                    style={{
+                      padding: '8px 16px',
+                      fontSize: '14px',
+                      fontWeight: '600',
+                      color: colors.text,
+                      backgroundColor: colors.surface,
+                      border: `1px solid ${colors.border}`,
+                      borderRadius: '8px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Cerrar
+                  </button>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px', marginBottom: '8px' }}>
+                  {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map((d) => (
+                    <div key={d} style={{ textAlign: 'center', fontSize: '12px', fontWeight: '600', color: colors.textSecondary }}>
+                      {d}
+                    </div>
+                  ))}
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px' }}>
+                  {calendarDays.map((day, idx) => {
+                    const dateKey = format(day, 'yyyy-MM-dd');
+                    const dayFichajes = fichajesPorFecha[dateKey] || [];
+                    const isCurrentMonth = isSameMonth(day, mesActual);
+                    const isTodayDate = isToday(day);
+                    const isFutureDate = isFuture(day) && !isTodayDate;
+                    return (
+                      <div
+                        key={idx}
+                        style={{
+                          minHeight: '72px',
+                          padding: '6px',
+                          borderRadius: '8px',
+                          backgroundColor: !isCurrentMonth ? colors.surface : isTodayDate ? colors.primary + '15' : 'transparent',
+                          border: isTodayDate ? `2px solid ${colors.primary}` : `1px solid ${colors.border}`,
+                          opacity: !isCurrentMonth ? 0.5 : 1
+                        }}
+                      >
+                        <div style={{
+                          fontSize: '13px',
+                          fontWeight: isTodayDate ? '700' : '500',
+                          color: isTodayDate ? colors.primary : colors.text,
+                          marginBottom: '4px'
+                        }}>
+                          {format(day, 'd')}
+                        </div>
+                        {dayFichajes.length > 0 && !isFutureDate && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                            {dayFichajes.slice(0, 2).map((f) => (
+                              <button
+                                key={f.id}
+                                type="button"
+                                onClick={() => { openFichaje(f); setShowFullCalendarModal(false); }}
+                                style={{
+                                  fontSize: '10px',
+                                  padding: '4px 6px',
+                                  borderRadius: '4px',
+                                  border: 'none',
+                                  backgroundColor: f.hora_salida ? colors.success + '25' : colors.warning + '25',
+                                  color: colors.text,
+                                  whiteSpace: 'nowrap',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  textAlign: 'left',
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                {formatTime(f.hora_entrada)}–{f.hora_salida ? formatTime(f.hora_salida) : '...'}
+                              </button>
+                            ))}
+                            {dayFichajes.length > 2 && (
+                              <span style={{ fontSize: '10px', color: colors.textSecondary }}>+{dayFichajes.length - 2}</span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </motion.div>
+            </div>
+          )}
+
+          {/* Modales detalle/edición de fichaje (igual que panel fichajes) */}
+          {showDetailsModal && selectedFichaje && (
+            <FichajeDetailsModal
+              fichaje={selectedFichaje}
+              empleadoNombre={empleadoInfo?.nombreCompleto || empleadoInfo?.descripcion || 'Empleado'}
+              onClose={handleCloseFichajeModals}
+            />
+          )}
+          {showEditModal && selectedFichaje && (
+            <FichajeEditModal
+              fichaje={selectedFichaje}
+              empleadoNombre={empleadoInfo?.nombreCompleto || empleadoInfo?.descripcion || 'Empleado'}
+              onClose={handleCloseFichajeModals}
+              onSave={handleCloseFichajeModals}
+            />
+          )}
+
+          {/* Historial del mes: tarjetas compactas */}
           {historial.length > 0 && (
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.4, ease: 'easeOut', delay: 0.3 }}
-              style={{
-                backgroundColor: colors.surface,
-                padding: '24px',
-                borderRadius: '12px',
-                border: `1px solid ${colors.border}`
-              }}
+              style={{ marginBottom: '24px' }}
             >
-              <h2 style={{ 
-                fontSize: '20px', 
-                fontWeight: '600', 
-                color: colors.text,
-                marginBottom: '20px'
-              }}>
-                Historial del Mes
+              <h2 style={{ fontSize: '16px', fontWeight: '600', color: colors.text, marginBottom: '12px' }}>
+                Historial del mes
               </h2>
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                  <thead>
-                    <tr style={{ borderBottom: `2px solid ${colors.border}` }}>
-                      <th style={{ padding: '12px', textAlign: 'left', color: colors.text, fontWeight: '600', fontSize: '13px' }}>
-                        Fecha
-                      </th>
-                      <th style={{ padding: '12px', textAlign: 'left', color: colors.text, fontWeight: '600', fontSize: '13px' }}>
-                        Entrada
-                      </th>
-                      <th style={{ padding: '12px', textAlign: 'left', color: colors.text, fontWeight: '600', fontSize: '13px' }}>
-                        Salida
-                      </th>
-                      <th style={{ padding: '12px', textAlign: 'center', color: colors.text, fontWeight: '600', fontSize: '13px' }}>
-                        Horas
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {historial.map((fichaje) => (
-                      <tr key={fichaje.id} style={{ borderBottom: `1px solid ${colors.border}` }}>
-                        <td style={{ padding: '12px', color: colors.text }}>
-                          {formatDate(fichaje.fecha)}
-                        </td>
-                        <td style={{ padding: '12px', color: colors.text }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {historial.map((fichaje) => (
+                  <div
+                    key={fichaje.id}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => openFichaje(fichaje)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openFichaje(fichaje); } }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      flexWrap: 'wrap',
+                      gap: '8px',
+                      padding: '12px 14px',
+                      backgroundColor: colors.surface,
+                      borderRadius: '10px',
+                      border: `1px solid ${colors.border}`,
+                      fontSize: '13px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: '1 1 140px' }}>
+                      <div style={{
+                        width: '36px',
+                        height: '36px',
+                        borderRadius: '8px',
+                        backgroundColor: colors.primary + '18',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontWeight: '700',
+                        color: colors.primary,
+                        fontSize: '12px'
+                      }}>
+                        {formatDate(fichaje.fecha).split('/')[0]}
+                      </div>
+                      <div>
+                        <div style={{ fontWeight: '600', color: colors.text }}>{formatDate(fichaje.fecha)}</div>
+                        <div style={{ fontSize: '12px', color: colors.textSecondary }}>
                           {formatTime(fichaje.hora_entrada)}
-                        </td>
-                        <td style={{ padding: '12px', color: colors.text }}>
-                          {fichaje.hora_salida ? formatTime(fichaje.hora_salida) : '-'}
-                        </td>
-                        <td style={{ padding: '12px', textAlign: 'center', color: colors.text, fontWeight: '600' }}>
-                          {fichaje.horas_trabajadas ? fichajeService.formatearHoras(fichaje.horas_trabajadas) : '-'}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                          {fichaje.hora_salida ? ` – ${formatTime(fichaje.hora_salida)}` : ' – En curso'}
+                        </div>
+                        {(fichaje.ubicacion_lat != null && fichaje.ubicacion_lng != null) && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: colors.textSecondary, marginTop: '2px' }}>
+                            <MapPin size={12} />
+                            {fichaje.ubicacion_texto ? fichaje.ubicacion_texto : 'Ubicación guardada'}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <div style={{
+                      fontWeight: '700',
+                      color: colors.primary,
+                      fontSize: '14px',
+                      minWidth: '56px',
+                      textAlign: 'right'
+                    }}>
+                      {fichaje.horas_trabajadas ? fichajeService.formatearHoras(fichaje.horas_trabajadas) : '–'}
+                    </div>
+                  </div>
+                ))}
               </div>
             </motion.div>
           )}

@@ -10,21 +10,26 @@ class FichajeSupabaseService {
    * @param {string} empleadoId - ID del empleado (de Holded)
    * @param {Date} fecha - Fecha del fichaje
    * @param {string} userId - ID del usuario que crea el fichaje
+   * @param {Object} ubicacion - Opcional: { lat, lng, texto } desde donde se ficha
    * @returns {Promise<Object>} Fichaje creado
    */
-  async crearFichajeEntrada(empleadoId, fecha, userId = null) {
+  async crearFichajeEntrada(empleadoId, fecha, userId = null, ubicacion = null) {
     try {
-      // Usar null para que el trigger use now() (hora del servidor)
-      // Esto previene manipulación cambiando la hora del dispositivo
+      const payload = {
+        empleado_id: empleadoId,
+        fecha: fecha.toISOString().split('T')[0], // Solo la fecha (YYYY-MM-DD)
+        hora_entrada: null, // El trigger usará now() (hora del servidor)
+        created_by: userId,
+        es_modificado: false
+      };
+      if (ubicacion && typeof ubicacion.lat === 'number' && typeof ubicacion.lng === 'number') {
+        payload.ubicacion_lat = ubicacion.lat;
+        payload.ubicacion_lng = ubicacion.lng;
+        if (ubicacion.texto) payload.ubicacion_texto = ubicacion.texto;
+      }
       const { data, error } = await supabase
         .from('fichajes')
-        .insert({
-          empleado_id: empleadoId,
-          fecha: fecha.toISOString().split('T')[0], // Solo la fecha (YYYY-MM-DD)
-          hora_entrada: null, // El trigger usará now() (hora del servidor)
-          created_by: userId,
-          es_modificado: false
-        })
+        .insert(payload)
         .select()
         .single();
 

@@ -458,7 +458,7 @@ const Layout = () => {
     { key: 'subvenciones', label: 'Subvenciones', path: '/subvenciones', icon: FileText, roles: ['admin', 'management', 'manager'] },
     { key: 'empleados', label: 'Empleados', path: '/empleados', icon: Users, roles: ['admin', 'management', 'manager'] },
     { key: 'hoja-ruta', label: 'Hoja de Ruta', path: '/hoja-ruta', icon: Calendar, roles: ['admin', 'management', 'manager'] },
-    { key: 'fichaje', label: 'Fichaje', path: '/fichaje', icon: Clock, roles: ['admin', 'manager', 'tienda'] },
+    { key: 'fichaje', label: 'Fichaje', path: '/fichaje', icon: Clock, roles: ['admin', 'management', 'manager', 'user', 'tienda'] },
     { key: 'panel-fichajes', label: 'Panel Fichajes', path: '/panel-fichajes', icon: Activity, roles: ['admin', 'management', 'manager'] },
     { key: 'socios', label: 'Socios IDONI', path: '/socios', icon: Users, roles: ['admin', 'management', 'manager', 'tienda'] },
     { key: 'gestion-tienda', label: 'Gestión Tienda', path: '/gestion-tienda', icon: ShoppingBag, roles: ['admin', 'manager', 'tienda'] },
@@ -519,9 +519,6 @@ const Layout = () => {
       case 'hoja-ruta':
         return <HojaRutaPage />;
       case 'fichaje':
-        if (!isAdmin && !isManager && !isTienda) {
-          return <AccessDenied message="No tienes permisos para acceder al Fichaje." />;
-        }
         return <FichajePage />;
       case 'panel-fichajes':
         if (!isAdmin && !isManagementOrManager) {

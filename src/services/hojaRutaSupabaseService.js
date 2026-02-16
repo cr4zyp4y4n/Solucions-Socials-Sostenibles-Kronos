@@ -93,7 +93,12 @@ class HojaRutaSupabaseService {
     }
   }
 
-  // Procesamiento estándar (método original que funcionaba)
+  // Procesamiento estándar. Estructura de la hoja de ruta:
+  // - Columna A: info catering y material (nombres de ítems).
+  // - Columna B: datos y cantidades de lo que hay en A.
+  // - Columna C: notas importantes que hacen referencia a A (material).
+  // - Columna D: al principio, valores de los primeros campos de A (fecha, cliente, etc.); después, los MENÚs.
+  // - Columna E: notas que hacen referencia a los ítems de menú de la columna D.
   processCSVStandard(lines) {
     const data = {
       fechaCreacion: new Date().toISOString(),
@@ -203,25 +208,40 @@ class HojaRutaSupabaseService {
         currentMenuType = this.getMenuTypeFromTitle(parts[3]);
       }
 
-      // Equipamiento
-      if (this.isEquipamientoItem(parts[0])) {
+      // Equipamiento: A = ítem, B = cantidad, C = nota importante que hace referencia a A.
+      // Incluir toda fila que tenga nombre en col0 y no sea cabecera (Fecha, Cliente, etc.) ni nota "OJO!!".
+      if (parts[0] && parts[0].trim() !== '' && !this.isMetadataHeader(parts[0]) && !parts[0].toUpperCase().trim().startsWith('OJO!!')) {
+        const itemName = parts[0].trim();
+        const notaC = (parts[2] || '').trim();
         data.equipamiento.push({
-          item: parts[0],
-          cantidad: parts[1] || '',
+          item: itemName,
+          cantidad: (parts[1] || '').trim(),
+          nota: notaC,
           orden: data.equipamiento.length
         });
+        // Llevar también a Notas Importantes: nombre del material + nota (col. C) para que se vean ahí claramente
+        if (notaC) {
+          data.notas.push(`${itemName}: ${notaC}`);
+        }
       }
 
-      // Items de menú
+      // Items de menú: D = ítem, E = nota que hace referencia a D, F = cantidad, G = proveedor
       if (parts[3] && parts[3].length > 0 && this.isMenuItem(parts[3]) && currentMenuType) {
+        const itemMenu = parts[3].trim();
+        const notaE = (parts[4] || '').trim();
         data.menus.push({
           tipo: currentMenuType,
           hora: this.extractHora(parts[3]),
-          item: parts[3],
+          item: itemMenu,
           cantidad: parts[5] || '',
           proveedor: parts[6] || '',
+          nota: notaE,
           orden: data.menus.length
         });
+        // Llevar también a Notas Importantes: nombre del menú + nota (col. E)
+        if (notaE) {
+          data.notas.push(`${itemMenu}: ${notaE}`);
+        }
       }
 
       // Bebidas
@@ -234,12 +254,14 @@ class HojaRutaSupabaseService {
         });
       }
 
-      // Notas
-      if (parts[2] && parts[2].includes('OJO!!!')) {
-        data.notas.push(`${parts[0]}: ${parts[2]}`);
+      // Notas de cabeceras (ej. Hora de montaje) con algo en columna C
+      if (this.isMetadataHeader(parts[0]) && parts[2] && parts[2].trim()) {
+        data.notas.push(`${parts[0].trim()}: ${parts[2].trim()}`);
       }
-      if (parts[3] && parts[3].includes('OJO!!!')) {
-        data.notas.push(`${parts[0]}: ${parts[3]}`);
+      // Notas en columna D (OJO!! u otras)
+      if (parts[3] && parts[3].trim() && parts[3].includes('OJO!!!')) {
+        const prefijo = (parts[0] && parts[0].trim()) ? `${parts[0].trim()}: ` : '';
+        data.notas.push(prefijo + parts[3].trim());
       }
     }
 
@@ -325,26 +347,17 @@ class HojaRutaSupabaseService {
     return menuKeywords.some(keyword => text.includes(keyword));
   }
 
-  isEquipamientoItem(item) {
-    const equipamientoItems = [
-      'Mesas rectangulares', 'Mesas redondas altas', 'Mesas emplatar',
-      'BIOMBOS', 'Mantel rectangular', 'Mantel redondo', 'Camino BONCOR',
-      'HORNO PARA BROCHETAS', 'LLEVAR BANDEJAS HORNO', 'LLEVAR GUANTES PARA PAELLA',
-      'COPAS DE AGUA/VINO', 'VASOS BLANCOS CARTON', 'VASOS CAFÉ CON LECHE CERAMICA',
-      'VASOS CAFÉ CERAMICA', 'Servilletas', 'SERVILLETEROS JOSE',
-      'PLATAFORMAS JOSE PARA PLATO RECTANGULAR', 'AZUCAREROS PARA AZUCAR BLANCO',
-      'VASOS CAFÉ CERAMICA CAFÉ', 'VASOS CAFÉ CON LECHE CERAMICA',
-      'CUCHARILLAS METAL CAFÉ', 'CESTAS PARA PONER CUCHARITAS CAFÉ',
-      'Infusiones y té PARA 100', 'PINCHO MOCHIS', 'VASOS VIDRIO FRUTA + IOGURT',
-      'TOPINS PARA IOGURT', 'CUCHARAS IOGURT', 'TENEDORES VASO FRUTA',
-      'CAFETERAS', 'Café en polvo + garrafa de agua', 'CALIENTA LECHES',
-      'CALIENTA AGUA PEQUEÑO', 'TERMOS VACIOS LIMPIOS', 'Guantes de latex',
-      'Papelera', 'Papel de manos', 'DISPLAY BONCOR', 'PLATAFORMAS MADERA PARA PLATOS',
-      'ROLL UP BONCOR', 'DECORACION PLANTAS JOSE', 'Bolsas de basura',
-      'Cubitera', 'Pinzas', 'Abridores', 'Bandeja de camarero', 'Litos',
-      'Ginebra y lito', 'JABON LAVAVAJILLAS + PAÑO SECAR COPAS'
+  // Cabeceras de fila que no son productos/material (Fecha, Cliente, horarios, etc.)
+  isMetadataHeader(item) {
+    if (!item || typeof item !== 'string') return true;
+    const t = item.trim().toUpperCase();
+    const headers = [
+      'HOJA DE RUTA', 'FECHA', 'CLIENTE', 'CONTACTO Y MOBIL', 'DIRECCION', 'TRANSPORTISTA',
+      'PERSONAL', 'RESPONSABLE', 'Nº DE PERSONAS',
+      'HORA DE MONTAJE', 'HORA ENTREGA WELCOME', 'HORA WELCOME', 'HORA DESAYUNO',
+      'HORA ENTREGA IDONI', 'HORA COMIDA', 'HORA DE RECOGIDA'
     ];
-    return equipamientoItems.includes(item);
+    return headers.some(h => t === h || t.startsWith(h + ' ') || t.startsWith(h + ',') || t.startsWith(h));
   }
 
   isBebidaItem(item) {
@@ -536,6 +549,7 @@ class HojaRutaSupabaseService {
         id: eq.id,
         item: eq.item,
         cantidad: eq.cantidad,
+        nota: eq.nota || '',
         orden: eq.orden || 0
       })),
       menus: menus.map(m => ({
@@ -545,6 +559,7 @@ class HojaRutaSupabaseService {
         item: m.item,
         cantidad: m.cantidad,
         proveedor: m.proveedor,
+        nota: m.nota || '',
         orden: m.orden || 0
       })),
       bebidas: bebidas.map(b => ({
@@ -877,6 +892,57 @@ class HojaRutaSupabaseService {
     }
   }
 
+  // Actualizar datos principales de la hoja de ruta (cabecera, horarios, firma)
+  async actualizarHojaRuta(hojaId, formData) {
+    try {
+      let fechaServicio = formData.fechaServicio;
+      if (fechaServicio) {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(fechaServicio)) {
+          const fechaObj = new Date(fechaServicio);
+          fechaServicio = !isNaN(fechaObj.getTime()) ? fechaObj.toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
+        }
+      } else {
+        fechaServicio = new Date().toISOString().split('T')[0];
+      }
+
+      const updatePayload = {
+        fecha_servicio: fechaServicio,
+        cliente: formData.cliente ?? null,
+        contacto: formData.contacto ?? null,
+        direccion: formData.direccion ?? null,
+        transportista: formData.transportista ?? null,
+        responsable: formData.responsable ?? null,
+        num_personas: formData.numPersonas ?? 0,
+        personal_text: formData.personal ?? null,
+        horarios: formData.horarios || {}
+      };
+
+      // Solo actualizar firma si se envía y la hoja no estaba ya firmada
+      const hojaActual = await this.getHojaRuta(hojaId);
+      if (hojaActual && !hojaActual.firmaInfo?.firmado && formData.firmaResponsable != null && formData.firmaResponsable !== '') {
+        updatePayload.firma_responsable = formData.firmaResponsable;
+        updatePayload.firma_info = {
+          firmado: false,
+          firmado_por: null,
+          fecha_firma: null,
+          firma_data: formData.firmaResponsable
+        };
+      }
+
+      const { error } = await supabase
+        .from('hojas_ruta')
+        .update(updatePayload)
+        .eq('id', hojaId);
+
+      if (error) throw error;
+
+      return await this.getHojaRuta(hojaId);
+    } catch (error) {
+      console.error('❌ Error actualizando hoja de ruta:', error);
+      throw error;
+    }
+  }
+
   // Cambiar estado de servicio
   async cambiarEstadoServicio(hojaId, nuevoEstado) {
     try {
@@ -1052,6 +1118,7 @@ class HojaRutaSupabaseService {
       hoja_ruta_id: hojaId,
       item: eq.item,
       cantidad: eq.cantidad,
+      nota: eq.nota || null,
       orden: eq.orden || 0
     }));
 
@@ -1072,6 +1139,7 @@ class HojaRutaSupabaseService {
       item: m.item,
       cantidad: m.cantidad,
       proveedor: m.proveedor,
+      nota: m.nota || null,
       orden: m.orden || 0
     }));
 
@@ -1172,6 +1240,7 @@ class HojaRutaSupabaseService {
           hoja_ruta_id: hojaId,
           item: item.item || '',
           cantidad: item.cantidad || null,
+          nota: item.nota || null,
           orden: maxOrden + 1
         })
         .select()
@@ -1192,7 +1261,8 @@ class HojaRutaSupabaseService {
         .from('hojas_ruta_equipamiento')
         .update({
           item: item.item,
-          cantidad: item.cantidad || null
+          cantidad: item.cantidad || null,
+          nota: item.nota != null ? item.nota : null
         })
         .eq('id', itemId)
         .eq('hoja_ruta_id', hojaId)
@@ -1247,6 +1317,7 @@ class HojaRutaSupabaseService {
           item: menu.item || '',
           cantidad: menu.cantidad || null,
           proveedor: menu.proveedor || null,
+          nota: menu.nota || null,
           orden: maxOrden + 1
         })
         .select()
@@ -1270,7 +1341,8 @@ class HojaRutaSupabaseService {
           hora: menu.hora || null,
           item: menu.item,
           cantidad: menu.cantidad || null,
-          proveedor: menu.proveedor || null
+          proveedor: menu.proveedor || null,
+          nota: menu.nota != null ? menu.nota : null
         })
         .eq('id', itemId)
         .eq('hoja_ruta_id', hojaId)
