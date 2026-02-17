@@ -356,6 +356,8 @@ export default function FichajeEmpleadoPerfilView({ empleado, onBack }) {
                     key={idx}
                     style={{
                       minHeight: 72,
+                      minWidth: 0,
+                      overflow: 'hidden',
                       padding: 6,
                       borderRadius: 8,
                       backgroundColor: !isCurrentMonth
@@ -380,7 +382,7 @@ export default function FichajeEmpleadoPerfilView({ empleado, onBack }) {
                       {format(day, 'd')}
                     </div>
                     {dayFichajes.length > 0 && !isFutureDate && (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
                         {dayFichajes.slice(0, 2).map((f) => (
                           <div
                             key={f.id}
