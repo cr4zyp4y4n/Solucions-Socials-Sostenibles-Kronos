@@ -11,6 +11,7 @@ import {
   CheckCircle,
   AlertCircle,
   X,
+  Umbrella,
 } from 'lucide-react';
 import {
   startOfMonth,
@@ -33,6 +34,7 @@ const WEEKDAYS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 export default function FichajeEmpleadoPerfilView({ empleado, onBack }) {
   const [calendarMonth, setCalendarMonth] = useState(new Date());
   const [fichajes, setFichajes] = useState([]);
+  const [vacaciones, setVacaciones] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedFichaje, setSelectedFichaje] = useState(null);
 
@@ -45,14 +47,15 @@ export default function FichajeEmpleadoPerfilView({ empleado, onBack }) {
       try {
         const start = startOfMonth(calendarMonth);
         const end = endOfMonth(calendarMonth);
-        const res = await fichajePortalService.obtenerFichajesEmpleado(
-          empleadoId,
-          start,
-          end
-        );
-        setFichajes(res.success ? res.data || [] : []);
+        const [resFichajes, resVacaciones] = await Promise.all([
+          fichajePortalService.obtenerFichajesEmpleado(empleadoId, start, end),
+          fichajePortalService.obtenerVacacionesEmpleado(empleadoId, start, end),
+        ]);
+        setFichajes(resFichajes.success ? resFichajes.data || [] : []);
+        setVacaciones(resVacaciones.success ? resVacaciones.data || [] : []);
       } catch (err) {
         setFichajes([]);
+        setVacaciones([]);
       } finally {
         setLoading(false);
       }
@@ -69,6 +72,12 @@ export default function FichajeEmpleadoPerfilView({ empleado, onBack }) {
     });
     return map;
   }, [fichajes]);
+
+  const vacacionesPorFecha = useMemo(() => {
+    const set = new Set();
+    (vacaciones || []).forEach((v) => set.add(v.fecha));
+    return set;
+  }, [vacaciones]);
 
   const resumenMes = useMemo(() => {
     const completos = fichajes.filter((f) => f.hora_salida);
@@ -347,6 +356,7 @@ export default function FichajeEmpleadoPerfilView({ empleado, onBack }) {
               {days.map((day, idx) => {
                 const dateKey = format(day, 'yyyy-MM-dd');
                 const dayFichajes = fichajesPorFecha[dateKey] || [];
+                const isVacacion = vacacionesPorFecha.has(dateKey);
                 const isCurrentMonth = isSameMonth(day, calendarMonth);
                 const isTodayDate = isToday(day);
                 const isFutureDate = isFuture(day) && !isTodayDate;
@@ -362,11 +372,15 @@ export default function FichajeEmpleadoPerfilView({ empleado, onBack }) {
                       borderRadius: 8,
                       backgroundColor: !isCurrentMonth
                         ? colors.surface
+                        : isVacacion
+                        ? (colors.info || '#2196F3') + '18'
                         : isTodayDate
                         ? colors.primary + '15'
                         : 'transparent',
                       border: isTodayDate
                         ? `2px solid ${colors.primary}`
+                        : isVacacion
+                        ? `1px solid ${colors.info || '#2196F3'}`
                         : `1px solid ${colors.border}`,
                       opacity: !isCurrentMonth ? 0.5 : 1,
                     }}
@@ -381,6 +395,24 @@ export default function FichajeEmpleadoPerfilView({ empleado, onBack }) {
                     >
                       {format(day, 'd')}
                     </div>
+                    {isVacacion && (
+                      <div
+                        style={{
+                          fontSize: 10,
+                          padding: '2px 6px',
+                          borderRadius: 4,
+                          backgroundColor: (colors.info || '#2196F3') + '30',
+                          color: colors.text,
+                          marginBottom: 4,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 4,
+                        }}
+                      >
+                        <Umbrella size={10} />
+                        Vacaciones
+                      </div>
+                    )}
                     {dayFichajes.length > 0 && !isFutureDate && (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
                         {dayFichajes.slice(0, 2).map((f) => (

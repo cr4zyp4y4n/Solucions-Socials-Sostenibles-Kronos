@@ -65,6 +65,31 @@ export async function obtenerCodigosParaNombres() {
 }
 
 /**
+ * Obtener vacaciones de un empleado en un rango (solo lectura, para calendario perfil).
+ * @param {string} empleadoId
+ * @param {Date} fechaInicio
+ * @param {Date} fechaFin
+ * @returns {Promise<{ success: boolean, data: Array }>}
+ */
+export async function obtenerVacacionesEmpleado(empleadoId, fechaInicio, fechaFin) {
+  try {
+    const { data, error } = await supabase
+      .from('vacaciones')
+      .select('*')
+      .eq('empleado_id', empleadoId)
+      .gte('fecha', fechaInicio.toISOString().split('T')[0])
+      .lte('fecha', fechaFin.toISOString().split('T')[0])
+      .order('fecha', { ascending: true });
+
+    if (error) throw error;
+    return { success: true, data: data || [] };
+  } catch (err) {
+    console.error('Error obteniendo vacaciones del empleado:', err);
+    return { success: false, data: [] };
+  }
+}
+
+/**
  * Obtener todas las vacaciones en un rango (solo lectura, para panel listado).
  * @param {Date} fechaInicio
  * @param {Date} fechaFin
