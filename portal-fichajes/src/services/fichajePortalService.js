@@ -65,6 +65,30 @@ export async function obtenerCodigosParaNombres() {
 }
 
 /**
+ * Obtener todas las vacaciones en un rango (solo lectura, para panel listado).
+ * @param {Date} fechaInicio
+ * @param {Date} fechaFin
+ * @returns {Promise<{ success: boolean, data: Array }>}
+ */
+export async function obtenerVacacionesEnRango(fechaInicio, fechaFin) {
+  try {
+    const { data, error } = await supabase
+      .from('vacaciones')
+      .select('*')
+      .gte('fecha', fechaInicio.toISOString().split('T')[0])
+      .lte('fecha', fechaFin.toISOString().split('T')[0])
+      .order('empleado_id')
+      .order('fecha', { ascending: true });
+
+    if (error) throw error;
+    return { success: true, data: data || [] };
+  } catch (err) {
+    console.error('Error obteniendo vacaciones en rango:', err);
+    return { success: false, data: [] };
+  }
+}
+
+/**
  * Lista de "empleados" para el panel: empleado_id únicos que tienen fichajes en el mes,
  * con nombre desde fichajes_codigos (descripcion).
  */

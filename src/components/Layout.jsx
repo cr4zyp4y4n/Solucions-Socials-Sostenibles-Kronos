@@ -114,6 +114,11 @@ const Layout = () => {
         if (!error && data) {
           setUserProfile(data);
 
+          // Rol "user" (solo fichaje): redirigir a Fichaje para que no vean Inicio con datos sensibles al entrar
+          if ((data.role || '').toLowerCase() === 'user') {
+            navigateTo('fichaje');
+          }
+
           // Mostrar onboarding automáticamente si es un usuario nuevo
           if (!data.onboarding_completed) {
             setShowOnboarding(true);
@@ -467,9 +472,14 @@ const Layout = () => {
   ];
 
   // Filtrar items según el rol del usuario
-  const menuItems = allMenuItems.filter(item =>
-    item.roles.includes(userProfile?.role || 'user')
-  );
+  // Rol "user": Inicio (vista mínima sin datos sensibles), Fichaje y Configuración
+  const menuItems = allMenuItems.filter(item => {
+    const role = userProfile?.role || 'user';
+    if ((role || '').toLowerCase() === 'user') {
+      return item.key === 'home' || item.key === 'fichaje' || item.key === 'settings';
+    }
+    return item.roles.includes(role);
+  });
 
   // Agregar items especiales para admin
   if (isAdmin) {

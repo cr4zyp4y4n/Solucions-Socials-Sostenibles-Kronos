@@ -219,6 +219,110 @@ class FichajeSupabaseService {
   }
 
   // =====================================================
+  // VACACIONES (admin/manager/management marcan días en calendario)
+  // =====================================================
+
+  /**
+   * Obtener vacaciones de un empleado en un rango de fechas
+   * @param {string} empleadoId - ID del empleado (Holded)
+   * @param {Date} fechaInicio - Inicio del rango
+   * @param {Date} fechaFin - Fin del rango
+   * @returns {Promise<Object>} Lista de { id, empleado_id, fecha, ... }
+   */
+  async obtenerVacacionesEmpleado(empleadoId, fechaInicio, fechaFin) {
+    try {
+      const { data, error } = await supabase
+        .from('vacaciones')
+        .select('*')
+        .eq('empleado_id', empleadoId)
+        .gte('fecha', fechaInicio.toISOString().split('T')[0])
+        .lte('fecha', fechaFin.toISOString().split('T')[0])
+        .order('fecha', { ascending: true });
+
+      if (error) throw error;
+      return { success: true, data: data || [] };
+    } catch (error) {
+      console.error('Error obteniendo vacaciones del empleado:', error);
+      return { success: false, error: error.message, data: [] };
+    }
+  }
+
+  /**
+   * Obtener todas las vacaciones en un rango (para Panel Fichajes listado)
+   * @param {Date} fechaInicio - Inicio del rango
+   * @param {Date} fechaFin - Fin del rango
+   * @returns {Promise<Object>} Lista de vacaciones
+   */
+  async obtenerVacacionesEnRango(fechaInicio, fechaFin) {
+    try {
+      const { data, error } = await supabase
+        .from('vacaciones')
+        .select('*')
+        .gte('fecha', fechaInicio.toISOString().split('T')[0])
+        .lte('fecha', fechaFin.toISOString().split('T')[0])
+        .order('empleado_id')
+        .order('fecha', { ascending: true });
+
+      if (error) throw error;
+      return { success: true, data: data || [] };
+    } catch (error) {
+      console.error('Error obteniendo vacaciones en rango:', error);
+      return { success: false, error: error.message, data: [] };
+    }
+  }
+
+  /**
+   * Añadir un día de vacaciones para un empleado
+   * @param {string} empleadoId - ID del empleado
+   * @param {Date|string} fecha - Fecha (Date o YYYY-MM-DD)
+   * @param {string} userId - ID del usuario que marca (opcional)
+   * @returns {Promise<Object>}
+   */
+  async añadirVacacion(empleadoId, fecha, userId = null) {
+    try {
+      const fechaStr = typeof fecha === 'string' ? fecha : fecha.toISOString().split('T')[0];
+      const { data, error } = await supabase
+        .from('vacaciones')
+        .insert({
+          empleado_id: empleadoId,
+          fecha: fechaStr,
+          created_by: userId
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+      return { success: true, data };
+    } catch (error) {
+      console.error('Error añadiendo vacación:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Quitar un día de vacaciones de un empleado
+   * @param {string} empleadoId - ID del empleado
+   * @param {Date|string} fecha - Fecha (Date o YYYY-MM-DD)
+   * @returns {Promise<Object>}
+   */
+  async quitarVacacion(empleadoId, fecha) {
+    try {
+      const fechaStr = typeof fecha === 'string' ? fecha : fecha.toISOString().split('T')[0];
+      const { error } = await supabase
+        .from('vacaciones')
+        .delete()
+        .eq('empleado_id', empleadoId)
+        .eq('fecha', fechaStr);
+
+      if (error) throw error;
+      return { success: true };
+    } catch (error) {
+      console.error('Error quitando vacación:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  // =====================================================
   // GESTIÓN DE PAUSAS
   // =====================================================
 

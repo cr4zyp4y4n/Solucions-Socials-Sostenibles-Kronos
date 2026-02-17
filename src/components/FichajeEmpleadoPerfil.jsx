@@ -9,7 +9,8 @@ import {
   ArrowLeft,
   Coffee,
   CheckCircle,
-  AlertCircle
+  AlertCircle,
+  Umbrella
 } from 'lucide-react';
 import {
   startOfMonth,
@@ -17,17 +18,20 @@ import {
   eachDayOfInterval,
   addMonths,
   subMonths,
+  addDays,
+  differenceInCalendarDays,
   format,
+  parseISO,
   isSameMonth,
   isToday,
-  isFuture,
-  isSameDay,
-  parseISO
+  isFuture
 } from 'date-fns';
 import { es } from 'date-fns/locale';
 import fichajeSupabaseService from '../services/fichajeSupabaseService';
 import { formatTimeMadrid, formatDateShortMadrid } from '../utils/timeUtils';
 import { useTheme } from './ThemeContext';
+import { useAuth } from './AuthContext';
+import { supabase } from '../config/supabase';
 import FichajeDetailsModal from './FichajeDetailsModal';
 import FichajeEditModal from './FichajeEditModal';
 
@@ -35,16 +39,37 @@ const WEEKDAYS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 
 const FichajeEmpleadoPerfil = ({ empleado, onBack }) => {
   const { colors } = useTheme();
+  const { user } = useAuth();
   const [calendarMonth, setCalendarMonth] = useState(new Date());
   const [fichajes, setFichajes] = useState([]);
+  const [vacaciones, setVacaciones] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [togglingVacacion, setTogglingVacacion] = useState(false);
   const [selectedFichaje, setSelectedFichaje] = useState(null);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [userCanEditVacaciones, setUserCanEditVacaciones] = useState(false);
+  const [modoPeriodoVacaciones, setModoPeriodoVacaciones] = useState(false);
+  const [periodoPrimerDia, setPeriodoPrimerDia] = useState(null);
 
   const empleadoId = empleado?.id;
 
-  // Cargar fichajes del mes visible (incluir días del calendario que puedan caer en mes anterior/siguiente)
+  // Rol del usuario: admin, manager, management pueden marcar vacaciones
+  useEffect(() => {
+    if (!user?.id) return;
+    supabase
+      .from('user_profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single()
+      .then(({ data }) => {
+        const role = (data?.role || '').toLowerCase();
+        setUserCanEditVacaciones(['admin', 'manager', 'management'].includes(role));
+      })
+      .catch(() => setUserCanEditVacaciones(false));
+  }, [user?.id]);
+
+  // Cargar fichajes del mes visible
   useEffect(() => {
     if (!empleadoId) return;
 
@@ -66,16 +91,91 @@ const FichajeEmpleadoPerfil = ({ empleado, onBack }) => {
     loadFichajes();
   }, [empleadoId, calendarMonth]);
 
+  // Cargar vacaciones del mes visible
+  useEffect(() => {
+    if (!empleadoId) return;
+    const start = startOfMonth(calendarMonth);
+    const end = endOfMonth(calendarMonth);
+    fichajeSupabaseService.obtenerVacacionesEmpleado(empleadoId, start, end).then((res) => {
+      setVacaciones(res.success ? res.data || [] : []);
+    });
+  }, [empleadoId, calendarMonth]);
+
   // Mapa fecha (YYYY-MM-DD) -> fichaje
   const fichajesPorFecha = useMemo(() => {
     const map = {};
     (fichajes || []).forEach((f) => {
-      const key = f.fecha; // ya viene YYYY-MM-DD
+      const key = f.fecha;
       if (!map[key]) map[key] = [];
       map[key].push(f);
     });
     return map;
   }, [fichajes]);
+
+  // Conjunto de fechas con vacaciones (YYYY-MM-DD)
+  const vacacionesPorFecha = useMemo(() => {
+    const set = new Set();
+    (vacaciones || []).forEach((v) => set.add(v.fecha));
+    return set;
+  }, [vacaciones]);
+
+  const toggleVacacion = async (dateKey) => {
+    if (!userCanEditVacaciones || !empleadoId || togglingVacacion) return;
+    setTogglingVacacion(true);
+    const esVacacion = vacacionesPorFecha.has(dateKey);
+    try {
+      if (esVacacion) {
+        const res = await fichajeSupabaseService.quitarVacacion(empleadoId, dateKey);
+        if (res.success) setVacaciones((prev) => prev.filter((v) => v.fecha !== dateKey));
+      } else {
+        const res = await fichajeSupabaseService.añadirVacacion(empleadoId, dateKey, user?.id);
+        if (res.success && res.data) setVacaciones((prev) => [...prev, res.data].sort((a, b) => a.fecha.localeCompare(b.fecha)));
+      }
+    } finally {
+      setTogglingVacacion(false);
+    }
+  };
+
+  /** Modo periodo: primer clic guarda el día, segundo clic marca todos los días entre ambos como vacaciones */
+  const handleClicDiaCalendario = (dateKey) => {
+    if (!userCanEditVacaciones) return;
+    if (modoPeriodoVacaciones) {
+      if (periodoPrimerDia === null) {
+        setPeriodoPrimerDia(dateKey);
+        return;
+      }
+      const d1 = parseISO(periodoPrimerDia);
+      const d2 = parseISO(dateKey);
+      const [desde, hasta] = d1 <= d2 ? [d1, d2] : [d2, d1];
+      const totalDias = differenceInCalendarDays(hasta, desde) + 1;
+      if (totalDias > 365) {
+        setPeriodoPrimerDia(null);
+        setModoPeriodoVacaciones(false);
+        return;
+      }
+      setTogglingVacacion(true);
+      (async () => {
+        const nuevas = [];
+        let current = desde;
+        while (current <= hasta) {
+          const key = format(current, 'yyyy-MM-dd');
+          if (!vacacionesPorFecha.has(key)) {
+            const res = await fichajeSupabaseService.añadirVacacion(empleadoId, key, user?.id);
+            if (res.success && res.data) nuevas.push(res.data);
+          }
+          current = addDays(current, 1);
+        }
+        if (nuevas.length > 0) {
+          setVacaciones((prev) => [...prev, ...nuevas].sort((a, b) => a.fecha.localeCompare(b.fecha)));
+        }
+        setPeriodoPrimerDia(null);
+        setModoPeriodoVacaciones(false);
+        setTogglingVacacion(false);
+      })();
+      return;
+    }
+    toggleVacacion(dateKey);
+  };
 
   // Resumen del mes
   const resumenMes = useMemo(() => {
@@ -296,43 +396,73 @@ const FichajeEmpleadoPerfil = ({ empleado, onBack }) => {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            marginBottom: '16px'
+            marginBottom: '16px',
+            flexWrap: 'wrap',
+            gap: '8px'
           }}
         >
-          <button
-            onClick={() => setCalendarMonth((m) => subMonths(m, 1))}
-            style={{
-              padding: '8px 12px',
-              backgroundColor: colors.surface,
-              border: `1px solid ${colors.border}`,
-              borderRadius: '8px',
-              color: colors.text,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center'
-            }}
-          >
-            <ChevronLeft size={20} />
-          </button>
-          <span style={{ fontSize: '18px', fontWeight: '700', color: colors.text, textTransform: 'capitalize' }}>
-            {format(calendarMonth, 'MMMM yyyy', { locale: es })}
-          </span>
-          <button
-            onClick={() => setCalendarMonth((m) => addMonths(m, 1))}
-            style={{
-              padding: '8px 12px',
-              backgroundColor: colors.surface,
-              border: `1px solid ${colors.border}`,
-              borderRadius: '8px',
-              color: colors.text,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center'
-            }}
-          >
-            <ChevronRight size={20} />
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <button
+              onClick={() => setCalendarMonth((m) => subMonths(m, 1))}
+              style={{
+                padding: '8px 12px',
+                backgroundColor: colors.surface,
+                border: `1px solid ${colors.border}`,
+                borderRadius: '8px',
+                color: colors.text,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center'
+              }}
+            >
+              <ChevronLeft size={20} />
+            </button>
+            <span style={{ fontSize: '18px', fontWeight: '700', color: colors.text, textTransform: 'capitalize' }}>
+              {format(calendarMonth, 'MMMM yyyy', { locale: es })}
+            </span>
+            <button
+              onClick={() => setCalendarMonth((m) => addMonths(m, 1))}
+              style={{
+                padding: '8px 12px',
+                backgroundColor: colors.surface,
+                border: `1px solid ${colors.border}`,
+                borderRadius: '8px',
+                color: colors.text,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center'
+              }}
+            >
+              <ChevronRight size={20} />
+            </button>
+          </div>
+          {userCanEditVacaciones && (
+            <button
+              type="button"
+              onClick={() => {
+                setModoPeriodoVacaciones((v) => !v);
+                setPeriodoPrimerDia(null);
+              }}
+              style={{
+                padding: '8px 14px',
+                backgroundColor: modoPeriodoVacaciones ? colors.warning : (colors.info || '#2196F3'),
+                color: '#fff',
+                border: 'none',
+                borderRadius: '8px',
+                fontSize: '13px',
+                fontWeight: '600',
+                cursor: 'pointer'
+              }}
+            >
+              {modoPeriodoVacaciones ? 'Cancelar' : 'Seleccionar periodo'}
+            </button>
+          )}
         </div>
+        {modoPeriodoVacaciones && userCanEditVacaciones && (
+          <p style={{ margin: '0 0 12px 0', fontSize: '13px', color: colors.textSecondary }}>
+            {periodoPrimerDia ? 'Ahora clic en el último día del periodo.' : 'Clic en el primer día del periodo, luego en el último.'}
+          </p>
+        )}
 
         {loading ? (
           <div style={{ textAlign: 'center', padding: '40px', color: colors.textSecondary }}>
@@ -374,9 +504,12 @@ const FichajeEmpleadoPerfil = ({ empleado, onBack }) => {
               {days.map((day, idx) => {
                 const dateKey = format(day, 'yyyy-MM-dd');
                 const dayFichajes = fichajesPorFecha[dateKey] || [];
+                const isVacacion = vacacionesPorFecha.has(dateKey);
                 const isCurrentMonth = isSameMonth(day, calendarMonth);
                 const isTodayDate = isToday(day);
                 const isFutureDate = isFuture(day) && !isTodayDate;
+                const canToggleThisDay = userCanEditVacaciones;
+                const esPrimerDiaPeriodo = modoPeriodoVacaciones && periodoPrimerDia === dateKey;
 
                 return (
                   <div
@@ -387,11 +520,20 @@ const FichajeEmpleadoPerfil = ({ empleado, onBack }) => {
                       borderRadius: '8px',
                       backgroundColor: !isCurrentMonth
                         ? colors.surface
+                        : isVacacion
+                        ? (colors.info || '#2196F3') + '18'
                         : isTodayDate
                         ? colors.primary + '15'
                         : 'transparent',
-                      border: isTodayDate ? `2px solid ${colors.primary}` : `1px solid ${colors.border}`,
-                      opacity: !isCurrentMonth ? 0.5 : 1
+                      border: esPrimerDiaPeriodo
+                        ? `2px solid ${colors.warning}`
+                        : isTodayDate
+                        ? `2px solid ${colors.primary}`
+                        : isVacacion
+                        ? `1px solid ${colors.info || '#2196F3'}`
+                        : `1px solid ${colors.border}`,
+                      opacity: !isCurrentMonth ? 0.5 : 1,
+                      boxShadow: esPrimerDiaPeriodo ? `0 0 0 2px ${colors.warning}40` : 'none'
                     }}
                   >
                     <div
@@ -399,11 +541,60 @@ const FichajeEmpleadoPerfil = ({ empleado, onBack }) => {
                         fontSize: '13px',
                         fontWeight: isTodayDate ? '700' : '500',
                         color: isTodayDate ? colors.primary : colors.text,
-                        marginBottom: '4px'
+                        marginBottom: '4px',
+                        cursor: canToggleThisDay ? 'pointer' : 'default',
+                        userSelect: canToggleThisDay ? 'none' : 'auto'
                       }}
+                      onClick={canToggleThisDay ? () => handleClicDiaCalendario(dateKey) : undefined}
+                      title={
+                        canToggleThisDay
+                          ? modoPeriodoVacaciones
+                            ? periodoPrimerDia
+                              ? 'Clic aquí como último día del periodo'
+                              : 'Clic como primer día del periodo'
+                            : isVacacion
+                            ? 'Quitar vacaciones'
+                            : 'Marcar como vacaciones'
+                          : undefined
+                      }
                     >
                       {format(day, 'd')}
                     </div>
+                    {isVacacion && (
+                      <div
+                        style={{
+                          fontSize: '10px',
+                          padding: '2px 6px',
+                          borderRadius: '4px',
+                          backgroundColor: (colors.info || '#2196F3') + '30',
+                          color: colors.text,
+                          marginBottom: '4px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          cursor: canToggleThisDay ? 'pointer' : 'default'
+                        }}
+                        onClick={
+                          canToggleThisDay
+                            ? (e) => {
+                                e.stopPropagation();
+                                if (modoPeriodoVacaciones) handleClicDiaCalendario(dateKey);
+                                else toggleVacacion(dateKey);
+                              }
+                            : undefined
+                        }
+                        title={
+                          canToggleThisDay
+                            ? modoPeriodoVacaciones
+                              ? 'Usar como día del periodo'
+                              : 'Quitar vacaciones'
+                            : undefined
+                        }
+                      >
+                        <Umbrella size={10} />
+                        Vacaciones
+                      </div>
+                    )}
                     {dayFichajes.length > 0 && !isFutureDate && (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                         {dayFichajes.slice(0, 2).map((f) => (

@@ -10,9 +10,10 @@ import {
   AlertCircle,
   ChevronRight,
   Download,
+  Umbrella,
 } from 'lucide-react';
 import ExcelJS from 'exceljs';
-import { startOfMonth, endOfMonth, format } from 'date-fns';
+import { startOfMonth, endOfMonth, format, addMonths, parseISO, differenceInCalendarDays, addDays } from 'date-fns';
 import { es } from 'date-fns/locale';
 import * as fichajePortalService from '../services/fichajePortalService';
 import { formatTimeMadrid, formatDateShortMadrid } from '../utils/timeUtils';
@@ -22,6 +23,7 @@ import FichajeEmpleadoPerfilView from './FichajeEmpleadoPerfilView';
 export default function PanelFichajesPage() {
   const [empleados, setEmpleados] = useState([]);
   const [fichajesMes, setFichajesMes] = useState([]);
+  const [vacacionesMes, setVacacionesMes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedEmpleado, setSelectedEmpleado] = useState(null);
@@ -34,17 +36,20 @@ export default function PanelFichajesPage() {
       try {
         const start = startOfMonth(mesActual);
         const end = endOfMonth(mesActual);
-        const res = await fichajePortalService.obtenerTodosFichajes({
-          fechaInicio: start,
-          fechaFin: end,
-        });
-        const data = res.success ? res.data || [] : [];
+        const endVacaciones = endOfMonth(addMonths(mesActual, 2));
+        const [resFichajes, resVacaciones] = await Promise.all([
+          fichajePortalService.obtenerTodosFichajes({ fechaInicio: start, fechaFin: end }),
+          fichajePortalService.obtenerVacacionesEnRango(start, endVacaciones),
+        ]);
+        const data = resFichajes.success ? resFichajes.data || [] : [];
         setFichajesMes(data);
+        setVacacionesMes(resVacaciones.success ? resVacaciones.data || [] : []);
         const emps = await fichajePortalService.obtenerEmpleadosConFichajes(data);
         setEmpleados(emps);
       } catch (err) {
         console.error(err);
         setFichajesMes([]);
+        setVacacionesMes([]);
         setEmpleados([]);
       } finally {
         setLoading(false);
@@ -54,6 +59,7 @@ export default function PanelFichajesPage() {
   }, [mesActual]);
 
   const resumenPorEmpleado = useMemo(() => {
+    const todayStr = format(mesActual, 'yyyy-MM-dd');
     const map = {};
     empleados.forEach((emp) => {
       const fichajesEmp = fichajesMes.filter((f) => f.empleado_id === emp.id);
@@ -64,16 +70,43 @@ export default function PanelFichajesPage() {
         fichajesEmp.length > 0
           ? fichajesEmp.sort((a, b) => new Date(b.fecha) - new Date(a.fecha))[0]
           : null;
+      const vacacionesEmp = vacacionesMes.filter((v) => v.empleado_id === emp.id);
+      const fechasVacaciones = vacacionesEmp.map((v) => v.fecha).sort();
+      const futuras = fechasVacaciones.filter((d) => d >= todayStr);
+      let vacacionesHasta = null;
+      let diasHastaVacaciones = null;
+      let estaEnVacaciones = false;
+      if (futuras.length > 0) {
+        let blockEnd = futuras[0];
+        for (let i = 1; i < futuras.length; i++) {
+          const esperado = format(addDays(parseISO(blockEnd), 1), 'yyyy-MM-dd');
+          if (futuras[i] === esperado) blockEnd = futuras[i];
+          else break;
+        }
+        vacacionesHasta = blockEnd;
+        estaEnVacaciones = futuras.includes(todayStr);
+        if (!estaEnVacaciones) {
+          diasHastaVacaciones = differenceInCalendarDays(parseISO(futuras[0]), parseISO(todayStr));
+        }
+      }
+      const fechasDelMesActual = fechasVacaciones.filter((d) =>
+        d.startsWith(format(mesActual, 'yyyy-MM'))
+      );
       map[emp.id] = {
         horasTotales: horasTotales.toFixed(2),
         diasTrabajados: completos.length,
         trabajandoAhora,
         ultimoFichaje,
         totalFichajes: fichajesEmp.length,
+        vacacionesDelMes: fechasDelMesActual,
+        diasVacaciones: fechasDelMesActual.length,
+        vacacionesHasta,
+        diasHastaVacaciones,
+        estaEnVacaciones,
       };
     });
     return map;
-  }, [empleados, fichajesMes]);
+  }, [empleados, fichajesMes, vacacionesMes, mesActual]);
 
   const empleadosFiltrados = useMemo(() => {
     if (!searchTerm.trim()) return empleados;
@@ -262,6 +295,9 @@ export default function PanelFichajesPage() {
                 diasTrabajados: 0,
                 trabajandoAhora: false,
                 ultimoFichaje: null,
+                vacacionesHasta: null,
+                diasHastaVacaciones: null,
+                diasVacaciones: 0,
               };
               const nombre = empleado.nombreCompleto || empleado.name || 'Empleado';
 
@@ -384,6 +420,41 @@ export default function PanelFichajesPage() {
                       Último: {formatDateShortMadrid(resumen.ultimoFichaje.fecha)}
                       {resumen.ultimoFichaje.hora_salida &&
                         ` · ${formatTimeMadrid(resumen.ultimoFichaje.hora_salida)}`}
+                    </div>
+                  )}
+                  {(resumen.vacacionesHasta != null ||
+                    resumen.diasHastaVacaciones != null ||
+                    resumen.diasVacaciones > 0) && (
+                    <div
+                      style={{
+                        fontSize: 12,
+                        color: colors.info || '#2196F3',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        marginTop: 4,
+                      }}
+                    >
+                      <Umbrella size={14} />
+                      {resumen.estaEnVacaciones && resumen.vacacionesHasta ? (
+                        <>Vacaciones hasta {formatDateShortMadrid(resumen.vacacionesHasta)}</>
+                      ) : resumen.diasHastaVacaciones != null ? (
+                        <>
+                          Quedan {resumen.diasHastaVacaciones} día
+                          {resumen.diasHastaVacaciones !== 1 ? 's' : ''} para vacaciones
+                        </>
+                      ) : resumen.diasVacaciones > 0 ? (
+                        <>
+                          Vacaciones: {resumen.diasVacaciones} día
+                          {resumen.diasVacaciones !== 1 ? 's' : ''} este mes
+                          {resumen.vacacionesDelMes?.length <= 5 &&
+                            resumen.vacacionesDelMes?.length > 0 && (
+                              <span style={{ color: colors.textSecondary }}>
+                                ({resumen.vacacionesDelMes.map((d) => formatDateShortMadrid(d)).join(', ')})
+                              </span>
+                            )}
+                        </>
+                      ) : null}
                     </div>
                   )}
                 </motion.div>
