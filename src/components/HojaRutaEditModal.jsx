@@ -15,7 +15,7 @@ import {
   Pen
 } from 'lucide-react';
 import { useTheme } from './ThemeContext';
-import hojaRutaService from '../services/hojaRutaService';
+import hojaRutaSupabaseService from '../services/hojaRutaSupabaseService';
 import SignaturePad from './SignaturePad';
 
 const HojaRutaEditModal = ({ isOpen, onClose, hojaRuta, onEditSuccess }) => {
@@ -96,7 +96,7 @@ const HojaRutaEditModal = ({ isOpen, onClose, hojaRuta, onEditSuccess }) => {
     setError(null);
 
     try {
-      const updated = hojaRutaService.updateHojaRuta(hojaRuta.id, formData);
+      const updated = await hojaRutaSupabaseService.actualizarHojaRuta(hojaRuta.id, formData);
       if (updated) {
         setSuccess(true);
         setTimeout(() => {
@@ -108,7 +108,7 @@ const HojaRutaEditModal = ({ isOpen, onClose, hojaRuta, onEditSuccess }) => {
       }
     } catch (err) {
       console.error('Error editando hoja:', err);
-      setError('Error al guardar los cambios');
+      setError(err?.message || 'Error al actualizar la hoja de ruta');
     } finally {
       setSaving(false);
     }

@@ -43,12 +43,14 @@ const EquipamientoItem = ({ item, hojaId, onUpdate, canEdit, colors }) => {
   const [editando, setEditando] = useState(false);
   const [itemEdit, setItemEdit] = useState(item.item || '');
   const [cantidadEdit, setCantidadEdit] = useState(item.cantidad || '');
+  const [notaEdit, setNotaEdit] = useState(item.nota || '');
 
   const handleGuardar = async () => {
     try {
       await hojaRutaService.updateEquipamientoItem(hojaId, item.id, {
         item: itemEdit,
-        cantidad: cantidadEdit
+        cantidad: cantidadEdit,
+        nota: notaEdit
       });
       onUpdate();
       setEditando(false);
@@ -109,6 +111,20 @@ const EquipamientoItem = ({ item, hojaId, onUpdate, canEdit, colors }) => {
           }}
           placeholder="Cantidad"
         />
+        <input
+          type="text"
+          value={notaEdit}
+          onChange={(e) => setNotaEdit(e.target.value)}
+          style={{
+            padding: '8px',
+            borderRadius: '6px',
+            border: `1px solid ${colors.border}`,
+            backgroundColor: colors.surface,
+            color: colors.text,
+            fontSize: '12px'
+          }}
+          placeholder="Nota (col. C)"
+        />
         <div style={{ display: 'flex', gap: '6px' }}>
           <motion.button
             whileHover={{ scale: 1.05 }}
@@ -134,6 +150,7 @@ const EquipamientoItem = ({ item, hojaId, onUpdate, canEdit, colors }) => {
               setEditando(false);
               setItemEdit(item.item || '');
               setCantidadEdit(item.cantidad || '');
+              setNotaEdit(item.nota || '');
             }}
             style={{
               flex: 1,
@@ -182,6 +199,16 @@ const EquipamientoItem = ({ item, hojaId, onUpdate, canEdit, colors }) => {
           Cantidad: {item.cantidad}
         </p>
       )}
+      {item.nota && (
+        <p style={{ 
+          fontSize: '11px', 
+          color: colors.textSecondary,
+          margin: '4px 0 0 0',
+          fontStyle: 'italic'
+        }}>
+          Nota: {item.nota}
+        </p>
+      )}
       {canEdit && (
         <div style={{ 
           position: 'absolute', 
@@ -197,6 +224,7 @@ const EquipamientoItem = ({ item, hojaId, onUpdate, canEdit, colors }) => {
               setEditando(true);
               setItemEdit(item.item || '');
               setCantidadEdit(item.cantidad || '');
+              setNotaEdit(item.nota || '');
             }}
             style={{
               padding: '4px',
@@ -242,6 +270,7 @@ const MenuItem = ({ menu, hojaId, onUpdate, canEdit, colors }) => {
   const [itemEdit, setItemEdit] = useState(menu.item || '');
   const [cantidadEdit, setCantidadEdit] = useState(menu.cantidad || '');
   const [proveedorEdit, setProveedorEdit] = useState(menu.proveedor || '');
+  const [notaEdit, setNotaEdit] = useState(menu.nota || '');
 
   const handleGuardar = async () => {
     try {
@@ -250,7 +279,8 @@ const MenuItem = ({ menu, hojaId, onUpdate, canEdit, colors }) => {
         hora: menu.hora || null,
         item: itemEdit,
         cantidad: cantidadEdit,
-        proveedor: proveedorEdit
+        proveedor: proveedorEdit,
+        nota: notaEdit
       });
       onUpdate();
       setEditando(false);
@@ -325,6 +355,20 @@ const MenuItem = ({ menu, hojaId, onUpdate, canEdit, colors }) => {
           }}
           placeholder="Proveedor"
         />
+        <input
+          type="text"
+          value={notaEdit}
+          onChange={(e) => setNotaEdit(e.target.value)}
+          style={{
+            padding: '8px',
+            borderRadius: '6px',
+            border: `1px solid ${colors.border}`,
+            backgroundColor: colors.surface,
+            color: colors.text,
+            fontSize: '12px'
+          }}
+          placeholder="Nota (col. E)"
+        />
         <div style={{ display: 'flex', gap: '6px' }}>
           <motion.button
             whileHover={{ scale: 1.05 }}
@@ -351,6 +395,7 @@ const MenuItem = ({ menu, hojaId, onUpdate, canEdit, colors }) => {
               setItemEdit(menu.item || '');
               setCantidadEdit(menu.cantidad || '');
               setProveedorEdit(menu.proveedor || '');
+              setNotaEdit(menu.nota || '');
             }}
             style={{
               flex: 1,
@@ -397,6 +442,7 @@ const MenuItem = ({ menu, hojaId, onUpdate, canEdit, colors }) => {
               setItemEdit(menu.item || '');
               setCantidadEdit(menu.cantidad || '');
               setProveedorEdit(menu.proveedor || '');
+              setNotaEdit(menu.nota || '');
             }}
             style={{
               padding: '4px',
@@ -460,9 +506,19 @@ const MenuItem = ({ menu, hojaId, onUpdate, canEdit, colors }) => {
             fontSize: '12px', 
             color: colors.primary,
             fontWeight: '500',
-            margin: 0
+            margin: '0 0 4px 0'
           }}>
             {menu.proveedor}
+          </p>
+        )}
+        {menu.nota && (
+          <p style={{ 
+            fontSize: '11px', 
+            color: colors.textSecondary,
+            margin: 0,
+            fontStyle: 'italic'
+          }}>
+            Nota: {menu.nota}
           </p>
         )}
       </div>

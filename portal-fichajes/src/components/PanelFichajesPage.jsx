@@ -8,21 +8,19 @@ import {
   Coffee,
   CheckCircle,
   AlertCircle,
-  Users,
   ChevronRight,
-  ArrowLeft,
-  Umbrella
+  Download,
+  Umbrella,
 } from 'lucide-react';
+import ExcelJS from 'exceljs';
 import { startOfMonth, endOfMonth, format, addMonths, parseISO, differenceInCalendarDays, addDays } from 'date-fns';
 import { es } from 'date-fns/locale';
-import fichajeSupabaseService from '../services/fichajeSupabaseService';
-import holdedEmployeesService from '../services/holdedEmployeesService';
+import * as fichajePortalService from '../services/fichajePortalService';
 import { formatTimeMadrid, formatDateShortMadrid } from '../utils/timeUtils';
-import { useTheme } from './ThemeContext';
-import FichajeEmpleadoPerfil from './FichajeEmpleadoPerfil';
+import { colors } from '../theme';
+import FichajeEmpleadoPerfilView from './FichajeEmpleadoPerfilView';
 
-const PanelFichajesPage = () => {
-  const { colors } = useTheme();
+export default function PanelFichajesPage() {
   const [empleados, setEmpleados] = useState([]);
   const [fichajesMes, setFichajesMes] = useState([]);
   const [vacacionesMes, setVacacionesMes] = useState([]);
@@ -30,59 +28,36 @@ const PanelFichajesPage = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedEmpleado, setSelectedEmpleado] = useState(null);
 
-  // Mes para el que calculamos resúmenes (mes actual)
   const mesActual = useMemo(() => new Date(), []);
 
-  // Cargar empleados
   useEffect(() => {
-    const loadEmpleados = async () => {
-      try {
-        const [solucions, menjar] = await Promise.all([
-          holdedEmployeesService.getEmployeesTransformed('solucions').catch(() => []),
-          holdedEmployeesService.getEmployeesTransformed('menjar').catch(() => [])
-        ]);
-        const todos = [...(solucions || []), ...(menjar || [])];
-        setEmpleados(todos);
-      } catch (err) {
-        console.error('Error cargando empleados:', err);
-        setEmpleados([]);
-      }
-    };
-    loadEmpleados();
-  }, []);
-
-  // Cargar todos los fichajes del mes actual
-  useEffect(() => {
-    const loadFichajes = async () => {
+    const load = async () => {
       setLoading(true);
       try {
         const start = startOfMonth(mesActual);
         const end = endOfMonth(mesActual);
-        const res = await fichajeSupabaseService.obtenerTodosFichajes({
-          fechaInicio: start,
-          fechaFin: end
-        });
-        setFichajesMes(res.success ? res.data || [] : []);
+        const endVacaciones = endOfMonth(addMonths(mesActual, 2));
+        const [resFichajes, resVacaciones] = await Promise.all([
+          fichajePortalService.obtenerTodosFichajes({ fechaInicio: start, fechaFin: end }),
+          fichajePortalService.obtenerVacacionesEnRango(start, endVacaciones),
+        ]);
+        const data = resFichajes.success ? resFichajes.data || [] : [];
+        setFichajesMes(data);
+        setVacacionesMes(resVacaciones.success ? resVacaciones.data || [] : []);
+        const emps = await fichajePortalService.obtenerEmpleadosConFichajes(data);
+        setEmpleados(emps);
       } catch (err) {
-        console.error('Error cargando fichajes:', err);
+        console.error(err);
         setFichajesMes([]);
+        setVacacionesMes([]);
+        setEmpleados([]);
       } finally {
         setLoading(false);
       }
     };
-    loadFichajes();
+    load();
   }, [mesActual]);
 
-  // Cargar vacaciones: mes actual + 2 meses para "hasta cuándo" y "días hasta vacaciones"
-  useEffect(() => {
-    const start = startOfMonth(mesActual);
-    const end = endOfMonth(addMonths(mesActual, 2));
-    fichajeSupabaseService.obtenerVacacionesEnRango(start, end).then((res) => {
-      setVacacionesMes(res.success ? res.data || [] : []);
-    });
-  }, [mesActual]);
-
-  // Resumen por empleado: horas mes, días trabajados, trabajando ahora, último fichaje, vacaciones (hasta cuándo / días hasta)
   const resumenPorEmpleado = useMemo(() => {
     const todayStr = format(mesActual, 'yyyy-MM-dd');
     const map = {};
@@ -91,9 +66,10 @@ const PanelFichajesPage = () => {
       const completos = fichajesEmp.filter((f) => f.hora_salida);
       const horasTotales = completos.reduce((sum, f) => sum + (f.horas_trabajadas || 0), 0);
       const trabajandoAhora = fichajesEmp.some((f) => !f.hora_salida);
-      const ultimoFichaje = fichajesEmp.length > 0
-        ? fichajesEmp.sort((a, b) => new Date(b.fecha) - new Date(a.fecha))[0]
-        : null;
+      const ultimoFichaje =
+        fichajesEmp.length > 0
+          ? fichajesEmp.sort((a, b) => new Date(b.fecha) - new Date(a.fecha))[0]
+          : null;
       const vacacionesEmp = vacacionesMes.filter((v) => v.empleado_id === emp.id);
       const fechasVacaciones = vacacionesEmp.map((v) => v.fecha).sort();
       const futuras = fechasVacaciones.filter((d) => d >= todayStr);
@@ -113,8 +89,8 @@ const PanelFichajesPage = () => {
           diasHastaVacaciones = differenceInCalendarDays(parseISO(futuras[0]), parseISO(todayStr));
         }
       }
-      const fechasDelMesActual = fechasVacaciones.filter(
-        (d) => d.startsWith(format(mesActual, 'yyyy-MM'))
+      const fechasDelMesActual = fechasVacaciones.filter((d) =>
+        d.startsWith(format(mesActual, 'yyyy-MM'))
       );
       map[emp.id] = {
         horasTotales: horasTotales.toFixed(2),
@@ -126,24 +102,21 @@ const PanelFichajesPage = () => {
         diasVacaciones: fechasDelMesActual.length,
         vacacionesHasta,
         diasHastaVacaciones,
-        estaEnVacaciones
+        estaEnVacaciones,
       };
     });
     return map;
   }, [empleados, fichajesMes, vacacionesMes, mesActual]);
 
-  // Empleados filtrados por búsqueda
   const empleadosFiltrados = useMemo(() => {
     if (!searchTerm.trim()) return empleados;
     const term = searchTerm.toLowerCase();
     return empleados.filter(
       (e) =>
-        (e.nombreCompleto || e.name || '').toLowerCase().includes(term) ||
-        (e.email || '').toLowerCase().includes(term)
+        (e.nombreCompleto || e.name || '').toLowerCase().includes(term)
     );
   }, [empleados, searchTerm]);
 
-  // Ordenar: primero quienes están trabajando ahora
   const empleadosOrdenados = useMemo(() => {
     return [...empleadosFiltrados].sort((a, b) => {
       const aTrabajando = resumenPorEmpleado[a.id]?.trabajandoAhora ?? false;
@@ -154,109 +127,165 @@ const PanelFichajesPage = () => {
     });
   }, [empleadosFiltrados, resumenPorEmpleado]);
 
-  const handleVerPerfil = (empleado) => {
-    setSelectedEmpleado(empleado);
+  const descargarInforme = async () => {
+    const mesLabel = format(mesActual, 'MMMM-yyyy', { locale: es });
+    const wb = new ExcelJS.Workbook();
+
+    // Hoja Empleados: títulos en mayúsculas y negrita
+    const wsEmpleados = wb.addWorksheet('Empleados');
+    const headersEmpleados = ['EMPLEADO', 'HORAS MES', 'DÍAS TRABAJADOS'];
+    wsEmpleados.addRow(headersEmpleados);
+    wsEmpleados.getRow(1).eachCell((c) => {
+      c.font = { bold: true };
+    });
+    empleadosOrdenados.forEach((emp) => {
+      const resumen = resumenPorEmpleado[emp.id] || {};
+      const nombre = emp.nombreCompleto || emp.name || 'Sin nombre';
+      wsEmpleados.addRow([nombre, resumen.horasTotales ?? '0', resumen.diasTrabajados ?? 0]);
+    });
+
+    // Hoja Detalle: títulos en mayúsculas y negrita
+    const wsDetalle = wb.addWorksheet('Detalle');
+    const headersDetalle = ['EMPLEADO', 'FECHA', 'HORA ENTRADA', 'HORA SALIDA', 'HORAS TRABAJADAS'];
+    wsDetalle.addRow(headersDetalle);
+    wsDetalle.getRow(1).eachCell((c) => {
+      c.font = { bold: true };
+    });
+    fichajesMes
+      .filter((f) => f.hora_salida)
+      .forEach((f) => {
+        const emp = empleados.find((e) => e.id === f.empleado_id);
+        const nombre = emp?.nombreCompleto || emp?.name || f.empleado_id || '';
+        wsDetalle.addRow([
+          nombre,
+          f.fecha,
+          f.hora_entrada ? formatTimeMadrid(f.hora_entrada) : '',
+          f.hora_salida ? formatTimeMadrid(f.hora_salida) : '',
+          f.horas_trabajadas != null ? Number(f.horas_trabajadas).toFixed(2) : '',
+        ]);
+      });
+
+    const buffer = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Informe-Fichajes-${mesLabel}.xlsx`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
-  const handleVolver = () => {
-    setSelectedEmpleado(null);
-    const start = startOfMonth(mesActual);
-    const end = endOfMonth(mesActual);
-    const endVacaciones = endOfMonth(addMonths(mesActual, 2));
-    fichajeSupabaseService.obtenerTodosFichajes({ fechaInicio: start, fechaFin: end }).then((res) => {
-      if (res.success && res.data) setFichajesMes(res.data);
-    });
-    fichajeSupabaseService.obtenerVacacionesEnRango(start, endVacaciones).then((res) => {
-      if (res.success && res.data) setVacacionesMes(res.data);
-    });
-  };
-
-  // Vista: perfil de un empleado
   if (selectedEmpleado) {
     return (
-      <div style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto' }}>
-        <FichajeEmpleadoPerfil empleado={selectedEmpleado} onBack={handleVolver} />
+      <div className="portal-page" style={{ padding: '24px', maxWidth: 1200, margin: '0 auto' }}>
+        <FichajeEmpleadoPerfilView
+          empleado={selectedEmpleado}
+          onBack={() => setSelectedEmpleado(null)}
+        />
       </div>
     );
   }
 
-  // Vista: listado de empleados con resumen
   return (
-    <div style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto' }}>
+    <div className="portal-page" style={{ padding: '24px', maxWidth: 1200, margin: '0 auto' }}>
       <motion.div
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
         style={{ marginBottom: '28px' }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
           <Clock size={32} color={colors.primary} />
-          <h1 style={{ fontSize: '28px', fontWeight: '700', color: colors.text, margin: 0 }}>
+          <h1 style={{ fontSize: '28px', fontWeight: 700, color: colors.text, margin: 0 }}>
             Panel de Fichajes
           </h1>
         </div>
-        <p style={{ fontSize: '15px', color: colors.textSecondary, margin: 0 }}>
-          Resumen por empleado del mes de {format(mesActual, 'MMMM yyyy', { locale: es })}. Haz clic en un empleado para ver su perfil con calendario y registros.
-        </p>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+          <p style={{ fontSize: 15, color: colors.textSecondary, margin: 0 }}>
+            Resumen por empleado del mes de {format(mesActual, 'MMMM yyyy', { locale: es })}. Haz clic en un empleado para ver su perfil con calendario y registros.
+          </p>
+          {!loading && (
+            <button
+              type="button"
+              onClick={descargarInforme}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '10px 16px',
+                backgroundColor: colors.primary,
+                color: '#fff',
+                border: 'none',
+                borderRadius: 8,
+                fontSize: 14,
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              <Download size={18} />
+              Descargar informe (.xlsx)
+            </button>
+          )}
+        </div>
       </motion.div>
 
-      {/* Búsqueda */}
-      <div style={{ marginBottom: '24px' }}>
-        <div style={{ position: 'relative', maxWidth: '400px' }}>
+      <div style={{ marginBottom: 24 }}>
+        <div style={{ position: 'relative', maxWidth: 400 }}>
           <Search
             size={18}
             color={colors.textSecondary}
             style={{
               position: 'absolute',
-              left: '12px',
+              left: 12,
               top: '50%',
               transform: 'translateY(-50%)',
-              pointerEvents: 'none'
+              pointerEvents: 'none',
             }}
           />
           <input
             type="text"
-            placeholder="Buscar por nombre o email..."
+            placeholder="Buscar por nombre..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             style={{
               width: '100%',
               padding: '12px 12px 12px 40px',
               border: `1px solid ${colors.border}`,
-              borderRadius: '8px',
-              fontSize: '14px',
+              borderRadius: 8,
+              fontSize: 14,
               color: colors.text,
               backgroundColor: colors.background,
               outline: 'none',
-              boxSizing: 'border-box'
+              boxSizing: 'border-box',
             }}
           />
         </div>
       </div>
 
       {loading ? (
-        <div style={{ textAlign: 'center', padding: '60px', color: colors.textSecondary }}>
+        <div style={{ textAlign: 'center', padding: 60, color: colors.textSecondary }}>
           Cargando empleados y fichajes...
         </div>
       ) : empleadosOrdenados.length === 0 ? (
         <div
           style={{
             textAlign: 'center',
-            padding: '48px',
+            padding: 48,
             backgroundColor: colors.card,
             border: `1px solid ${colors.border}`,
-            borderRadius: '12px',
-            color: colors.textSecondary
+            borderRadius: 12,
+            color: colors.textSecondary,
           }}
         >
-          {searchTerm ? 'Ningún empleado coincide con la búsqueda.' : 'No hay empleados cargados.'}
+          {searchTerm ? 'Ningún empleado coincide con la búsqueda.' : 'No hay fichajes en este mes.'}
         </div>
       ) : (
         <div
+          className="portal-grid-empleados"
           style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
-            gap: '16px'
+            gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+            gap: 16,
           }}
         >
           <AnimatePresence mode="popLayout">
@@ -265,7 +294,10 @@ const PanelFichajesPage = () => {
                 horasTotales: '0',
                 diasTrabajados: 0,
                 trabajandoAhora: false,
-                ultimoFichaje: null
+                ultimoFichaje: null,
+                vacacionesHasta: null,
+                diasHastaVacaciones: null,
+                diasVacaciones: 0,
               };
               const nombre = empleado.nombreCompleto || empleado.name || 'Empleado';
 
@@ -277,17 +309,17 @@ const PanelFichajesPage = () => {
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0 }}
                   transition={{ duration: 0.2, delay: index * 0.02 }}
-                  onClick={() => handleVerPerfil(empleado)}
+                  onClick={() => setSelectedEmpleado(empleado)}
                   style={{
                     backgroundColor: colors.card,
                     border: `1px solid ${colors.border}`,
-                    borderRadius: '12px',
-                    padding: '20px',
+                    borderRadius: 12,
+                    padding: 20,
                     cursor: 'pointer',
                     display: 'flex',
                     flexDirection: 'column',
-                    gap: '12px',
-                    transition: 'border-color 0.2s, box-shadow 0.2s'
+                    gap: 12,
+                    transition: 'border-color 0.2s, box-shadow 0.2s',
                   }}
                   onMouseEnter={(e) => {
                     e.currentTarget.style.borderColor = colors.primary;
@@ -299,69 +331,57 @@ const PanelFichajesPage = () => {
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                       <div
                         style={{
-                          width: '44px',
-                          height: '44px',
+                          width: 44,
+                          height: 44,
                           borderRadius: '50%',
                           backgroundColor: colors.primary + '22',
                           display: 'flex',
                           alignItems: 'center',
-                          justifyContent: 'center'
+                          justifyContent: 'center',
                         }}
                       >
                         <User size={24} color={colors.primary} />
                       </div>
                       <div>
-                        <div style={{ fontWeight: '600', fontSize: '16px', color: colors.text }}>
+                        <div style={{ fontWeight: 600, fontSize: 16, color: colors.text }}>
                           {nombre}
                         </div>
-                        {empleado.email && (
-                          <div style={{ fontSize: '13px', color: colors.textSecondary }}>
-                            {empleado.email}
-                          </div>
-                        )}
                       </div>
                     </div>
                     <ChevronRight size={20} color={colors.textSecondary} />
                   </div>
 
-                  <div
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: '1fr 1fr',
-                      gap: '8px',
-                      marginTop: '4px'
-                    }}
-                  >
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 4 }}>
                     <div
                       style={{
                         backgroundColor: colors.surface,
-                        borderRadius: '8px',
-                        padding: '10px',
-                        textAlign: 'center'
+                        borderRadius: 8,
+                        padding: 10,
+                        textAlign: 'center',
                       }}
                     >
-                      <div style={{ fontSize: '11px', color: colors.textSecondary, fontWeight: '500' }}>
+                      <div style={{ fontSize: 11, color: colors.textSecondary, fontWeight: 500 }}>
                         Horas mes
                       </div>
-                      <div style={{ fontSize: '18px', fontWeight: '700', color: colors.text }}>
+                      <div style={{ fontSize: 18, fontWeight: 700, color: colors.text }}>
                         {resumen.horasTotales}h
                       </div>
                     </div>
                     <div
                       style={{
                         backgroundColor: colors.surface,
-                        borderRadius: '8px',
-                        padding: '10px',
-                        textAlign: 'center'
+                        borderRadius: 8,
+                        padding: 10,
+                        textAlign: 'center',
                       }}
                     >
-                      <div style={{ fontSize: '11px', color: colors.textSecondary, fontWeight: '500' }}>
+                      <div style={{ fontSize: 11, color: colors.textSecondary, fontWeight: 500 }}>
                         Días
                       </div>
-                      <div style={{ fontSize: '18px', fontWeight: '700', color: colors.text }}>
+                      <div style={{ fontSize: 18, fontWeight: 700, color: colors.text }}>
                         {resumen.diasTrabajados}
                       </div>
                     </div>
@@ -372,13 +392,13 @@ const PanelFichajesPage = () => {
                       style={{
                         display: 'flex',
                         alignItems: 'center',
-                        gap: '8px',
+                        gap: 8,
                         padding: '8px 12px',
                         backgroundColor: colors.warning + '18',
-                        borderRadius: '8px',
-                        fontSize: '13px',
-                        fontWeight: '600',
-                        color: colors.warning
+                        borderRadius: 8,
+                        fontSize: 13,
+                        fontWeight: 600,
+                        color: colors.warning,
                       }}
                     >
                       <Coffee size={16} />
@@ -389,42 +409,50 @@ const PanelFichajesPage = () => {
                   {resumen.ultimoFichaje && !resumen.trabajandoAhora && (
                     <div
                       style={{
-                        fontSize: '12px',
+                        fontSize: 12,
                         color: colors.textSecondary,
                         display: 'flex',
                         alignItems: 'center',
-                        gap: '6px'
+                        gap: 6,
                       }}
                     >
                       <Calendar size={14} />
                       Último: {formatDateShortMadrid(resumen.ultimoFichaje.fecha)}
-                      {resumen.ultimoFichaje.hora_salida && ` · ${formatTimeMadrid(resumen.ultimoFichaje.hora_salida)}`}
+                      {resumen.ultimoFichaje.hora_salida &&
+                        ` · ${formatTimeMadrid(resumen.ultimoFichaje.hora_salida)}`}
                     </div>
                   )}
-                  {(resumen.vacacionesHasta != null || resumen.diasHastaVacaciones != null || resumen.diasVacaciones > 0) && (
+                  {(resumen.vacacionesHasta != null ||
+                    resumen.diasHastaVacaciones != null ||
+                    resumen.diasVacaciones > 0) && (
                     <div
                       style={{
-                        fontSize: '12px',
+                        fontSize: 12,
                         color: colors.info || '#2196F3',
                         display: 'flex',
                         alignItems: 'center',
-                        gap: '6px',
-                        marginTop: '4px'
+                        gap: 6,
+                        marginTop: 4,
                       }}
                     >
                       <Umbrella size={14} />
                       {resumen.estaEnVacaciones && resumen.vacacionesHasta ? (
                         <>Vacaciones hasta {formatDateShortMadrid(resumen.vacacionesHasta)}</>
                       ) : resumen.diasHastaVacaciones != null ? (
-                        <>Quedan {resumen.diasHastaVacaciones} día{resumen.diasHastaVacaciones !== 1 ? 's' : ''} para vacaciones</>
+                        <>
+                          Quedan {resumen.diasHastaVacaciones} día
+                          {resumen.diasHastaVacaciones !== 1 ? 's' : ''} para vacaciones
+                        </>
                       ) : resumen.diasVacaciones > 0 ? (
                         <>
-                          Vacaciones: {resumen.diasVacaciones} día{resumen.diasVacaciones !== 1 ? 's' : ''} este mes
-                          {resumen.vacacionesDelMes?.length <= 5 && resumen.vacacionesDelMes?.length > 0 && (
-                            <span style={{ color: colors.textSecondary }}>
-                              ({resumen.vacacionesDelMes.map((d) => formatDateShortMadrid(d)).join(', ')})
-                            </span>
-                          )}
+                          Vacaciones: {resumen.diasVacaciones} día
+                          {resumen.diasVacaciones !== 1 ? 's' : ''} este mes
+                          {resumen.vacacionesDelMes?.length <= 5 &&
+                            resumen.vacacionesDelMes?.length > 0 && (
+                              <span style={{ color: colors.textSecondary }}>
+                                ({resumen.vacacionesDelMes.map((d) => formatDateShortMadrid(d)).join(', ')})
+                              </span>
+                            )}
                         </>
                       ) : null}
                     </div>
@@ -437,6 +465,4 @@ const PanelFichajesPage = () => {
       )}
     </div>
   );
-};
-
-export default PanelFichajesPage;
+}

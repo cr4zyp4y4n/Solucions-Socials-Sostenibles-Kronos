@@ -172,6 +172,22 @@ const HomePage = () => {
     menjar: null
   });
 
+  // Rol del usuario (prioridad: user_profiles, fallback: user_metadata)
+  const [userProfileRole, setUserProfileRole] = useState(null);
+  useEffect(() => {
+    if (!user?.id) return;
+    supabase
+      .from('user_profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single()
+      .then(({ data }) => {
+        if (data?.role) setUserProfileRole(data.role);
+      })
+      .catch(() => {});
+  }, [user?.id]);
+  const effectiveRole = (userProfileRole || user?.user_metadata?.role || '').toLowerCase();
+
   // Verificar rol de tienda
   const isTienda = (user?.user_metadata?.role === 'tienda') || (user?.role === 'tienda');
 
@@ -180,18 +196,81 @@ const HomePage = () => {
     return <TiendaDashboard />;
   }
 
-  // Cargar datos desde Holded al montar el componente
-  useEffect(() => {
-    loadDataFromHolded();
-  }, []);
+  // Rol "user" (solo fichaje): Inicio sin datos sensibles, solo bienvenida y acceso a Fichaje
+  const isSoloFichajeRole = effectiveRole === 'user';
+  if (isSoloFichajeRole) {
+    return (
+      <div style={{
+        width: '100%',
+        padding: '24px',
+        backgroundColor: colors.background,
+        minHeight: '100%',
+        boxSizing: 'border-box',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}>
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4 }}
+          style={{ textAlign: 'center', maxWidth: 420 }}
+        >
+          <h2 style={{
+            fontSize: 28,
+            fontWeight: 700,
+            color: colors.text,
+            margin: '0 0 12px 0',
+            lineHeight: 1.2,
+          }}>
+            Bienvenido a Kronos
+          </h2>
+          <p style={{
+            fontSize: 16,
+            color: colors.textSecondary,
+            margin: '0 0 24px 0',
+            lineHeight: 1.5,
+          }}>
+            Accede a tu sección de fichaje para registrar tu jornada.
+          </p>
+          <motion.button
+            whileHover={{ scale: 1.02, y: -2 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={() => navigateTo('fichaje')}
+            style={{
+              backgroundColor: colors.primary,
+              color: 'white',
+              padding: '16px 28px',
+              borderRadius: 12,
+              border: 'none',
+              fontSize: 16,
+              fontWeight: 600,
+              cursor: 'pointer',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+            }}
+          >
+            Ir a mi Fichaje
+          </motion.button>
+        </motion.div>
+      </div>
+    );
+  }
 
-  // Verificar si necesita actualización cuando se monta el componente
+  // Cargar datos desde Holded solo para roles que pueden ver datos sensibles (no para rol "user")
   useEffect(() => {
+    if (!effectiveRole || effectiveRole === 'user') return;
+    loadDataFromHolded();
+  }, [effectiveRole]);
+
+  // Verificar si necesita actualización cuando se monta (solo roles con acceso a datos)
+  useEffect(() => {
+    if (effectiveRole === 'user' || !effectiveRole) return;
     if (needsUpdate('home')) {
       loadDataFromHolded();
       markTabUpdated('home');
     }
-  }, []);
+  }, [effectiveRole]);
 
   // Función para cargar datos desde Holded con caché
   const loadDataFromHolded = async () => {

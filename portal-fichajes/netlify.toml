@@ -1,0 +1,12 @@
+# Configuración para desplegar el portal en Netlify
+# Si el repo es solo portal-fichajes, no hace falta base.
+
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+# SPA: que todas las rutas sirvan index.html (por si añades rutas después)
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

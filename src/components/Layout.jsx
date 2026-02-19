@@ -114,6 +114,11 @@ const Layout = () => {
         if (!error && data) {
           setUserProfile(data);
 
+          // Rol "user" (solo fichaje): redirigir a Fichaje para que no vean Inicio con datos sensibles al entrar
+          if ((data.role || '').toLowerCase() === 'user') {
+            navigateTo('fichaje');
+          }
+
           // Mostrar onboarding automáticamente si es un usuario nuevo
           if (!data.onboarding_completed) {
             setShowOnboarding(true);
@@ -458,7 +463,7 @@ const Layout = () => {
     { key: 'subvenciones', label: 'Subvenciones', path: '/subvenciones', icon: FileText, roles: ['admin', 'management', 'manager'] },
     { key: 'empleados', label: 'Empleados', path: '/empleados', icon: Users, roles: ['admin', 'management', 'manager'] },
     { key: 'hoja-ruta', label: 'Hoja de Ruta', path: '/hoja-ruta', icon: Calendar, roles: ['admin', 'management', 'manager'] },
-    { key: 'fichaje', label: 'Fichaje', path: '/fichaje', icon: Clock, roles: ['admin', 'manager', 'tienda'] },
+    { key: 'fichaje', label: 'Fichaje', path: '/fichaje', icon: Clock, roles: ['admin', 'management', 'manager', 'user', 'tienda'] },
     { key: 'panel-fichajes', label: 'Panel Fichajes', path: '/panel-fichajes', icon: Activity, roles: ['admin', 'management', 'manager'] },
     { key: 'socios', label: 'Socios IDONI', path: '/socios', icon: Users, roles: ['admin', 'management', 'manager', 'tienda'] },
     { key: 'gestion-tienda', label: 'Gestión Tienda', path: '/gestion-tienda', icon: ShoppingBag, roles: ['admin', 'manager', 'tienda'] },
@@ -467,9 +472,14 @@ const Layout = () => {
   ];
 
   // Filtrar items según el rol del usuario
-  const menuItems = allMenuItems.filter(item =>
-    item.roles.includes(userProfile?.role || 'user')
-  );
+  // Rol "user": Inicio (vista mínima sin datos sensibles), Fichaje y Configuración
+  const menuItems = allMenuItems.filter(item => {
+    const role = userProfile?.role || 'user';
+    if ((role || '').toLowerCase() === 'user') {
+      return item.key === 'home' || item.key === 'fichaje' || item.key === 'settings';
+    }
+    return item.roles.includes(role);
+  });
 
   // Agregar items especiales para admin
   if (isAdmin) {
@@ -519,9 +529,6 @@ const Layout = () => {
       case 'hoja-ruta':
         return <HojaRutaPage />;
       case 'fichaje':
-        if (!isAdmin && !isManager && !isTienda) {
-          return <AccessDenied message="No tienes permisos para acceder al Fichaje." />;
-        }
         return <FichajePage />;
       case 'panel-fichajes':
         if (!isAdmin && !isManagementOrManager) {

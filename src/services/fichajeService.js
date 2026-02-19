@@ -11,9 +11,10 @@ class FichajeService {
    * Fichar entrada
    * @param {string} empleadoId - ID del empleado
    * @param {string} userId - ID del usuario autenticado
+   * @param {Object} ubicacion - Opcional: { lat, lng, texto } desde donde se ficha
    * @returns {Promise<Object>} Resultado del fichaje
    */
-  async ficharEntrada(empleadoId, userId) {
+  async ficharEntrada(empleadoId, userId, ubicacion = null) {
     try {
       const hoy = new Date();
       
@@ -31,8 +32,8 @@ class FichajeService {
       // ANTES de crear el nuevo fichaje, cerrar automáticamente cualquier fichaje pendiente
       await this.verificarYcerrarFichajesOlvidados(empleadoId);
 
-      // Crear nuevo fichaje
-      const resultado = await fichajeSupabaseService.crearFichajeEntrada(empleadoId, hoy, userId);
+      // Crear nuevo fichaje (con ubicación si se pasó)
+      const resultado = await fichajeSupabaseService.crearFichajeEntrada(empleadoId, hoy, userId, ubicacion);
       
       if (!resultado.success) {
         return resultado;

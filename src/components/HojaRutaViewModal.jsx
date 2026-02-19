@@ -550,6 +550,16 @@ const HojaRutaViewModal = ({
                             Cantidad: {item.cantidad}
                           </p>
                         )}
+                        {item.nota && (
+                          <p style={{
+                            fontSize: '10px',
+                            color: colors.textSecondary,
+                            margin: '2px 0 0 0',
+                            fontStyle: 'italic'
+                          }}>
+                            Nota: {item.nota}
+                          </p>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -653,6 +663,16 @@ const HojaRutaViewModal = ({
                                     margin: 0
                                   }}>
                                     {menu.cantidad} {menu.proveedor && `- ${menu.proveedor}`}
+                                  </p>
+                                )}
+                                {menu.nota && (
+                                  <p style={{
+                                    color: colors.textSecondary,
+                                    margin: '2px 0 0 0',
+                                    fontStyle: 'italic',
+                                    fontSize: '10px'
+                                  }}>
+                                    Nota: {menu.nota}
                                   </p>
                                 )}
                               </div>
