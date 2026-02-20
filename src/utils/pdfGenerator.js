@@ -125,6 +125,7 @@ export const generateHojaTecnicaPDF = async (hoja) => {
 
     // --- Split Layout: Ingredients (Left) and Allergens (Right) ---
     const startY = yPos;
+    const startPage = doc.internal.getNumberOfPages();
     const colWidth = (pageWidth - (margin * 2) - 10) / 2;
 
     const headerTextColor = [50, 50, 50];
@@ -163,8 +164,12 @@ export const generateHojaTecnicaPDF = async (hoja) => {
     const ingredientsFinalY = doc.lastAutoTable.finalY;
 
     // --- Allergens (Right Column) ---
+    doc.setPage(startPage);
     const allergensX = margin + colWidth + 10;
 
+    doc.setFontSize(14);
+    doc.setTextColor(...brandColor);
+    doc.setFont(undefined, 'bold');
     doc.text('Alérgenos', allergensX, startY);
 
     const allergensData = (hoja.alergenos || []).map(al => [
