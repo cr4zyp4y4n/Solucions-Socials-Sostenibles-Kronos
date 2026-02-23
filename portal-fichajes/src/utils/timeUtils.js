@@ -43,3 +43,14 @@ export function formatTimeMadridWithSeconds(dateString) {
     return 'N/A';
   }
 }
+
+/** Formatea fecha y hora para auditoría (ej. "23 feb 2026, 15:00") */
+export function formatDateTimeMadrid(dateString) {
+  if (!dateString) return 'N/A';
+  try {
+    const date = parseDate(dateString);
+    return formatInTimeZone(date, TIMEZONE_MADRID, 'd MMM yyyy, HH:mm', { locale: es });
+  } catch {
+    return 'N/A';
+  }
+}

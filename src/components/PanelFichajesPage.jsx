@@ -13,7 +13,7 @@ import {
   ArrowLeft,
   Umbrella
 } from 'lucide-react';
-import { startOfMonth, endOfMonth, format, addMonths, parseISO, differenceInCalendarDays, addDays } from 'date-fns';
+import { startOfMonth, endOfMonth, startOfYear, endOfYear, format, addMonths, parseISO, differenceInCalendarDays, addDays } from 'date-fns';
 import { es } from 'date-fns/locale';
 import fichajeSupabaseService from '../services/fichajeSupabaseService';
 import holdedEmployeesService from '../services/holdedEmployeesService';
@@ -26,6 +26,7 @@ const PanelFichajesPage = () => {
   const [empleados, setEmpleados] = useState([]);
   const [fichajesMes, setFichajesMes] = useState([]);
   const [vacacionesMes, setVacacionesMes] = useState([]);
+  const [bajasMes, setBajasMes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedEmpleado, setSelectedEmpleado] = useState(null);
@@ -73,18 +74,28 @@ const PanelFichajesPage = () => {
     loadFichajes();
   }, [mesActual]);
 
-  // Cargar vacaciones: mes actual + 2 meses para "hasta cuándo" y "días hasta vacaciones"
+  // Cargar vacaciones: año actual (para días restantes) + 2 meses (para "hasta cuándo")
   useEffect(() => {
-    const start = startOfMonth(mesActual);
+    const start = startOfYear(mesActual);
     const end = endOfMonth(addMonths(mesActual, 2));
     fichajeSupabaseService.obtenerVacacionesEnRango(start, end).then((res) => {
       setVacacionesMes(res.success ? res.data || [] : []);
     });
   }, [mesActual]);
 
-  // Resumen por empleado: horas mes, días trabajados, trabajando ahora, último fichaje, vacaciones (hasta cuándo / días hasta)
+  // Cargar bajas en el mismo rango (mes actual + 2 meses)
+  useEffect(() => {
+    const start = startOfMonth(mesActual);
+    const end = endOfMonth(addMonths(mesActual, 2));
+    fichajeSupabaseService.obtenerBajasEnRango(start, end).then((res) => {
+      setBajasMes(res.success ? res.data || [] : []);
+    });
+  }, [mesActual]);
+
+  // Resumen por empleado: horas, vacaciones (hasta / días restantes de 22), bajas
   const resumenPorEmpleado = useMemo(() => {
     const todayStr = format(mesActual, 'yyyy-MM-dd');
+    const yearStr = format(mesActual, 'yyyy');
     const map = {};
     empleados.forEach((emp) => {
       const fichajesEmp = fichajesMes.filter((f) => f.empleado_id === emp.id);
@@ -96,6 +107,10 @@ const PanelFichajesPage = () => {
         : null;
       const vacacionesEmp = vacacionesMes.filter((v) => v.empleado_id === emp.id);
       const fechasVacaciones = vacacionesEmp.map((v) => v.fecha).sort();
+      const vacacionesQueCuentanAnio = vacacionesEmp.filter(
+        (v) => v.fecha.startsWith(yearStr) && v.cuenta_para_anual !== false
+      ).length;
+      const diasVacacionesRestantes = Math.max(0, 22 - vacacionesQueCuentanAnio);
       const futuras = fechasVacaciones.filter((d) => d >= todayStr);
       let vacacionesHasta = null;
       let diasHastaVacaciones = null;
@@ -116,6 +131,17 @@ const PanelFichajesPage = () => {
       const fechasDelMesActual = fechasVacaciones.filter(
         (d) => d.startsWith(format(mesActual, 'yyyy-MM'))
       );
+      const bajasEmp = (bajasMes || []).filter((b) => b.empleado_id === emp.id);
+      let estaDeBaja = false;
+      let bajaHasta = null;
+      for (const b of bajasEmp) {
+        const ini = b.fecha_inicio;
+        const fin = b.fecha_fin;
+        if (todayStr >= ini && todayStr <= fin) {
+          estaDeBaja = true;
+          if (!bajaHasta || fin > bajaHasta) bajaHasta = fin;
+        }
+      }
       map[emp.id] = {
         horasTotales: horasTotales.toFixed(2),
         diasTrabajados: completos.length,
@@ -126,11 +152,14 @@ const PanelFichajesPage = () => {
         diasVacaciones: fechasDelMesActual.length,
         vacacionesHasta,
         diasHastaVacaciones,
-        estaEnVacaciones
+        estaEnVacaciones,
+        diasVacacionesRestantes,
+        estaDeBaja,
+        bajaHasta
       };
     });
     return map;
-  }, [empleados, fichajesMes, vacacionesMes, mesActual]);
+  }, [empleados, fichajesMes, vacacionesMes, bajasMes, mesActual]);
 
   // Empleados filtrados por búsqueda
   const empleadosFiltrados = useMemo(() => {
@@ -401,6 +430,21 @@ const PanelFichajesPage = () => {
                       {resumen.ultimoFichaje.hora_salida && ` · ${formatTimeMadrid(resumen.ultimoFichaje.hora_salida)}`}
                     </div>
                   )}
+                  {resumen.diasVacacionesRestantes != null && (
+                    <div
+                      style={{
+                        fontSize: '12px',
+                        color: colors.textSecondary,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        marginTop: '4px'
+                      }}
+                    >
+                      <Umbrella size={14} />
+                      {resumen.diasVacacionesRestantes} día{resumen.diasVacacionesRestantes !== 1 ? 's' : ''} de vacaciones restantes (de 22)
+                    </div>
+                  )}
                   {(resumen.vacacionesHasta != null || resumen.diasHastaVacaciones != null || resumen.diasVacaciones > 0) && (
                     <div
                       style={{
@@ -427,6 +471,21 @@ const PanelFichajesPage = () => {
                           )}
                         </>
                       ) : null}
+                    </div>
+                  )}
+                  {resumen.estaDeBaja && resumen.bajaHasta && (
+                    <div
+                      style={{
+                        fontSize: '12px',
+                        color: colors.warning || '#ed6c02',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        marginTop: '4px'
+                      }}
+                    >
+                      <AlertCircle size={14} />
+                      De baja hasta {formatDateShortMadrid(resumen.bajaHasta)}
                     </div>
                   )}
                 </motion.div>

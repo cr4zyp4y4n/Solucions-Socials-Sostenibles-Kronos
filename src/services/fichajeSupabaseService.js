@@ -323,6 +323,114 @@ class FichajeSupabaseService {
   }
 
   // =====================================================
+  // BAJAS (periodos en los que el empleado no ficha: enfermedad, etc.)
+  // =====================================================
+
+  /**
+   * Obtener bajas de un empleado en un rango de fechas
+   * @param {string} empleadoId - ID del empleado
+   * @param {Date} fechaInicio - Inicio del rango
+   * @param {Date} fechaFin - Fin del rango
+   * @returns {Promise<Object>} Lista de bajas
+   */
+  async obtenerBajasEmpleado(empleadoId, fechaInicio, fechaFin) {
+    try {
+      const inicioStr = fechaInicio.toISOString().split('T')[0];
+      const finStr = fechaFin.toISOString().split('T')[0];
+      const { data, error } = await supabase
+        .from('bajas')
+        .select('*')
+        .eq('empleado_id', empleadoId)
+        .lte('fecha_inicio', finStr)
+        .gte('fecha_fin', inicioStr)
+        .order('fecha_inicio', { ascending: true });
+
+      if (error) throw error;
+      return { success: true, data: data || [] };
+    } catch (error) {
+      console.error('Error obteniendo bajas del empleado:', error);
+      return { success: false, error: error.message, data: [] };
+    }
+  }
+
+  /**
+   * Obtener todas las bajas que solapan con un rango (para panel listado)
+   * @param {Date} fechaInicio - Inicio del rango
+   * @param {Date} fechaFin - Fin del rango
+   * @returns {Promise<Object>} Lista de bajas
+   */
+  async obtenerBajasEnRango(fechaInicio, fechaFin) {
+    try {
+      const inicioStr = fechaInicio.toISOString().split('T')[0];
+      const finStr = fechaFin.toISOString().split('T')[0];
+      const { data, error } = await supabase
+        .from('bajas')
+        .select('*')
+        .lte('fecha_inicio', finStr)
+        .gte('fecha_fin', inicioStr)
+        .order('empleado_id')
+        .order('fecha_inicio', { ascending: true });
+
+      if (error) throw error;
+      return { success: true, data: data || [] };
+    } catch (error) {
+      console.error('Error obteniendo bajas en rango:', error);
+      return { success: false, error: error.message, data: [] };
+    }
+  }
+
+  /**
+   * Crear una baja para un empleado
+   * @param {string} empleadoId - ID del empleado
+   * @param {Date|string} fechaInicio - Inicio (Date o YYYY-MM-DD)
+   * @param {Date|string} fechaFin - Fin (Date o YYYY-MM-DD)
+   * @param {string} tipo - Opcional: 'enfermedad', 'accidente', 'maternidad', 'otro'
+   * @param {string} notas - Opcional
+   * @param {string} userId - ID del usuario que crea
+   * @returns {Promise<Object>}
+   */
+  async crearBaja(empleadoId, fechaInicio, fechaFin, tipo = null, notas = null, userId = null) {
+    try {
+      const iniStr = typeof fechaInicio === 'string' ? fechaInicio : fechaInicio.toISOString().split('T')[0];
+      const finStr = typeof fechaFin === 'string' ? fechaFin : fechaFin.toISOString().split('T')[0];
+      const { data, error } = await supabase
+        .from('bajas')
+        .insert({
+          empleado_id: empleadoId,
+          fecha_inicio: iniStr,
+          fecha_fin: finStr,
+          tipo: tipo || null,
+          notas: notas || null,
+          created_by: userId
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+      return { success: true, data };
+    } catch (error) {
+      console.error('Error creando baja:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Eliminar una baja por id
+   * @param {string} bajaId - UUID de la baja
+   * @returns {Promise<Object>}
+   */
+  async eliminarBaja(bajaId) {
+    try {
+      const { error } = await supabase.from('bajas').delete().eq('id', bajaId);
+      if (error) throw error;
+      return { success: true };
+    } catch (error) {
+      console.error('Error eliminando baja:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  // =====================================================
   // GESTIÓN DE PAUSAS
   // =====================================================
 

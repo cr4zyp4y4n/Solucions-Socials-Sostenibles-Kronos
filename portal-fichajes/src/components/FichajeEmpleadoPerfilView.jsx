@@ -12,6 +12,7 @@ import {
   AlertCircle,
   X,
   Umbrella,
+  Pencil,
 } from 'lucide-react';
 import {
   startOfMonth,
@@ -19,14 +20,16 @@ import {
   eachDayOfInterval,
   addMonths,
   subMonths,
+  addDays,
   format,
+  parseISO,
   isSameMonth,
   isToday,
   isFuture,
 } from 'date-fns';
 import { es } from 'date-fns/locale';
 import * as fichajePortalService from '../services/fichajePortalService';
-import { formatTimeMadrid, formatDateShortMadrid } from '../utils/timeUtils';
+import { formatTimeMadrid, formatDateShortMadrid, formatDateTimeMadrid } from '../utils/timeUtils';
 import { colors } from '../theme';
 
 const WEEKDAYS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
@@ -35,8 +38,11 @@ export default function FichajeEmpleadoPerfilView({ empleado, onBack }) {
   const [calendarMonth, setCalendarMonth] = useState(new Date());
   const [fichajes, setFichajes] = useState([]);
   const [vacaciones, setVacaciones] = useState([]);
+  const [bajas, setBajas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedFichaje, setSelectedFichaje] = useState(null);
+  const [auditoria, setAuditoria] = useState([]);
+  const [loadingAuditoria, setLoadingAuditoria] = useState(false);
 
   const empleadoId = empleado?.id;
 
@@ -47,21 +53,36 @@ export default function FichajeEmpleadoPerfilView({ empleado, onBack }) {
       try {
         const start = startOfMonth(calendarMonth);
         const end = endOfMonth(calendarMonth);
-        const [resFichajes, resVacaciones] = await Promise.all([
+        const [resFichajes, resVacaciones, resBajas] = await Promise.all([
           fichajePortalService.obtenerFichajesEmpleado(empleadoId, start, end),
           fichajePortalService.obtenerVacacionesEmpleado(empleadoId, start, end),
+          fichajePortalService.obtenerBajasEmpleado(empleadoId, start, end),
         ]);
         setFichajes(resFichajes.success ? resFichajes.data || [] : []);
         setVacaciones(resVacaciones.success ? resVacaciones.data || [] : []);
+        setBajas(resBajas.success ? resBajas.data || [] : []);
       } catch (err) {
         setFichajes([]);
         setVacaciones([]);
+        setBajas([]);
       } finally {
         setLoading(false);
       }
     };
     load();
   }, [empleadoId, calendarMonth]);
+
+  useEffect(() => {
+    if (!selectedFichaje?.id) {
+      setAuditoria([]);
+      return;
+    }
+    setLoadingAuditoria(true);
+    fichajePortalService.obtenerAuditoria(selectedFichaje.id).then((res) => {
+      setAuditoria(res.success ? res.data || [] : []);
+      setLoadingAuditoria(false);
+    });
+  }, [selectedFichaje?.id]);
 
   const fichajesPorFecha = useMemo(() => {
     const map = {};
@@ -78,6 +99,19 @@ export default function FichajeEmpleadoPerfilView({ empleado, onBack }) {
     (vacaciones || []).forEach((v) => set.add(v.fecha));
     return set;
   }, [vacaciones]);
+
+  const bajasPorFecha = useMemo(() => {
+    const set = new Set();
+    (bajas || []).forEach((b) => {
+      let d = parseISO(b.fecha_inicio);
+      const fin = parseISO(b.fecha_fin);
+      while (d <= fin) {
+        set.add(format(d, 'yyyy-MM-dd'));
+        d = addDays(d, 1);
+      }
+    });
+    return set;
+  }, [bajas]);
 
   const resumenMes = useMemo(() => {
     const completos = fichajes.filter((f) => f.hora_salida);
@@ -357,6 +391,7 @@ export default function FichajeEmpleadoPerfilView({ empleado, onBack }) {
                 const dateKey = format(day, 'yyyy-MM-dd');
                 const dayFichajes = fichajesPorFecha[dateKey] || [];
                 const isVacacion = vacacionesPorFecha.has(dateKey);
+                const isBaja = bajasPorFecha.has(dateKey);
                 const isCurrentMonth = isSameMonth(day, calendarMonth);
                 const isTodayDate = isToday(day);
                 const isFutureDate = isFuture(day) && !isTodayDate;
@@ -374,6 +409,8 @@ export default function FichajeEmpleadoPerfilView({ empleado, onBack }) {
                         ? colors.surface
                         : isVacacion
                         ? (colors.info || '#2196F3') + '18'
+                        : isBaja
+                        ? (colors.warning || '#ed6c02') + '18'
                         : isTodayDate
                         ? colors.primary + '15'
                         : 'transparent',
@@ -381,6 +418,8 @@ export default function FichajeEmpleadoPerfilView({ empleado, onBack }) {
                         ? `2px solid ${colors.primary}`
                         : isVacacion
                         ? `1px solid ${colors.info || '#2196F3'}`
+                        : isBaja
+                        ? `1px solid ${colors.warning || '#ed6c02'}`
                         : `1px solid ${colors.border}`,
                       opacity: !isCurrentMonth ? 0.5 : 1,
                     }}
@@ -413,6 +452,24 @@ export default function FichajeEmpleadoPerfilView({ empleado, onBack }) {
                         Vacaciones
                       </div>
                     )}
+                    {isBaja && !isVacacion && (
+                      <div
+                        style={{
+                          fontSize: 10,
+                          padding: '2px 6px',
+                          borderRadius: 4,
+                          backgroundColor: (colors.warning || '#ed6c02') + '30',
+                          color: colors.text,
+                          marginBottom: 4,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 4,
+                        }}
+                      >
+                        <AlertCircle size={10} />
+                        Baja
+                      </div>
+                    )}
                     {dayFichajes.length > 0 && !isFutureDate && (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
                         {dayFichajes.slice(0, 2).map((f) => (
@@ -440,9 +497,13 @@ export default function FichajeEmpleadoPerfilView({ empleado, onBack }) {
                               whiteSpace: 'nowrap',
                               overflow: 'hidden',
                               textOverflow: 'ellipsis',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 4,
                             }}
-                            title={`${formatTimeMadrid(f.hora_entrada)} - ${f.hora_salida ? formatTimeMadrid(f.hora_salida) : '...'}`}
+                            title={`${formatTimeMadrid(f.hora_entrada)} - ${f.hora_salida ? formatTimeMadrid(f.hora_salida) : '...'}${f.es_modificado ? ' · Modificado' : ''}`}
                           >
+                            {f.es_modificado && <Pencil size={10} style={{ color: colors.warning || '#ed6c02', flexShrink: 0 }} />}
                             {formatTimeMadrid(f.hora_entrada)}–
                             {f.hora_salida ? formatTimeMadrid(f.hora_salida) : '...'}
                             {f.horas_trabajadas != null &&
@@ -553,8 +614,10 @@ export default function FichajeEmpleadoPerfilView({ empleado, onBack }) {
               backgroundColor: colors.card,
               borderRadius: 12,
               padding: 24,
-              maxWidth: 400,
+              maxWidth: 480,
               width: '100%',
+              maxHeight: '90vh',
+              overflow: 'auto',
               border: `1px solid ${colors.border}`,
             }}
             onClick={(e) => e.stopPropagation()}
@@ -622,6 +685,149 @@ export default function FichajeEmpleadoPerfilView({ empleado, onBack }) {
                 </div>
               </div>
             </div>
+
+            {/* Historial de Cambios (igual que en la app) */}
+            {loadingAuditoria && (
+              <div style={{ marginTop: 16, fontSize: 13, color: colors.textSecondary }}>
+                Cargando historial…
+              </div>
+            )}
+            {!loadingAuditoria && auditoria.length > 0 && (
+              <div
+                style={{
+                  marginTop: 20,
+                  padding: 16,
+                  backgroundColor: colors.background || '#f5f5f5',
+                  borderRadius: 12,
+                  border: `1px solid ${colors.border}`,
+                }}
+              >
+                <h4
+                  style={{
+                    margin: '0 0 12px',
+                    fontSize: 16,
+                    fontWeight: 600,
+                    color: colors.text,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                  }}
+                >
+                  <AlertCircle size={18} />
+                  Historial de Cambios
+                </h4>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {auditoria.map((registro) => {
+                    const esModificacionPorUsuario = registro.accion === 'modificado' && registro.quien != null;
+                    const cuandoMs = registro.cuando ? new Date(registro.cuando).getTime() : 0;
+                    const motivoGuardado = registro.motivo
+                      || (esModificacionPorUsuario && auditoria.find(
+                        (r) => r.accion === 'modificado' && r.motivo && r.cuando
+                          && Math.abs(new Date(r.cuando).getTime() - cuandoMs) < 15000
+                      )?.motivo)
+                      || null;
+                    const motivo = motivoGuardado
+                      || registro.valor_nuevo?.valor_original?.motivo_cierre_auto
+                      || registro.valor_anterior?.valor_original?.motivo_cierre_auto
+                      || (esModificacionPorUsuario ? 'Modificación registrada por el responsable' : null);
+                    const quienNombre = registro.quien?.name || registro.quien?.email || (registro.quien ? 'Usuario' : null);
+                    return (
+                      <div
+                        key={registro.id}
+                        style={{
+                          padding: 12,
+                          backgroundColor: colors.surface || '#fff',
+                          borderRadius: 8,
+                          border: `1px solid ${colors.border}`,
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'start',
+                            marginBottom: 8,
+                          }}
+                        >
+                          <span
+                            style={{
+                              fontSize: 12,
+                              fontWeight: 600,
+                              color: colors.text,
+                              textTransform: 'uppercase',
+                            }}
+                          >
+                            {registro.accion}
+                          </span>
+                          <span style={{ fontSize: 12, color: colors.textSecondary }}>
+                            {formatDateTimeMadrid(registro.cuando)}
+                          </span>
+                        </div>
+                        {quienNombre && (
+                          <div style={{ fontSize: 12, color: colors.textSecondary, marginBottom: motivo ? 8 : 0 }}>
+                            Por: {quienNombre}
+                          </div>
+                        )}
+                        {motivo && (
+                          <div
+                            style={{
+                              marginTop: 4,
+                              padding: '10px 12px',
+                              backgroundColor: (colors.primary || '#1976d2') + '18',
+                              borderRadius: 6,
+                              borderLeft: `4px solid ${colors.primary || '#1976d2'}`,
+                              fontSize: 14,
+                              color: colors.text,
+                              fontWeight: 500,
+                            }}
+                          >
+                            {motivo}
+                          </div>
+                        )}
+                        {registro.valor_anterior && registro.valor_nuevo && (
+                          <details style={{ marginTop: 10 }}>
+                            <summary
+                              style={{
+                                fontSize: 12,
+                                color: colors.textSecondary,
+                                cursor: 'pointer',
+                              }}
+                            >
+                              Ver detalles técnicos (anterior / nuevo)
+                            </summary>
+                            <div
+                              style={{
+                                marginTop: 8,
+                                padding: 8,
+                                backgroundColor: colors.background || '#eee',
+                                borderRadius: 6,
+                                fontSize: 11,
+                                color: colors.textSecondary,
+                                overflow: 'auto',
+                                maxHeight: 200,
+                              }}
+                            >
+                              <div style={{ marginBottom: 4 }}>
+                                <strong>Anterior:</strong>
+                                <pre style={{ margin: '4px 0 0', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+                                  {JSON.stringify(registro.valor_anterior, null, 2)}
+                                </pre>
+                              </div>
+                              <div>
+                                <strong>Nuevo:</strong>
+                                <pre style={{ margin: '4px 0 0', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+                                  {JSON.stringify(registro.valor_nuevo, null, 2)}
+                                </pre>
+                              </div>
+                            </div>
+                          </details>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </motion.div>
         </div>
       )}

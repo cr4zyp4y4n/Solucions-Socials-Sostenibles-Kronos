@@ -1,12 +1,12 @@
-# SSS Kronos v2.1.21
+# SSS Kronos v2.1.22
 
 
-🚀 **Release Notes - SSS Kronos v2.1.21**
+🚀 **Release Notes - SSS Kronos v2.1.22**
 
 ## 📦 Archivos de Distribución
 
 ### Windows
-- **Instalador:** SSS Kronos-2.1.21 Setup.exe (130 MB aprox.)
+- **Instalador:** SSS Kronos-2.1.22 Setup.exe (130 MB aprox.)
 - **Ubicación:** `out/make/squirrel.windows/x64/`
 - **Compatibilidad:** Windows 10/11 (64-bit)
 
@@ -14,6 +14,16 @@
 *Nota: Los instaladores para macOS y Linux se generarán en futuras versiones*
 
 ## ✨ Nuevas Características y Cambios Clave
+
+### 🆕 **v2.1.22 - Vacaciones en Fichajes (app y portal)**
+- ✅ **Tabla vacaciones en Supabase:** Nueva tabla `vacaciones` (empleado_id, fecha, created_by) con RLS; script en `database/create_vacaciones_table.sql`.
+- ✅ **Servicio de vacaciones (app):** En `fichajeSupabaseService.js`: `obtenerVacacionesEmpleado`, `obtenerVacacionesEnRango`, `añadirVacacion`, `quitarVacacion`.
+- ✅ **Perfil empleado (app):** En el calendario del Panel Fichajes se cargan y muestran los días de vacaciones; admin/manager/management pueden marcar o quitar vacaciones por día o por periodo ("Seleccionar periodo" con dos clics).
+- ✅ **Tarjetas del Panel (app):** Carga de vacaciones mes actual + 2 meses; en cada tarjeta: **"Vacaciones hasta [fecha]"** si está de vacaciones hoy, **"Quedan X días para vacaciones"** si tiene vacaciones futuras pero no está hoy, o **"X días este mes"** con lista de fechas cuando solo hay vacaciones en el mes actual.
+- ✅ **Portal web (inspector):** Misma lógica de vacaciones en las tarjetas del listado (obtenerVacacionesEnRango, texto "Vacaciones hasta..." / "Quedan X días para vacaciones").
+- ✅ **Calendario en el portal:** En la vista de perfil del empleado (FichajeEmpleadoPerfilView) se cargan y muestran los días de vacaciones en el calendario (fondo y etiqueta "Vacaciones"); solo lectura.
+- ✅ **Servicio portal:** En `fichajePortalService.js`: `obtenerVacacionesEnRango` y `obtenerVacacionesEmpleado` (solo lectura).
+- 📄 **Documentación:** [docs/README.md](docs/README.md).
 
 ### 🆕 **v2.1.21 - Panel Fichajes y eliminación de usuarios**
 - ✅ **Panel de Fichajes:** Los empleados que están trabajando en ese momento aparecen primero en la lista (orden por "trabajando ahora").
@@ -542,7 +552,7 @@
 
 ### 📥 Descargar
 1. Ve a la sección Releases de este repositorio
-2. Descarga `SSS Kronos-2.1.19 Setup.exe`
+2. Descarga `SSS Kronos-2.1.22 Setup.exe` (o la versión más reciente disponible)
 3. Ejecuta el instalador y sigue las instrucciones
 
 ### ⚡ Primera Ejecución
@@ -585,6 +595,12 @@
 - **Documentación:** docs.supabase.com
 
 ## 🔄 Próximas Versiones
+
+### 🎯 v2.1.22 ✅ **COMPLETADA**
+- ✅ Vacaciones en Fichajes: tabla Supabase, servicio CRUD, calendario con marcar/quitar y modo periodo (app) ✅
+- ✅ Tarjetas Panel: "Vacaciones hasta [fecha]" / "Quedan X días para vacaciones" (app y portal) ✅
+- ✅ Portal: vacaciones en calendario de perfil empleado (solo lectura) y en tarjetas del listado ✅
+- ✅ Script SQL: `database/create_vacaciones_table.sql` ✅
 
 ### 🎯 v2.1.19 ✅ **COMPLETADA**
 - ✅ Módulo Gestión Tienda (Hojas Técnicas + Confirmación Productos Tienda) ✅

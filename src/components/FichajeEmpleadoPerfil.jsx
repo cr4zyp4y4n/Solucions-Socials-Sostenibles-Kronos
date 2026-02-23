@@ -10,7 +10,8 @@ import {
   Coffee,
   CheckCircle,
   AlertCircle,
-  Umbrella
+  Umbrella,
+  Pencil
 } from 'lucide-react';
 import {
   startOfMonth,
@@ -51,6 +52,10 @@ const FichajeEmpleadoPerfil = ({ empleado, onBack }) => {
   const [userCanEditVacaciones, setUserCanEditVacaciones] = useState(false);
   const [modoPeriodoVacaciones, setModoPeriodoVacaciones] = useState(false);
   const [periodoPrimerDia, setPeriodoPrimerDia] = useState(null);
+  const [bajas, setBajas] = useState([]);
+  const [showBajaForm, setShowBajaForm] = useState(false);
+  const [bajaForm, setBajaForm] = useState({ fecha_inicio: '', fecha_fin: '', tipo: '', notas: '' });
+  const [savingBaja, setSavingBaja] = useState(false);
 
   const empleadoId = empleado?.id;
 
@@ -101,6 +106,16 @@ const FichajeEmpleadoPerfil = ({ empleado, onBack }) => {
     });
   }, [empleadoId, calendarMonth]);
 
+  // Cargar bajas del empleado (mes visible ± 1 mes para poder ver y eliminar cualquiera)
+  useEffect(() => {
+    if (!empleadoId) return;
+    const start = startOfMonth(subMonths(calendarMonth, 1));
+    const end = endOfMonth(addMonths(calendarMonth, 1));
+    fichajeSupabaseService.obtenerBajasEmpleado(empleadoId, start, end).then((res) => {
+      setBajas(res.success ? res.data || [] : []);
+    });
+  }, [empleadoId, calendarMonth]);
+
   // Mapa fecha (YYYY-MM-DD) -> fichaje
   const fichajesPorFecha = useMemo(() => {
     const map = {};
@@ -118,6 +133,20 @@ const FichajeEmpleadoPerfil = ({ empleado, onBack }) => {
     (vacaciones || []).forEach((v) => set.add(v.fecha));
     return set;
   }, [vacaciones]);
+
+  // Conjunto de fechas que caen dentro de alguna baja (YYYY-MM-DD)
+  const bajasPorFecha = useMemo(() => {
+    const set = new Set();
+    (bajas || []).forEach((b) => {
+      let d = parseISO(b.fecha_inicio);
+      const fin = parseISO(b.fecha_fin);
+      while (d <= fin) {
+        set.add(format(d, 'yyyy-MM-dd'));
+        d = addDays(d, 1);
+      }
+    });
+    return set;
+  }, [bajas]);
 
   const toggleVacacion = async (dateKey) => {
     if (!userCanEditVacaciones || !empleadoId || togglingVacacion) return;
@@ -505,6 +534,7 @@ const FichajeEmpleadoPerfil = ({ empleado, onBack }) => {
                 const dateKey = format(day, 'yyyy-MM-dd');
                 const dayFichajes = fichajesPorFecha[dateKey] || [];
                 const isVacacion = vacacionesPorFecha.has(dateKey);
+                const isBaja = bajasPorFecha.has(dateKey);
                 const isCurrentMonth = isSameMonth(day, calendarMonth);
                 const isTodayDate = isToday(day);
                 const isFutureDate = isFuture(day) && !isTodayDate;
@@ -522,6 +552,8 @@ const FichajeEmpleadoPerfil = ({ empleado, onBack }) => {
                         ? colors.surface
                         : isVacacion
                         ? (colors.info || '#2196F3') + '18'
+                        : isBaja
+                        ? (colors.warning || '#ed6c02') + '18'
                         : isTodayDate
                         ? colors.primary + '15'
                         : 'transparent',
@@ -531,6 +563,8 @@ const FichajeEmpleadoPerfil = ({ empleado, onBack }) => {
                         ? `2px solid ${colors.primary}`
                         : isVacacion
                         ? `1px solid ${colors.info || '#2196F3'}`
+                        : isBaja
+                        ? `1px solid ${colors.warning || '#ed6c02'}`
                         : `1px solid ${colors.border}`,
                       opacity: !isCurrentMonth ? 0.5 : 1,
                       boxShadow: esPrimerDiaPeriodo ? `0 0 0 2px ${colors.warning}40` : 'none'
@@ -595,6 +629,24 @@ const FichajeEmpleadoPerfil = ({ empleado, onBack }) => {
                         Vacaciones
                       </div>
                     )}
+                    {isBaja && !isVacacion && (
+                      <div
+                        style={{
+                          fontSize: '10px',
+                          padding: '2px 6px',
+                          borderRadius: '4px',
+                          backgroundColor: (colors.warning || '#ed6c02') + '30',
+                          color: colors.text,
+                          marginBottom: '4px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px'
+                        }}
+                      >
+                        <AlertCircle size={10} />
+                        Baja
+                      </div>
+                    )}
                     {dayFichajes.length > 0 && !isFutureDate && (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                         {dayFichajes.slice(0, 2).map((f) => (
@@ -612,10 +664,14 @@ const FichajeEmpleadoPerfil = ({ empleado, onBack }) => {
                               cursor: 'pointer',
                               whiteSpace: 'nowrap',
                               overflow: 'hidden',
-                              textOverflow: 'ellipsis'
+                              textOverflow: 'ellipsis',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '4px'
                             }}
-                            title={`${formatTimeMadrid(f.hora_entrada)} - ${f.hora_salida ? formatTimeMadrid(f.hora_salida) : '...'} (${f.horas_trabajadas || 0}h)`}
+                            title={`${formatTimeMadrid(f.hora_entrada)} - ${f.hora_salida ? formatTimeMadrid(f.hora_salida) : '...'} (${f.horas_trabajadas || 0}h)${f.es_modificado ? ' · Modificado' : ''}`}
                           >
+                            {f.es_modificado && <Pencil size={10} style={{ color: colors.warning || '#ed6c02', flexShrink: 0 }} />}
                             {formatTimeMadrid(f.hora_entrada)}–{f.hora_salida ? formatTimeMadrid(f.hora_salida) : '...'}
                             {f.horas_trabajadas != null && ` (${Number(f.horas_trabajadas).toFixed(1)}h)`}
                           </button>
@@ -674,6 +730,7 @@ const FichajeEmpleadoPerfil = ({ empleado, onBack }) => {
                   ) : (
                     <AlertCircle size={18} color={colors.warning} />
                   )}
+                  {f.es_modificado && <Pencil size={14} color={colors.warning || '#ed6c02'} style={{ flexShrink: 0 }} title="Modificado" />}
                   <span style={{ fontWeight: '500', color: colors.text }}>{formatDateShortMadrid(f.fecha)}</span>
                   <span style={{ color: colors.textSecondary, fontSize: '14px' }}>
                     {formatTimeMadrid(f.hora_entrada)} – {f.hora_salida ? formatTimeMadrid(f.hora_salida) : 'En curso'}
@@ -688,11 +745,207 @@ const FichajeEmpleadoPerfil = ({ empleado, onBack }) => {
         )}
       </div>
 
+      {/* Bajas: solo para admin/manager/management */}
+      {userCanEditVacaciones && (
+        <div
+          style={{
+            backgroundColor: colors.card,
+            border: `1px solid ${colors.border}`,
+            borderRadius: '12px',
+            padding: '20px',
+            marginTop: '16px'
+          }}
+        >
+          <h3 style={{ margin: '0 0 16px', fontSize: '16px', fontWeight: '600', color: colors.text }}>
+            Bajas
+          </h3>
+          <p style={{ color: colors.textSecondary, fontSize: '13px', margin: '0 0 12px' }}>
+            Periodos en los que el empleado no ficha (enfermedad, accidente, etc.). Puedes añadir nuevos periodos o <strong>quitar una baja</strong> con el botón «Quitar baja».
+          </p>
+          {bajas.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px' }}>
+              {bajas.map((b) => (
+                <div
+                  key={b.id}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '10px 12px',
+                    backgroundColor: colors.surface,
+                    border: `1px solid ${colors.warning || '#ed6c02'}40`,
+                    borderRadius: '8px'
+                  }}
+                >
+                  <span style={{ fontWeight: '500', color: colors.text }}>
+                    {formatDateShortMadrid(b.fecha_inicio)} – {formatDateShortMadrid(b.fecha_fin)}
+                    {b.tipo && <span style={{ color: colors.textSecondary, marginLeft: 8 }}>({b.tipo})</span>}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (!window.confirm('¿Quitar esta baja? Se borrará el periodo de baja.')) return;
+                      const res = await fichajeSupabaseService.eliminarBaja(b.id);
+                      if (res.success) setBajas((prev) => prev.filter((x) => x.id !== b.id));
+                    }}
+                    style={{
+                      padding: '6px 12px',
+                      fontSize: '13px',
+                      border: `1px solid ${colors.warning || '#ed6c02'}`,
+                      borderRadius: '6px',
+                      backgroundColor: (colors.warning || '#ed6c02') + '15',
+                      color: colors.warning || '#ed6c02',
+                      cursor: 'pointer',
+                      fontWeight: 500
+                    }}
+                  >
+                    Quitar baja
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          {!showBajaForm ? (
+            <button
+              type="button"
+              onClick={() => setShowBajaForm(true)}
+              style={{
+                padding: '8px 16px',
+                fontSize: '14px',
+                fontWeight: '500',
+                border: `1px solid ${colors.primary}`,
+                borderRadius: '8px',
+                backgroundColor: colors.primary + '15',
+                color: colors.primary,
+                cursor: 'pointer'
+              }}
+            >
+              Añadir baja
+            </button>
+          ) : (
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '12px',
+                padding: '12px',
+                backgroundColor: colors.surface,
+                borderRadius: '8px',
+                border: `1px solid ${colors.border}`
+              }}
+            >
+              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
+                <label style={{ fontSize: '13px', color: colors.text }}>
+                  Desde: <input
+                    type="date"
+                    value={bajaForm.fecha_inicio}
+                    onChange={(e) => setBajaForm((f) => ({ ...f, fecha_inicio: e.target.value }))}
+                    style={{ padding: '6px 8px', borderRadius: '6px', border: `1px solid ${colors.border}` }}
+                  />
+                </label>
+                <label style={{ fontSize: '13px', color: colors.text }}>
+                  Hasta: <input
+                    type="date"
+                    value={bajaForm.fecha_fin}
+                    onChange={(e) => setBajaForm((f) => ({ ...f, fecha_fin: e.target.value }))}
+                    style={{ padding: '6px 8px', borderRadius: '6px', border: `1px solid ${colors.border}` }}
+                  />
+                </label>
+                <label style={{ fontSize: '13px', color: colors.text }}>
+                  Tipo: <select
+                    value={bajaForm.tipo}
+                    onChange={(e) => setBajaForm((f) => ({ ...f, tipo: e.target.value }))}
+                    style={{ padding: '6px 8px', borderRadius: '6px', border: `1px solid ${colors.border}` }}
+                  >
+                    <option value="">—</option>
+                    <option value="enfermedad">Enfermedad</option>
+                    <option value="accidente">Accidente</option>
+                    <option value="maternidad">Maternidad</option>
+                    <option value="otro">Otro</option>
+                  </select>
+                </label>
+              </div>
+              <label style={{ fontSize: '13px', color: colors.text, display: 'block' }}>
+                Notas: <input
+                  type="text"
+                  placeholder="Opcional"
+                  value={bajaForm.notas}
+                  onChange={(e) => setBajaForm((f) => ({ ...f, notas: e.target.value }))}
+                  style={{ width: '100%', maxWidth: 300, padding: '6px 8px', borderRadius: '6px', border: `1px solid ${colors.border}`, marginTop: 4 }}
+                />
+              </label>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  type="button"
+                  disabled={savingBaja || !bajaForm.fecha_inicio || !bajaForm.fecha_fin}
+                  onClick={async () => {
+                    setSavingBaja(true);
+                    try {
+                      const res = await fichajeSupabaseService.crearBaja(
+                        empleadoId,
+                        bajaForm.fecha_inicio,
+                        bajaForm.fecha_fin,
+                        bajaForm.tipo || null,
+                        bajaForm.notas || null,
+                        user?.id
+                      );
+                      if (res.success && res.data) {
+                        const startStr = format(startOfMonth(calendarMonth), 'yyyy-MM-dd');
+                        const endStr = format(endOfMonth(calendarMonth), 'yyyy-MM-dd');
+                        const overlap = res.data.fecha_inicio <= endStr && res.data.fecha_fin >= startStr;
+                        if (overlap) {
+                          setBajas((prev) => [...prev, res.data].sort((a, b) => a.fecha_inicio.localeCompare(b.fecha_inicio)));
+                        }
+                        setBajaForm({ fecha_inicio: '', fecha_fin: '', tipo: '', notas: '' });
+                        setShowBajaForm(false);
+                      }
+                    } finally {
+                      setSavingBaja(false);
+                    }
+                  }}
+                  style={{
+                    padding: '8px 16px',
+                    fontSize: '14px',
+                    fontWeight: '500',
+                    border: 'none',
+                    borderRadius: '8px',
+                    backgroundColor: colors.primary,
+                    color: '#fff',
+                    cursor: savingBaja ? 'not-allowed' : 'pointer'
+                  }}
+                >
+                  {savingBaja ? 'Guardando…' : 'Guardar'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setShowBajaForm(false); setBajaForm({ fecha_inicio: '', fecha_fin: '', tipo: '', notas: '' }); }}
+                  style={{
+                    padding: '8px 16px',
+                    fontSize: '14px',
+                    border: `1px solid ${colors.border}`,
+                    borderRadius: '8px',
+                    backgroundColor: colors.surface,
+                    color: colors.text,
+                    cursor: 'pointer'
+                  }}
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {showDetailsModal && selectedFichaje && (
         <FichajeDetailsModal
           fichaje={selectedFichaje}
           empleadoNombre={nombreEmpleado}
           onClose={handleCloseModals}
+          onEdit={() => {
+            setShowDetailsModal(false);
+            setShowEditModal(true);
+          }}
         />
       )}
       {showEditModal && selectedFichaje && (

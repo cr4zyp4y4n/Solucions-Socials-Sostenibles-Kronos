@@ -114,6 +114,76 @@ export async function obtenerVacacionesEnRango(fechaInicio, fechaFin) {
 }
 
 /**
+ * Obtener bajas de un empleado en un rango (solo lectura).
+ */
+export async function obtenerBajasEmpleado(empleadoId, fechaInicio, fechaFin) {
+  try {
+    const inicioStr = fechaInicio.toISOString().split('T')[0];
+    const finStr = fechaFin.toISOString().split('T')[0];
+    const { data, error } = await supabase
+      .from('bajas')
+      .select('*')
+      .eq('empleado_id', empleadoId)
+      .lte('fecha_inicio', finStr)
+      .gte('fecha_fin', inicioStr)
+      .order('fecha_inicio', { ascending: true });
+
+    if (error) throw error;
+    return { success: true, data: data || [] };
+  } catch (err) {
+    console.error('Error obteniendo bajas del empleado:', err);
+    return { success: false, data: [] };
+  }
+}
+
+/**
+ * Obtener todas las bajas que solapan con un rango (solo lectura, para panel).
+ */
+export async function obtenerBajasEnRango(fechaInicio, fechaFin) {
+  try {
+    const inicioStr = fechaInicio.toISOString().split('T')[0];
+    const finStr = fechaFin.toISOString().split('T')[0];
+    const { data, error } = await supabase
+      .from('bajas')
+      .select('*')
+      .lte('fecha_inicio', finStr)
+      .gte('fecha_fin', inicioStr)
+      .order('empleado_id')
+      .order('fecha_inicio', { ascending: true });
+
+    if (error) throw error;
+    return { success: true, data: data || [] };
+  } catch (err) {
+    console.error('Error obteniendo bajas en rango:', err);
+    return { success: false, data: [] };
+  }
+}
+
+/**
+ * Obtener historial de auditoría de un fichaje (solo lectura, para inspección).
+ * @param {string} fichajeId - UUID del fichaje
+ * @returns {Promise<{ success: boolean, data: Array }>}
+ */
+export async function obtenerAuditoria(fichajeId) {
+  try {
+    const { data, error } = await supabase
+      .from('fichajes_auditoria')
+      .select(`
+        *,
+        quien:user_profiles(id, name, email)
+      `)
+      .eq('fichaje_id', fichajeId)
+      .order('cuando', { ascending: false });
+
+    if (error) throw error;
+    return { success: true, data: data || [] };
+  } catch (err) {
+    console.error('Error obteniendo auditoría:', err);
+    return { success: false, data: [] };
+  }
+}
+
+/**
  * Lista de "empleados" para el panel: empleado_id únicos que tienen fichajes en el mes,
  * con nombre desde fichajes_codigos (descripcion).
  */

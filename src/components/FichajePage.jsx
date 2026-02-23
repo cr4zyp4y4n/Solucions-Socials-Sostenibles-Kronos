@@ -16,7 +16,8 @@ import {
   RefreshCw,
   Delete,
   Eraser,
-  MapPin
+  MapPin,
+  Pencil
 } from 'lucide-react';
 import { startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, format, isSameMonth, isToday, isFuture } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -1158,10 +1159,14 @@ const FichajePage = () => {
                               overflow: 'hidden',
                               textOverflow: 'ellipsis',
                               textAlign: 'left',
-                              cursor: 'pointer'
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '4px'
                             }}
-                            title={`${formatTime(f.hora_entrada)} - ${f.hora_salida ? formatTime(f.hora_salida) : '...'} (clic para ver)`}
+                            title={`${formatTime(f.hora_entrada)} - ${f.hora_salida ? formatTime(f.hora_salida) : '...'} (clic para ver)${f.es_modificado ? ' · Modificado' : ''}`}
                           >
+                            {f.es_modificado && <Pencil size={10} style={{ color: colors.warning || '#ed6c02', flexShrink: 0 }} />}
                             {formatTime(f.hora_entrada)}–{f.hora_salida ? formatTime(f.hora_salida) : '...'}
                           </button>
                         ))}
@@ -1279,9 +1284,14 @@ const FichajePage = () => {
                                   overflow: 'hidden',
                                   textOverflow: 'ellipsis',
                                   textAlign: 'left',
-                                  cursor: 'pointer'
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '4px'
                                 }}
+                                title={f.es_modificado ? 'Modificado' : undefined}
                               >
+                                {f.es_modificado && <Pencil size={10} style={{ color: colors.warning || '#ed6c02', flexShrink: 0 }} />}
                                 {formatTime(f.hora_entrada)}–{f.hora_salida ? formatTime(f.hora_salida) : '...'}
                               </button>
                             ))}
@@ -1304,6 +1314,10 @@ const FichajePage = () => {
               fichaje={selectedFichaje}
               empleadoNombre={empleadoInfo?.nombreCompleto || empleadoInfo?.descripcion || 'Empleado'}
               onClose={handleCloseFichajeModals}
+              onEdit={() => {
+                setShowDetailsModal(false);
+                setShowEditModal(true);
+              }}
             />
           )}
           {showEditModal && selectedFichaje && (

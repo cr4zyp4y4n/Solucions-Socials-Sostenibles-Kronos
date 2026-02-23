@@ -10,10 +10,11 @@ import {
   AlertCircle,
   ChevronRight,
   Download,
+
   Umbrella,
 } from 'lucide-react';
 import ExcelJS from 'exceljs';
-import { startOfMonth, endOfMonth, format, addMonths, parseISO, differenceInCalendarDays, addDays } from 'date-fns';
+import { startOfMonth, endOfMonth, startOfYear, format, addMonths, parseISO, differenceInCalendarDays, addDays } from 'date-fns';
 import { es } from 'date-fns/locale';
 import * as fichajePortalService from '../services/fichajePortalService';
 import { formatTimeMadrid, formatDateShortMadrid } from '../utils/timeUtils';
@@ -24,6 +25,7 @@ export default function PanelFichajesPage() {
   const [empleados, setEmpleados] = useState([]);
   const [fichajesMes, setFichajesMes] = useState([]);
   const [vacacionesMes, setVacacionesMes] = useState([]);
+  const [bajasMes, setBajasMes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedEmpleado, setSelectedEmpleado] = useState(null);
@@ -36,20 +38,24 @@ export default function PanelFichajesPage() {
       try {
         const start = startOfMonth(mesActual);
         const end = endOfMonth(mesActual);
-        const endVacaciones = endOfMonth(addMonths(mesActual, 2));
-        const [resFichajes, resVacaciones] = await Promise.all([
+        const endExt = endOfMonth(addMonths(mesActual, 2));
+        const startYear = startOfYear(mesActual);
+        const [resFichajes, resVacaciones, resBajas] = await Promise.all([
           fichajePortalService.obtenerTodosFichajes({ fechaInicio: start, fechaFin: end }),
-          fichajePortalService.obtenerVacacionesEnRango(start, endVacaciones),
+          fichajePortalService.obtenerVacacionesEnRango(startYear, endExt),
+          fichajePortalService.obtenerBajasEnRango(start, endExt),
         ]);
         const data = resFichajes.success ? resFichajes.data || [] : [];
         setFichajesMes(data);
         setVacacionesMes(resVacaciones.success ? resVacaciones.data || [] : []);
+        setBajasMes(resBajas.success ? resBajas.data || [] : []);
         const emps = await fichajePortalService.obtenerEmpleadosConFichajes(data);
         setEmpleados(emps);
       } catch (err) {
         console.error(err);
         setFichajesMes([]);
         setVacacionesMes([]);
+        setBajasMes([]);
         setEmpleados([]);
       } finally {
         setLoading(false);
@@ -60,6 +66,7 @@ export default function PanelFichajesPage() {
 
   const resumenPorEmpleado = useMemo(() => {
     const todayStr = format(mesActual, 'yyyy-MM-dd');
+    const yearStr = format(mesActual, 'yyyy');
     const map = {};
     empleados.forEach((emp) => {
       const fichajesEmp = fichajesMes.filter((f) => f.empleado_id === emp.id);
@@ -72,6 +79,10 @@ export default function PanelFichajesPage() {
           : null;
       const vacacionesEmp = vacacionesMes.filter((v) => v.empleado_id === emp.id);
       const fechasVacaciones = vacacionesEmp.map((v) => v.fecha).sort();
+      const vacacionesQueCuentanAnio = vacacionesEmp.filter(
+        (v) => v.fecha.startsWith(yearStr) && v.cuenta_para_anual !== false
+      ).length;
+      const diasVacacionesRestantes = Math.max(0, 22 - vacacionesQueCuentanAnio);
       const futuras = fechasVacaciones.filter((d) => d >= todayStr);
       let vacacionesHasta = null;
       let diasHastaVacaciones = null;
@@ -92,6 +103,17 @@ export default function PanelFichajesPage() {
       const fechasDelMesActual = fechasVacaciones.filter((d) =>
         d.startsWith(format(mesActual, 'yyyy-MM'))
       );
+      const bajasEmp = (bajasMes || []).filter((b) => b.empleado_id === emp.id);
+      let estaDeBaja = false;
+      let bajaHasta = null;
+      for (const b of bajasEmp) {
+        const ini = b.fecha_inicio;
+        const fin = b.fecha_fin;
+        if (todayStr >= ini && todayStr <= fin) {
+          estaDeBaja = true;
+          if (!bajaHasta || fin > bajaHasta) bajaHasta = fin;
+        }
+      }
       map[emp.id] = {
         horasTotales: horasTotales.toFixed(2),
         diasTrabajados: completos.length,
@@ -103,10 +125,13 @@ export default function PanelFichajesPage() {
         vacacionesHasta,
         diasHastaVacaciones,
         estaEnVacaciones,
+        diasVacacionesRestantes,
+        estaDeBaja,
+        bajaHasta,
       };
     });
     return map;
-  }, [empleados, fichajesMes, vacacionesMes, mesActual]);
+  }, [empleados, fichajesMes, vacacionesMes, bajasMes, mesActual]);
 
   const empleadosFiltrados = useMemo(() => {
     if (!searchTerm.trim()) return empleados;
@@ -422,6 +447,22 @@ export default function PanelFichajesPage() {
                         ` · ${formatTimeMadrid(resumen.ultimoFichaje.hora_salida)}`}
                     </div>
                   )}
+                  {resumen.diasVacacionesRestantes != null && (
+                    <div
+                      style={{
+                        fontSize: 12,
+                        color: colors.textSecondary,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        marginTop: 4,
+                      }}
+                    >
+                      <Umbrella size={14} />
+                      {resumen.diasVacacionesRestantes} día
+                      {resumen.diasVacacionesRestantes !== 1 ? 's' : ''} de vacaciones restantes (de 22)
+                    </div>
+                  )}
                   {(resumen.vacacionesHasta != null ||
                     resumen.diasHastaVacaciones != null ||
                     resumen.diasVacaciones > 0) && (
@@ -455,6 +496,21 @@ export default function PanelFichajesPage() {
                             )}
                         </>
                       ) : null}
+                    </div>
+                  )}
+                  {resumen.estaDeBaja && resumen.bajaHasta && (
+                    <div
+                      style={{
+                        fontSize: 12,
+                        color: colors.warning || '#ed6c02',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        marginTop: 4,
+                      }}
+                    >
+                      <AlertCircle size={14} />
+                      De baja hasta {formatDateShortMadrid(resumen.bajaHasta)}
                     </div>
                   )}
                 </motion.div>

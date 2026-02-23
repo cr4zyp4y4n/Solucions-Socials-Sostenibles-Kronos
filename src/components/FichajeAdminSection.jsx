@@ -969,6 +969,10 @@ const FichajeAdminSection = () => {
             setShowDetailsModal(false);
             setSelectedFichaje(null);
           }}
+          onEdit={() => {
+            setShowDetailsModal(false);
+            setShowEditModal(true);
+          }}
         />
       )}
 

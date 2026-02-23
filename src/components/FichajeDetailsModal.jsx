@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Clock, User, Calendar, AlertCircle, CheckCircle, XCircle, Coffee, UtensilsCrossed } from 'lucide-react';
+import { X, Clock, User, Calendar, AlertCircle, CheckCircle, XCircle, Coffee, UtensilsCrossed, Pencil } from 'lucide-react';
 import fichajeSupabaseService from '../services/fichajeSupabaseService';
 import { useTheme } from './ThemeContext';
 import { formatTimeMadridWithSeconds, formatDateFullMadrid, formatDateTimeMadrid } from '../utils/timeUtils';
 
-const FichajeDetailsModal = ({ fichaje, empleadoNombre, onClose }) => {
+const FichajeDetailsModal = ({ fichaje, empleadoNombre, onClose, onEdit }) => {
   const { colors } = useTheme();
   const [pausas, setPausas] = useState([]);
   const [auditoria, setAuditoria] = useState([]);
@@ -134,22 +134,45 @@ const FichajeDetailsModal = ({ fichaje, empleadoNombre, onClose }) => {
                 {formatDate(fichaje.fecha)} - {empleadoNombre}
               </p>
             </div>
-            <button
-              onClick={onClose}
-              style={{
-                background: 'none',
-                border: 'none',
-                cursor: 'pointer',
-                color: colors.textSecondary,
-                padding: '8px',
-                borderRadius: '8px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
-              }}
-            >
-              <X size={24} />
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              {onEdit && (
+                <button
+                  onClick={() => onEdit()}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '8px 14px',
+                    fontSize: '14px',
+                    fontWeight: '500',
+                    border: `1px solid ${colors.primary}`,
+                    borderRadius: '8px',
+                    backgroundColor: colors.primary + '18',
+                    color: colors.primary,
+                    cursor: 'pointer'
+                  }}
+                >
+                  <Pencil size={18} />
+                  Editar (registrar cambio)
+                </button>
+              )}
+              <button
+                onClick={onClose}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: colors.textSecondary,
+                  padding: '8px',
+                  borderRadius: '8px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              >
+                <X size={24} />
+              </button>
+            </div>
           </div>
 
           {/* Content */}
@@ -429,57 +452,107 @@ const FichajeDetailsModal = ({ fichaje, empleadoNombre, onClose }) => {
                     </h3>
                     
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                      {auditoria.map((registro) => (
-                        <div
-                          key={registro.id}
-                          style={{
-                            padding: '12px',
-                            backgroundColor: colors.surface,
-                            borderRadius: '8px',
-                            border: `1px solid ${colors.border}`
-                          }}
-                        >
-                          <div style={{
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'start',
-                            marginBottom: '8px'
-                          }}>
-                            <span style={{
-                              fontSize: '12px',
-                              fontWeight: '600',
-                              color: colors.text,
-                              textTransform: 'uppercase'
-                            }}>
-                              {registro.accion}
-                            </span>
-                            <span style={{
-                              fontSize: '12px',
-                              color: colors.textSecondary
-                            }}>
-                              {formatDateTime(registro.cuando)}
-                            </span>
-                          </div>
-                          
-                          {registro.valor_anterior && registro.valor_nuevo && (
+                      {auditoria.map((registro) => {
+                        const esModificacionPorUsuario = registro.accion === 'modificado' && registro.quien != null;
+                        const cuandoMs = registro.cuando ? new Date(registro.cuando).getTime() : 0;
+                        const motivoGuardado = registro.motivo
+                          || (esModificacionPorUsuario && auditoria.find(
+                            (r) => r.accion === 'modificado' && r.motivo && r.cuando
+                              && Math.abs(new Date(r.cuando).getTime() - cuandoMs) < 15000
+                          )?.motivo)
+                          || null;
+                        const motivo = motivoGuardado
+                          || (registro.valor_nuevo?.valor_original?.motivo_cierre_auto)
+                          || (registro.valor_anterior?.valor_original?.motivo_cierre_auto)
+                          || (esModificacionPorUsuario ? 'Modificación registrada por el responsable' : null);
+                        const quienNombre = registro.quien?.name || registro.quien?.email || (registro.quien ? 'Usuario' : null);
+                        return (
+                          <div
+                            key={registro.id}
+                            style={{
+                              padding: '12px',
+                              backgroundColor: colors.surface,
+                              borderRadius: '8px',
+                              border: `1px solid ${colors.border}`
+                            }}
+                          >
                             <div style={{
-                              marginTop: '8px',
-                              padding: '8px',
-                              backgroundColor: colors.background,
-                              borderRadius: '6px',
-                              fontSize: '12px',
-                              color: colors.textSecondary
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'start',
+                              marginBottom: '8px'
                             }}>
-                              <div style={{ marginBottom: '4px' }}>
-                                <strong>Anterior:</strong> {JSON.stringify(registro.valor_anterior, null, 2)}
-                              </div>
-                              <div>
-                                <strong>Nuevo:</strong> {JSON.stringify(registro.valor_nuevo, null, 2)}
-                              </div>
+                              <span style={{
+                                fontSize: '12px',
+                                fontWeight: '600',
+                                color: colors.text,
+                                textTransform: 'uppercase'
+                              }}>
+                                {registro.accion}
+                              </span>
+                              <span style={{
+                                fontSize: '12px',
+                                color: colors.textSecondary
+                              }}>
+                                {formatDateTime(registro.cuando)}
+                              </span>
                             </div>
-                          )}
-                        </div>
-                      ))}
+                            {quienNombre && (
+                              <div style={{ fontSize: '12px', color: colors.textSecondary, marginBottom: motivo ? '8px' : 0 }}>
+                                Por: {quienNombre}
+                              </div>
+                            )}
+                            {motivo && (
+                              <div style={{
+                                marginTop: '4px',
+                                padding: '10px 12px',
+                                backgroundColor: colors.primary + '12',
+                                borderRadius: '6px',
+                                borderLeft: `4px solid ${colors.primary}`,
+                                fontSize: '14px',
+                                color: colors.text,
+                                fontWeight: 500
+                              }}>
+                                {motivo}
+                              </div>
+                            )}
+                            {registro.valor_anterior && registro.valor_nuevo && (
+                              <details style={{ marginTop: '10px' }}>
+                                <summary style={{
+                                  fontSize: '12px',
+                                  color: colors.textSecondary,
+                                  cursor: 'pointer'
+                                }}>
+                                  Ver detalles técnicos (anterior / nuevo)
+                                </summary>
+                                <div style={{
+                                  marginTop: '8px',
+                                  padding: '8px',
+                                  backgroundColor: colors.background,
+                                  borderRadius: '6px',
+                                  fontSize: '11px',
+                                  color: colors.textSecondary,
+                                  overflow: 'auto',
+                                  maxHeight: '200px'
+                                }}>
+                                  <div style={{ marginBottom: '4px' }}>
+                                    <strong>Anterior:</strong>
+                                    <pre style={{ margin: '4px 0 0', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+                                      {JSON.stringify(registro.valor_anterior, null, 2)}
+                                    </pre>
+                                  </div>
+                                  <div>
+                                    <strong>Nuevo:</strong>
+                                    <pre style={{ margin: '4px 0 0', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+                                      {JSON.stringify(registro.valor_nuevo, null, 2)}
+                                    </pre>
+                                  </div>
+                                </div>
+                              </details>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 )}

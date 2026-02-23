@@ -145,6 +145,23 @@ export function formatDateTimeMadrid(dateString) {
 }
 
 /**
+ * Convierte un timestamp (UTC) al formato datetime-local (yyyy-MM-ddThh:mm) en hora de Madrid.
+ * Para rellenar inputs type="datetime-local" y que muestren la hora correcta (no UTC).
+ * @param {string|Date} dateString - Timestamp en formato ISO o Date object
+ * @returns {string} "yyyy-MM-ddThh:mm" en Madrid, o '' si no hay fecha
+ */
+export function toDatetimeLocalMadrid(dateString) {
+  if (!dateString) return '';
+  try {
+    const date = typeof dateString === 'string' ? parseDateAsUTC(dateString) : dateString;
+    return formatInTimeZone(date, TIMEZONE_MADRID, "yyyy-MM-dd'T'HH:mm");
+  } catch (error) {
+    console.error('Error en toDatetimeLocalMadrid:', error);
+    return '';
+  }
+}
+
+/**
  * Parsea un valor "solo fecha" (YYYY-MM-DD o ISO con hora) como fecha LOCAL.
  * - Si es YYYY-MM-DD: se interpreta como día local (no UTC).
  * - Si es ISO con T (ej. 2024-01-14T23:00:00.000Z): se usa el día en hora local de ese instante.

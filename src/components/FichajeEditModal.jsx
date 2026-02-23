@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { X, Clock, Save, AlertCircle } from 'lucide-react';
 import fichajeService from '../services/fichajeService';
 import { useTheme } from './ThemeContext';
-import { formatTimeMadrid, formatDateFullMadrid } from '../utils/timeUtils';
+import { formatTimeMadrid, formatDateFullMadrid, toDatetimeLocalMadrid } from '../utils/timeUtils';
 import { useAuth } from './AuthContext';
 
 const FichajeEditModal = ({ fichaje, empleadoNombre, onClose, onSave }) => {
@@ -20,14 +20,9 @@ const FichajeEditModal = ({ fichaje, empleadoNombre, onClose, onSave }) => {
   
   useEffect(() => {
     if (fichaje) {
-      // Convertir timestamps a formato datetime-local
-      const entrada = fichaje.hora_entrada 
-        ? new Date(fichaje.hora_entrada).toISOString().slice(0, 16)
-        : '';
-      const salida = fichaje.hora_salida 
-        ? new Date(fichaje.hora_salida).toISOString().slice(0, 16)
-        : '';
-      
+      // Mostrar horas en Madrid (no UTC) para que coincidan con lo que ve el usuario
+      const entrada = toDatetimeLocalMadrid(fichaje.hora_entrada);
+      const salida = toDatetimeLocalMadrid(fichaje.hora_salida);
       setHoraEntrada(entrada);
       setHoraSalida(salida);
     }
