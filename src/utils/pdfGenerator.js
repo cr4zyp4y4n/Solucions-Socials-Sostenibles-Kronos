@@ -21,26 +21,35 @@ export const generateHojaTecnicaPDF = async (hoja) => {
 
     // Helper to add Footer
     const addFooter = (docPageNumber) => {
-        const totalPages = doc.internal.getNumberOfPages();
-        // Go to specific page if needed, but usually we add footer to current page before moving or at end
-        // Easier: Loop through all pages at the end or add to current page if we control breaks.
-        // For autoTable, we can use hooks. For manual adding, we do it here.
-
         doc.setPage(docPageNumber);
+
+        const footerBottom = pageHeight - 10;
+        
+        // Standard Footer Info
         doc.setFontSize(8);
         doc.setTextColor(...lightText);
+        const today = new Date().toLocaleDateString();
+        doc.text(`Idoni Boncor - Generado el ${today}`, margin, footerBottom);
+        doc.text(`Página ${docPageNumber}`, pageWidth - margin, footerBottom, { align: 'right' });
 
-        const footerY = pageHeight - 10;
-
-        // Separator line
+        // Disclaimer
+        const disclaimer = "En nuestras instalaciones se manipulan productos con Gluten, crustaceo, Huevos, Pescado, Fruta seca, Soja, Leche, Cacahuete, Mostaza, Apio, Semillas de sesamo, Molusco, Sulfitos, Frutas rojas, los productos pueden contener trazas de los mismos";
+        
+        doc.setFontSize(7);
+        const maxWidth = pageWidth - (margin * 2);
+        const splitDisclaimer = doc.splitTextToSize(disclaimer, maxWidth);
+        const lineHeight = 3; 
+        const textBlockHeight = splitDisclaimer.length * lineHeight;
+        
+        // Position disclaimer above standard footer
+        const disclaimerY = footerBottom - 8 - textBlockHeight + lineHeight; 
+        doc.text(splitDisclaimer, margin, disclaimerY);
+        
+        // Separator line above disclaimer
+        const lineY = disclaimerY - 4;
         doc.setDrawColor(...brandColor);
         doc.setLineWidth(0.5);
-        doc.line(margin, footerY - 5, pageWidth - margin, footerY - 5);
-
-        // Footer Text
-        const today = new Date().toLocaleDateString();
-        doc.text(`Idoni Boncor - Generado el ${today}`, margin, footerY);
-        doc.text(`Página ${docPageNumber}`, pageWidth - margin, footerY, { align: 'right' });
+        doc.line(margin, lineY, pageWidth - margin, lineY);
     };
 
     // --- Header (Company Details) ---
@@ -116,6 +125,7 @@ export const generateHojaTecnicaPDF = async (hoja) => {
 
     // --- Split Layout: Ingredients (Left) and Allergens (Right) ---
     const startY = yPos;
+    const startPage = doc.internal.getNumberOfPages();
     const colWidth = (pageWidth - (margin * 2) - 10) / 2;
 
     const headerTextColor = [50, 50, 50];
@@ -147,15 +157,19 @@ export const generateHojaTecnicaPDF = async (hoja) => {
         alternateRowStyles: {
             fillColor: [248, 250, 240]
         },
-        margin: { left: margin },
+        margin: { left: margin, bottom: 35 },
         tableWidth: colWidth,
     });
 
     const ingredientsFinalY = doc.lastAutoTable.finalY;
 
     // --- Allergens (Right Column) ---
+    doc.setPage(startPage);
     const allergensX = margin + colWidth + 10;
 
+    doc.setFontSize(14);
+    doc.setTextColor(...brandColor);
+    doc.setFont(undefined, 'bold');
     doc.text('Alérgenos', allergensX, startY);
 
     const allergensData = (hoja.alergenos || []).map(al => [
@@ -185,7 +199,7 @@ export const generateHojaTecnicaPDF = async (hoja) => {
             alternateRowStyles: {
                 fillColor: [248, 250, 240]
             },
-            margin: { left: allergensX },
+            margin: { left: allergensX, bottom: 35 },
             tableWidth: colWidth,
         });
     }
