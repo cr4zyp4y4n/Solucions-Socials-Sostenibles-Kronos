@@ -1,12 +1,12 @@
-# SSS Kronos v2.1.22
+# SSS Kronos v2.1.23
 
 
-🚀 **Release Notes - SSS Kronos v2.1.22**
+🚀 **Release Notes - SSS Kronos v2.1.23**
 
 ## 📦 Archivos de Distribución
 
 ### Windows
-- **Instalador:** SSS Kronos-2.1.22 Setup.exe (130 MB aprox.)
+- **Instalador:** SSS Kronos-2.1.23 Setup.exe (130 MB aprox.)
 - **Ubicación:** `out/make/squirrel.windows/x64/`
 - **Compatibilidad:** Windows 10/11 (64-bit)
 
@@ -15,14 +15,16 @@
 
 ## ✨ Nuevas Características y Cambios Clave
 
-### 🆕 **v2.1.22 - Vacaciones en Fichajes (app y portal)**
-- ✅ **Tabla vacaciones en Supabase:** Nueva tabla `vacaciones` (empleado_id, fecha, created_by) con RLS; script en `database/create_vacaciones_table.sql`.
-- ✅ **Servicio de vacaciones (app):** En `fichajeSupabaseService.js`: `obtenerVacacionesEmpleado`, `obtenerVacacionesEnRango`, `añadirVacacion`, `quitarVacacion`.
-- ✅ **Perfil empleado (app):** En el calendario del Panel Fichajes se cargan y muestran los días de vacaciones; admin/manager/management pueden marcar o quitar vacaciones por día o por periodo ("Seleccionar periodo" con dos clics).
-- ✅ **Tarjetas del Panel (app):** Carga de vacaciones mes actual + 2 meses; en cada tarjeta: **"Vacaciones hasta [fecha]"** si está de vacaciones hoy, **"Quedan X días para vacaciones"** si tiene vacaciones futuras pero no está hoy, o **"X días este mes"** con lista de fechas cuando solo hay vacaciones en el mes actual.
-- ✅ **Portal web (inspector):** Misma lógica de vacaciones en las tarjetas del listado (obtenerVacacionesEnRango, texto "Vacaciones hasta..." / "Quedan X días para vacaciones").
-- ✅ **Calendario en el portal:** En la vista de perfil del empleado (FichajeEmpleadoPerfilView) se cargan y muestran los días de vacaciones en el calendario (fondo y etiqueta "Vacaciones"); solo lectura.
-- ✅ **Servicio portal:** En `fichajePortalService.js`: `obtenerVacacionesEnRango` y `obtenerVacacionesEmpleado` (solo lectura).
+### 🆕 **v2.1.23 - Fichajes: vacaciones, bajas, portal inspección y roles**
+- ✅ **Vacaciones en Supabase:** Tabla `vacaciones` (`create_vacaciones_table.sql`) con RLS; columna `cuenta_para_anual` (`alter_vacaciones_cuenta_para_anual.sql`) para indicar si el día descuenta de los 22 días anuales (ej. recuperación por baja = false; se gestiona desde Supabase).
+- ✅ **Panel Fichajes – vacaciones:** Marcar/quitar vacaciones por día o por periodo ("Seleccionar periodo": dos clics para rango, incluido entre meses). Tarjetas con **"X días de vacaciones restantes (de 22)"**, **"Vacaciones hasta [fecha]"** si está de vacaciones, **"Quedan X días para vacaciones"** si tiene futuras, o lista de días del mes.
+- ✅ **Bajas (enfermedad, etc.):** Tabla `bajas` (`database/create_bajas_table.sql`); en el perfil del empleado, admin/manager/management pueden añadir y quitar periodos de baja; se muestran en el calendario y en las tarjetas del panel.
+- ✅ **Edición de fichajes desde Panel Fichajes:** Manager/admin/management pueden modificar fichajes desde el perfil del empleado (no solo desde Admin). Historial de cambios con **motivo visible** (panel verde con el "porqué"); detalles técnicos (anterior/nuevo) desplegables. Icono lápiz en las tarjetas del calendario para fichajes modificados.
+- ✅ **Auditoría y borrado de fichajes:** Trigger de auditoría ajustado para no bloquear el DELETE de fichajes (`fix_fichajes_auditoria_on_delete.sql`); el borrado desde Supabase funciona correctamente.
+- ✅ **Ubicación en fichajes:** La ubicación se guarda automáticamente al fichar (sin preguntar al usuario).
+- ✅ **Roles y acceso:** Todos los roles pueden ver la sección Fichaje y fichar. **Inicio:** el rol `user` ve una vista mínima sin datos sensibles; manager, admin y management ven el inicio completo. Panel Fichajes y perfil con calendario/vacaciones/bajas/edición solo para manager, admin y management.
+- ✅ **Portal web para inspección:** Proyecto `portal-fichajes` (React), mismo diseño y colores que el Panel Fichajes. Desplegable en Netlify (ej. resumenfichajesss.netlify.app). Logo/favicon Solucions Socials. Texto dinámico del mes ("Resumen por empleado del mes de [mes] [año]"). Listado por empleado con horas, días trabajados y vacaciones; perfil con calendario (vacaciones y registros) y exportación Excel (una fila por empleado, títulos en mayúsculas y negrita). Calendario responsive en móvil (sin desborde).
+- ✅ **Hojas de ruta:** Corrección del error "Error al actualizar la hoja de ruta" en la actualización de hojas.
 - 📄 **Documentación:** [docs/README.md](docs/README.md).
 
 ### 🆕 **v2.1.21 - Panel Fichajes y eliminación de usuarios**
@@ -552,7 +554,7 @@
 
 ### 📥 Descargar
 1. Ve a la sección Releases de este repositorio
-2. Descarga `SSS Kronos-2.1.22 Setup.exe` (o la versión más reciente disponible)
+2. Descarga `SSS Kronos-2.1.23 Setup.exe` (o la versión más reciente disponible)
 3. Ejecuta el instalador y sigue las instrucciones
 
 ### ⚡ Primera Ejecución
@@ -596,11 +598,15 @@
 
 ## 🔄 Próximas Versiones
 
-### 🎯 v2.1.22 ✅ **COMPLETADA**
-- ✅ Vacaciones en Fichajes: tabla Supabase, servicio CRUD, calendario con marcar/quitar y modo periodo (app) ✅
-- ✅ Tarjetas Panel: "Vacaciones hasta [fecha]" / "Quedan X días para vacaciones" (app y portal) ✅
-- ✅ Portal: vacaciones en calendario de perfil empleado (solo lectura) y en tarjetas del listado ✅
-- ✅ Script SQL: `database/create_vacaciones_table.sql` ✅
+### 🎯 v2.1.23 ✅ **COMPLETADA**
+- ✅ Vacaciones: tabla `vacaciones`, `cuenta_para_anual`, días restantes (22), periodo y día (app) ✅
+- ✅ Bajas: tabla `bajas`, CRUD en perfil empleado, vista en calendario y tarjetas ✅
+- ✅ Edición fichajes desde Panel Fichajes + historial con motivo + icono lápiz en modificados ✅
+- ✅ Auditoría fichajes: fix borrado (trigger no bloquea DELETE) ✅
+- ✅ Ubicación guardada al fichar automáticamente ✅
+- ✅ Roles: todos pueden fichar; Inicio mínimo para rol user; panel completo para manager/admin/management ✅
+- ✅ Portal inspección: Netlify, logo SSS, texto mes dinámico, Excel por empleado, responsive ✅
+- ✅ Fix "Error al actualizar la hoja de ruta" ✅
 
 ### 🎯 v2.1.19 ✅ **COMPLETADA**
 - ✅ Módulo Gestión Tienda (Hojas Técnicas + Confirmación Productos Tienda) ✅
