@@ -1,12 +1,12 @@
-# SSS Kronos v2.1.23
+# SSS Kronos v2.1.24
 
 
-🚀 **Release Notes - SSS Kronos v2.1.23**
+🚀 **Release Notes - SSS Kronos v2.1.24**
 
 ## 📦 Archivos de Distribución
 
 ### Windows
-- **Instalador:** SSS Kronos-2.1.23 Setup.exe (130 MB aprox.)
+- **Instalador:** SSS Kronos-2.1.24 Setup.exe (130 MB aprox.)
 - **Ubicación:** `out/make/squirrel.windows/x64/`
 - **Compatibilidad:** Windows 10/11 (64-bit)
 
@@ -14,6 +14,11 @@
 *Nota: Los instaladores para macOS y Linux se generarán en futuras versiones*
 
 ## ✨ Nuevas Características y Cambios Clave
+
+### 🆕 **v2.1.24 - Verificación IBAN y confirmación humana antes de descargar Excel**
+- ✅ **Verificación IBAN en Análisis (Compras/Ventas):** Asignación de IBAN solo cuando el nombre del contacto Holded coincide con el proveedor/cliente del documento; columna **Verif. IBAN** (✓/⚠/-) en tablas y en exportaciones Excel (Sergi y Bruno). Avisos al exportar si hay filas a revisar (⚠) o si el mismo IBAN aparece en más de un proveedor/cliente.
+- ✅ **Verificación humana antes de descargar Excel:** Al pulsar "Descargar Datos" (vista Sergi o Bruno) se abre un modal con la lista de contactos e IBAN que se incluirán en el Excel; el usuario debe confirmar ("Sí, descargar Excel") o cancelar ("No, cancelar") para evitar descargas sin revisión.
+- 📄 **Documentación:** [docs/README.md](docs/README.md).
 
 ### 🆕 **v2.1.23 - Fichajes: vacaciones, bajas, portal inspección y roles**
 - ✅ **Vacaciones en Supabase:** Tabla `vacaciones` (`create_vacaciones_table.sql`) con RLS; columna `cuenta_para_anual` (`alter_vacaciones_cuenta_para_anual.sql`) para indicar si el día descuenta de los 22 días anuales (ej. recuperación por baja = false; se gestiona desde Supabase).
@@ -554,7 +559,7 @@
 
 ### 📥 Descargar
 1. Ve a la sección Releases de este repositorio
-2. Descarga `SSS Kronos-2.1.23 Setup.exe` (o la versión más reciente disponible)
+2. Descarga `SSS Kronos-2.1.24 Setup.exe` (o la versión más reciente disponible)
 3. Ejecuta el instalador y sigue las instrucciones
 
 ### ⚡ Primera Ejecución
@@ -597,6 +602,10 @@
 - **Documentación:** docs.supabase.com
 
 ## 🔄 Próximas Versiones
+
+### 🎯 v2.1.24 ✅ **COMPLETADA**
+- ✅ Verificación IBAN en Análisis: asignación por coincidencia nombre contacto, columna Verif. IBAN (✓/⚠/-), avisos al exportar ✅
+- ✅ Modal de verificación humana antes de descargar Excel (contactos e IBAN, Sí descargar / No cancelar) ✅
 
 ### 🎯 v2.1.23 ✅ **COMPLETADA**
 - ✅ Vacaciones: tabla `vacaciones`, `cuenta_para_anual`, días restantes (22), periodo y día (app) ✅

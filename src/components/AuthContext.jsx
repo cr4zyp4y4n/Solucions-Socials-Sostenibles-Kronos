@@ -41,11 +41,34 @@ export const AuthProvider = ({ children }) => {
     try {
       const { user, error } = await authService.getCurrentUser();
       if (error) {
-        // Error al verificar usuario
+        // Error conocido de Supabase: oauth_client_id en refresh (500) → sesión corrupta
+        const msg = (error.message || '').toLowerCase();
+        if (msg.includes('oauth_client_id') || msg.includes('refresh') || (error.status === 500)) {
+          await authService.signOut();
+          setUser(null);
+          setError(
+            'No se pudo restaurar la sesión (error de Supabase Auth). ' +
+            'Solución: en Supabase Dashboard → Project Settings → Infrastructure, actualiza la infraestructura. ' +
+            'O inicia sesión de nuevo.'
+          );
+        } else {
+          setUser(null);
+        }
+        setLoading(false);
+        return;
       }
       setUser(user);
     } catch (err) {
-      // Error al verificar sesión
+      const msg = (err?.message || '').toLowerCase();
+      if (msg.includes('oauth_client_id') || msg.includes('refresh')) {
+        authService.signOut().catch(() => {});
+        setUser(null);
+        setError(
+          'Sesión no restaurada. Actualiza la infraestructura en Supabase (Settings → Infrastructure) o inicia sesión de nuevo.'
+        );
+      } else {
+        setUser(null);
+      }
     } finally {
       setLoading(false);
     }

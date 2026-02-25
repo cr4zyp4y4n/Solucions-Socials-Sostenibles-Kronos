@@ -132,6 +132,10 @@ const AnalyticsPage = () => {
   const [selectedInvoiceForHide, setSelectedInvoiceForHide] = useState(null);
   const [hideReason, setHideReason] = useState('');
 
+  // Estados para modal de verificación humana antes de descargar Excel (contactos e IBAN)
+  const [showIbanVerifyModal, setShowIbanVerifyModal] = useState(false);
+  const [ibanVerifyPayload, setIbanVerifyPayload] = useState(null); // { view: 'sergi'|'bruno', rows: [{ provider, iban, verifIban }] }
+
   // Estados para selección de facturas para exportar a Excel (separadas por vista)
   const [selectedInvoicesForBruno, setSelectedInvoicesForBruno] = useState(new Set());
   const [selectedInvoicesForSergi, setSelectedInvoicesForSergi] = useState(new Set());
@@ -1416,7 +1420,13 @@ const AnalyticsPage = () => {
       return { headers: [], data: [] };
     }
 
-    // Definir las columnas esperadas en el orden correcto
+    // Normalizar nombre para comparar proveedor vs contacto del IBAN (igual que holdedApi)
+    const normForVerif = (s) => {
+      if (!s || typeof s !== 'string') return '';
+      return s.toLowerCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
+    };
+
+    // Definir las columnas esperadas en el orden correcto (+ Verif. IBAN para comprobar que el IBAN corresponde al proveedor)
     const expectedHeaders = [
       "Data d'emissió",
       'Núm',
@@ -1438,7 +1448,8 @@ const AnalyticsPage = () => {
       'Pendents',
       'Estat',
       'Data de pagament',
-      'IBAN'
+      'IBAN',
+      'Verif. IBAN'
     ];
 
     // Mapeo de campos de Holded a las columnas del Excel
@@ -1470,7 +1481,16 @@ const AnalyticsPage = () => {
     const processedData = holdedPurchases.map(purchase => {
       const row = [];
       expectedHeaders.forEach(header => {
-        // Encontrar la columna correspondiente en los datos de Holded
+        if (header === 'Verif. IBAN') {
+          // Indicador visual: ✓ = proveedor y contacto IBAN coinciden, ⚠ = no coinciden (revisar), - = sin dato
+          const provider = purchase.provider || '';
+          const ibanContactName = purchase.iban_contact_name || '';
+          const hasIban = !!(purchase.iban && String(purchase.iban).trim());
+          if (!hasIban || !ibanContactName) row.push('-');
+          else if (normForVerif(provider) === normForVerif(ibanContactName)) row.push('✓');
+          else row.push('⚠');
+          return;
+        }
         const holdedField = Object.keys(holdedToExcelMapping).find(key => holdedToExcelMapping[key] === header);
         if (holdedField && purchase[holdedField] !== undefined && purchase[holdedField] !== null) {
           row.push(purchase[holdedField]);
@@ -1551,11 +1571,23 @@ const AnalyticsPage = () => {
       // Obtener todos los contactos de la empresa
       const allContacts = await holdedApi.getAllContacts(company);
       
-      // Crear un mapa de contactos por nombre normalizado
+      // Normalizar nombre para comparación (igual que holdedApi: quitar acentos para que Café Candelas = Cafe Candelas)
+      const normalizeContactName = (name) => {
+        if (!name || typeof name !== 'string') return '';
+        return name
+          .toLowerCase()
+          .trim()
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .replace(/\s+/g, ' ')
+          .trim();
+      };
+
+      // Crear un mapa de contactos por nombre normalizado (sin acentos, para no asignar IBAN de otro proveedor)
       const contactsMap = new Map();
       allContacts.forEach(contact => {
         const contactName = contact.name || contact.company || '';
-        const normalizedName = contactName.toLowerCase().trim();
+        const normalizedName = normalizeContactName(contactName);
         
         // Buscar IBAN en diferentes campos del contacto
         let iban = '';
@@ -1585,37 +1617,36 @@ const AnalyticsPage = () => {
         }
       });
       
-      // Función para normalizar nombres de proveedores de manera más flexible
+      // Función para normalizar nombres de proveedores (quitar acentos + limpieza; misma lógica que holdedApi para no mezclar IBANs)
       const normalizeProviderName = (providerName) => {
         if (!providerName) return '';
-        
-        return providerName
+        const base = providerName
           .toLowerCase()
           .trim()
-          // Remover paréntesis y su contenido
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
           .replace(/\s*\([^)]*\)/g, '')
-          // Remover abreviaciones comunes
           .replace(/\s*s\.a\.u?\.?/gi, ' s.a')
           .replace(/\s*s\.l\./gi, ' s.l')
           .replace(/\s*s\.c\.c\.l\./gi, ' s.c.c.l')
           .replace(/\s*s\.a\./gi, ' s.a')
-          // Remover espacios múltiples
           .replace(/\s+/g, ' ')
           .trim();
+        return base;
       };
       
-      // Enriquecer los datos de facturas con IBAN de contactos
+      // Enriquecer los datos de facturas con IBAN de contactos (solo si la fila no tiene IBAN; el correcto viene de Holded por contact.id)
       const enrichedData = processedData.map(row => {
         const providerName = row[5]; // Índice del proveedor en las columnas
         if (providerName) {
           const normalizedProviderName = normalizeProviderName(providerName);
-          // Solo coincidencia exacta por nombre normalizado (no coincidencia parcial por palabras para evitar asignar IBAN erróneo)
           const contactIban = contactsMap.get(normalizedProviderName);
           
-          // Solo rellenar si la fila no tiene IBAN (el correcto viene ya de Holded por contact.id)
+          // Solo rellenar si la fila no tiene IBAN (evitar pisar el IBAN correcto que ya viene de Holded)
           if (contactIban && (!row[20] || row[20] === '' || row[20] === null)) {
             const newRow = [...row];
             newRow[20] = contactIban; // Índice del IBAN
+            if (newRow.length > 21) newRow[21] = '✓'; // Asignado por nombre → coincide con proveedor
             return newRow;
           }
         }
@@ -2019,8 +2050,11 @@ const AnalyticsPage = () => {
       if (headerLower.includes('total')) {
         indices.total = index;
       }
-      if (headerLower.includes('iban')) {
+      if (headerLower.includes('iban') && !headerLower.includes('verif')) {
         indices.iban = index;
+      }
+      if (headerLower.includes('verif') && headerLower.includes('iban')) {
+        indices.verifIban = index;
       }
       if (headerLower.includes('pendents') || headerLower.includes('pending')) {
         indices.pending = index;
@@ -4563,6 +4597,74 @@ const AnalyticsPage = () => {
     showAlertMessage('Resumen de IDONI exportado correctamente. El archivo está listo para análisis de IA.', 'success');
   };
 
+  // Abrir modal de verificación humana (contactos e IBAN) antes de descargar Excel - Vista Sergi
+  const openIbanVerifyModalSergi = () => {
+    if (!sergiData || sergiData.length === 0) {
+      showAlertMessage('No hay datos para descargar.', 'error');
+      return;
+    }
+    const filtered = sergiData.filter(row => isInvoiceSelected(row, 'sergi'));
+    if (filtered.length === 0) {
+      showAlertMessage('No hay facturas seleccionadas para descargar', 'error');
+      return;
+    }
+    const seen = new Set();
+    const rows = [];
+    filtered.forEach(row => {
+      const p = (row[columnIndices.provider] || '').trim();
+      if (seen.has(p)) return;
+      seen.add(p);
+      const iban = row[columnIndices.iban];
+      rows.push({
+        provider: p || (invoiceType === 'sale' ? 'Sin Cliente' : 'Sin Proveedor'),
+        iban: iban ? formatIBAN(iban) : '-',
+        verifIban: (columnIndices.verifIban != null ? row[columnIndices.verifIban] : null) ?? '-'
+      });
+    });
+    setIbanVerifyPayload({ view: 'sergi', rows });
+    setShowIbanVerifyModal(true);
+  };
+
+  // Abrir modal de verificación humana (contactos e IBAN) antes de descargar Excel - Vista Bruno
+  const openIbanVerifyModalBruno = () => {
+    if (!baseData || baseData.length === 0) {
+      showAlertMessage('No hay datos para descargar', 'error');
+      return;
+    }
+    const filtered = baseData.filter(row => isInvoiceSelected(row, 'bruno'));
+    if (filtered.length === 0) {
+      showAlertMessage('No hay facturas seleccionadas para descargar', 'error');
+      return;
+    }
+    const seen = new Set();
+    const rows = [];
+    filtered.forEach(row => {
+      const p = (row[columnIndices.provider] || '').trim();
+      if (seen.has(p)) return;
+      seen.add(p);
+      const iban = row[columnIndices.iban];
+      rows.push({
+        provider: p || (invoiceType === 'sale' ? 'Sin Cliente' : 'Sin Proveedor'),
+        iban: iban ? formatIBAN(iban) : '-',
+        verifIban: (columnIndices.verifIban != null ? row[columnIndices.verifIban] : null) ?? '-'
+      });
+    });
+    setIbanVerifyPayload({ view: 'bruno', rows });
+    setShowIbanVerifyModal(true);
+  };
+
+  const closeIbanVerifyModal = () => {
+    setShowIbanVerifyModal(false);
+    setIbanVerifyPayload(null);
+  };
+
+  const confirmIbanVerifyDownload = () => {
+    if (!ibanVerifyPayload) return;
+    if (ibanVerifyPayload.view === 'sergi') downloadSergiData();
+    else downloadBrunoData();
+    closeIbanVerifyModal();
+  };
+
   // Función para descargar datos de la vista Sergi
   const downloadSergiData = () => {
     if (!sergiData || sergiData.length === 0) {
@@ -4576,6 +4678,30 @@ const AnalyticsPage = () => {
     if (filteredSergiData.length === 0) {
       showAlertMessage('No hay facturas seleccionadas para descargar', 'error');
       return;
+    }
+
+    // Comprobación IBAN antes de exportar: avisar si hay filas a revisar o mismo IBAN en distintos proveedores
+    const normIban = (iban) => (iban || '').replace(/\s/g, '').toUpperCase();
+    if (columnIndices.verifIban != null) {
+      const countRevisar = filteredSergiData.filter(row => row[columnIndices.verifIban] === '⚠').length;
+      if (countRevisar > 0) {
+        showAlertMessage(`Atención: ${countRevisar} factura(s) con Verif. IBAN = Revisar (⚠). Revisa el Excel antes de realizar pagos.`, 'warning');
+      }
+    }
+    if (columnIndices.iban != null) {
+      const ibanToProviders = new Map();
+      filteredSergiData.forEach(row => {
+        const iban = row[columnIndices.iban];
+        if (!iban || iban === '-') return;
+        const n = normIban(iban);
+        const provider = (row[columnIndices.provider] || '').trim();
+        if (!ibanToProviders.has(n)) ibanToProviders.set(n, new Set());
+        ibanToProviders.get(n).add(provider);
+      });
+      const mismoIbanVariosProveedores = [...ibanToProviders.values()].some(providers => providers.size > 1);
+      if (mismoIbanVariosProveedores) {
+        showAlertMessage('Atención: el mismo IBAN aparece en más de un proveedor/cliente. Revisa el Excel antes de realizar pagos.', 'warning');
+      }
     }
 
     try {
@@ -4657,15 +4783,18 @@ const AnalyticsPage = () => {
             const pending = columnIndices.pending ? (parseFloat(row[columnIndices.pending]) || 0) : 0;
             // Para facturas pendientes, usar el monto pendiente en lugar del total
             const amountToShow = pending > 0 ? pending : total;
-            
+            const ibanRaw = columnIndices.iban != null ? row[columnIndices.iban] : '';
+            const verifIban = columnIndices.verifIban != null ? (row[columnIndices.verifIban] || '-') : '-';
             return {
               'Fecha': formatDate(row[columnIndices.date]),
               'Número de Factura': row[columnIndices.invoiceNumber] || '-',
               [colProveedor]: row[columnIndices.provider] || '-',
               'Descripción': row[columnIndices.description] || '-',
               'Cuenta': row[columnIndices.account] || '-',
-              'Total': total, // Total real de la factura
-              [colPendiente]: columnIndices.pending ? pending : 0, // Monto pendiente
+              'Total': total,
+              [colPendiente]: columnIndices.pending ? pending : 0,
+              'IBAN': ibanRaw ? formatIBAN(ibanRaw) : '-',
+              'Verif. IBAN': verifIban,
               'Canal': channel,
               'Estado': isPending(row, columnIndices) ? (invoiceType === 'sale' ? 'Pendiente de cobro' : 'Pendiente') : (invoiceType === 'sale' ? 'Cobrado' : 'Pagado')
             };
@@ -4691,6 +4820,8 @@ const AnalyticsPage = () => {
             'Cuenta': '',
             'Total': '',
             [colPendiente]: '',
+            'IBAN': '',
+            'Verif. IBAN': '',
             'Canal': '',
             'Estado': ''
           });
@@ -4704,6 +4835,8 @@ const AnalyticsPage = () => {
             'Cuenta': '',
             'Total': `TOTAL ${channel}`,
             [colPendiente]: pendingAmount,
+            'IBAN': '',
+            'Verif. IBAN': '',
             'Canal': '',
             'Estado': ''
           });
@@ -4719,6 +4852,8 @@ const AnalyticsPage = () => {
             { wch: 20 }, // Cuenta
             { wch: 12 }, // Total
             { wch: 18 }, // Pendiente/Pendiente de cobro
+            { wch: 28 }, // IBAN
+            { wch: 12 }, // Verif. IBAN
             { wch: 15 }, // Canal
             { wch: 10 }  // Estado
           ];
@@ -4963,6 +5098,33 @@ const AnalyticsPage = () => {
       console.log('🔍 Exportando Bruno:', dataToExport.length, 'registros');
     }
 
+    // Comprobación IBAN antes de exportar: avisar si hay proveedores a revisar o mismo IBAN en distintos
+    const normIbanBruno = (iban) => (iban || '').replace(/\s/g, '').toUpperCase();
+    if (columnIndices.verifIban != null) {
+      const providersRevisar = new Set();
+      dataToExport.forEach(row => {
+        if (row[columnIndices.verifIban] === '⚠') providersRevisar.add(row[columnIndices.provider] || '');
+      });
+      if (providersRevisar.size > 0) {
+        showAlertMessage(`Atención: ${providersRevisar.size} proveedor(es)/cliente(s) con Verif. IBAN = Revisar (⚠). Revisa el Excel antes de realizar pagos.`, 'warning');
+      }
+    }
+    if (columnIndices.iban != null) {
+      const ibanToProvidersBruno = new Map();
+      dataToExport.forEach(row => {
+        const iban = row[columnIndices.iban];
+        if (!iban || iban === '-') return;
+        const n = normIbanBruno(iban);
+        const provider = (row[columnIndices.provider] || '').trim();
+        if (!ibanToProvidersBruno.has(n)) ibanToProvidersBruno.set(n, new Set());
+        ibanToProvidersBruno.get(n).add(provider);
+      });
+      const mismoIbanVariosBruno = [...ibanToProvidersBruno.values()].some(providers => providers.size > 1);
+      if (mismoIbanVariosBruno) {
+        showAlertMessage('Atención: el mismo IBAN aparece en más de un proveedor/cliente. Revisa el Excel antes de realizar pagos.', 'warning');
+      }
+    }
+
     try {
       // Etiquetas según tipo: venta (cliente/cobro) o compra (proveedor/pago)
       const colProveedor = invoiceType === 'sale' ? 'Cliente' : 'Proveedor';
@@ -5002,10 +5164,11 @@ const AnalyticsPage = () => {
         }, 0);
 
 
-        // Obtener IBAN del primer registro del proveedor (asumiendo que todos tienen el mismo)
+        // Obtener IBAN y verificación del primer registro del proveedor (asumiendo que todos tienen el mismo)
         const firstInvoice = providerInvoices[0];
         const providerIban = firstInvoice[columnIndices.iban] || '-';
         const formattedIban = providerIban !== '-' ? formatIBAN(providerIban) : '-';
+        const verifIban = columnIndices.verifIban != null ? (firstInvoice[columnIndices.verifIban] || '-') : '-';
 
         // Truncar nombre del proveedor/cliente si es muy largo (máximo 30 caracteres)
         const shortProviderName = provider.length > 30 ? provider.substring(0, 27) + '...' : provider;
@@ -5016,7 +5179,8 @@ const AnalyticsPage = () => {
           [colProveedor]: `📋 ${shortProviderName}`,
           'Número de Factura': '',
           [colValor]: '',
-          'IBAN': '' // IBAN solo en el total
+          'IBAN': '',
+          'Verif. IBAN': ''
         });
 
         // Agregar facturas del proveedor/cliente
@@ -5031,7 +5195,8 @@ const AnalyticsPage = () => {
             [colProveedor]: row[columnIndices.provider] || '-',
             'Número de Factura': row[columnIndices.invoiceNumber] || '-',
             [colValor]: valorAPagar,
-            'IBAN': '' // IBAN solo en el header
+            'IBAN': '',
+            'Verif. IBAN': ''
           });
         });
 
@@ -5041,16 +5206,18 @@ const AnalyticsPage = () => {
           [colProveedor]: '',
           'Número de Factura': '',
           [colValor]: '',
-          'IBAN': ''
+          'IBAN': '',
+          'Verif. IBAN': ''
         });
 
-        // Agregar total del proveedor/cliente con mejor formato
+        // Agregar total del proveedor/cliente con mejor formato (IBAN y Verif. IBAN en esta fila)
         excelData.push({
           'Fecha': '',
           [colProveedor]: '',
           'Número de Factura': 'TOTAL:',
           [colValor]: providerValorAPagar,
-          'IBAN': formattedIban
+          'IBAN': formattedIban,
+          'Verif. IBAN': verifIban
         });
 
         // Agregar separador visual entre proveedores/clientes
@@ -5059,7 +5226,8 @@ const AnalyticsPage = () => {
           [colProveedor]: '─'.repeat(30),
           'Número de Factura': '─'.repeat(15),
           [colValor]: '─'.repeat(18),
-          'IBAN': '─'.repeat(20)
+          'IBAN': '─'.repeat(20),
+          'Verif. IBAN': '─'.repeat(12)
         });
       });
 
@@ -5102,6 +5270,14 @@ const AnalyticsPage = () => {
             fill: { fgColor: { rgb: 'FFFF00' } }
           };
         }
+        // Formato para Verif. IBAN (columna F)
+        const verifIbanCell = XLSX.utils.encode_cell({ r: totalRow, c: 5 });
+        if (ws[verifIbanCell]) {
+          ws[verifIbanCell].s = {
+            font: { bold: true },
+            fill: { fgColor: { rgb: 'FFFF00' } }
+          };
+        }
         
         // Saltar fila de separador
         currentRow += 1;
@@ -5113,7 +5289,8 @@ const AnalyticsPage = () => {
         { wch: 35 }, // Cliente/Proveedor (más ancho para nombres largos)
         { wch: 20 }, // Número de Factura
         { wch: 18 }, // Valor a Pagar / Pendiente de cobro
-        { wch: 30 }  // IBAN (más ancho para formato con espacios)
+        { wch: 30 }, // IBAN (más ancho para formato con espacios)
+        { wch: 12 }  // Verif. IBAN
       ];
       ws['!cols'] = colWidths;
 
@@ -7921,7 +8098,7 @@ const AnalyticsPage = () => {
                     <motion.button
                       whileHover={{ scale: 1.05 }}
                       whileTap={{ scale: 0.95 }}
-                      onClick={downloadSergiData}
+                      onClick={openIbanVerifyModalSergi}
                       style={{
                         background: colors.primary,
                         color: 'white',
@@ -8341,6 +8518,16 @@ const AnalyticsPage = () => {
                                   onSort={handleChannelSort}
                                 />
                               )}
+                              {columnIndices.iban != null && (
+                                <th style={{ borderBottom: `1px solid ${colors.border}`, padding: '12px 8px', textAlign: 'left', color: colors.primary, fontWeight: 600, background: colors.card }}>
+                                  {currentHeaders[columnIndices.iban] || 'IBAN'}
+                                </th>
+                              )}
+                              {columnIndices.verifIban != null && (
+                                <th title="✓ = IBAN del proveedor correcto. ⚠ = No coincide (revisar). - = Sin dato." style={{ borderBottom: `1px solid ${colors.border}`, padding: '12px 8px', textAlign: 'center', color: colors.primary, fontWeight: 600, background: colors.card, minWidth: '80px' }}>
+                                  {currentHeaders[columnIndices.verifIban] || 'Verif. IBAN'}
+                                </th>
+                              )}
                             </tr>
                           </thead>
                           <tbody>
@@ -8419,6 +8606,22 @@ const AnalyticsPage = () => {
                                       const amountToShow = pending > 0 ? pending : total;
                                       return formatCurrency(amountToShow);
                                     })()}
+                                  </td>
+                                )}
+                                {columnIndices.iban != null && (
+                                  <td style={{ borderBottom: `1px solid ${colors.border}`, padding: '12px 8px', color: colors.textSecondary, fontSize: '12px', fontFamily: 'monospace' }} title={row[columnIndices.iban] || ''}>
+                                    {row[columnIndices.iban] ? formatIBAN(row[columnIndices.iban]) : '-'}
+                                  </td>
+                                )}
+                                {columnIndices.verifIban != null && (
+                                  <td style={{ 
+                                    borderBottom: `1px solid ${colors.border}`, 
+                                    padding: '12px 8px', 
+                                    textAlign: 'center',
+                                    fontWeight: '600',
+                                    color: row[columnIndices.verifIban] === '✓' ? colors.success : row[columnIndices.verifIban] === '⚠' ? colors.warning : colors.textSecondary
+                                  }} title={row[columnIndices.verifIban] === '✓' ? 'IBAN corresponde al proveedor' : row[columnIndices.verifIban] === '⚠' ? 'Revisar: el IBAN no coincide con el proveedor' : 'Sin verificación'}>
+                                    {row[columnIndices.verifIban] ?? '-'}
                                   </td>
                                 )}
                               </tr>
@@ -8654,7 +8857,7 @@ const AnalyticsPage = () => {
                       <motion.button
                         whileHover={{ scale: 1.05 }}
                         whileTap={{ scale: 0.95 }}
-                        onClick={downloadBrunoData}
+                        onClick={openIbanVerifyModalBruno}
                         style={{
                           background: colors.primary,
                           color: 'white',
@@ -9207,6 +9410,179 @@ const AnalyticsPage = () => {
                   }}
                 >
                   Ocultar Factura
+                </motion.button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Modal de verificación humana: contactos e IBAN antes de descargar Excel */}
+      <AnimatePresence>
+        {showIbanVerifyModal && ibanVerifyPayload && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={closeIbanVerifyModal}
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: 'rgba(0, 0, 0, 0.5)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 1000
+            }}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                background: colors.background,
+                border: `1px solid ${colors.border}`,
+                borderRadius: 12,
+                padding: '24px',
+                maxWidth: '640px',
+                width: '95%',
+                maxHeight: '85vh',
+                overflow: 'hidden',
+                display: 'flex',
+                flexDirection: 'column'
+              }}
+            >
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: '16px',
+                flexShrink: 0
+              }}>
+                <h3 style={{ margin: 0, color: colors.text, fontSize: 18, fontWeight: 600 }}>
+                  Verificación antes de descargar
+                </h3>
+                <button
+                  type="button"
+                  onClick={closeIbanVerifyModal}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: colors.textSecondary,
+                    cursor: 'pointer',
+                    padding: '4px'
+                  }}
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <p style={{
+                margin: '0 0 16px 0',
+                color: colors.textSecondary,
+                fontSize: 14,
+                lineHeight: 1.5,
+                flexShrink: 0
+              }}>
+                Verifique que los contactos e IBAN que aparecen a continuación sean correctos antes de descargar el Excel.
+              </p>
+
+              <div style={{
+                overflowY: 'auto',
+                flex: 1,
+                minHeight: 0,
+                border: `1px solid ${colors.border}`,
+                borderRadius: 8,
+                marginBottom: '20px'
+              }}>
+                <table style={{
+                  width: '100%',
+                  borderCollapse: 'collapse',
+                  fontSize: 13
+                }}>
+                  <thead>
+                    <tr style={{ background: colors.surface, borderBottom: `2px solid ${colors.border}` }}>
+                      <th style={{ padding: '10px 12px', textAlign: 'left', color: colors.text, fontWeight: 600 }}>
+                        {invoiceType === 'sale' ? 'Cliente' : 'Proveedor'}
+                      </th>
+                      <th style={{ padding: '10px 12px', textAlign: 'left', color: colors.text, fontWeight: 600 }}>
+                        IBAN
+                      </th>
+                      <th style={{ padding: '10px 12px', textAlign: 'center', color: colors.text, fontWeight: 600 }}>
+                        Verif. IBAN
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {ibanVerifyPayload.rows.map((r, i) => (
+                      <tr
+                        key={`${r.provider}-${i}`}
+                        style={{
+                          borderBottom: `1px solid ${colors.border}`,
+                          background: r.verifIban === '⚠' ? (colors.warning + '18') : 'transparent'
+                        }}
+                      >
+                        <td style={{ padding: '10px 12px', color: colors.text }}>{r.provider}</td>
+                        <td style={{ padding: '10px 12px', color: colors.text, fontFamily: 'monospace' }}>{r.iban}</td>
+                        <td style={{
+                          padding: '10px 12px',
+                          textAlign: 'center',
+                          fontWeight: 600,
+                          color: r.verifIban === '✓' ? colors.success : r.verifIban === '⚠' ? colors.warning : colors.textSecondary
+                        }}>
+                          {r.verifIban}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div style={{
+                display: 'flex',
+                gap: '12px',
+                justifyContent: 'flex-end',
+                flexShrink: 0
+              }}>
+                <motion.button
+                  type="button"
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={closeIbanVerifyModal}
+                  style={{
+                    background: 'transparent',
+                    color: colors.text,
+                    border: `1px solid ${colors.border}`,
+                    borderRadius: 8,
+                    padding: '10px 20px',
+                    fontSize: 14,
+                    fontWeight: 500,
+                    cursor: 'pointer'
+                  }}
+                >
+                  No, cancelar
+                </motion.button>
+                <motion.button
+                  type="button"
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={confirmIbanVerifyDownload}
+                  style={{
+                    background: colors.primary,
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: 8,
+                    padding: '10px 20px',
+                    fontSize: 14,
+                    fontWeight: 500,
+                    cursor: 'pointer'
+                  }}
+                >
+                  Sí, descargar Excel
                 </motion.button>
               </div>
             </motion.div>

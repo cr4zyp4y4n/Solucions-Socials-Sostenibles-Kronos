@@ -617,6 +617,23 @@ class HoldedApiService {
   }
 
   /**
+   * Normalizar nombre de contacto para comparación (evitar asignar IBAN de un proveedor a otro).
+   * Lowercase, trim, quitar acentos, colapsar espacios.
+   * @param {string} name
+   * @returns {string}
+   */
+  static normalizeContactNameForMatch(name) {
+    if (!name || typeof name !== 'string') return '';
+    return name
+      .toLowerCase()
+      .trim()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '') // quitar acentos
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  /**
    * Normalizar IBAN para comparación (quitar espacios, guiones, guión bajo; mayúsculas)
    * @param {string} iban
    * @returns {string}
@@ -922,7 +939,7 @@ class HoldedApiService {
     return allSales;
   }
 
-  // Enriquecer documentos de venta con contacto (IBAN) por contact.id o por nombre (misma lógica que compras)
+  // Enriquecer documentos de venta con contacto (IBAN) por contact.id + verificación nombre, o por nombre (misma lógica que compras)
   async _enrichSalesDocumentsWithContacts(documents, company) {
     if (!documents || documents.length === 0) return documents;
     const allContacts = await this.getAllContacts(company);
@@ -931,18 +948,24 @@ class HoldedApiService {
     const contactsMapByName = new Map();
     allContacts.forEach(contact => {
       const name = contact.name || contact.company || '';
-      const normalizedName = name.toLowerCase().trim();
+      const normalizedName = HoldedApiService.normalizeContactNameForMatch(name);
       if (normalizedName && !contactsMapByName.has(normalizedName)) {
         contactsMapByName.set(normalizedName, contact);
       }
     });
     return documents.map(doc => {
       let contactInfo = null;
-      if (doc.contact?.id) contactInfo = contactsById.get(doc.contact.id);
+      const docName = doc.contact?.name || doc.contactName || '';
+      const docNameNorm = HoldedApiService.normalizeContactNameForMatch(docName);
+      if (doc.contact?.id) {
+        const byId = contactsById.get(doc.contact.id);
+        if (byId && docNameNorm) {
+          const contactNameNorm = HoldedApiService.normalizeContactNameForMatch(byId.name || byId.company || '');
+          if (contactNameNorm === docNameNorm) contactInfo = byId;
+        }
+      }
       if (!contactInfo) {
-        const providerName = doc.contact?.name || doc.contactName || '';
-        const normalized = providerName.toLowerCase().trim();
-        contactInfo = normalized ? contactsMapByName.get(normalized) : null;
+        contactInfo = docNameNorm ? contactsMapByName.get(docNameNorm) : null;
       }
       if (!contactInfo) return doc;
       let iban = HoldedApiService.getContactIban(contactInfo);
@@ -1542,6 +1565,7 @@ class HoldedApiService {
       holded_id: holdedDocument.id, // ID original de Holded para referencia
       holded_contact_id: holdedDocument.contact?.id,
       iban: contactIban, // IBAN del proveedor
+      iban_contact_name: (contactInfo && (contactInfo.name || contactInfo.company)) || '', // Nombre del contacto del que viene el IBAN (para verificación visual)
       document_type: 'purchase' // Solo compras ahora
     };
     
@@ -1626,23 +1650,31 @@ class HoldedApiService {
       const contactsMapByName = new Map();
       allContacts.forEach(contact => {
         const name = contact.name || contact.company || '';
-        const normalizedName = name.toLowerCase().trim();
+        const normalizedName = HoldedApiService.normalizeContactNameForMatch(name);
         if (normalizedName && !contactsMapByName.has(normalizedName)) {
           contactsMapByName.set(normalizedName, contact);
         }
       });
 
-      // Enriquecer documentos con información de contactos (prioridad: contact.id, luego nombre)
+      // Enriquecer documentos con información de contactos (prioridad: contact.id + verificación nombre, luego nombre)
       const enrichedDocuments = uniqueDocuments.map((doc) => {
         try {
           let contactInfo = null;
+          const docProviderName = doc.contact?.name || doc.contactName || '';
+          const docNameNorm = HoldedApiService.normalizeContactNameForMatch(docProviderName);
+
           if (doc.contact?.id) {
-            contactInfo = contactsById.get(doc.contact.id);
+            const contactById = contactsById.get(doc.contact.id);
+            // Solo usar contacto por ID si el nombre coincide (evita asignar IBAN de otro proveedor si contact.id es erróneo)
+            if (contactById && docNameNorm) {
+              const contactNameNorm = HoldedApiService.normalizeContactNameForMatch(contactById.name || contactById.company || '');
+              if (contactNameNorm === docNameNorm) {
+                contactInfo = contactById;
+              }
+            }
           }
           if (!contactInfo) {
-            const providerName = doc.contact?.name || doc.contactName || '';
-            const normalizedProviderName = providerName.toLowerCase().trim();
-            contactInfo = normalizedProviderName ? contactsMapByName.get(normalizedProviderName) : null;
+            contactInfo = docNameNorm ? contactsMapByName.get(docNameNorm) : null;
           }
 
           if (contactInfo) {
@@ -1695,11 +1727,15 @@ class HoldedApiService {
     try {
       const purchase = await this.makeRequest(`/documents/purchase/${purchaseId}`, {}, company);
       
-      // Obtener información del contacto si está disponible
+      // Obtener información del contacto si está disponible; solo usar si el nombre coincide (evitar IBAN de otro proveedor)
       if (purchase.contact?.id) {
         try {
           const contactInfo = await this.getContact(purchase.contact.id, company);
-          purchase.contact = { ...purchase.contact, ...contactInfo };
+          const docName = HoldedApiService.normalizeContactNameForMatch(purchase.contact?.name || purchase.contactName || '');
+          const contactName = HoldedApiService.normalizeContactNameForMatch(contactInfo?.name || contactInfo?.company || '');
+          if (docName && contactName && docName === contactName) {
+            purchase.contact = { ...purchase.contact, ...contactInfo };
+          }
         } catch (error) {
           // No se pudo obtener información del contacto
         }
