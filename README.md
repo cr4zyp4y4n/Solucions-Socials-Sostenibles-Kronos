@@ -1,12 +1,12 @@
-# SSS Kronos v2.1.24
+# SSS Kronos v2.2.25
 
 
-🚀 **Release Notes - SSS Kronos v2.1.24**
+🚀 **Release Notes - SSS Kronos v2.2.25**
 
 ## 📦 Archivos de Distribución
 
 ### Windows
-- **Instalador:** SSS Kronos-2.1.24 Setup.exe (130 MB aprox.)
+- **Instalador:** SSS Kronos-2.2.25 Setup.exe (130 MB aprox.)
 - **Ubicación:** `out/make/squirrel.windows/x64/`
 - **Compatibilidad:** Windows 10/11 (64-bit)
 
@@ -14,6 +14,10 @@
 *Nota: Los instaladores para macOS y Linux se generarán en futuras versiones*
 
 ## ✨ Nuevas Características y Cambios Clave
+
+### 🆕 **v2.2.25 - Sesión de login persistente (fix Supabase Auth)**
+- ✅ **Inicio de sesión que se mantiene al cerrar/abrir la app:** Corrección del error 500 en refresh de token (*missing destination name oauth_client_id in *models.Session*). Script SQL documentado en `database/fix_auth_sessions_oauth_client_id.sql`: creación de cliente por defecto en `auth.oauth_clients` (si la tabla está vacía) y actualización de `auth.sessions` para asignar `oauth_client_id` donde era NULL. Ejecutar PASO A y PASO B en Supabase SQL Editor según las instrucciones del script.
+- 📄 **Documentación:** [database/fix_auth_sessions_oauth_client_id.sql](database/fix_auth_sessions_oauth_client_id.sql).
 
 ### 🆕 **v2.1.24 - Verificación IBAN y confirmación humana antes de descargar Excel**
 - ✅ **Verificación IBAN en Análisis (Compras/Ventas):** Asignación de IBAN solo cuando el nombre del contacto Holded coincide con el proveedor/cliente del documento; columna **Verif. IBAN** (✓/⚠/-) en tablas y en exportaciones Excel (Sergi y Bruno). Avisos al exportar si hay filas a revisar (⚠) o si el mismo IBAN aparece en más de un proveedor/cliente.
@@ -559,7 +563,7 @@
 
 ### 📥 Descargar
 1. Ve a la sección Releases de este repositorio
-2. Descarga `SSS Kronos-2.1.24 Setup.exe` (o la versión más reciente disponible)
+2. Descarga `SSS Kronos-2.2.25 Setup.exe` (o la versión más reciente disponible)
 3. Ejecuta el instalador y sigue las instrucciones
 
 ### ⚡ Primera Ejecución
@@ -602,6 +606,9 @@
 - **Documentación:** docs.supabase.com
 
 ## 🔄 Próximas Versiones
+
+### 🎯 v2.2.25 ✅ **COMPLETADA**
+- ✅ Fix sesión de login (Supabase Auth oauth_client_id): script SQL para auth.oauth_clients + auth.sessions ✅
 
 ### 🎯 v2.1.24 ✅ **COMPLETADA**
 - ✅ Verificación IBAN en Análisis: asignación por coincidencia nombre contacto, columna Verif. IBAN (✓/⚠/-), avisos al exportar ✅

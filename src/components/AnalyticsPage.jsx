@@ -1652,7 +1652,19 @@ const AnalyticsPage = () => {
         }
         return row;
       });
-      
+
+      // Log en consola: cada proveedor/cliente con el IBAN asignado (para comparación)
+      const seen = new Set();
+      console.log(`[IBAN] ${company} — Proveedor/Cliente → IBAN asignado (Verif. IBAN):`);
+      enrichedData.forEach(row => {
+        const provider = row[5] || '';
+        if (!provider || seen.has(provider)) return;
+        seen.add(provider);
+        const iban = row[20] ? String(row[20]).replace(/(.{4})/g, '$1 ').trim() : '-';
+        const verif = row[21] != null && row[21] !== '' ? row[21] : '-';
+        console.log(`  ${provider} → ${iban}  [Verif: ${verif}]`);
+      });
+
       return enrichedData;
     } catch (error) {
       console.error('Error enriqueciendo datos con IBAN de contactos:', error);
