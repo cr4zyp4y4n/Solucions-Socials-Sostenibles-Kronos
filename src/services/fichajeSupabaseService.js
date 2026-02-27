@@ -118,40 +118,44 @@ class FichajeSupabaseService {
    */
   async cerrarFichajeAutomaticamente(fichajeId, motivo = null) {
     try {
-      // Usar la función RPC para cerrar el fichaje
-      const { data, error } = await supabase.rpc('registrar_salida_fichaje', {
-        p_fichaje_id: fichajeId
+      // Preferir RPC que hace todo en un UPDATE (solo 1 registro en auditoría)
+      const { data, error } = await supabase.rpc('cerrar_fichaje_automaticamente', {
+        p_fichaje_id: fichajeId,
+        p_motivo: motivo || null
       });
 
-      if (error) throw error;
-      
-      // Marcar como modificado automáticamente por el servidor
-      const fichajeCerrado = data && data.length > 0 ? data[0] : null;
-      if (fichajeCerrado) {
-        const motivoCierre = motivo || 'Cerrado automáticamente por el servidor al fichar entrada en otro día';
-        
-        const { error: updateError } = await supabase
-          .from('fichajes')
-          .update({
-            es_modificado: true,
-            modificado_por: null, // null indica que fue el servidor
-            fecha_modificacion: new Date().toISOString(),
-            valor_original: {
-              hora_salida: null,
-              cerrado_automaticamente: true,
-              motivo: motivoCierre,
-              aviso: '⚠️ Este fichaje fue cerrado automáticamente porque se detectó que el empleado olvidó fichar la salida.'
-            }
-          })
-          .eq('id', fichajeId);
-
-        if (updateError) {
-          console.warn('Error marcando fichaje como cerrado automáticamente:', updateError);
-          // No fallar si no se puede marcar, el fichaje ya está cerrado
-        }
+      if (!error) {
+        const fichajeCerrado = data && data.length > 0 ? data[0] : null;
+        return { success: true, data: fichajeCerrado };
       }
 
-      return { success: true, data: fichajeCerrado };
+      // Fallback si la RPC no existe (no se ha ejecutado cerrar_fichaje_automatico_una_vez.sql)
+      if (error.code === '42883' || error.message?.includes('does not exist')) {
+        const { data: dataRpc } = await supabase.rpc('registrar_salida_fichaje', {
+          p_fichaje_id: fichajeId
+        });
+        const fichajeCerrado = dataRpc && dataRpc.length > 0 ? dataRpc[0] : null;
+        if (fichajeCerrado) {
+          const motivoCierre = motivo || 'Cerrado automáticamente por el servidor al fichar entrada en otro día';
+          await supabase
+            .from('fichajes')
+            .update({
+              es_modificado: true,
+              modificado_por: null,
+              fecha_modificacion: new Date().toISOString(),
+              valor_original: {
+                hora_salida: null,
+                cerrado_automaticamente: true,
+                motivo: motivoCierre,
+                aviso: '⚠️ Este fichaje fue cerrado automáticamente porque se detectó que el empleado olvidó fichar la salida.'
+              }
+            })
+            .eq('id', fichajeId);
+        }
+        return { success: true, data: fichajeCerrado };
+      }
+
+      throw error;
     } catch (error) {
       console.error('Error cerrando fichaje automáticamente:', error);
       return { success: false, error: error.message };

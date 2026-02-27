@@ -53,10 +53,12 @@ export default function FichajeEmpleadoPerfilView({ empleado, onBack }) {
       try {
         const start = startOfMonth(calendarMonth);
         const end = endOfMonth(calendarMonth);
+        const startBajas = subMonths(start, 1);
+        const endBajas = addMonths(end, 1);
         const [resFichajes, resVacaciones, resBajas] = await Promise.all([
           fichajePortalService.obtenerFichajesEmpleado(empleadoId, start, end),
           fichajePortalService.obtenerVacacionesEmpleado(empleadoId, start, end),
-          fichajePortalService.obtenerBajasEmpleado(empleadoId, start, end),
+          fichajePortalService.obtenerBajasEmpleado(empleadoId, startBajas, endBajas),
         ]);
         setFichajes(resFichajes.success ? resFichajes.data || [] : []);
         setVacaciones(resVacaciones.success ? resVacaciones.data || [] : []);
@@ -589,6 +591,58 @@ export default function FichajeEmpleadoPerfilView({ empleado, onBack }) {
               </div>
             ))}
           </div>
+        )}
+      </div>
+
+      {/* Bajas: sección solo lectura para el inspector */}
+      <div
+        style={{
+          backgroundColor: colors.card,
+          border: `1px solid ${colors.border}`,
+          borderRadius: 12,
+          padding: 20,
+          marginTop: 24,
+        }}
+      >
+        <h3 style={{ margin: '0 0 16px', fontSize: 16, fontWeight: 600, color: colors.text }}>
+          Bajas
+        </h3>
+        <p style={{ color: colors.textSecondary, fontSize: 13, margin: '0 0 12px' }}>
+          Periodos en los que el empleado no ficha (enfermedad, accidente, etc.). Solo consulta.
+        </p>
+        {bajas.length > 0 ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {bajas.map((b) => (
+              <div
+                key={b.id}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '10px 12px',
+                  backgroundColor: colors.surface,
+                  border: `1px solid ${(colors.warning || '#ed6c02')}40`,
+                  borderRadius: 8,
+                }}
+              >
+                <span style={{ fontWeight: 500, color: colors.text }}>
+                  {formatDateShortMadrid(b.fecha_inicio)} – {formatDateShortMadrid(b.fecha_fin)}
+                  {b.tipo && (
+                    <span style={{ color: colors.textSecondary, marginLeft: 8 }}>({b.tipo})</span>
+                  )}
+                  {b.notas && (
+                    <span style={{ color: colors.textSecondary, marginLeft: 8, fontSize: 12 }}>
+                      — {b.notas}
+                    </span>
+                  )}
+                </span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p style={{ color: colors.textSecondary, fontSize: 14, margin: 0 }}>
+            No hay bajas registradas en el rango mostrado.
+          </p>
         )}
       </div>
 

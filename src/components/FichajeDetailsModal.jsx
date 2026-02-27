@@ -453,7 +453,13 @@ const FichajeDetailsModal = ({ fichaje, empleadoNombre, onClose, onEdit }) => {
                     
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                       {auditoria.map((registro) => {
-                        const esModificacionPorUsuario = registro.accion === 'modificado' && registro.quien != null;
+                        // Cierre automático: lo detectamos por el contenido (valor_original.cerrado_automaticamente),
+                        // así los registros antiguos del flujo de dos pasos también se etiquetan correctamente
+                        // (en el flujo antiguo el trigger podía rellenar "quien" con el usuario que estaba fichando).
+                        const esCierreAutomatico = registro.accion === 'modificado'
+                          && (registro.valor_nuevo?.valor_original?.cerrado_automaticamente === true
+                              || registro.valor_anterior?.valor_original?.cerrado_automaticamente === true);
+                        const esModificacionPorUsuario = registro.accion === 'modificado' && registro.quien != null && !esCierreAutomatico;
                         const cuandoMs = registro.cuando ? new Date(registro.cuando).getTime() : 0;
                         const motivoGuardado = registro.motivo
                           || (esModificacionPorUsuario && auditoria.find(
@@ -461,11 +467,17 @@ const FichajeDetailsModal = ({ fichaje, empleadoNombre, onClose, onEdit }) => {
                               && Math.abs(new Date(r.cuando).getTime() - cuandoMs) < 15000
                           )?.motivo)
                           || null;
-                        const motivo = motivoGuardado
-                          || (registro.valor_nuevo?.valor_original?.motivo_cierre_auto)
-                          || (registro.valor_anterior?.valor_original?.motivo_cierre_auto)
-                          || (esModificacionPorUsuario ? 'Modificación registrada por el responsable' : null);
+                        // Cierre automático: texto de valor_original.motivo. Ajuste manual: solo registro.motivo (nunca valor_original del cierre anterior)
+                        const motivo = esCierreAutomatico
+                          ? (registro.valor_nuevo?.valor_original?.motivo || registro.valor_anterior?.valor_original?.motivo || 'Cierre automático por el sistema')
+                          : (esModificacionPorUsuario
+                              ? (motivoGuardado || 'Ajuste manual por el responsable')
+                              : motivoGuardado
+                                  || registro.valor_nuevo?.valor_original?.motivo
+                                  || registro.valor_anterior?.valor_original?.motivo
+                                  || null);
                         const quienNombre = registro.quien?.name || registro.quien?.email || (registro.quien ? 'Usuario' : null);
+                        const etiquetaTipo = esCierreAutomatico ? 'Cierre automático (sistema)' : (esModificacionPorUsuario ? 'Ajuste manual' : null);
                         return (
                           <div
                             key={registro.id}
@@ -489,6 +501,17 @@ const FichajeDetailsModal = ({ fichaje, empleadoNombre, onClose, onEdit }) => {
                                 textTransform: 'uppercase'
                               }}>
                                 {registro.accion}
+                                {etiquetaTipo && (
+                                  <span style={{
+                                    marginLeft: '8px',
+                                    fontSize: '11px',
+                                    fontWeight: '500',
+                                    color: colors.textSecondary,
+                                    textTransform: 'none'
+                                  }}>
+                                    — {etiquetaTipo}
+                                  </span>
+                                )}
                               </span>
                               <span style={{
                                 fontSize: '12px',
@@ -497,18 +520,22 @@ const FichajeDetailsModal = ({ fichaje, empleadoNombre, onClose, onEdit }) => {
                                 {formatDateTime(registro.cuando)}
                               </span>
                             </div>
-                            {quienNombre && (
+                            {esCierreAutomatico ? (
+                              <div style={{ fontSize: '11px', color: colors.textSecondary, marginBottom: motivo ? '8px' : 0 }}>
+                                Por: Sistema (al detectar fichaje olvidado)
+                              </div>
+                            ) : quienNombre ? (
                               <div style={{ fontSize: '12px', color: colors.textSecondary, marginBottom: motivo ? '8px' : 0 }}>
                                 Por: {quienNombre}
                               </div>
-                            )}
+                            ) : null}
                             {motivo && (
                               <div style={{
                                 marginTop: '4px',
                                 padding: '10px 12px',
-                                backgroundColor: colors.primary + '12',
+                                backgroundColor: esCierreAutomatico ? colors.textSecondary + '18' : colors.primary + '12',
                                 borderRadius: '6px',
-                                borderLeft: `4px solid ${colors.primary}`,
+                                borderLeft: `4px solid ${esCierreAutomatico ? colors.textSecondary : colors.primary}`,
                                 fontSize: '14px',
                                 color: colors.text,
                                 fontWeight: 500
