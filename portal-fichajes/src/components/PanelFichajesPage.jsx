@@ -10,7 +10,6 @@ import {
   AlertCircle,
   ChevronRight,
   Download,
-
   Umbrella,
 } from 'lucide-react';
 import ExcelJS from 'exceljs';
@@ -30,7 +29,7 @@ export default function PanelFichajesPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedEmpleado, setSelectedEmpleado] = useState(null);
 
-  const mesActual = useMemo(() => new Date(), []);
+  const mesActual = useMemo(() => startOfMonth(new Date()), []);
 
   useEffect(() => {
     const load = async () => {
@@ -153,47 +152,64 @@ export default function PanelFichajesPage() {
   }, [empleadosFiltrados, resumenPorEmpleado]);
 
   const descargarInforme = async () => {
-    const mesLabel = format(mesActual, 'MMMM-yyyy', { locale: es });
-    const mesTitulo = format(mesActual, "MMMM yyyy", { locale: es });
+    const fechaHasta = endOfMonth(new Date());
+    const fechaDesde = startOfMonth(addMonths(new Date(), -24));
+    const resAll = await fichajePortalService.obtenerTodosFichajes({
+      fechaInicio: fechaDesde,
+      fechaFin: fechaHasta,
+    });
+    const todosFichajes = resAll.success ? resAll.data || [] : [];
+    const empsExport = await fichajePortalService.obtenerEmpleadosConFichajes(todosFichajes);
+    const completos = todosFichajes
+      .filter((f) => f.hora_salida)
+      .slice()
+      .sort((a, b) => {
+        const porFecha = (a.fecha || '').localeCompare(b.fecha || '');
+        if (porFecha !== 0) return porFecha;
+        return (a.hora_entrada || '').localeCompare(b.hora_entrada || '');
+      });
+    const resumenExport = {};
+    empsExport.forEach((emp) => {
+      const fichajesEmp = completos.filter((f) => f.empleado_id === emp.id);
+      const horasTotales = fichajesEmp.reduce((sum, f) => sum + (f.horas_trabajadas || 0), 0);
+      resumenExport[emp.id] = { horasTotales: horasTotales.toFixed(2), diasTrabajados: fichajesEmp.length };
+    });
+
+    const desdeLabel = format(fechaDesde, 'dd-MM-yyyy');
+    const hastaLabel = format(fechaHasta, 'dd-MM-yyyy');
     const wb = new ExcelJS.Workbook();
 
-    // --- Hoja "Asistencia" (estilo hr.attendance) ---
     const wsAsistencia = wb.addWorksheet('Asistencia', { views: [{ showGridLines: true }] });
-    wsAsistencia.addRow([`Informe de asistencia - ${mesTitulo}`]);
+    wsAsistencia.addRow([`Informe de asistencia (todos los datos)`]);
+    wsAsistencia.addRow([`Desde ${desdeLabel} hasta ${hastaLabel}`]);
     wsAsistencia.getRow(1).font = { bold: true, size: 12 };
+    wsAsistencia.getRow(2).font = { size: 11 };
     wsAsistencia.addRow([]);
-    const headersAsistencia = ['Empleado', 'Fecha', 'Entrada', 'Salida', 'Horas trabajadas', 'Horas extraordinarias', 'Horas extras'];
+    const headersAsistencia = ['Mes', 'Empleado', 'Fecha', 'Entrada', 'Salida', 'Horas trabajadas', 'Horas extraordinarias', 'Horas extras'];
     wsAsistencia.addRow(headersAsistencia);
-    const rowHeaders = wsAsistencia.getRow(3);
+    const rowHeaders = wsAsistencia.getRow(4);
     rowHeaders.eachCell((c) => {
       c.font = { bold: true };
       c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8E8E8' } };
     });
-    const completos = fichajesMes
-      .filter((f) => f.hora_salida)
-      .slice()
-      .sort((a, b) => {
-        const na = empleados.find((e) => e.id === a.empleado_id)?.nombreCompleto || a.empleado_id;
-        const nb = empleados.find((e) => e.id === b.empleado_id)?.nombreCompleto || b.empleado_id;
-        if (na !== nb) return String(na).localeCompare(String(nb));
-        return a.fecha.localeCompare(b.fecha) || (a.hora_entrada || '').localeCompare(b.hora_entrada || '');
-      });
     completos.forEach((f) => {
-      const emp = empleados.find((e) => e.id === f.empleado_id);
+      const emp = empsExport.find((e) => e.id === f.empleado_id);
       const nombre = emp?.nombreCompleto || emp?.name || f.empleado_id || '';
       const horas = f.horas_trabajadas != null ? Number(f.horas_trabajadas) : 0;
-      // Horas extraordinarias/extras en standby: dependen del contrato (8h, 4h, 6h...)
+      const mes = f.fecha ? format(parseISO(f.fecha), 'yyyy-MM') : '';
       wsAsistencia.addRow([
+        mes,
         nombre,
         f.fecha,
         f.hora_entrada ? formatTimeMadrid(f.hora_entrada) : '',
         f.hora_salida ? formatTimeMadrid(f.hora_salida) : '',
         horas.toFixed(2),
-        '', // Horas extraordinarias: pendiente jornada contractual
-        '', // Horas extras: pendiente jornada contractual
+        '',
+        '',
       ]);
     });
     wsAsistencia.columns = [
+      { width: 8 },
       { width: 28 },
       { width: 12 },
       { width: 10 },
@@ -203,21 +219,22 @@ export default function PanelFichajesPage() {
       { width: 14 },
     ];
 
-    // --- Hoja "Resumen" (por empleado) ---
     const wsResumen = wb.addWorksheet('Resumen');
-    wsResumen.addRow([`Resumen por empleado - ${mesTitulo}`]);
+    wsResumen.addRow([`Resumen por empleado (todos los datos)`]);
+    wsResumen.addRow([`Desde ${desdeLabel} hasta ${hastaLabel}`]);
     wsResumen.getRow(1).font = { bold: true, size: 12 };
+    wsResumen.getRow(2).font = { size: 11 };
     wsResumen.addRow([]);
-    const headersResumen = ['Empleado', 'Horas mes', 'Días trabajados'];
+    const headersResumen = ['Empleado', 'Horas totales', 'Días trabajados'];
     wsResumen.addRow(headersResumen);
-    wsResumen.getRow(3).eachCell((c) => {
+    wsResumen.getRow(4).eachCell((c) => {
       c.font = { bold: true };
       c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8E8E8' } };
     });
-    empleadosOrdenados.forEach((emp) => {
-      const resumen = resumenPorEmpleado[emp.id] || {};
+    [...empsExport].sort((a, b) => (a.nombreCompleto || a.name || '').localeCompare(b.nombreCompleto || b.name || '')).forEach((emp) => {
+      const r = resumenExport[emp.id] || { horasTotales: '0', diasTrabajados: 0 };
       const nombre = emp.nombreCompleto || emp.name || 'Sin nombre';
-      wsResumen.addRow([nombre, resumen.horasTotales ?? '0', resumen.diasTrabajados ?? 0]);
+      wsResumen.addRow([nombre, r.horasTotales, r.diasTrabajados]);
     });
     wsResumen.columns = [{ width: 28 }, { width: 14 }, { width: 18 }];
 
@@ -226,7 +243,7 @@ export default function PanelFichajesPage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `Asistencia_${mesLabel}.xlsx`;
+    a.download = `Asistencia_completo_${format(new Date(), 'yyyy-MM-dd')}.xlsx`;
     a.click();
     URL.revokeObjectURL(url);
   };
