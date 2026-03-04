@@ -780,7 +780,7 @@ const FichajeEmpleadoPerfil = ({ empleado, onBack }) => {
                   <span style={{ fontWeight: '500', color: colors.text }}>
                     {formatDateShortMadrid(b.fecha_inicio)} – {formatDateShortMadrid(b.fecha_fin)}
                     {b.tipo && <span style={{ color: colors.textSecondary, marginLeft: 8 }}>({b.tipo})</span>}
-                    {b.notas && <span style={{ color: colors.textSecondary, marginLeft: 8, fontSize: '12px' }}— {b.notas}</span>}
+                    {b.notas && <span style={{ color: colors.textSecondary, marginLeft: 8, fontSize: '12px' }}>— {b.notas}</span>}
                   </span>
                   <button
                     type="button"
