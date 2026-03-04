@@ -154,48 +154,79 @@ export default function PanelFichajesPage() {
 
   const descargarInforme = async () => {
     const mesLabel = format(mesActual, 'MMMM-yyyy', { locale: es });
+    const mesTitulo = format(mesActual, "MMMM yyyy", { locale: es });
     const wb = new ExcelJS.Workbook();
 
-    // Hoja Empleados: títulos en mayúsculas y negrita
-    const wsEmpleados = wb.addWorksheet('Empleados');
-    const headersEmpleados = ['EMPLEADO', 'HORAS MES', 'DÍAS TRABAJADOS'];
-    wsEmpleados.addRow(headersEmpleados);
-    wsEmpleados.getRow(1).eachCell((c) => {
+    // --- Hoja "Asistencia" (estilo hr.attendance) ---
+    const wsAsistencia = wb.addWorksheet('Asistencia', { views: [{ showGridLines: true }] });
+    wsAsistencia.addRow([`Informe de asistencia - ${mesTitulo}`]);
+    wsAsistencia.getRow(1).font = { bold: true, size: 12 };
+    wsAsistencia.addRow([]);
+    const headersAsistencia = ['Empleado', 'Fecha', 'Entrada', 'Salida', 'Horas trabajadas', 'Horas extraordinarias', 'Horas extras'];
+    wsAsistencia.addRow(headersAsistencia);
+    const rowHeaders = wsAsistencia.getRow(3);
+    rowHeaders.eachCell((c) => {
       c.font = { bold: true };
+      c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8E8E8' } };
+    });
+    const completos = fichajesMes
+      .filter((f) => f.hora_salida)
+      .slice()
+      .sort((a, b) => {
+        const na = empleados.find((e) => e.id === a.empleado_id)?.nombreCompleto || a.empleado_id;
+        const nb = empleados.find((e) => e.id === b.empleado_id)?.nombreCompleto || b.empleado_id;
+        if (na !== nb) return String(na).localeCompare(String(nb));
+        return a.fecha.localeCompare(b.fecha) || (a.hora_entrada || '').localeCompare(b.hora_entrada || '');
+      });
+    completos.forEach((f) => {
+      const emp = empleados.find((e) => e.id === f.empleado_id);
+      const nombre = emp?.nombreCompleto || emp?.name || f.empleado_id || '';
+      const horas = f.horas_trabajadas != null ? Number(f.horas_trabajadas) : 0;
+      // Horas extraordinarias/extras en standby: dependen del contrato (8h, 4h, 6h...)
+      wsAsistencia.addRow([
+        nombre,
+        f.fecha,
+        f.hora_entrada ? formatTimeMadrid(f.hora_entrada) : '',
+        f.hora_salida ? formatTimeMadrid(f.hora_salida) : '',
+        horas.toFixed(2),
+        '', // Horas extraordinarias: pendiente jornada contractual
+        '', // Horas extras: pendiente jornada contractual
+      ]);
+    });
+    wsAsistencia.columns = [
+      { width: 28 },
+      { width: 12 },
+      { width: 10 },
+      { width: 10 },
+      { width: 18 },
+      { width: 22 },
+      { width: 14 },
+    ];
+
+    // --- Hoja "Resumen" (por empleado) ---
+    const wsResumen = wb.addWorksheet('Resumen');
+    wsResumen.addRow([`Resumen por empleado - ${mesTitulo}`]);
+    wsResumen.getRow(1).font = { bold: true, size: 12 };
+    wsResumen.addRow([]);
+    const headersResumen = ['Empleado', 'Horas mes', 'Días trabajados'];
+    wsResumen.addRow(headersResumen);
+    wsResumen.getRow(3).eachCell((c) => {
+      c.font = { bold: true };
+      c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8E8E8' } };
     });
     empleadosOrdenados.forEach((emp) => {
       const resumen = resumenPorEmpleado[emp.id] || {};
       const nombre = emp.nombreCompleto || emp.name || 'Sin nombre';
-      wsEmpleados.addRow([nombre, resumen.horasTotales ?? '0', resumen.diasTrabajados ?? 0]);
+      wsResumen.addRow([nombre, resumen.horasTotales ?? '0', resumen.diasTrabajados ?? 0]);
     });
-
-    // Hoja Detalle: títulos en mayúsculas y negrita
-    const wsDetalle = wb.addWorksheet('Detalle');
-    const headersDetalle = ['EMPLEADO', 'FECHA', 'HORA ENTRADA', 'HORA SALIDA', 'HORAS TRABAJADAS'];
-    wsDetalle.addRow(headersDetalle);
-    wsDetalle.getRow(1).eachCell((c) => {
-      c.font = { bold: true };
-    });
-    fichajesMes
-      .filter((f) => f.hora_salida)
-      .forEach((f) => {
-        const emp = empleados.find((e) => e.id === f.empleado_id);
-        const nombre = emp?.nombreCompleto || emp?.name || f.empleado_id || '';
-        wsDetalle.addRow([
-          nombre,
-          f.fecha,
-          f.hora_entrada ? formatTimeMadrid(f.hora_entrada) : '',
-          f.hora_salida ? formatTimeMadrid(f.hora_salida) : '',
-          f.horas_trabajadas != null ? Number(f.horas_trabajadas).toFixed(2) : '',
-        ]);
-      });
+    wsResumen.columns = [{ width: 28 }, { width: 14 }, { width: 18 }];
 
     const buffer = await wb.xlsx.writeBuffer();
     const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `Informe-Fichajes-${mesLabel}.xlsx`;
+    a.download = `Asistencia_${mesLabel}.xlsx`;
     a.click();
     URL.revokeObjectURL(url);
   };
