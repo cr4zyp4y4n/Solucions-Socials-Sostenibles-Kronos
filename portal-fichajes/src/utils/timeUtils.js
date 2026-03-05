@@ -54,3 +54,13 @@ export function formatDateTimeMadrid(dateString) {
     return 'N/A';
   }
 }
+
+/** Formatea horas en decimal a "Xh Ym" (ej: 1.63 -> "1h 38m") */
+export function formatearHorasDecimal(horas) {
+  if (horas == null || (typeof horas !== 'number' && isNaN(Number(horas)))) return '0h';
+  const h = Number(horas);
+  const horasEnteras = Math.floor(h);
+  const minutos = Math.round((h - horasEnteras) * 60);
+  if (minutos === 0) return `${horasEnteras}h`;
+  return `${horasEnteras}h ${minutos}m`;
+}

@@ -5,7 +5,7 @@ import { useTheme } from './ThemeContext';
 import { useCurrency } from './CurrencyContext';
 import { useAuth } from './AuthContext';
 import { supabase } from '../config/supabase';
-import holdedApi from '../services/holdedApi';
+import holdedApi, { HoldedApiService } from '../services/holdedApi';
 import { brunoInvoicesService } from '../services/brunoInvoicesService';
 import { solucionsInvoicesService } from '../services/solucionsInvoicesService';
 import { Calendar, Filter, Upload, FileText, Check, X, ChevronDown, ChevronRight, Download, Copy, Loader2, RotateCcw } from 'lucide-react';
@@ -1482,7 +1482,13 @@ const AnalyticsPage = () => {
       const row = [];
       expectedHeaders.forEach(header => {
         if (header === 'Verif. IBAN') {
-          // Indicador visual: ✓ = proveedor y contacto IBAN coinciden, ⚠ = no coinciden (revisar), - = sin dato
+          // Aviso cuando se encontró contacto por ID pero el nombre no coincidió (no se asignó IBAN)
+          if (purchase.iban_verif_reason === 'ID≠nombre') {
+            const enHolded = purchase.iban_contact_name_by_id ? ` (en Holded: ${purchase.iban_contact_name_by_id})` : '';
+            row.push(`⚠ ID≠nombre${enHolded}`);
+            return;
+          }
+          // ✓ = proveedor y contacto IBAN coinciden, ⚠ = no coinciden (revisar), - = sin dato
           const provider = purchase.provider || '';
           const ibanContactName = purchase.iban_contact_name || '';
           const hasIban = !!(purchase.iban && String(purchase.iban).trim());
@@ -1571,50 +1577,26 @@ const AnalyticsPage = () => {
       // Obtener todos los contactos de la empresa
       const allContacts = await holdedApi.getAllContacts(company);
       
-      // Normalizar nombre para comparación (igual que holdedApi: quitar acentos para que Café Candelas = Cafe Candelas)
-      const normalizeContactName = (name) => {
-        if (!name || typeof name !== 'string') return '';
-        return name
-          .toLowerCase()
-          .trim()
-          .normalize('NFD')
-          .replace(/[\u0300-\u036f]/g, '')
-          .replace(/\s+/g, ' ')
-          .trim();
-      };
-
-      // Crear un mapa de contactos por nombre normalizado (sin acentos, para no asignar IBAN de otro proveedor)
+      // Crear un mapa de contactos por nombre normalizado y por nombre "base" (sin S.A./S.L.) para emparejar "CASA GAY" con "CASA GAY S.A."
       const contactsMap = new Map();
       allContacts.forEach(contact => {
         const contactName = contact.name || contact.company || '';
-        const normalizedName = normalizeContactName(contactName);
-        
-        // Buscar IBAN en diferentes campos del contacto
+        const normalizedName = HoldedApiService.normalizeContactNameForMatch(contactName);
+        const coreName = HoldedApiService.normalizeContactNameCore(normalizedName);
+
         let iban = '';
-        if (contact.iban) {
-          iban = contact.iban;
-        } else if (contact.bankAccount) {
-          iban = contact.bankAccount;
-        } else if (contact.bank_account) {
-          iban = contact.bank_account;
-        } else if (contact.accountNumber) {
-          iban = contact.accountNumber;
-        } else if (contact.account_number) {
-          iban = contact.account_number;
-        } else if (contact.bankDetails) {
-          iban = contact.bankDetails;
-        } else if (contact.bank_details) {
-          iban = contact.bank_details;
-        } else if (contact.paymentInfo) {
-          iban = contact.paymentInfo;
-        } else if (contact.payment_info) {
-          iban = contact.payment_info;
-        }
-        
-        // No sobrescribir: si dos contactos tienen el mismo nombre normalizado, mantener el primero (evita asignar IBAN de un proveedor a otro)
-        if (normalizedName && iban && !contactsMap.has(normalizedName)) {
-          contactsMap.set(normalizedName, iban);
-        }
+        if (contact.iban) iban = contact.iban;
+        else if (contact.bankAccount) iban = contact.bankAccount;
+        else if (contact.bank_account) iban = contact.bank_account;
+        else if (contact.accountNumber) iban = contact.accountNumber;
+        else if (contact.account_number) iban = contact.account_number;
+        else if (contact.bankDetails) iban = contact.bankDetails;
+        else if (contact.bank_details) iban = contact.bank_details;
+        else if (contact.paymentInfo) iban = contact.paymentInfo;
+        else if (contact.payment_info) iban = contact.payment_info;
+
+        if (normalizedName && iban && !contactsMap.has(normalizedName)) contactsMap.set(normalizedName, iban);
+        if (coreName && coreName !== normalizedName && iban && !contactsMap.has(coreName)) contactsMap.set(coreName, iban);
       });
       
       // Función para normalizar nombres de proveedores (quitar acentos + limpieza; misma lógica que holdedApi para no mezclar IBANs)
@@ -1637,11 +1619,15 @@ const AnalyticsPage = () => {
       
       // Enriquecer los datos de facturas con IBAN de contactos (solo si la fila no tiene IBAN; el correcto viene de Holded por contact.id)
       const enrichedData = processedData.map(row => {
-        const providerName = row[5]; // Índice del proveedor en las columnas
+        const providerName = row[5];
         if (providerName) {
           const normalizedProviderName = normalizeProviderName(providerName);
-          const contactIban = contactsMap.get(normalizedProviderName);
-          
+          let contactIban = contactsMap.get(normalizedProviderName);
+          if (!contactIban) {
+            const providerCore = HoldedApiService.normalizeContactNameCore(normalizedProviderName);
+            contactIban = providerCore ? contactsMap.get(providerCore) : null;
+          }
+
           // Solo rellenar si la fila no tiene IBAN (evitar pisar el IBAN correcto que ya viene de Holded)
           if (contactIban && (!row[20] || row[20] === '' || row[20] === null)) {
             const newRow = [...row];
@@ -2418,6 +2404,42 @@ const AnalyticsPage = () => {
     });
   }, [baseData, brunoData, selectedDataset, columnIndices]);
 
+  // Helper: asigna canal por TAGS (prioridad) o por descripción/cuenta (fallback)
+  const getChannelForRow = (row, colIdx, dataset) => {
+    if (dataset === 'idoni') {
+      const tienda = row[2] || '';
+      return tienda || 'Ventas Diarias';
+    }
+    const description = (row[colIdx.description] || '').toLowerCase();
+    const account = (row[colIdx.account] || '').toLowerCase();
+    const tagsRaw = colIdx.tags != null ? row[colIdx.tags] : null;
+    const tagsStr = (Array.isArray(tagsRaw) ? tagsRaw.join(', ') : (tagsRaw != null ? String(tagsRaw) : '')).toLowerCase();
+
+    if (dataset === 'solucions') {
+      if (tagsStr.includes('estructura')) return 'Estructura';
+      if (tagsStr.includes('catering')) return 'Catering';
+      if (tagsStr.includes('idoni')) return 'IDONI';
+      const invoiceNum = (row[colIdx.invoiceNumber] || '').toString().trim();
+      const isExplicitCatering = colIdx.invoiceNumber != null && SOLUCIONS_CATERING_EXPLICIT_INVOICE_NUMBERS.includes(invoiceNum);
+      if (description.includes('estructura') || account.includes('estructura')) return 'Estructura';
+      if (description.includes('catering') || account.includes('catering') || isExplicitCatering) return 'Catering';
+      if (description.includes('idoni') || account.includes('idoni')) return 'IDONI';
+      return 'Otros';
+    }
+    if (dataset === 'menjar') {
+      if (tagsStr.includes('obrador')) return 'OBRADOR';
+      if (tagsStr.includes('estructura')) return 'ESTRUCTURA';
+      if (tagsStr.includes('catering')) return 'CATERING';
+      const invoiceNum = (row[colIdx.invoiceNumber] || '').toString().trim();
+      const isExplicitObrador = colIdx.invoiceNumber != null && MENJAR_OBRADOR_EXPLICIT_INVOICE_NUMBERS.includes(invoiceNum);
+      if (description.includes('obrador') || account.includes('obrador') || isExplicitObrador) return 'OBRADOR';
+      if (description.includes('estructura') || account.includes('estructura')) return 'ESTRUCTURA';
+      if (description.includes('catering') || account.includes('catering')) return 'CATERING';
+      return 'Otros';
+    }
+    return 'Otros';
+  };
+
   // Calcular totales por canal según el dataset
   const channelStats = useMemo(() => {
     if (!columnIndices.description && !columnIndices.account) return {};
@@ -2449,48 +2471,14 @@ const AnalyticsPage = () => {
     }
     
     sergiData.forEach(row => {
-      const description = (row[columnIndices.description] || '').toLowerCase();
-      const account = (row[columnIndices.account] || '').toLowerCase();
+      const channel = getChannelForRow(row, columnIndices, selectedDataset);
       const total = columnIndices.total ? (parseFloat(row[columnIndices.total]) || 0) : 0;
       const pending = columnIndices.pending ? (parseFloat(row[columnIndices.pending]) || 0) : 0;
-      
-      // Buscar en descripción primero, si no encuentra nada, buscar en cuenta
-      let channel = 'Otros';
-      
-      if (selectedDataset === 'solucions') {
-        const invoiceNum = (row[columnIndices.invoiceNumber] || '').toString().trim();
-        const isExplicitCatering = columnIndices.invoiceNumber != null && SOLUCIONS_CATERING_EXPLICIT_INVOICE_NUMBERS.includes(invoiceNum);
-        if (description.includes('estructura') || account.includes('estructura')) {
-          channel = 'Estructura';
-        } else if (description.includes('catering') || account.includes('catering') || isExplicitCatering) {
-          channel = 'Catering';
-        } else if (description.includes('idoni') || account.includes('idoni')) {
-          channel = 'IDONI';
-        }
-      } else if (selectedDataset === 'menjar') {
-        const invoiceNum = (row[columnIndices.invoiceNumber] || '').toString().trim();
-        const isExplicitObrador = columnIndices.invoiceNumber != null && MENJAR_OBRADOR_EXPLICIT_INVOICE_NUMBERS.includes(invoiceNum);
-        if (description.includes('obrador') || account.includes('obrador') || isExplicitObrador) {
-          channel = 'OBRADOR';
-        } else if (description.includes('estructura') || account.includes('estructura')) {
-          channel = 'ESTRUCTURA';
-        } else if (description.includes('catering') || account.includes('catering')) {
-          channel = 'CATERING';
-        }
-      } else if (selectedDataset === 'idoni') {
-        // Para IDONI, usar la tienda como canal
-        const tienda = row[2] || ''; // Índice de la tienda en los datos de IDONI
-        if (tienda) {
-          channel = tienda;
-        } else {
-          channel = 'Ventas Diarias';
-        }
-      }
-      
-      // Para facturas pendientes, usar el monto pendiente en lugar del total
       const amountToAdd = pending > 0 ? pending : total;
-      channels[channel].total += amountToAdd;
-      channels[channel].count += 1;
+      if (channels[channel]) {
+        channels[channel].total += amountToAdd;
+        channels[channel].count += 1;
+      }
     });
     
     return channels;
@@ -2511,61 +2499,14 @@ const AnalyticsPage = () => {
     return data;
   }, [generalData, selectedProvider, columnIndices.provider, sortConfig]);
 
-  // Filtrar datos por canal seleccionado
+  // Filtrar datos por canal seleccionado (usa getChannelForRow: tags primero, luego desc/cuenta)
   const channelFilteredData = useMemo(() => {
     if (!selectedChannel) return [];
-    
-    // Para IDONI, no necesitamos description y account
     if (selectedDataset === 'idoni') {
-      return sergiData.filter(row => {
-        const tienda = row[2] || ''; // Índice de la tienda
-        return tienda === selectedChannel;
-      });
+      return sergiData.filter(row => (row[2] || '') === selectedChannel);
     }
-    
     if (!columnIndices.description || !columnIndices.account) return [];
-    
-    return sergiData.filter(row => {
-      const description = (row[columnIndices.description] || '').toLowerCase();
-      const account = (row[columnIndices.account] || '').toLowerCase();
-      
-      if (selectedDataset === 'solucions') {
-        const invoiceNum = (row[columnIndices.invoiceNumber] || '').toString().trim();
-        const isExplicitCatering = columnIndices.invoiceNumber != null && SOLUCIONS_CATERING_EXPLICIT_INVOICE_NUMBERS.includes(invoiceNum);
-        switch (selectedChannel) {
-          case 'Estructura':
-            return description.includes('estructura') || account.includes('estructura');
-          case 'Catering':
-            return description.includes('catering') || account.includes('catering') || isExplicitCatering;
-          case 'IDONI':
-            return description.includes('idoni') || account.includes('idoni');
-          case 'Otros':
-            return !description.includes('estructura') && !description.includes('catering') && 
-                   !description.includes('idoni') && !account.includes('estructura') && 
-                   !account.includes('catering') && !account.includes('idoni') && !isExplicitCatering;
-          default:
-            return false;
-        }
-      } else if (selectedDataset === 'menjar') {
-        const invoiceNum = (row[columnIndices.invoiceNumber] || '').toString().trim();
-        const isExplicitObrador = columnIndices.invoiceNumber != null && MENJAR_OBRADOR_EXPLICIT_INVOICE_NUMBERS.includes(invoiceNum);
-        switch (selectedChannel) {
-          case 'OBRADOR':
-            return description.includes('obrador') || account.includes('obrador') || isExplicitObrador;
-          case 'ESTRUCTURA':
-            return description.includes('estructura') || account.includes('estructura');
-          case 'CATERING':
-            return description.includes('catering') || account.includes('catering');
-          case 'Otros':
-            return !description.includes('obrador') && !description.includes('estructura') && 
-                   !description.includes('catering') && !account.includes('obrador') &&
-                   !account.includes('estructura') && !account.includes('catering') && !isExplicitObrador;
-          default:
-            return false;
-        }
-      }
-      return false;
-    });
+    return sergiData.filter(row => getChannelForRow(row, columnIndices, selectedDataset) === selectedChannel);
   }, [sergiData, selectedChannel, columnIndices, selectedDataset]);
 
   // Columnas disponibles para selección
@@ -2800,55 +2741,9 @@ const AnalyticsPage = () => {
     });
   }
 
-  // --- Unificar lógica de filtrado de facturas por canal ---
+  // --- Unificar lógica de filtrado de facturas por canal (tags primero, luego desc/cuenta) ---
   function getChannelRows(channel, data, columnIndices) {
-    return data.filter(row => {
-      // Para IDONI, usar la tienda como canal
-      if (selectedDataset === 'idoni') {
-        const tienda = row[2] || ''; // Índice de la tienda
-        return tienda === channel;
-      }
-      
-      const description = (row[columnIndices.description] || '').toLowerCase();
-      const account = (row[columnIndices.account] || '').toLowerCase();
-      
-      if (selectedDataset === 'solucions') {
-        const invoiceNum = (row[columnIndices.invoiceNumber] || '').toString().trim();
-        const isExplicitCatering = columnIndices.invoiceNumber != null && SOLUCIONS_CATERING_EXPLICIT_INVOICE_NUMBERS.includes(invoiceNum);
-        switch (channel) {
-          case 'Estructura':
-            return description.includes('estructura') || account.includes('estructura');
-          case 'Catering':
-            return description.includes('catering') || account.includes('catering') || isExplicitCatering;
-          case 'IDONI':
-            return description.includes('idoni') || account.includes('idoni');
-          case 'Otros':
-            return !description.includes('estructura') && !description.includes('catering') && 
-                   !description.includes('idoni') && !account.includes('estructura') && 
-                   !account.includes('catering') && !account.includes('idoni') && !isExplicitCatering;
-          default:
-            return false;
-        }
-      } else if (selectedDataset === 'menjar') {
-        const invoiceNum = (row[columnIndices.invoiceNumber] || '').toString().trim();
-        const isExplicitObrador = columnIndices.invoiceNumber != null && MENJAR_OBRADOR_EXPLICIT_INVOICE_NUMBERS.includes(invoiceNum);
-        switch (channel) {
-          case 'OBRADOR':
-            return description.includes('obrador') || account.includes('obrador') || isExplicitObrador;
-          case 'ESTRUCTURA':
-            return description.includes('estructura') || account.includes('estructura');
-          case 'CATERING':
-            return description.includes('catering') || account.includes('catering');
-          case 'Otros':
-            return !description.includes('obrador') && !description.includes('estructura') && 
-                   !description.includes('catering') && !account.includes('obrador') &&
-                   !account.includes('estructura') && !account.includes('catering') && !isExplicitObrador;
-          default:
-            return false;
-        }
-      }
-      return false;
-    });
+    return data.filter(row => getChannelForRow(row, columnIndices, selectedDataset) === channel);
   }
 
   // Función para manejar el click en una tarjeta de canal
@@ -4737,55 +4632,7 @@ const AnalyticsPage = () => {
       // Crear una hoja por cada canal
       channels.forEach(channel => {
         // Filtrar datos por canal
-        let channelData;
-        if (selectedDataset === 'idoni') {
-          channelData = filteredSergiData.filter(row => {
-            const tienda = row[2] || '';
-            return tienda === channel;
-          });
-        } else {
-          channelData = filteredSergiData.filter(row => {
-            const description = (row[columnIndices.description] || '').toLowerCase();
-            const account = (row[columnIndices.account] || '').toLowerCase();
-            
-            if (selectedDataset === 'solucions') {
-              const invoiceNum = (row[columnIndices.invoiceNumber] || '').toString().trim();
-              const isExplicitCatering = columnIndices.invoiceNumber != null && SOLUCIONS_CATERING_EXPLICIT_INVOICE_NUMBERS.includes(invoiceNum);
-              switch (channel) {
-                case 'Estructura':
-                  return description.includes('estructura') || account.includes('estructura');
-                case 'Catering':
-                  return description.includes('catering') || account.includes('catering') || isExplicitCatering;
-                case 'IDONI':
-                  return description.includes('idoni') || account.includes('idoni');
-                case 'Otros':
-                  return !description.includes('estructura') && !description.includes('catering') && 
-                         !description.includes('idoni') && !account.includes('estructura') && 
-                         !account.includes('catering') && !account.includes('idoni') && !isExplicitCatering;
-                default:
-                  return false;
-              }
-            } else if (selectedDataset === 'menjar') {
-              const invoiceNum = (row[columnIndices.invoiceNumber] || '').toString().trim();
-              const isExplicitObrador = columnIndices.invoiceNumber != null && MENJAR_OBRADOR_EXPLICIT_INVOICE_NUMBERS.includes(invoiceNum);
-              switch (channel) {
-                case 'OBRADOR':
-                  return description.includes('obrador') || account.includes('obrador') || isExplicitObrador;
-                case 'ESTRUCTURA':
-                  return description.includes('estructura') || account.includes('estructura');
-                case 'CATERING':
-                  return description.includes('catering') || account.includes('catering');
-                case 'Otros':
-                  return !description.includes('obrador') && !description.includes('estructura') && 
-                         !description.includes('catering') && !account.includes('obrador') &&
-                         !account.includes('estructura') && !account.includes('catering') && !isExplicitObrador;
-                default:
-                  return false;
-              }
-            }
-            return false;
-          });
-        }
+        const channelData = filteredSergiData.filter(row => getChannelForRow(row, columnIndices, selectedDataset) === channel);
 
         // Solo crear hoja si hay datos para este canal
         if (channelData.length > 0) {
@@ -4902,52 +4749,7 @@ const AnalyticsPage = () => {
       
       // Agregar totales por canal
       channels.forEach(channel => {
-        const channelData = filteredSergiData.filter(row => {
-          if (selectedDataset === 'idoni') {
-            const tienda = row[2] || '';
-            return tienda === channel;
-          } else {
-            const description = (row[columnIndices.description] || '').toLowerCase();
-            const account = (row[columnIndices.account] || '').toLowerCase();
-            
-            if (selectedDataset === 'solucions') {
-              const invoiceNum = (row[columnIndices.invoiceNumber] || '').toString().trim();
-              const isExplicitCatering = columnIndices.invoiceNumber != null && SOLUCIONS_CATERING_EXPLICIT_INVOICE_NUMBERS.includes(invoiceNum);
-              switch (channel) {
-                case 'Estructura':
-                  return description.includes('estructura') || account.includes('estructura');
-                case 'Catering':
-                  return description.includes('catering') || account.includes('catering') || isExplicitCatering;
-                case 'IDONI':
-                  return description.includes('idoni') || account.includes('idoni');
-                case 'Otros':
-                  return !description.includes('estructura') && !description.includes('catering') && 
-                         !description.includes('idoni') && !account.includes('estructura') && 
-                         !account.includes('catering') && !account.includes('idoni') && !isExplicitCatering;
-                default:
-                  return false;
-              }
-            } else if (selectedDataset === 'menjar') {
-              const invoiceNum = (row[columnIndices.invoiceNumber] || '').toString().trim();
-              const isExplicitObrador = columnIndices.invoiceNumber != null && MENJAR_OBRADOR_EXPLICIT_INVOICE_NUMBERS.includes(invoiceNum);
-              switch (channel) {
-                case 'OBRADOR':
-                  return description.includes('obrador') || account.includes('obrador') || isExplicitObrador;
-                case 'ESTRUCTURA':
-                  return description.includes('estructura') || account.includes('estructura');
-                case 'CATERING':
-                  return description.includes('catering') || account.includes('catering');
-                case 'Otros':
-                  return !description.includes('obrador') && !description.includes('estructura') && 
-                         !description.includes('catering') && !account.includes('obrador') &&
-                         !account.includes('estructura') && !account.includes('catering') && !isExplicitObrador;
-                default:
-                  return false;
-              }
-            }
-            return false;
-          }
-        });
+        const channelData = filteredSergiData.filter(row => getChannelForRow(row, columnIndices, selectedDataset) === channel);
 
         if (channelData.length > 0) {
           const pendienteCanal = channelData.reduce((sum, row) => {

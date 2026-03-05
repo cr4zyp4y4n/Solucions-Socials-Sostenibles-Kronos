@@ -16,7 +16,7 @@ import ExcelJS from 'exceljs';
 import { startOfMonth, endOfMonth, startOfYear, format, addMonths, parseISO, differenceInCalendarDays, addDays } from 'date-fns';
 import { es } from 'date-fns/locale';
 import * as fichajePortalService from '../services/fichajePortalService';
-import { formatTimeMadrid, formatDateShortMadrid } from '../utils/timeUtils';
+import { formatTimeMadrid, formatDateShortMadrid, formatearHorasDecimal } from '../utils/timeUtils';
 import { colors } from '../theme';
 import FichajeEmpleadoPerfilView from './FichajeEmpleadoPerfilView';
 
@@ -440,7 +440,7 @@ export default function PanelFichajesPage() {
                         Horas mes
                       </div>
                       <div style={{ fontSize: 18, fontWeight: 700, color: colors.text }}>
-                        {resumen.horasTotales}h
+                        {formatearHorasDecimal(Number(resumen.horasTotales))}
                       </div>
                     </div>
                     <div

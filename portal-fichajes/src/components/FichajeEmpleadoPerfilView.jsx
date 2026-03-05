@@ -13,6 +13,7 @@ import {
   X,
   Umbrella,
   Pencil,
+  MapPin,
 } from 'lucide-react';
 import {
   startOfMonth,
@@ -29,7 +30,7 @@ import {
 } from 'date-fns';
 import { es } from 'date-fns/locale';
 import * as fichajePortalService from '../services/fichajePortalService';
-import { formatTimeMadrid, formatDateShortMadrid, formatDateTimeMadrid } from '../utils/timeUtils';
+import { formatTimeMadrid, formatDateShortMadrid, formatDateTimeMadrid, formatearHorasDecimal } from '../utils/timeUtils';
 import { colors } from '../theme';
 
 const WEEKDAYS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
@@ -509,7 +510,7 @@ export default function FichajeEmpleadoPerfilView({ empleado, onBack }) {
                             {formatTimeMadrid(f.hora_entrada)}–
                             {f.hora_salida ? formatTimeMadrid(f.hora_salida) : '...'}
                             {f.horas_trabajadas != null &&
-                              ` (${Number(f.horas_trabajadas).toFixed(1)}h)`}
+                              ` (${formatearHorasDecimal(f.horas_trabajadas)})`}
                           </div>
                         ))}
                         {dayFichajes.length > 2 && (
@@ -585,7 +586,7 @@ export default function FichajeEmpleadoPerfilView({ empleado, onBack }) {
                 </div>
                 <span style={{ fontWeight: 600, color: colors.text }}>
                   {f.horas_trabajadas != null
-                    ? `${Number(f.horas_trabajadas).toFixed(2)}h`
+                    ? formatearHorasDecimal(f.horas_trabajadas)
                     : '-'}
                 </span>
               </div>
@@ -734,10 +735,62 @@ export default function FichajeEmpleadoPerfilView({ empleado, onBack }) {
                 </div>
                 <div style={{ fontWeight: 700, color: colors.primary, fontSize: 18 }}>
                   {selectedFichaje.horas_trabajadas != null
-                    ? `${Number(selectedFichaje.horas_trabajadas).toFixed(2)}h`
+                    ? formatearHorasDecimal(selectedFichaje.horas_trabajadas)
                     : '-'}
                 </div>
               </div>
+
+              {/* Ubicación al fichar */}
+              {selectedFichaje.ubicacion_lat != null && selectedFichaje.ubicacion_lng != null && (
+                <div
+                  style={{
+                    padding: 12,
+                    backgroundColor: colors.background || '#f5f5f5',
+                    borderRadius: 8,
+                    border: `1px solid ${colors.border}`,
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color: colors.textSecondary,
+                      fontWeight: 600,
+                      marginBottom: 6,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                    }}
+                  >
+                    <MapPin size={14} />
+                    Ubicación al fichar
+                  </div>
+                  {selectedFichaje.ubicacion_texto && (
+                    <div style={{ fontSize: 14, color: colors.text, marginBottom: 6 }}>
+                      {selectedFichaje.ubicacion_texto}
+                    </div>
+                  )}
+                  <div style={{ fontSize: 13, color: colors.textSecondary, marginBottom: 8 }}>
+                    {Number(selectedFichaje.ubicacion_lat).toFixed(5)}, {Number(selectedFichaje.ubicacion_lng).toFixed(5)}
+                  </div>
+                  <a
+                    href={`https://www.google.com/maps?q=${selectedFichaje.ubicacion_lat},${selectedFichaje.ubicacion_lng}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      fontSize: 13,
+                      fontWeight: 500,
+                      color: colors.primary || '#1976d2',
+                      textDecoration: 'none',
+                    }}
+                  >
+                    <MapPin size={14} />
+                    Ver en Google Maps
+                  </a>
+                </div>
+              )}
             </div>
 
             {/* Historial de Cambios (igual que en la app) */}
