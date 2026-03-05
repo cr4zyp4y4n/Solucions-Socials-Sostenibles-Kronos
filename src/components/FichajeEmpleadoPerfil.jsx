@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import {
   ChevronLeft,
@@ -29,7 +29,7 @@ import {
 } from 'date-fns';
 import { es } from 'date-fns/locale';
 import fichajeSupabaseService from '../services/fichajeSupabaseService';
-import { formatTimeMadrid, formatDateShortMadrid } from '../utils/timeUtils';
+import { formatTimeMadrid, formatDateShortMadrid, formatearHorasDecimal } from '../utils/timeUtils';
 import { useTheme } from './ThemeContext';
 import { useAuth } from './AuthContext';
 import { supabase } from '../config/supabase';
@@ -669,11 +669,11 @@ const FichajeEmpleadoPerfil = ({ empleado, onBack }) => {
                               alignItems: 'center',
                               gap: '4px'
                             }}
-                            title={`${formatTimeMadrid(f.hora_entrada)} - ${f.hora_salida ? formatTimeMadrid(f.hora_salida) : '...'} (${f.horas_trabajadas || 0}h)${f.es_modificado ? ' · Modificado' : ''}`}
+                            title={`${formatTimeMadrid(f.hora_entrada)} - ${f.hora_salida ? formatTimeMadrid(f.hora_salida) : '...'} (${formatearHorasDecimal(f.horas_trabajadas)})${f.es_modificado ? ' · Modificado' : ''}`}
                           >
                             {f.es_modificado && <Pencil size={10} style={{ color: colors.warning || '#ed6c02', flexShrink: 0 }} />}
                             {formatTimeMadrid(f.hora_entrada)}–{f.hora_salida ? formatTimeMadrid(f.hora_salida) : '...'}
-                            {f.horas_trabajadas != null && ` (${Number(f.horas_trabajadas).toFixed(1)}h)`}
+                            {f.horas_trabajadas != null && ` (${formatearHorasDecimal(f.horas_trabajadas)})`}
                           </button>
                         ))}
                         {dayFichajes.length > 2 && (
@@ -737,7 +737,7 @@ const FichajeEmpleadoPerfil = ({ empleado, onBack }) => {
                   </span>
                 </div>
                 <span style={{ fontWeight: '600', color: colors.text }}>
-                  {f.horas_trabajadas != null ? `${Number(f.horas_trabajadas).toFixed(2)}h` : '-'}
+                  {f.horas_trabajadas != null ? formatearHorasDecimal(f.horas_trabajadas) : '-'}
                 </span>
               </div>
             ))}
@@ -780,7 +780,7 @@ const FichajeEmpleadoPerfil = ({ empleado, onBack }) => {
                   <span style={{ fontWeight: '500', color: colors.text }}>
                     {formatDateShortMadrid(b.fecha_inicio)} – {formatDateShortMadrid(b.fecha_fin)}
                     {b.tipo && <span style={{ color: colors.textSecondary, marginLeft: 8 }}>({b.tipo})</span>}
-                    {b.notas && <span style={{ color: colors.textSecondary, marginLeft: 8, fontSize: '12px' }}> - {b.notas}</span>}
+                    {b.notas && <span style={{ color: colors.textSecondary, marginLeft: 8, fontSize: '12px' }}> — {b.notas}</span>}
                   </span>
                   <button
                     type="button"
@@ -789,6 +789,7 @@ const FichajeEmpleadoPerfil = ({ empleado, onBack }) => {
                       const res = await fichajeSupabaseService.eliminarBaja(b.id);
                       if (res.success) setBajas((prev) => prev.filter((x) => x.id !== b.id));
                     }}
+                    
                     style={{
                       padding: '6px 12px',
                       fontSize: '13px',

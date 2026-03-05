@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Clock, User, Calendar, AlertCircle, CheckCircle, XCircle, Coffee, UtensilsCrossed, Pencil } from 'lucide-react';
+import { X, Clock, User, Calendar, AlertCircle, CheckCircle, XCircle, Coffee, UtensilsCrossed, Pencil, MapPin } from 'lucide-react';
 import fichajeSupabaseService from '../services/fichajeSupabaseService';
 import { useTheme } from './ThemeContext';
-import { formatTimeMadridWithSeconds, formatDateFullMadrid, formatDateTimeMadrid } from '../utils/timeUtils';
+import { formatTimeMadridWithSeconds, formatDateFullMadrid, formatDateTimeMadrid, formatearHorasDecimal } from '../utils/timeUtils';
 
 const FichajeDetailsModal = ({ fichaje, empleadoNombre, onClose, onEdit }) => {
   const { colors } = useTheme();
@@ -275,7 +275,7 @@ const FichajeDetailsModal = ({ fichaje, empleadoNombre, onClose, onEdit }) => {
                         margin: '4px 0 0 0',
                         fontWeight: '500'
                       }}>
-                        {fichaje.horas_trabajadas || 0}h
+                        {formatearHorasDecimal(fichaje.horas_trabajadas)}
                       </p>
                     </div>
                     
@@ -295,7 +295,7 @@ const FichajeDetailsModal = ({ fichaje, empleadoNombre, onClose, onEdit }) => {
                         margin: '4px 0 0 0',
                         fontWeight: '500'
                       }}>
-                        {fichaje.horas_totales || 0}h
+                        {formatearHorasDecimal(fichaje.horas_totales)}
                       </p>
                     </div>
                   </div>
@@ -347,6 +347,58 @@ const FichajeDetailsModal = ({ fichaje, empleadoNombre, onClose, onEdit }) => {
                       </div>
                     )}
                   </div>
+
+                  {/* Ubicación al fichar */}
+                  {fichaje.ubicacion_lat != null && fichaje.ubicacion_lng != null && (
+                    <div style={{
+                      marginTop: '16px',
+                      padding: '12px 16px',
+                      backgroundColor: colors.background,
+                      borderRadius: '8px',
+                      border: `1px solid ${colors.border}`
+                    }}>
+                      <div style={{
+                        fontSize: '12px',
+                        color: colors.textSecondary,
+                        textTransform: 'uppercase',
+                        fontWeight: '600',
+                        letterSpacing: '0.5px',
+                        marginBottom: '6px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px'
+                      }}>
+                        <MapPin size={14} />
+                        Ubicación al fichar
+                      </div>
+                      {fichaje.ubicacion_texto && (
+                        <p style={{ fontSize: '14px', color: colors.text, margin: '0 0 8px 0' }}>
+                          {fichaje.ubicacion_texto}
+                        </p>
+                      )}
+                      <p style={{ fontSize: '13px', color: colors.textSecondary, margin: 0 }}>
+                        {Number(fichaje.ubicacion_lat).toFixed(5)}, {Number(fichaje.ubicacion_lng).toFixed(5)}
+                      </p>
+                      <a
+                        href={`https://www.google.com/maps?q=${fichaje.ubicacion_lat},${fichaje.ubicacion_lng}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          marginTop: '8px',
+                          fontSize: '13px',
+                          fontWeight: '500',
+                          color: colors.primary,
+                          textDecoration: 'none'
+                        }}
+                      >
+                        <MapPin size={14} />
+                        Ver en Google Maps
+                      </a>
+                    </div>
+                  )}
                 </div>
 
                 {/* Pausas */}

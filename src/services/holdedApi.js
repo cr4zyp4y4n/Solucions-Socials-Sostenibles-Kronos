@@ -634,6 +634,27 @@ class HoldedApiService {
   }
 
   /**
+   * Nombre "base" para emparejar variantes tipo "CASA GAY" con "CASA GAY S.A.":
+   * quita sufijos habituales (S.A., S.L., SL, SA, etc.) y puntuación final.
+   * @param {string} name - ya normalizado (lowercase, sin acentos)
+   * @returns {string}
+   */
+  static normalizeContactNameCore(name) {
+    if (!name || typeof name !== 'string') return '';
+    let s = name.trim();
+    const suffixes = [
+      /\s*s\.?\s*a\.?$/i, /\s*s\.?\s*l\.?$/i, /\s*s\.?\s*l\.?\s*u\.?$/i,
+      /\s*sa$/i, /\s*sl$/i, /\s*slu$/i, /\s*s\.a\.?$/i, /\s*s\.l\.?$/i,
+      /\s*,?\s*inc\.?$/i, /\s*s\.?\s*coop\.?$/i, /\s*coop\.?$/i
+    ];
+    for (const re of suffixes) {
+      s = s.replace(re, '').trim();
+    }
+    s = s.replace(/\s*,\s*$/, '').replace(/\s*\.\s*$/, '').trim();
+    return s;
+  }
+
+  /**
    * Normalizar IBAN para comparación (quitar espacios, guiones, guión bajo; mayúsculas)
    * @param {string} iban
    * @returns {string}
@@ -952,6 +973,10 @@ class HoldedApiService {
       if (normalizedName && !contactsMapByName.has(normalizedName)) {
         contactsMapByName.set(normalizedName, contact);
       }
+      const coreName = HoldedApiService.normalizeContactNameCore(normalizedName);
+      if (coreName && coreName !== normalizedName && !contactsMapByName.has(coreName)) {
+        contactsMapByName.set(coreName, contact);
+      }
     });
     return documents.map(doc => {
       let contactInfo = null;
@@ -961,11 +986,17 @@ class HoldedApiService {
         const byId = contactsById.get(doc.contact.id);
         if (byId && docNameNorm) {
           const contactNameNorm = HoldedApiService.normalizeContactNameForMatch(byId.name || byId.company || '');
-          if (contactNameNorm === docNameNorm) contactInfo = byId;
+          const contactCore = HoldedApiService.normalizeContactNameCore(contactNameNorm);
+          const docCore = HoldedApiService.normalizeContactNameCore(docNameNorm);
+          if (contactNameNorm === docNameNorm || (contactCore && docCore && contactCore === docCore)) contactInfo = byId;
         }
       }
       if (!contactInfo) {
         contactInfo = docNameNorm ? contactsMapByName.get(docNameNorm) : null;
+        if (!contactInfo && docNameNorm) {
+          const docCore = HoldedApiService.normalizeContactNameCore(docNameNorm);
+          contactInfo = docCore ? contactsMapByName.get(docCore) : null;
+        }
       }
       if (!contactInfo) return doc;
       let iban = HoldedApiService.getContactIban(contactInfo);
@@ -1566,7 +1597,9 @@ class HoldedApiService {
       holded_contact_id: holdedDocument.contact?.id,
       iban: contactIban, // IBAN del proveedor
       iban_contact_name: (contactInfo && (contactInfo.name || contactInfo.company)) || '', // Nombre del contacto del que viene el IBAN (para verificación visual)
-      document_type: 'purchase' // Solo compras ahora
+      document_type: 'purchase', // Solo compras ahora
+      iban_verif_reason: holdedDocument._iban_id_name_mismatch ? 'ID≠nombre' : '', // Aviso: contacto encontrado por ID pero nombre no coincidió (no se asignó IBAN)
+      iban_contact_name_by_id: holdedDocument._iban_contact_name_by_id || '' // Nombre del contacto en Holded (cuando hubo ID≠nombre)
     };
     
     const finalData = this.validateAndCleanInvoiceData(transformed);
@@ -1645,14 +1678,17 @@ class HoldedApiService {
         }
       });
 
-      // Map por nombre (normalizado) solo como fallback cuando el documento no trae contact.id.
-      // Si dos contactos tienen el mismo nombre, no sobrescribir (primero gana) para evitar asignar el IBAN de un proveedor a otro.
+      // Map por nombre (normalizado) y por nombre "base" (sin S.A./S.L.) para emparejar "CASA GAY" con "CASA GAY S.A."
       const contactsMapByName = new Map();
       allContacts.forEach(contact => {
         const name = contact.name || contact.company || '';
         const normalizedName = HoldedApiService.normalizeContactNameForMatch(name);
         if (normalizedName && !contactsMapByName.has(normalizedName)) {
           contactsMapByName.set(normalizedName, contact);
+        }
+        const coreName = HoldedApiService.normalizeContactNameCore(normalizedName);
+        if (coreName && coreName !== normalizedName && !contactsMapByName.has(coreName)) {
+          contactsMapByName.set(coreName, contact);
         }
       });
 
@@ -1663,18 +1699,28 @@ class HoldedApiService {
           const docProviderName = doc.contact?.name || doc.contactName || '';
           const docNameNorm = HoldedApiService.normalizeContactNameForMatch(docProviderName);
 
+          let ibanIdNameMismatch = false;
+          let ibanContactNameById = '';
           if (doc.contact?.id) {
             const contactById = contactsById.get(doc.contact.id);
-            // Solo usar contacto por ID si el nombre coincide (evita asignar IBAN de otro proveedor si contact.id es erróneo)
             if (contactById && docNameNorm) {
               const contactNameNorm = HoldedApiService.normalizeContactNameForMatch(contactById.name || contactById.company || '');
-              if (contactNameNorm === docNameNorm) {
+              const contactCore = HoldedApiService.normalizeContactNameCore(contactNameNorm);
+              const docCore = HoldedApiService.normalizeContactNameCore(docNameNorm);
+              if (contactNameNorm === docNameNorm || (contactCore && docCore && contactCore === docCore)) {
                 contactInfo = contactById;
+              } else {
+                ibanIdNameMismatch = true;
+                ibanContactNameById = contactById.name || contactById.company || '';
               }
             }
           }
           if (!contactInfo) {
             contactInfo = docNameNorm ? contactsMapByName.get(docNameNorm) : null;
+            if (!contactInfo && docNameNorm) {
+              const docCore = HoldedApiService.normalizeContactNameCore(docNameNorm);
+              contactInfo = docCore ? contactsMapByName.get(docCore) : null;
+            }
           }
 
           if (contactInfo) {
@@ -1705,11 +1751,15 @@ class HoldedApiService {
               contact: {
                 ...doc.contact,
                 ...contactInfo,
-                iban: iban // Agregar el IBAN al contacto
+                iban: iban
               }
             };
           } else {
-            return doc;
+            return {
+              ...doc,
+              _iban_id_name_mismatch: ibanIdNameMismatch,
+              _iban_contact_name_by_id: ibanContactNameById
+            };
           }
         } catch (error) {
           return doc;
@@ -1727,13 +1777,15 @@ class HoldedApiService {
     try {
       const purchase = await this.makeRequest(`/documents/purchase/${purchaseId}`, {}, company);
       
-      // Obtener información del contacto si está disponible; solo usar si el nombre coincide (evitar IBAN de otro proveedor)
+      // Obtener información del contacto si está disponible; solo usar si el nombre coincide (exacto o por base: CASA GAY / CASA GAY S.A.)
       if (purchase.contact?.id) {
         try {
           const contactInfo = await this.getContact(purchase.contact.id, company);
           const docName = HoldedApiService.normalizeContactNameForMatch(purchase.contact?.name || purchase.contactName || '');
           const contactName = HoldedApiService.normalizeContactNameForMatch(contactInfo?.name || contactInfo?.company || '');
-          if (docName && contactName && docName === contactName) {
+          const docCore = HoldedApiService.normalizeContactNameCore(docName);
+          const contactCore = HoldedApiService.normalizeContactNameCore(contactName);
+          if (docName && contactName && (docName === contactName || (docCore && contactCore && docCore === contactCore))) {
             purchase.contact = { ...purchase.contact, ...contactInfo };
           }
         } catch (error) {
@@ -2130,4 +2182,5 @@ class HoldedApiService {
   }
 }
 
-export default new HoldedApiService(); 
+export default new HoldedApiService();
+export { HoldedApiService }; 

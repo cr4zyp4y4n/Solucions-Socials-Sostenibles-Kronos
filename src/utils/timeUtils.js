@@ -237,3 +237,16 @@ export async function getServerTimeMadrid(supabase) {
   }
 }
 
+/**
+ * Formatea horas en decimal a "Xh Ym" (ej: 1.63 -> "1h 38m")
+ * Así se evita confusión con "1.63h" que podría leerse como 1h 63min.
+ */
+export function formatearHorasDecimal(horas) {
+  if (horas == null || (typeof horas !== 'number' && isNaN(Number(horas)))) return '0h';
+  const h = Number(horas);
+  const horasEnteras = Math.floor(h);
+  const minutos = Math.round((h - horasEnteras) * 60);
+  if (minutos === 0) return `${horasEnteras}h`;
+  return `${horasEnteras}h ${minutos}m`;
+}
+

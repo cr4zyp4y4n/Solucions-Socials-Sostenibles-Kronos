@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import fichajeSupabaseService from '../services/fichajeSupabaseService';
 import fichajeService from '../services/fichajeService';
-import { formatTimeMadrid, formatDateShortMadrid } from '../utils/timeUtils';
+import { formatTimeMadrid, formatDateShortMadrid, formatearHorasDecimal } from '../utils/timeUtils';
 import holdedEmployeesService from '../services/holdedEmployeesService';
 import { useTheme } from './ThemeContext';
 import { useAuth } from './AuthContext';
@@ -326,8 +326,8 @@ const FichajeAdminSection = () => {
                     <td>${getEmpleadoNombre(fichaje.empleado_id)}</td>
                     <td>${formatTime(fichaje.hora_entrada)}</td>
                     <td>${fichaje.hora_salida ? formatTime(fichaje.hora_salida) : '-'}</td>
-                    <td style="text-align: center;">${fichaje.horas_trabajadas || 0}h</td>
-                    <td style="text-align: center;">${fichaje.horas_totales || 0}h</td>
+                    <td style="text-align: center;">${formatearHorasDecimal(fichaje.horas_trabajadas)}</td>
+                    <td style="text-align: center;">${formatearHorasDecimal(fichaje.horas_totales)}</td>
                     <td style="text-align: center;">${fichaje.es_modificado ? 'Sí' : 'No'}</td>
                     <td style="text-align: center;">${fichaje.validado_por_trabajador ? 'Sí' : 'No'}</td>
                   </tr>
@@ -340,7 +340,7 @@ const FichajeAdminSection = () => {
               <div class="summary-item"><strong>Total fichajes:</strong> ${filteredFichajes.length}</div>
               <div class="summary-item"><strong>Fichajes completos:</strong> ${filteredFichajes.filter(f => f.hora_salida).length}</div>
               <div class="summary-item"><strong>Fichajes modificados:</strong> ${filteredFichajes.filter(f => f.es_modificado).length}</div>
-              <div class="summary-item"><strong>Total horas trabajadas:</strong> ${filteredFichajes.reduce((sum, f) => sum + (f.horas_trabajadas || 0), 0).toFixed(2)}h</div>
+              <div class="summary-item"><strong>Total horas trabajadas:</strong> ${formatearHorasDecimal(filteredFichajes.reduce((sum, f) => sum + (f.horas_trabajadas || 0), 0))}</div>
             </div>
             
             <div class="footer">
@@ -775,7 +775,7 @@ const FichajeAdminSection = () => {
                     </td>
                     <td style={{ padding: '16px', textAlign: 'center' }}>
                       <span style={{ color: colors.text, fontSize: '14px', fontWeight: '600' }}>
-                        {fichaje.horas_trabajadas || 0}h
+                        {formatearHorasDecimal(fichaje.horas_trabajadas)}
                       </span>
                     </td>
                     <td style={{ padding: '16px', textAlign: 'center' }}>
