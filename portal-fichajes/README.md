@@ -1,6 +1,9 @@
-# Portal de Fichajes (solo lectura)
+# Portal de Fichajes
 
-Portal web para que la inspección pueda consultar el Panel de Fichajes en la nube. Misma línea de diseño que el Panel Fichajes de la app SSS Kronos.
+Portal web con dos modos:
+
+- **Panel (solo lectura):** para que la inspección pueda consultar el Panel de Fichajes en la nube. Misma línea de diseño que el Panel Fichajes de la app SSS Kronos.
+- **Fichar:** pantalla para fichar entrada y salida por código. **Guarda la ubicación** al registrar la entrada (geolocalización del navegador), igual que la app de escritorio.
 
 ## Requisitos
 

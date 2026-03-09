@@ -22,10 +22,12 @@ class FichajeSupabaseService {
         created_by: userId,
         es_modificado: false
       };
-      if (ubicacion && typeof ubicacion.lat === 'number' && typeof ubicacion.lng === 'number') {
-        payload.ubicacion_lat = ubicacion.lat;
-        payload.ubicacion_lng = ubicacion.lng;
-        if (ubicacion.texto) payload.ubicacion_texto = ubicacion.texto;
+      const lat = ubicacion?.lat != null ? Number(ubicacion.lat) : null;
+      const lng = ubicacion?.lng != null ? Number(ubicacion.lng) : null;
+      if (typeof lat === 'number' && !Number.isNaN(lat) && typeof lng === 'number' && !Number.isNaN(lng)) {
+        payload.ubicacion_lat = lat;
+        payload.ubicacion_lng = lng;
+        if (ubicacion.texto) payload.ubicacion_texto = String(ubicacion.texto);
       }
       const { data, error } = await supabase
         .from('fichajes')
@@ -78,9 +80,9 @@ class FichajeSupabaseService {
         .select('*')
         .eq('empleado_id', empleadoId)
         .eq('fecha', fechaStr)
-        .single();
+        .maybeSingle();
 
-      if (error && error.code !== 'PGRST116') throw error; // PGRST116 = no encontrado
+      if (error) throw error;
       return { success: true, data: data || null };
     } catch (error) {
       console.error('Error obteniendo fichaje del día:', error);

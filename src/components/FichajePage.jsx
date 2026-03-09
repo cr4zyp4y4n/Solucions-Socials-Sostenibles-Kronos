@@ -58,7 +58,59 @@ const FichajePage = () => {
   const [selectedFichaje, setSelectedFichaje] = useState(null);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [obteniendoUbicacion, setObteniendoUbicacion] = useState(false);
   const ubicacionCachedRef = useRef(null);
+
+  /**
+   * Obtener ubicación para el fichaje: caché, luego geolocation del navegador.
+   * Si falla (p. ej. Google 403 en Electron), fallback por IP con ipapi.co.
+   */
+  const getUbicacionParaFichaje = async () => {
+    if (ubicacionCachedRef.current && typeof ubicacionCachedRef.current.lat === 'number' && typeof ubicacionCachedRef.current.lng === 'number') {
+      return ubicacionCachedRef.current;
+    }
+    const fromGeolocation = await new Promise((resolve) => {
+      if (!navigator.geolocation) {
+        resolve(null);
+        return;
+      }
+      const timeout = setTimeout(() => resolve(null), 6000);
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          clearTimeout(timeout);
+          resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        },
+        () => { clearTimeout(timeout); resolve(null); },
+        { enableHighAccuracy: false, timeout: 5000, maximumAge: 60000 }
+      );
+    });
+    if (fromGeolocation) {
+      ubicacionCachedRef.current = fromGeolocation;
+      return fromGeolocation;
+    }
+    // Fallback por IP: en Electron se pide al main (evita CSP); en web fetch directo
+    try {
+      if (window.electronAPI?.getLocationByIP) {
+        const u = await window.electronAPI.getLocationByIP();
+        if (u) {
+          ubicacionCachedRef.current = u;
+          return u;
+        }
+      } else {
+        const res = await fetch('https://ipapi.co/json/');
+        if (!res.ok) return null;
+        const data = await res.json();
+        const lat = data.latitude != null ? Number(data.latitude) : null;
+        const lng = data.longitude != null ? Number(data.longitude) : null;
+        if (typeof lat === 'number' && !Number.isNaN(lat) && typeof lng === 'number' && !Number.isNaN(lng)) {
+          const u = { lat, lng };
+          ubicacionCachedRef.current = u;
+          return u;
+        }
+      }
+    } catch (_) {}
+    return null;
+  };
 
   // Validar código de fichaje
   const validarCodigo = async (codigo) => {
@@ -214,7 +266,7 @@ const FichajePage = () => {
     }
   }, [empleadoId]);
 
-  // Fichar entrada
+  // Fichar entrada (solicita ubicación al pulsar para maximizar que se guarde)
   const handleFicharEntrada = async () => {
     if (!empleadoId) {
       setError('Por favor, selecciona tu empleado');
@@ -223,8 +275,13 @@ const FichajePage = () => {
     
     setLoading(true);
     setError('');
-    // Usar ubicación ya obtenida en segundo plano al entrar al perfil (sin preguntar al hacer clic)
-    const ubicacion = ubicacionCachedRef.current || null;
+    setObteniendoUbicacion(true);
+    let ubicacion = null;
+    try {
+      ubicacion = await getUbicacionParaFichaje();
+    } finally {
+      setObteniendoUbicacion(false);
+    }
     try {
       const resultado = await fichajeService.ficharEntrada(empleadoId, user?.id, ubicacion);
       
@@ -966,7 +1023,7 @@ const FichajePage = () => {
               <div style={{ textAlign: 'center', padding: '40px' }}>
                 <button
                   onClick={handleFicharEntrada}
-                  disabled={loading}
+                  disabled={loading || obteniendoUbicacion}
                   style={{
                     padding: '20px 40px',
                     backgroundColor: colors.success,
@@ -975,16 +1032,25 @@ const FichajePage = () => {
                     borderRadius: '12px',
                     fontSize: '18px',
                     fontWeight: '600',
-                    cursor: loading ? 'not-allowed' : 'pointer',
+                    cursor: loading || obteniendoUbicacion ? 'not-allowed' : 'pointer',
                     display: 'flex',
                     alignItems: 'center',
                     gap: '12px',
                     margin: '0 auto',
-                    opacity: loading ? 0.6 : 1
+                    opacity: loading || obteniendoUbicacion ? 0.6 : 1
                   }}
                 >
-                  <LogIn size={24} />
-                  Fichar Entrada
+                  {obteniendoUbicacion ? (
+                    <>
+                      <MapPin size={24} />
+                      Obteniendo ubicación...
+                    </>
+                  ) : (
+                    <>
+                      <LogIn size={24} />
+                      Fichar Entrada
+                    </>
+                  )}
                 </button>
               </div>
             )}

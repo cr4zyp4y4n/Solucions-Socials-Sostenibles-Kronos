@@ -15,18 +15,8 @@ module.exports = {
       name: '@electron-forge/maker-zip',
       platforms: ['darwin'],
     },
-    {
-      name: '@electron-forge/maker-dmg',
-      config: {},
-    },
-    {
-      name: '@electron-forge/maker-deb',
-      config: {},
-    },
-    {
-      name: '@electron-forge/maker-rpm',
-      config: {},
-    },
+    // maker-dmg, maker-deb, maker-rpm quitados para evitar error en Windows si no están instalados
+    // Para publicar en Mac/Linux, instala @electron-forge/maker-dmg (Mac) o maker-deb/maker-rpm (Linux) y añádelos aquí
   ],
   publishers: [
     {

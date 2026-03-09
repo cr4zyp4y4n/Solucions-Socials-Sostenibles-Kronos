@@ -7,6 +7,8 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('electronAPI', {
   // API para tasas de cambio
   getExchangeRates: () => ipcRenderer.invoke('get-exchange-rates'),
+  // Ubicación aproximada por IP (fallback para fichaje; no sujeta a CSP del renderer)
+  getLocationByIP: () => ipcRenderer.invoke('get-location-by-ip'),
   
   // API para peticiones a Holded
   makeHoldedRequest: (requestData) => ipcRenderer.invoke('make-holded-request', requestData),

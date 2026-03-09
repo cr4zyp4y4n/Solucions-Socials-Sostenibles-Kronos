@@ -5,6 +5,7 @@ const { app, BrowserWindow, dialog } = require('electron');
 const path = require('node:path');
 const { ipcMain } = require('electron');
 const https = require('https');
+const http = require('http');
 const fs = require('fs');
 const { autoUpdater } = require('electron-updater');
 
@@ -331,7 +332,79 @@ ipcMain.handle('get-exchange-rates', async () => {
   });
 });
 
+// Ubicación aproximada por IP (fallback para fichaje cuando la geolocalización del navegador falla, p. ej. 403 en Electron)
+function tryParseLatLng(json, latKey, lngKey) {
+  const lat = json[latKey] != null ? Number(json[latKey]) : null;
+  const lng = (json[lngKey] != null ? Number(json[lngKey]) : null);
+  if (typeof lat === 'number' && !Number.isNaN(lat) && typeof lng === 'number' && !Number.isNaN(lng)) {
+    return { lat, lng };
+  }
+  return null;
+}
 
+ipcMain.handle('get-location-by-ip', async () => {
+  const tryIpApiCo = () => new Promise((resolve) => {
+    const req = https.get('https://ipapi.co/json/', { headers: { 'User-Agent': 'SSS-Kronos/1.0' } }, (res) => {
+      const isRedirect = res.statusCode >= 301 && res.statusCode <= 302;
+      const location = res.headers.location;
+      if (isRedirect && location) {
+        let url = location;
+        if (url.startsWith('//')) url = 'https:' + url;
+        https.get(url, { headers: { 'User-Agent': 'SSS-Kronos/1.0' } }, (res2) => {
+          let data = '';
+          res2.on('data', chunk => data += chunk);
+          res2.on('end', () => {
+            try {
+              const json = JSON.parse(data);
+              const result = tryParseLatLng(json, 'latitude', 'longitude');
+              if (result) resolve(result);
+              else resolve('retry');
+            } catch (_) { resolve('retry'); }
+          });
+        }).on('error', () => resolve('retry'));
+        return;
+      }
+      if (res.statusCode !== 200) {
+        resolve('retry');
+        return;
+      }
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        try {
+          const json = JSON.parse(data);
+          const result = tryParseLatLng(json, 'latitude', 'longitude');
+          if (result) resolve(result);
+          else resolve('retry');
+        } catch (_) { resolve('retry'); }
+      });
+    });
+    req.on('error', () => resolve('retry'));
+  });
+
+  const tryIpApiCom = () => new Promise((resolve) => {
+    http.get('http://ip-api.com/json/?fields=status,lat,lon', (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        try {
+          const json = JSON.parse(data);
+          if (json.status !== 'success') {
+            resolve(null);
+            return;
+          }
+          const result = tryParseLatLng(json, 'lat', 'lon');
+          resolve(result || null);
+        } catch (_) { resolve(null); }
+      });
+    }).on('error', () => resolve(null));
+  });
+
+  // Probar primero ip-api.com (menos restricciones); ipapi.co suele devolver RateLimited en desarrollo
+  const first = await tryIpApiCom();
+  if (first) return first;
+  return tryIpApiCo().then((r) => (r && r !== 'retry' ? r : null));
+});
 
 // Handler IPC para peticiones a la API de Holded
 ipcMain.handle('make-holded-request', async (event, { url, options }) => {
@@ -446,11 +519,20 @@ const createWindow = () => {
           "default-src 'self' 'unsafe-inline' data:; " +
           "script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +
           "style-src 'self' 'unsafe-inline'; " +
-          "connect-src 'self' https://v6.exchangerate-api.com https://api.exchangerate-api.com https://zalnsacawwekmibhoiba.supabase.co https://*.supabase.co wss://zalnsacawwekmibhoiba.supabase.co wss://*.supabase.co https://api.holded.com https://api.github.com; " +
+          "connect-src 'self' https://v6.exchangerate-api.com https://api.exchangerate-api.com https://zalnsacawwekmibhoiba.supabase.co https://*.supabase.co wss://zalnsacawwekmibhoiba.supabase.co wss://*.supabase.co https://api.holded.com https://api.github.com https://ipapi.co; " +
           "img-src 'self' data: blob: https://zalnsacawwekmibhoiba.supabase.co https://*.supabase.co;"
         ]
       }
     });
+  });
+
+  // Permitir geolocalización para el módulo de fichajes (ubicación al fichar entrada)
+  mainWindow.webContents.session.setPermissionRequestHandler((_webContents, permission, callback) => {
+    if (permission === 'geolocation') {
+      callback(true);
+    } else {
+      callback(false);
+    }
   });
 
   // and load the index.html of the app.
