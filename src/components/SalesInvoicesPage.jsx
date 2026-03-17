@@ -10,13 +10,18 @@ const SalesInvoicesPage = () => {
   const { formatCurrency } = useCurrency();
   const { user } = useAuth();
   const { colors } = useTheme();
+  const [activeTab, setActiveTab] = useState('invoices'); // 'invoices' | 'estimates'
   
   const [loading, setLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState('Cargando datos...');
   const [error, setError] = useState('');
   
-  // Estados para datos procesados
-  const [processedData, setProcessedData] = useState({
+  // Estados para datos procesados (2 pestañas)
+  const [processedInvoicesData, setProcessedInvoicesData] = useState({
+    solucions: { headers: [], data: [] },
+    menjar: { headers: [], data: [] }
+  });
+  const [processedEstimatesData, setProcessedEstimatesData] = useState({
     solucions: { headers: [], data: [] },
     menjar: { headers: [], data: [] }
   });
@@ -27,6 +32,8 @@ const SalesInvoicesPage = () => {
   const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
   const [isChangingDataset, setIsChangingDataset] = useState(false);
   const [expandedDescriptions, setExpandedDescriptions] = useState(new Set());
+
+  const processedData = activeTab === 'estimates' ? processedEstimatesData : processedInvoicesData;
 
   // Función para procesar facturas de venta de Holded
   const processHoldedSales = (holdedSales) => {
@@ -95,45 +102,74 @@ const SalesInvoicesPage = () => {
     return { headers: expectedHeaders, data: processedData };
   };
 
-  // Cargar datos de facturas de venta desde Holded
-  const loadSalesData = async () => {
+  const resetViewState = () => {
+    setSelectedClient('');
+    setExpandedDescriptions(new Set());
+    setSortConfig({ key: null, direction: 'asc' });
+  };
+
+  const loadActiveTabData = async () => {
     setLoading(true);
     setError('');
-    setLoadingMessage('Descargando facturas de venta de Holded...');
+    setLoadingMessage(activeTab === 'estimates' ? 'Descargando presupuestos de Holded...' : 'Descargando facturas de venta de Holded...');
 
     try {
-      console.log('📊 Iniciando carga de facturas de venta...');
+      console.log(activeTab === 'estimates' ? '📊 Iniciando carga de presupuestos...' : '📊 Iniciando carga de facturas de venta...');
       
       // Cargar datos para ambas empresas en paralelo
-      const [solucionsSales, menjarSales] = await Promise.all([
-        holdedApi.getAllPendingAndPartiallyPaidSales('solucions').catch(error => {
-          console.error('Error cargando facturas de venta de Solucions:', error);
-          return [];
-        }),
-        holdedApi.getAllPendingAndPartiallyPaidSales('menjar').catch(error => {
-          console.error('Error cargando facturas de venta de Menjar:', error);
-          return [];
-        })
-      ]);
+      if (activeTab === 'estimates') {
+        const [solucionsEstimates, menjarEstimates] = await Promise.all([
+          holdedApi.getAllEstimates('solucions').catch(error => {
+            console.error('Error cargando presupuestos de Solucions:', error);
+            return [];
+          }),
+          holdedApi.getAllEstimates('menjar').catch(error => {
+            console.error('Error cargando presupuestos de Menjar:', error);
+            return [];
+          })
+        ]);
 
-      console.log('✅ Facturas de venta cargadas:');
-      console.log('Solucions:', solucionsSales.length);
-      console.log('Menjar:', menjarSales.length);
+        console.log('✅ Presupuestos cargados:');
+        console.log('Solucions:', solucionsEstimates.length);
+        console.log('Menjar:', menjarEstimates.length);
 
-      // Procesar datos
-      const processedSolucions = processHoldedSales(solucionsSales);
-      const processedMenjar = processHoldedSales(menjarSales);
+        const processedSolucions = processHoldedSales(solucionsEstimates);
+        const processedMenjar = processHoldedSales(menjarEstimates);
 
-      setProcessedData({
-        solucions: processedSolucions,
-        menjar: processedMenjar
-      });
+        setProcessedEstimatesData({
+          solucions: processedSolucions,
+          menjar: processedMenjar
+        });
+      } else {
+        const [solucionsSales, menjarSales] = await Promise.all([
+          holdedApi.getAllPendingAndPartiallyPaidSales('solucions').catch(error => {
+            console.error('Error cargando facturas de venta de Solucions:', error);
+            return [];
+          }),
+          holdedApi.getAllPendingAndPartiallyPaidSales('menjar').catch(error => {
+            console.error('Error cargando facturas de venta de Menjar:', error);
+            return [];
+          })
+        ]);
+
+        console.log('✅ Facturas de venta cargadas:');
+        console.log('Solucions:', solucionsSales.length);
+        console.log('Menjar:', menjarSales.length);
+
+        const processedSolucions = processHoldedSales(solucionsSales);
+        const processedMenjar = processHoldedSales(menjarSales);
+
+        setProcessedInvoicesData({
+          solucions: processedSolucions,
+          menjar: processedMenjar
+        });
+      }
 
       setLoadingMessage('Datos cargados correctamente');
       
     } catch (error) {
-      console.error('Error cargando facturas de venta:', error);
-      setError(`Error al cargar facturas de venta: ${error.message}`);
+      console.error('Error cargando datos:', error);
+      setError(`Error al cargar datos: ${error.message}`);
     } finally {
       setLoading(false);
     }
@@ -141,8 +177,19 @@ const SalesInvoicesPage = () => {
 
   // Cargar datos al montar el componente
   useEffect(() => {
-    loadSalesData();
+    loadActiveTabData();
   }, []);
+
+  // Al cambiar de pestaña, resetear filtros/orden para evitar confusiones
+  useEffect(() => {
+    resetViewState();
+    // Si aún no hay datos en esa pestaña, cargarlos
+    const dataForTab = activeTab === 'estimates' ? processedEstimatesData : processedInvoicesData;
+    const hasAny = (dataForTab.solucions?.data?.length || 0) > 0 || (dataForTab.menjar?.data?.length || 0) > 0;
+    if (!hasAny) {
+      loadActiveTabData();
+    }
+  }, [activeTab]);
 
   // Índices de columnas
   const columnIndices = useMemo(() => {
@@ -287,8 +334,7 @@ const SalesInvoicesPage = () => {
       setIsChangingDataset(true);
       setTimeout(() => {
         setSelectedDataset(newDataset);
-        setSelectedClient('');
-        setExpandedDescriptions(new Set()); // Limpiar descripciones expandidas al cambiar de dataset
+        resetViewState();
         setIsChangingDataset(false);
       }, 150);
     }
@@ -374,9 +420,45 @@ const SalesInvoicesPage = () => {
             color: colors.textSecondary,
             margin: '4px 0 0 0',
           }}>
-            Facturas de venta pendientes de pago desde Holded
+            {activeTab === 'estimates'
+              ? 'Presupuestos (estimate) desde Holded'
+              : 'Facturas de venta pendientes de pago desde Holded'}
           </p>
         </div>
+      </div>
+
+      {/* Pestañas */}
+      <div style={{ display: 'flex', gap: '10px', marginBottom: '18px' }}>
+        <button
+          onClick={() => setActiveTab('invoices')}
+          disabled={loading}
+          style={{
+            padding: '10px 14px',
+            borderRadius: 10,
+            border: activeTab === 'invoices' ? `2px solid ${colors.primary}` : `1px solid ${colors.border}`,
+            background: activeTab === 'invoices' ? colors.card : colors.surface,
+            color: activeTab === 'invoices' ? colors.primary : colors.text,
+            cursor: loading ? 'not-allowed' : 'pointer',
+            fontWeight: activeTab === 'invoices' ? 700 : 600,
+          }}
+        >
+          Facturas
+        </button>
+        <button
+          onClick={() => setActiveTab('estimates')}
+          disabled={loading}
+          style={{
+            padding: '10px 14px',
+            borderRadius: 10,
+            border: activeTab === 'estimates' ? `2px solid ${colors.primary}` : `1px solid ${colors.border}`,
+            background: activeTab === 'estimates' ? colors.card : colors.surface,
+            color: activeTab === 'estimates' ? colors.primary : colors.text,
+            cursor: loading ? 'not-allowed' : 'pointer',
+            fontWeight: activeTab === 'estimates' ? 700 : 600,
+          }}
+        >
+          Presupuestos
+        </button>
       </div>
 
       {/* Botón de recarga */}
@@ -384,7 +466,7 @@ const SalesInvoicesPage = () => {
         <motion.button
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
-          onClick={loadSalesData}
+          onClick={loadActiveTabData}
           disabled={loading}
           style={{
             display: 'flex',
@@ -709,17 +791,17 @@ const SalesInvoicesPage = () => {
                       .filter(col => selectedColumns.includes(col.key))
                       .map(col => {
                         const cellValue = col.index !== undefined ? row[col.index] : null;
-                        const isDescription = col.key === 'description';
+                        const isLongTextColumn = col.key === 'description';
                         const isExpanded = expandedDescriptions.has(i);
-                        const shouldTruncate = isDescription && cellValue && typeof cellValue === 'string' && cellValue.length > 120;
+                        const shouldTruncate = isLongTextColumn && cellValue && typeof cellValue === 'string' && cellValue.length > 120;
                         
                         return (
                           <td key={col.key} style={{
                             borderBottom: `1px solid ${colors.border}`,
                             padding: '12px 8px',
                             color: colors.text,
-                            maxWidth: isDescription ? '400px' : 'auto',
-                            wordWrap: isDescription ? 'break-word' : 'normal',
+                            maxWidth: isLongTextColumn ? '400px' : 'auto',
+                            wordWrap: isLongTextColumn ? 'break-word' : 'normal',
                             cursor: shouldTruncate ? 'pointer' : 'default'
                           }}
                           onClick={shouldTruncate ? () => handleDescriptionClick(i) : undefined}
@@ -729,7 +811,7 @@ const SalesInvoicesPage = () => {
                             ? (cellValue ? formatDate(cellValue) : '-')
                             : col.key === 'total' || col.key === 'pending' || col.key === 'subtotal'
                               ? (cellValue ? formatCurrency(cellValue) : '-')
-                              : isDescription && shouldTruncate
+                              : isLongTextColumn && shouldTruncate
                                 ? (isExpanded ? cellValue : truncateDescription(cellValue, 120))
                                 : (cellValue || '-')}
                         </td>

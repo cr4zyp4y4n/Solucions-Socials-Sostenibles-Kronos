@@ -811,6 +811,77 @@ class HoldedApiService {
     return this.makeRequest(endpoint, {}, company);
   }
 
+  // ========== FUNCIONES PARA PRESUPUESTOS (ESTIMATES / QUOTES) ==========
+  // Según la API de Holded, el docType para presupuestos es "estimate"
+  async getEstimates(params = {}, company = 'solucions') {
+    const {
+      page = 1,
+      limit = 100,
+      starttmp,
+      endtmp,
+      contactid,
+      sort = 'created-desc'
+    } = params;
+
+    let endpoint = `/documents/estimate?page=${page}&limit=${limit}&sort=${sort}`;
+    if (starttmp) endpoint += `&starttmp=${starttmp}`;
+    if (endtmp) endpoint += `&endtmp=${endtmp}`;
+    if (contactid) endpoint += `&contactid=${contactid}`;
+
+    return this.makeRequest(endpoint, {}, company);
+  }
+
+  // Obtener TODOS los presupuestos (todas las páginas), con año opcional
+  async getAllEstimatesPages(company = 'solucions', year = null) {
+    const all = [];
+    let page = 1;
+    const limit = 100;
+
+    const baseParams = { sort: 'created-desc' };
+    if (year) {
+      const startDate = new Date(`${year}-01-01T00:00:00Z`);
+      const endDate = new Date(`${year}-12-31T23:59:59Z`);
+      baseParams.starttmp = Math.floor(startDate.getTime() / 1000);
+      baseParams.endtmp = Math.floor(endDate.getTime() / 1000);
+    }
+
+    while (true) {
+      const estimates = await this.getEstimates({ page, limit, ...baseParams }, company);
+      if (!estimates || estimates.length === 0) break;
+      all.push(...estimates);
+      if (estimates.length < limit) break;
+      page++;
+    }
+
+    return all;
+  }
+
+  // Obtener presupuestos (por defecto, último año + año actual) y transformarlos a un formato similar al de ventas
+  async getAllEstimates(company = 'solucions', year = null) {
+    try {
+      let unique;
+
+      if (year) {
+        const docs = await this.getAllEstimatesPages(company, year);
+        unique = docs.filter((doc, i, self) => self.findIndex(d => d.id === doc.id) === i);
+      } else {
+        const currentYear = new Date().getFullYear();
+        const yearsToFetch = [currentYear - 1, currentYear];
+        const allYearResults = await Promise.all(
+          yearsToFetch.map(yr => this.getAllEstimatesPages(company, yr))
+        );
+        const allDocs = allYearResults.flat();
+        unique = allDocs.filter((doc, i, self) => self.findIndex(d => d.id === doc.id) === i);
+      }
+
+      // Reutilizamos el transform de ventas porque el layout de columnas es el mismo para la UI.
+      return unique.map(doc => this.transformHoldedDocumentToSaleInvoice(doc));
+    } catch (error) {
+      console.error(`❌ [Holded API] Error obteniendo presupuestos (estimate) para ${company}:`, error);
+      return [];
+    }
+  }
+
   // Obtener facturas de venta pendientes (no pagadas)
   async getPendingSales(page = 1, limit = 100, company = 'solucions') {
     // Intentar primero sin el filtro paid para ver si el endpoint funciona
@@ -1255,6 +1326,29 @@ class HoldedApiService {
       });
     }
     
+    // Texto afegit al document (menú, condicions, etc.): sovint ve en description/desc o en notes/footer
+    let addedDocumentText = [
+      holdedDocument.description,
+      holdedDocument.desc,
+      holdedDocument.notes,
+      holdedDocument.footer,
+      holdedDocument.docNote,
+      holdedDocument.documentNote,
+      holdedDocument.additionalText,
+      holdedDocument.extraText,
+      holdedDocument.terms,
+      holdedDocument.footerText,
+      holdedDocument.header,
+      holdedDocument.headerText,
+    ].find(value => typeof value === 'string' && value.trim() !== '');
+    if (!addedDocumentText && holdedDocument.customFields && typeof holdedDocument.customFields === 'object') {
+      const vals = Array.isArray(holdedDocument.customFields)
+        ? holdedDocument.customFields.map(f => f && (f.value ?? f.text ?? f.desc))
+        : Object.values(holdedDocument.customFields);
+      addedDocumentText = vals.find(v => typeof v === 'string' && v.trim() !== '');
+    }
+    addedDocumentText = addedDocumentText || '';
+
     // SIEMPRE usar la descripción de productos si existe, sin importar otros campos
     let resolvedDescription;
     if (productsDescriptions.length > 0) {
@@ -1342,7 +1436,8 @@ class HoldedApiService {
       holded_id: holdedDocument.id, // ID original de Holded para referencia
       holded_contact_id: holdedDocument.contact?.id,
       iban: typeof contactIban === 'string' ? contactIban : String(contactIban || ''),
-      document_type: 'sale' // Tipo: factura de venta
+      document_type: 'sale', // Tipo: factura de venta
+      added_document_text: typeof addedDocumentText === 'string' ? addedDocumentText.trim() : ''
     };
     
     const finalData = this.validateAndCleanInvoiceData(transformed);
@@ -1394,7 +1489,7 @@ class HoldedApiService {
     cleaned.paid = Boolean(cleaned.paid);
     
     // Limpiar campos de texto
-    const textFields = ['invoice_number', 'internal_number', 'provider', 'client', 'description', 'tags', 'account', 'project', 'status'];
+    const textFields = ['invoice_number', 'internal_number', 'provider', 'client', 'description', 'tags', 'account', 'project', 'status', 'added_document_text'];
     textFields.forEach(field => {
       if (cleaned[field] !== null && cleaned[field] !== undefined) {
         cleaned[field] = String(cleaned[field]).trim();
