@@ -260,6 +260,76 @@ class HoldedEmployeesService {
       pais = toString(employee.country);
     }
 
+    const currentContract = employee.currentContract && typeof employee.currentContract === 'object'
+      ? employee.currentContract
+      : null;
+
+    const contractStartIso = currentContract?.startDate
+      ? new Date(currentContract.startDate * 1000).toISOString()
+      : null;
+    const contractEndIso = currentContract?.endDate
+      ? new Date(currentContract.endDate * 1000).toISOString()
+      : null;
+    const contractEnded = Boolean(contractEndIso) && new Date(contractEndIso).getTime() < Date.now();
+
+    // Antigüedad: usar inicio de contrato (currentContract.startDate) y fallback a startDate del empleado
+    const effectiveStartIso = contractStartIso || (employee.startDate ? new Date(employee.startDate * 1000).toISOString() : null);
+    const antiguedad = (() => {
+      if (!effectiveStartIso) return { dias: null, meses: null, anios: null, texto: '' };
+      const startRaw = new Date(effectiveStartIso);
+      if (Number.isNaN(startRaw.getTime())) return { dias: null, meses: null, anios: null, texto: '' };
+
+      const endRaw = new Date();
+
+      // Trabajar con fechas de calendario en LOCAL (ancladas a mediodía) para evitar saltos por UTC/DST.
+      const toLocalCalendarNoon = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12, 0, 0, 0);
+      const start = toLocalCalendarNoon(startRaw);
+      const end = toLocalCalendarNoon(endRaw);
+
+      const daysInMonthLocal = (year, month) => new Date(year, month + 1, 0, 12).getDate();
+      const addMonthsLocal = (date, monthsToAdd) => {
+        const y = date.getFullYear();
+        const m = date.getMonth();
+        const day = date.getDate();
+        const totalMonths = y * 12 + m + monthsToAdd;
+        const newY = Math.floor(totalMonths / 12);
+        const newM = totalMonths % 12;
+        const maxDay = daysInMonthLocal(newY, newM);
+        const newDay = Math.min(day, maxDay);
+        return new Date(newY, newM, newDay, 12, 0, 0, 0);
+      };
+      const addYearsLocal = (date, yearsToAdd) => addMonthsLocal(date, yearsToAdd * 12);
+
+      // Si start es futuro, devolver 0
+      if (end.getTime() < start.getTime()) {
+        return { dias: 0, meses: 0, anios: 0, texto: '0 días' };
+      }
+
+      let anios = end.getFullYear() - start.getFullYear();
+      let anchor = addYearsLocal(start, anios);
+      if (anchor.getTime() > end.getTime()) {
+        anios -= 1;
+        anchor = addYearsLocal(start, anios);
+      }
+
+      let meses = (end.getFullYear() - anchor.getFullYear()) * 12 + (end.getMonth() - anchor.getMonth());
+      let anchor2 = addMonthsLocal(anchor, meses);
+      if (anchor2.getTime() > end.getTime()) {
+        meses -= 1;
+        anchor2 = addMonthsLocal(anchor, meses);
+      }
+
+      const dias = Math.max(0, Math.round((end.getTime() - anchor2.getTime()) / (1000 * 60 * 60 * 24)));
+
+      // Texto: siempre incluir días (aunque sean 0) si hay años o meses
+      const parts = [];
+      if (anios) parts.push(`${anios} año${anios === 1 ? '' : 's'}`);
+      if (meses) parts.push(`${meses} mes${meses === 1 ? '' : 'es'}`);
+      if (anios || meses || dias || dias === 0) parts.push(`${dias} día${dias === 1 ? '' : 's'}`);
+
+      return { dias, meses, anios, texto: parts.join(' ') };
+    })();
+
     return {
       // Datos básicos (usando campos reales de Holded)
       id: toString(employee.id),
@@ -279,6 +349,33 @@ class HoldedEmployeesService {
       terminado: employee.terminated ? new Date(employee.terminated * 1000).toLocaleDateString('es-ES') : null,
       tipoTerminacion: toString(employee.terminatedType),
       motivoTerminacion: toString(employee.terminatedReason),
+
+      // Contrato actual (Holded: currentContract)
+      contratoId: toString(currentContract?.id),
+      contratoTipo: toString(currentContract?.type),
+      contratoFechaInicio: contractStartIso ? new Date(contractStartIso).toLocaleDateString('es-ES') : '',
+      contratoFechaFin: contractEndIso ? new Date(contractEndIso).toLocaleDateString('es-ES') : null,
+      contratoFinalizado: contractEnded,
+      contratoPuesto: toString(currentContract?.jobTitle),
+      contratoHoras: currentContract?.scheduleHours ?? null,
+      contratoModo: toString(currentContract?.scheduleMode),
+      contratoDiasLaborables: Array.isArray(currentContract?.workingDays) ? currentContract.workingDays : [],
+      contratoSalario: currentContract?.salary ?? null,
+      contratoSalarioIntervalo: toString(currentContract?.salaryInterval),
+      contratoPagas: currentContract?.salaryPayments ?? null,
+      contratoExtras: Array.isArray(currentContract?.salaryExtra) ? currentContract.salaryExtra : [],
+
+      // Alias para UI actual (EmpleadosPage modal usa estos nombres)
+      tipoContrato: toString(currentContract?.type || employee.contractType),
+      jornadaSemanal: currentContract?.scheduleHours ?? (employee.weeklyHours || employee.weekly_hours || employee.hoursPerWeek || ''),
+      porcentajeJornada: employee.percentageHours || employee.percentage_hours || employee.workPercentage || '',
+      codigoContrato: toString(employee.contractCode || employee.contract_code || currentContract?.id || ''),
+
+      // Antigüedad en empresa (basada en inicio de contrato)
+      antiguedadDias: antiguedad.dias,
+      antiguedadMeses: antiguedad.meses,
+      antiguedadAnios: antiguedad.anios,
+      antiguedadTexto: antiguedad.texto,
       
       // Datos personales (usando campos reales)
       dni: toString(employee.code), // Usar code en lugar de dni/nif
@@ -315,7 +412,7 @@ class HoldedEmployeesService {
       supervisor: toString(employee.reportingTo),
       supervisoresVacaciones: employee.timeOffSupervisors || [],
       politicaVacaciones: toString(employee.timeOffPolicyId),
-      contratoActual: employee.currentContract || [],
+      contratoActual: currentContract || null,
       
       // Datos adicionales
       foto: toString(employee.photo || employee.avatar),
@@ -451,12 +548,14 @@ class HoldedEmployeesService {
       'Servicio social Público': emp.servicioSocial || '', // Campo manual
       'Subvención previa 2025': emp.subvencionPrevia || 'No', // Campo manual
       'Código de contrato': emp.codigoContrato || '', // Campo manual
-      'Fecha inicio REAL del contrato': emp.fechaAlta,
+      'Fecha inicio REAL del contrato': emp.contratoFechaInicio || emp.fechaAlta,
+      'Antigüedad (texto)': emp.antiguedadTexto || '',
+      'Antigüedad (años)': emp.antiguedadAnios ?? '',
+      'Antigüedad (meses)': emp.antiguedadMeses ?? '',
+      'Antigüedad (días)': emp.antiguedadDias ?? '',
       'Jornada semanal ordinaria empresa (horas)': '40', // Estándar, campo manual
       'Jornada semanal trabajadora (horas)': emp.jornadaSemanal || '', // Campo manual
       'Porcentaje sobre jornada ordinaria': emp.porcentajeJornada || '', // Campo manual
-      'Fecha inicial período solicitado': '01/04/2025', // Fijo según Bruno
-      'Fecha final período solicitado': '31/08/2025', // Fijo según Bruno
       
       // Datos adicionales útiles
       'Email': emp.email,
@@ -479,55 +578,86 @@ class HoldedEmployeesService {
   // Exportar a Excel para subvención L2
   exportToExcelForSubsidy(employees, selectedEmployees = [], filename = 'empleados_subvencion_l2') {
     const data = this.prepareSubsidyData(employees, selectedEmployees);
-    
-    // Crear workbook
-    const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.json_to_sheet(data);
-    
-    // Ajustar ancho de columnas
-    const colWidths = [
-      { wch: 25 }, // Nombre
-      { wch: 15 }, // DNI
-      { wch: 20 }, // NSS
-      { wch: 15 }, // DNI anterior
-      { wch: 8 },  // Género
-      { wch: 6 },  // Edad
-      { wch: 15 }, // Colectivo
-      { wch: 20 }, // Servicio social
-      { wch: 15 }, // Subvención previa
-      { wch: 15 }, // Código contrato
-      { wch: 18 }, // Fecha inicio
-      { wch: 15 }, // Jornada empresa
-      { wch: 15 }, // Jornada trabajadora
-      { wch: 15 }, // Porcentaje
-      { wch: 18 }, // Fecha inicial período
-      { wch: 18 }, // Fecha final período
-      { wch: 25 }, // Email
-      { wch: 15 }, // Teléfono
-      { wch: 20 }, // Puesto
-      { wch: 15 }, // Departamento
-      { wch: 12 }, // Fecha nacimiento
-      { wch: 12 }, // Estado civil
-      { wch: 15 }, // Tipo contrato
-      { wch: 25 }, // IBAN
-      { wch: 30 }, // Dirección
-      { wch: 15 }, // Ciudad
-      { wch: 12 }, // Código postal
-      { wch: 10 }, // País
-      { wch: 8 },  // Activo
-      { wch: 30 }  // Notas
+
+    // Reordenar columnas explícitamente para que sea más entendible
+    const orderedKeys = [
+      'Nombre de la persona trabajadora',
+      'DNI/NIE de la trabajadora',
+      'Nº de la Seguridad social de la trabajadora',
+      'Género',
+      'Edad',
+      'Email',
+      'Teléfono',
+      'Puesto',
+      'Departamento',
+      'Activo',
+      'Código de contrato',
+      'Fecha inicio REAL del contrato',
+      'Antigüedad (texto)',
+      'Antigüedad (años)',
+      'Antigüedad (meses)',
+      'Antigüedad (días)',
+      'Jornada semanal ordinaria empresa (horas)',
+      'Jornada semanal trabajadora (horas)',
+      'Porcentaje sobre jornada ordinaria',
+      'Tipo contrato',
+      'Colectivo',
+      'Servicio social Público',
+      'Subvención previa 2025',
+      'IBAN',
+      'Dirección',
+      'Ciudad',
+      'Código postal',
+      'País',
+      'Notas'
     ];
-    
-    ws['!cols'] = colWidths;
-    
-    // Añadir hoja al workbook
+
+    const reordered = data.map((row) => {
+      const out = {};
+      orderedKeys.forEach((k) => { out[k] = row[k] ?? ''; });
+      return out;
+    });
+
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(reordered);
+
+    // Anchos de columna (bonito sin estilos avanzados)
+    ws['!cols'] = [
+      { wch: 28 }, // Nombre
+      { wch: 16 }, // DNI
+      { wch: 22 }, // NSS
+      { wch: 10 }, // Género
+      { wch: 6 },  // Edad
+      { wch: 28 }, // Email
+      { wch: 16 }, // Teléfono
+      { wch: 22 }, // Puesto
+      { wch: 18 }, // Departamento
+      { wch: 8 },  // Activo
+      { wch: 18 }, // Código contrato
+      { wch: 18 }, // Inicio contrato
+      { wch: 18 }, // Antigüedad texto
+      { wch: 6 },  // Años
+      { wch: 7 },  // Meses
+      { wch: 6 },  // Días
+      { wch: 18 }, // Jornada empresa
+      { wch: 20 }, // Jornada trabajadora
+      { wch: 12 }, // % jornada
+      { wch: 14 }, // Tipo contrato
+      { wch: 14 }, // Colectivo
+      { wch: 20 }, // Servicio social
+      { wch: 16 }, // Subvención previa
+      { wch: 28 }, // IBAN
+      { wch: 34 }, // Dirección
+      { wch: 16 }, // Ciudad
+      { wch: 10 }, // CP
+      { wch: 10 }, // País
+      { wch: 34 }, // Notas
+    ];
+
     XLSX.utils.book_append_sheet(wb, ws, 'Empleados Subvención L2');
-    
-    // Descargar archivo
     const timestamp = new Date().toISOString().slice(0, 19).replace(/[:-]/g, '');
     XLSX.writeFile(wb, `${filename}_${timestamp}.xlsx`);
-    
-    return data.length;
+    return reordered.length;
   }
 }
 

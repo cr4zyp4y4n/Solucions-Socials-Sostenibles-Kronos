@@ -353,6 +353,52 @@ const EmpleadoDetailModal = ({ isOpen, onClose, empleado }) => {
                   {formatDate(empleado.fechaAlta)}
                 </span>
               </div>
+
+              {(empleado.contratoFechaInicio || empleado.contratoTipo || empleado.contratoPuesto) && (
+                <>
+                  <div style={{ paddingTop: 6, marginTop: 2, borderTop: `1px dashed ${colors.border}` }} />
+                  <div>
+                    <span style={{ fontSize: '12px', color: colors.textSecondary }}>Contrato (tipo):</span>
+                    <span style={{ fontSize: '14px', fontWeight: '500', color: colors.text, marginLeft: '8px' }}>
+                      {empleado.contratoTipo || 'No especificado'}
+                    </span>
+                  </div>
+                  <div>
+                    <span style={{ fontSize: '12px', color: colors.textSecondary }}>Inicio contrato:</span>
+                    <span style={{ fontSize: '14px', fontWeight: '500', color: colors.text, marginLeft: '8px' }}>
+                      {empleado.contratoFechaInicio || 'No especificado'}
+                    </span>
+                  </div>
+                  <div>
+                    <span style={{ fontSize: '12px', color: colors.textSecondary }}>Fin contrato:</span>
+                    <span style={{ fontSize: '14px', fontWeight: '500', color: colors.text, marginLeft: '8px' }}>
+                      {empleado.contratoFechaFin || 'Indefinido'}
+                    </span>
+                  </div>
+                  <div>
+                    <span style={{ fontSize: '12px', color: colors.textSecondary }}>Puesto (contrato):</span>
+                    <span style={{ fontSize: '14px', fontWeight: '500', color: colors.text, marginLeft: '8px' }}>
+                      {empleado.contratoPuesto || 'No especificado'}
+                    </span>
+                  </div>
+                  {(empleado.contratoHoras !== null && empleado.contratoHoras !== undefined) && (
+                    <div>
+                      <span style={{ fontSize: '12px', color: colors.textSecondary }}>Horas:</span>
+                      <span style={{ fontSize: '14px', fontWeight: '500', color: colors.text, marginLeft: '8px' }}>
+                        {empleado.contratoHoras} ({empleado.contratoModo || '—'})
+                      </span>
+                    </div>
+                  )}
+                  {(empleado.contratoSalario !== null && empleado.contratoSalario !== undefined) && (
+                    <div>
+                      <span style={{ fontSize: '12px', color: colors.textSecondary }}>Salario:</span>
+                      <span style={{ fontSize: '14px', fontWeight: '500', color: colors.text, marginLeft: '8px' }}>
+                        {empleado.contratoSalario} {empleado.contratoSalarioIntervalo ? `(${empleado.contratoSalarioIntervalo})` : ''}
+                      </span>
+                    </div>
+                  )}
+                </>
+              )}
               
               <div>
                 <span style={{ fontSize: '12px', color: colors.textSecondary }}>Estado:</span>

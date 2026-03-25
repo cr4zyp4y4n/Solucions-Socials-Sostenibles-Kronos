@@ -18,6 +18,7 @@ import {
   UserX,
   RefreshCw,
   AlertCircle,
+  X,
   CheckCircle,
   Info,
   FileText,
@@ -213,8 +214,8 @@ const EmpleadosPage = () => {
   // Exportar para Subvención L2
   const exportForSubsidy = () => {
     try {
-      const count = holdedEmployeesService.exportToExcelForSubsidy(empleados, [], 'empleados_subvencion_l2');
-      alert(`✅ Exportado correctamente: ${count} empleados para Subvención L2`);
+      const result = holdedEmployeesService.exportToExcelForSubsidy(empleados, [], 'empleados_subvencion_l2');
+      alert(`✅ Exportado correctamente: ${result} empleados para Subvención L2`);
     } catch (error) {
       console.error('Error exportando para subvención:', error);
       alert('❌ Error al exportar para subvención');
@@ -723,6 +724,26 @@ const EmpleadosPage = () => {
                         {empleado.activo ? 'Activo' : 'Inactivo'}
                       </span>
                     </div>
+                    {empleado.contratoFinalizado && (
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        padding: '4px 10px',
+                        backgroundColor: '#ff980020',
+                        border: '1px solid #ff9800',
+                        borderRadius: '6px',
+                        gap: '4px'
+                      }}>
+                        <AlertCircle size={12} color="#ff9800" />
+                        <span style={{
+                          fontSize: '11px',
+                          fontWeight: '600',
+                          color: '#ff9800'
+                        }}>
+                          Contrato finalizado
+                        </span>
+                      </div>
+                    )}
                   </div>
                   
                   {empleado.puesto && (
@@ -754,6 +775,26 @@ const EmpleadosPage = () => {
                 </div>
                 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                  {empleado.contratoFechaInicio && (
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: '14px', fontWeight: '600', color: colors.text }}>
+                        {empleado.contratoFechaInicio}
+                      </div>
+                      <div style={{ fontSize: '12px', color: colors.textSecondary }}>
+                        Inicio contrato
+                      </div>
+                    </div>
+                  )}
+                  {empleado.antiguedadTexto && (
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: '14px', fontWeight: '600', color: colors.text }}>
+                        {empleado.antiguedadTexto}
+                      </div>
+                      <div style={{ fontSize: '12px', color: colors.textSecondary }}>
+                        Antigüedad
+                      </div>
+                    </div>
+                  )}
                   {empleado.fechaAlta && (
                     <div style={{ textAlign: 'right' }}>
                       <div style={{ fontSize: '14px', fontWeight: '600', color: colors.text }}>
@@ -828,7 +869,7 @@ const EmpleadosPage = () => {
                   transition: 'background-color 0.2s'
                 }}
               >
-                <AlertCircle size={24} color={colors.textSecondary} />
+                <X size={24} color={colors.textSecondary} />
               </button>
             </div>
 
@@ -873,6 +914,10 @@ const EmpleadosPage = () => {
                   <InfoField label="Puesto" value={selectedEmpleado.puesto} colors={colors} icon={<Briefcase size={16} />} />
                   <InfoField label="Departamento" value={selectedEmpleado.departamento} colors={colors} icon={<Building size={16} />} />
                   <InfoField label="Tipo de Contrato" value={selectedEmpleado.tipoContrato} colors={colors} />
+                  <InfoField label="Inicio contrato" value={selectedEmpleado.contratoFechaInicio} colors={colors} icon={<Calendar size={16} />} />
+                  <InfoField label="Fin contrato" value={selectedEmpleado.contratoFechaFin || 'Indefinido'} colors={colors} icon={<Calendar size={16} />} />
+                  <InfoField label="Puesto (contrato)" value={selectedEmpleado.contratoPuesto} colors={colors} />
+                  <InfoField label="Antigüedad" value={selectedEmpleado.antiguedadTexto} colors={colors} />
                   <InfoField label="Fecha de Alta" value={selectedEmpleado.fechaAlta} colors={colors} icon={<Calendar size={16} />} />
                   {selectedEmpleado.fechaBaja && (
                     <InfoField label="Fecha de Baja" value={selectedEmpleado.fechaBaja} colors={colors} icon={<Calendar size={16} />} />
@@ -886,6 +931,7 @@ const EmpleadosPage = () => {
                   <InfoField label="Jornada Semanal" value={selectedEmpleado.jornadaSemanal} colors={colors} />
                   <InfoField label="Porcentaje Jornada" value={selectedEmpleado.porcentajeJornada} colors={colors} />
                   <InfoField label="Código Contrato" value={selectedEmpleado.codigoContrato} colors={colors} />
+                  <InfoField label="Salario" value={selectedEmpleado.contratoSalario != null ? `${selectedEmpleado.contratoSalario} ${selectedEmpleado.contratoSalarioIntervalo ? `(${selectedEmpleado.contratoSalarioIntervalo})` : ''}` : ''} colors={colors} />
                 </div>
               </div>
 
