@@ -175,13 +175,21 @@ export default function PanelFichajesPage() {
       resumenExport[emp.id] = { horasTotales: horasTotales.toFixed(2), diasTrabajados: fichajesEmp.length };
     });
 
-    const desdeLabel = format(fechaDesde, 'dd-MM-yyyy');
-    const hastaLabel = format(fechaHasta, 'dd-MM-yyyy');
+    const getMinMaxFecha = (rows) => {
+      const fechas = (rows || []).map((r) => r?.fecha).filter(Boolean).sort();
+      if (fechas.length === 0) return null;
+      return { min: fechas[0], max: fechas[fechas.length - 1] };
+    };
+    const rango = getMinMaxFecha(completos);
+    const rangoLabel = rango
+      ? `Rango de datos: ${format(parseISO(rango.min), 'dd-MM-yyyy')} a ${format(parseISO(rango.max), 'dd-MM-yyyy')}`
+      : 'Sin registros para exportar';
+
     const wb = new ExcelJS.Workbook();
 
     const wsAsistencia = wb.addWorksheet('Asistencia', { views: [{ showGridLines: true }] });
     wsAsistencia.addRow([`Informe de asistencia (todos los datos)`]);
-    wsAsistencia.addRow([`Desde ${desdeLabel} hasta ${hastaLabel}`]);
+    wsAsistencia.addRow([rangoLabel]);
     wsAsistencia.getRow(1).font = { bold: true, size: 12 };
     wsAsistencia.getRow(2).font = { size: 11 };
     wsAsistencia.addRow([]);
@@ -221,7 +229,7 @@ export default function PanelFichajesPage() {
 
     const wsResumen = wb.addWorksheet('Resumen');
     wsResumen.addRow([`Resumen por empleado (todos los datos)`]);
-    wsResumen.addRow([`Desde ${desdeLabel} hasta ${hastaLabel}`]);
+    wsResumen.addRow([rangoLabel]);
     wsResumen.getRow(1).font = { bold: true, size: 12 };
     wsResumen.getRow(2).font = { size: 11 };
     wsResumen.addRow([]);
