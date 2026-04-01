@@ -168,11 +168,27 @@ export default function PanelFichajesPage() {
         if (porFecha !== 0) return porFecha;
         return (a.hora_entrada || '').localeCompare(b.hora_entrada || '');
       });
-    const resumenExport = {};
+    // Resumen por empleado y mes (horas)
+    const monthKey = (fechaIso) => (fechaIso ? format(parseISO(fechaIso), 'yyyy-MM') : '');
+    const monthLabel = (yyyyMm) => {
+      if (!yyyyMm) return '';
+      const [y, m] = yyyyMm.split('-').map(Number);
+      const d = new Date(y, (m || 1) - 1, 1);
+      const label = format(d, 'MMMM yyyy', { locale: es });
+      return label ? label.charAt(0).toUpperCase() + label.slice(1) : yyyyMm;
+    };
+    const months = [...new Set(completos.map((f) => monthKey(f.fecha)).filter(Boolean))].sort();
+    const resumenPorEmpleadoMes = {};
     empsExport.forEach((emp) => {
-      const fichajesEmp = completos.filter((f) => f.empleado_id === emp.id);
-      const horasTotales = fichajesEmp.reduce((sum, f) => sum + (f.horas_trabajadas || 0), 0);
-      resumenExport[emp.id] = { horasTotales: horasTotales.toFixed(2), diasTrabajados: fichajesEmp.length };
+      resumenPorEmpleadoMes[emp.id] = {};
+      months.forEach((mm) => { resumenPorEmpleadoMes[emp.id][mm] = 0; });
+    });
+    completos.forEach((f) => {
+      const mm = monthKey(f.fecha);
+      if (!mm) return;
+      if (!resumenPorEmpleadoMes[f.empleado_id]) resumenPorEmpleadoMes[f.empleado_id] = {};
+      if (resumenPorEmpleadoMes[f.empleado_id][mm] == null) resumenPorEmpleadoMes[f.empleado_id][mm] = 0;
+      resumenPorEmpleadoMes[f.empleado_id][mm] += Number(f.horas_trabajadas || 0);
     });
 
     const getMinMaxFecha = (rows) => {
@@ -204,7 +220,12 @@ export default function PanelFichajesPage() {
       const emp = empsExport.find((e) => e.id === f.empleado_id);
       const nombre = emp?.nombreCompleto || emp?.name || f.empleado_id || '';
       const horas = f.horas_trabajadas != null ? Number(f.horas_trabajadas) : 0;
-      const mes = f.fecha ? format(parseISO(f.fecha), 'yyyy-MM') : '';
+      const mes = f.fecha
+        ? (() => {
+          const label = format(parseISO(f.fecha), 'MMMM', { locale: es });
+          return label ? label.charAt(0).toUpperCase() + label.slice(1) : '';
+        })()
+        : '';
       wsAsistencia.addRow([
         mes,
         nombre,
@@ -233,18 +254,29 @@ export default function PanelFichajesPage() {
     wsResumen.getRow(1).font = { bold: true, size: 12 };
     wsResumen.getRow(2).font = { size: 11 };
     wsResumen.addRow([]);
-    const headersResumen = ['Empleado', 'Horas totales', 'Días trabajados'];
+    const headersResumen = ['Empleado', ...months.map(monthLabel), 'Total horas'];
     wsResumen.addRow(headersResumen);
     wsResumen.getRow(4).eachCell((c) => {
       c.font = { bold: true };
       c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8E8E8' } };
     });
-    [...empsExport].sort((a, b) => (a.nombreCompleto || a.name || '').localeCompare(b.nombreCompleto || b.name || '')).forEach((emp) => {
-      const r = resumenExport[emp.id] || { horasTotales: '0', diasTrabajados: 0 };
-      const nombre = emp.nombreCompleto || emp.name || 'Sin nombre';
-      wsResumen.addRow([nombre, r.horasTotales, r.diasTrabajados]);
-    });
-    wsResumen.columns = [{ width: 28 }, { width: 14 }, { width: 18 }];
+    [...empsExport]
+      .sort((a, b) => (a.nombreCompleto || a.name || '').localeCompare(b.nombreCompleto || b.name || ''))
+      .forEach((emp) => {
+        const nombre = emp.nombreCompleto || emp.name || 'Sin nombre';
+        const perMes = resumenPorEmpleadoMes[emp.id] || {};
+        const valoresMes = months.map((mm) => {
+          const v = perMes[mm] || 0;
+          return Number(v).toFixed(2);
+        });
+        const total = months.reduce((sum, mm) => sum + (perMes[mm] || 0), 0);
+        wsResumen.addRow([nombre, ...valoresMes, total.toFixed(2)]);
+      });
+    wsResumen.columns = [
+      { width: 28 },
+      ...months.map(() => ({ width: 14 })),
+      { width: 14 }
+    ];
 
     const buffer = await wb.xlsx.writeBuffer();
     const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
