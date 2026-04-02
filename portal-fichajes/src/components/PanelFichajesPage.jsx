@@ -168,7 +168,7 @@ export default function PanelFichajesPage() {
         if (porFecha !== 0) return porFecha;
         return (a.hora_entrada || '').localeCompare(b.hora_entrada || '');
       });
-    // Resumen por empleado y mes (horas)
+    // Resumen por empleado y mes (horas y días trabajados)
     const monthKey = (fechaIso) => (fechaIso ? format(parseISO(fechaIso), 'yyyy-MM') : '');
     const monthLabel = (yyyyMm) => {
       if (!yyyyMm) return '';
@@ -178,17 +178,18 @@ export default function PanelFichajesPage() {
       return label ? label.charAt(0).toUpperCase() + label.slice(1) : yyyyMm;
     };
     const months = [...new Set(completos.map((f) => monthKey(f.fecha)).filter(Boolean))].sort();
-    const resumenPorEmpleadoMes = {};
+    const resumenPorEmpleadoMes = {}; // { empId: { [yyyy-MM]: { horas: number, diasSet: Set<string> } } }
     empsExport.forEach((emp) => {
       resumenPorEmpleadoMes[emp.id] = {};
-      months.forEach((mm) => { resumenPorEmpleadoMes[emp.id][mm] = 0; });
+      months.forEach((mm) => { resumenPorEmpleadoMes[emp.id][mm] = { horas: 0, diasSet: new Set() }; });
     });
     completos.forEach((f) => {
       const mm = monthKey(f.fecha);
       if (!mm) return;
       if (!resumenPorEmpleadoMes[f.empleado_id]) resumenPorEmpleadoMes[f.empleado_id] = {};
-      if (resumenPorEmpleadoMes[f.empleado_id][mm] == null) resumenPorEmpleadoMes[f.empleado_id][mm] = 0;
-      resumenPorEmpleadoMes[f.empleado_id][mm] += Number(f.horas_trabajadas || 0);
+      if (resumenPorEmpleadoMes[f.empleado_id][mm] == null) resumenPorEmpleadoMes[f.empleado_id][mm] = { horas: 0, diasSet: new Set() };
+      resumenPorEmpleadoMes[f.empleado_id][mm].horas += Number(f.horas_trabajadas || 0);
+      if (f.fecha) resumenPorEmpleadoMes[f.empleado_id][mm].diasSet.add(f.fecha);
     });
 
     const getMinMaxFecha = (rows) => {
@@ -254,7 +255,15 @@ export default function PanelFichajesPage() {
     wsResumen.getRow(1).font = { bold: true, size: 12 };
     wsResumen.getRow(2).font = { size: 11 };
     wsResumen.addRow([]);
-    const headersResumen = ['Empleado', ...months.map(monthLabel), 'Total horas'];
+    const headersResumen = [
+      'Empleado',
+      ...months.flatMap((mm) => {
+        const label = monthLabel(mm);
+        return [`${label} (h)`, `${label} (días)`];
+      }),
+      'Total horas',
+      'Total días',
+    ];
     wsResumen.addRow(headersResumen);
     wsResumen.getRow(4).eachCell((c) => {
       c.font = { bold: true };
@@ -265,17 +274,21 @@ export default function PanelFichajesPage() {
       .forEach((emp) => {
         const nombre = emp.nombreCompleto || emp.name || 'Sin nombre';
         const perMes = resumenPorEmpleadoMes[emp.id] || {};
-        const valoresMes = months.map((mm) => {
-          const v = perMes[mm] || 0;
-          return Number(v).toFixed(2);
+        const valoresMes = months.flatMap((mm) => {
+          const v = perMes[mm] || { horas: 0, diasSet: new Set() };
+          const horas = Number(v.horas || 0).toFixed(2);
+          const dias = v.diasSet ? v.diasSet.size : 0;
+          return [horas, dias];
         });
-        const total = months.reduce((sum, mm) => sum + (perMes[mm] || 0), 0);
-        wsResumen.addRow([nombre, ...valoresMes, total.toFixed(2)]);
+        const totalHoras = months.reduce((sum, mm) => sum + Number((perMes[mm]?.horas) || 0), 0);
+        const totalDias = months.reduce((sum, mm) => sum + Number(perMes[mm]?.diasSet?.size || 0), 0);
+        wsResumen.addRow([nombre, ...valoresMes, totalHoras.toFixed(2), totalDias]);
       });
     wsResumen.columns = [
       { width: 28 },
-      ...months.map(() => ({ width: 14 })),
-      { width: 14 }
+      ...months.flatMap(() => ([{ width: 12 }, { width: 10 }])),
+      { width: 14 },
+      { width: 12 },
     ];
 
     const buffer = await wb.xlsx.writeBuffer();

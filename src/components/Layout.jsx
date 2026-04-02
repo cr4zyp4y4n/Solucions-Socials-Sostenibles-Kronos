@@ -1326,7 +1326,8 @@ const Layout = () => {
               flex: 1,
               padding: '0',
               overflow: 'auto',
-              overflowX: 'hidden', /* Prevenir scroll horizontal */
+              overflowX: 'hidden',
+              minWidth: 0,
               background: colors.background,
               scrollbarWidth: 'thin',
               scrollbarColor: `${colors.border} transparent`,

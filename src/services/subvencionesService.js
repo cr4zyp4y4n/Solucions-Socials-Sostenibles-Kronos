@@ -476,6 +476,57 @@ class SubvencionesService {
     };
   }
 
+  /**
+   * Normaliza una celda fase_* leída de Supabase (texto/boolean) al formato interno.
+   */
+  normalizeMarcadoFaseFromDb(raw) {
+    if (raw === null || raw === undefined) return false;
+    if (typeof raw === 'boolean') return raw;
+    const s = String(raw).trim();
+    if (s === '' || s === '-' || s === '--') return false;
+    const u = s.toUpperCase();
+    if (u === 'X' || u === 'SI' || u === 'SÍ' || u === '1' || u === 'Y' || u === 'YES') return true;
+    return s;
+  }
+
+  /** Guarda en columnas text de Supabase: true → 'X', vacío → null. */
+  serializeMarcadoFaseParaSupabase(v) {
+    if (v === true) return 'X';
+    if (v === false || v === null || v === undefined) return null;
+    if (typeof v === 'string') {
+      const t = v.trim();
+      return t === '' ? null : t;
+    }
+    return String(v);
+  }
+
+  /**
+   * Indica si una fase está "marcada" en la cuadrícula (equivalente a una X en el Excel).
+   */
+  esFaseMarcadaActiva(fase) {
+    if (fase === null || fase === undefined) return false;
+    if (typeof fase === 'boolean') return fase === true;
+    const s = String(fase).trim();
+    if (s === '' || s === '-' || s === '--') return false;
+    const u = s.toUpperCase();
+    if (u === 'FALSE' || u === 'NO' || u === '0') return false;
+    if (u === 'X' || u === 'SI' || u === 'SÍ' || u === '1' || u === 'Y' || u === 'YES') return true;
+    return true;
+  }
+
+  /**
+   * Fase mostrada en cabecera: la más alta marcada (1–8). En el Excel hay varias X a la vez;
+   * la fase "actual" alinea con la fila ESTADO (ej. Fase 8 si 4, 5 y 8 están marcadas).
+   */
+  obtenerNumeroFaseMaximaDesdeMarcas(fasesProyecto) {
+    if (!fasesProyecto) return null;
+    let maxN = null;
+    for (let i = 1; i <= 8; i++) {
+      if (this.esFaseMarcadaActiva(fasesProyecto[`fase${i}`])) maxN = i;
+    }
+    return maxN;
+  }
+
   // Analizar fases del proyecto
   analizarFasesProyecto(fasesProyecto) {
     if (!fasesProyecto) return [];
@@ -494,22 +545,16 @@ class SubvencionesService {
     const fases = [];
     for (let i = 1; i <= 8; i++) {
       const fase = fasesProyecto[`fase${i}`];
-      
-      // Verificar si es una fase activa
-      // Puede ser boolean (true), texto con contenido, o "X"
+      if (!this.esFaseMarcadaActiva(fase)) continue;
+
       const isBoolean = typeof fase === 'boolean';
-      const faseStr = fase ? fase.toString().trim().toUpperCase() : '';
-      const isActive = isBoolean ? fase : (faseStr === 'X' || (faseStr !== '' && faseStr !== '-'));
-      
-      if (isActive) {
-        fases.push({
-          numero: i,
-          campo: `fase${i}`,
-          nombre: nombresFases[i] || `Fase ${i}`,
-          contenido: isBoolean ? 'Activa' : (fase.toString().trim() === 'X' ? 'Activa' : fase),
-          activa: true
-        });
-      }
+      fases.push({
+        numero: i,
+        campo: `fase${i}`,
+        nombre: nombresFases[i] || `Fase ${i}`,
+        contenido: isBoolean ? 'Activa' : (String(fase).trim().toUpperCase() === 'X' ? 'Activa' : fase),
+        activa: true
+      });
     }
 
     return fases;
@@ -695,7 +740,8 @@ class SubvencionesService {
       const { data, error } = await supabase
         .from('subvenciones')
         .select('*')
-        .order('nombre', { ascending: true });
+        // Importante: respetar el orden original del Excel/CSV (se insertan en ese orden)
+        .order('fecha_creacion', { ascending: true });
 
       if (error) {
         console.error('Error cargando datos de Supabase:', error);
@@ -727,6 +773,7 @@ class SubvencionesService {
       codigo: supabaseRecord.codigo_subvencion || '',
       modalidad: supabaseRecord.modalidad || '',
       fechaAdjudicacion: supabaseRecord.fecha_adjudicacion || '',
+      faseActual: supabaseRecord.fase_actual ?? null,
       importeSolicitado: supabaseRecord.importe_solicitado || 0,
       importeOtorgado: supabaseRecord.importe_otorgado || 0,
       periodo: supabaseRecord.periodo_ejecucion || '',
@@ -745,14 +792,14 @@ class SubvencionesService {
       holdedAsentamiento: supabaseRecord.holded_asentamiento || '',
       importesPorCobrar: supabaseRecord.importes_por_cobrar || 0,
       fasesProyecto: {
-        fase1: supabaseRecord.fase_proyecto_1 || false,
-        fase2: supabaseRecord.fase_proyecto_2 || false,
-        fase3: supabaseRecord.fase_proyecto_3 || false,
-        fase4: supabaseRecord.fase_proyecto_4 || false,
-        fase5: supabaseRecord.fase_proyecto_5 || false,
-        fase6: supabaseRecord.fase_proyecto_6 || false,
-        fase7: supabaseRecord.fase_proyecto_7 || false,
-        fase8: supabaseRecord.fase_proyecto_8 || false
+        fase1: this.normalizeMarcadoFaseFromDb(supabaseRecord.fase_proyecto_1),
+        fase2: this.normalizeMarcadoFaseFromDb(supabaseRecord.fase_proyecto_2),
+        fase3: this.normalizeMarcadoFaseFromDb(supabaseRecord.fase_proyecto_3),
+        fase4: this.normalizeMarcadoFaseFromDb(supabaseRecord.fase_proyecto_4),
+        fase5: this.normalizeMarcadoFaseFromDb(supabaseRecord.fase_proyecto_5),
+        fase6: this.normalizeMarcadoFaseFromDb(supabaseRecord.fase_proyecto_6),
+        fase7: this.normalizeMarcadoFaseFromDb(supabaseRecord.fase_proyecto_7),
+        fase8: this.normalizeMarcadoFaseFromDb(supabaseRecord.fase_proyecto_8)
       }
     };
   }
@@ -800,6 +847,7 @@ class SubvencionesService {
       codigo_subvencion: internalData.codigo || '',
       modalidad: internalData.modalidad || '',
       fecha_adjudicacion: internalData.fechaAdjudicacion || null,
+      fase_actual: internalData.faseActual ?? null,
       importe_solicitado: cleanNumeric(internalData.importeSolicitado),
       importe_otorgado: cleanNumeric(internalData.importeOtorgado),
       periodo_ejecucion: internalData.periodo || '',
@@ -809,14 +857,14 @@ class SubvencionesService {
       fecha_primer_abono: internalData.fechaPrimerAbono || '',
       segundo_abono: cleanNumeric(internalData.segundoAbono),
       fecha_segundo_abono: internalData.fechaSegundoAbono || '',
-      fase_proyecto_1: internalData.fasesProyecto?.fase1 || null,
-      fase_proyecto_2: internalData.fasesProyecto?.fase2 || null,
-      fase_proyecto_3: internalData.fasesProyecto?.fase3 || null,
-      fase_proyecto_4: internalData.fasesProyecto?.fase4 || null,
-      fase_proyecto_5: internalData.fasesProyecto?.fase5 || null,
-      fase_proyecto_6: internalData.fasesProyecto?.fase6 || null,
-      fase_proyecto_7: internalData.fasesProyecto?.fase7 || null,
-      fase_proyecto_8: internalData.fasesProyecto?.fase8 || null,
+      fase_proyecto_1: this.serializeMarcadoFaseParaSupabase(internalData.fasesProyecto?.fase1),
+      fase_proyecto_2: this.serializeMarcadoFaseParaSupabase(internalData.fasesProyecto?.fase2),
+      fase_proyecto_3: this.serializeMarcadoFaseParaSupabase(internalData.fasesProyecto?.fase3),
+      fase_proyecto_4: this.serializeMarcadoFaseParaSupabase(internalData.fasesProyecto?.fase4),
+      fase_proyecto_5: this.serializeMarcadoFaseParaSupabase(internalData.fasesProyecto?.fase5),
+      fase_proyecto_6: this.serializeMarcadoFaseParaSupabase(internalData.fasesProyecto?.fase6),
+      fase_proyecto_7: this.serializeMarcadoFaseParaSupabase(internalData.fasesProyecto?.fase7),
+      fase_proyecto_8: this.serializeMarcadoFaseParaSupabase(internalData.fasesProyecto?.fase8),
       saldo_pendiente: cleanNumeric(internalData.saldoPendiente),
       saldo_pendiente_texto: internalData.saldoPendienteTexto || '',
       prevision_pago_total: internalData.previsionPago || '',
@@ -939,6 +987,55 @@ class SubvencionesService {
       console.error('Error eliminando subvención:', error);
       throw error;
     }
+  }
+
+  // ===== SUBVENCIONES ↔ EMPLEADOS (Holded) =====
+
+  async getEmpleadosBySubvencionIds(subvencionIds = []) {
+    if (!Array.isArray(subvencionIds) || subvencionIds.length === 0) return [];
+    const { data, error } = await supabase
+      .from('subvenciones_empleados')
+      .select('*')
+      .in('subvencion_id', subvencionIds);
+    if (error) throw error;
+    return data || [];
+  }
+
+  async addEmpleadoToSubvencion({ subvencionId, empleadoHoldedId, empleadoNombre, estado = 'presentado' }) {
+    const payload = {
+      subvencion_id: subvencionId,
+      empleado_holded_id: empleadoHoldedId,
+      empleado_nombre: empleadoNombre || null,
+      estado
+    };
+
+    const { data, error } = await supabase
+      .from('subvenciones_empleados')
+      .upsert(payload, { onConflict: 'subvencion_id,empleado_holded_id' })
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  }
+
+  async updateEmpleadoSubvencion({ id, estado }) {
+    const { data, error } = await supabase
+      .from('subvenciones_empleados')
+      .update({ estado })
+      .eq('id', id)
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  }
+
+  async removeEmpleadoFromSubvencion({ id }) {
+    const { error } = await supabase
+      .from('subvenciones_empleados')
+      .delete()
+      .eq('id', id);
+    if (error) throw error;
+    return true;
   }
 }
 
