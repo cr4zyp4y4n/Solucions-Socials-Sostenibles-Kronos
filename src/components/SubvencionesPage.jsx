@@ -138,6 +138,39 @@ export default function SubvencionesPage() {
     };
   }, [parseNumberEs]);
 
+  const mapCommonToMenjarPayload = useCallback((common) => {
+    const c = common || {};
+    return {
+      nombre: c.nombre || '',
+      proyecto: c.proyecto || '',
+      imputacion: c.imputacion || '',
+      expediente: c.expediente || '',
+      codigoSubvencion: c.codigo || '',
+      modalidad: c.modalidad || '',
+      fechaAdjudicacion: c.fechaAdjudicacion || '',
+      importeSolicitado: c.importeSolicitado || 0,
+      periodoEjecucion: c.periodo || '',
+      importeOtorgado: c.importeOtorgado || 0,
+      socL1Acompanamiento: c.socL1Acomp ?? '',
+      socL2Contratacion: c.socL2Contrat ?? '',
+      primerAbono: c.primerAbono || 0,
+      fechaPrimerAbono: c.fechaPrimerAbono || '',
+      segundoAbono: c.segundoAbono || 0,
+      fechaSegundoAbono: c.fechaSegundoAbono || '',
+      saldoPendiente: c.saldoPendiente || 0,
+      previsionPagoTotal: c.previsionPago || '',
+      fechaJustificacion: c.fechaJustificacion || '',
+      revisadoGestoria: c.revisadoGestoria || false,
+      holdedAsentamiento: c.holdedAsentamiento || '',
+      importesPorCobrar: c.importesPorCobrar || '',
+      faseProyecto: c.faseProyecto || '',
+      estado: c.estado || '',
+      arrelsEssL3: c.arrelsEssL3 || '',
+      admDiferencias: c.admDiferencias || '',
+      notas: c.notas || ''
+    };
+  }, []);
+
   const openCreate = useCallback(() => {
     setEditMode('create');
     setForm({
@@ -165,7 +198,12 @@ export default function SubvencionesPage() {
       fechaJustificacion: '',
       revisadoGestoria: '',
       holdedAsentamiento: '',
-      importesPorCobrar: ''
+      importesPorCobrar: '',
+      // Menjar d'Hort extras
+      faseProyecto: '',
+      arrelsEssL3: '',
+      admDiferencias: '',
+      notas: ''
     });
     setShowEditModal(true);
   }, []);
@@ -199,7 +237,12 @@ export default function SubvencionesPage() {
       fechaJustificacion: subvencion.fechaJustificacion || '',
       revisadoGestoria: subvencion.revisadoGestoria || '',
       holdedAsentamiento: subvencion.holdedAsentamiento || '',
-      importesPorCobrar: subvencion.importesPorCobrar ?? ''
+      importesPorCobrar: subvencion.importesPorCobrar ?? '',
+      // Menjar d'Hort extras (si existen)
+      faseProyecto: subvencion.faseProyecto || '',
+      arrelsEssL3: subvencion.arrelsEssL3 || '',
+      admDiferencias: subvencion.admDiferencias || '',
+      notas: subvencion.notas || ''
     });
     setShowEditModal(true);
   }, []);
@@ -231,7 +274,21 @@ export default function SubvencionesPage() {
       setError('');
       const service = selectedEntity === 'MENJAR_DHORT' ? menjarDhortService : subvencionesService;
       const data = await service.loadFromSupabase();
-      const subvenciones = Array.isArray(data) ? data : [];
+      const subvencionesRaw = Array.isArray(data) ? data : [];
+      const subvenciones =
+        selectedEntity === 'MENJAR_DHORT'
+          ? subvencionesRaw.map((s) => ({
+              // Normalizamos a los nombres que usa la UI (misma matriz/modal que EI SSS)
+              ...s,
+              codigo: s.codigo || s.codigoSubvencion || '',
+              periodo: s.periodo || s.periodoEjecucion || '',
+              socL1Acomp: s.socL1Acomp ?? s.socL1Acompanamiento ?? '',
+              socL2Contrat: s.socL2Contrat ?? s.socL2Contratacion ?? '',
+              previsionPago: s.previsionPago || s.previsionPagoTotal || '',
+              saldoPendienteTexto: s.saldoPendienteTexto || '',
+              // mantenemos extras Menjar: faseProyecto, arrelsEssL3, admDiferencias, notas
+            }))
+          : subvencionesRaw;
       setSubvencionesData(subvenciones);
 
       // Cargar relación empleados ↔ subvención (solo EI_SSS)
@@ -295,26 +352,24 @@ export default function SubvencionesPage() {
   }, []);
 
   const saveForm = useCallback(async () => {
-    if (selectedEntity !== 'EI_SSS') {
-      setError('Edición solo disponible para EI SSS por ahora.');
-      return;
-    }
-    const payload = toInternalForSave(form);
-    if (!payload.nombre) {
+    const commonPayload = toInternalForSave(form);
+    if (!commonPayload.nombre) {
       setError('El campo "Nombre" es obligatorio.');
       return;
     }
     try {
       setLoading(true);
       setError('');
+      const service = selectedEntity === 'MENJAR_DHORT' ? menjarDhortService : subvencionesService;
+      const payload = selectedEntity === 'MENJAR_DHORT' ? mapCommonToMenjarPayload(commonPayload) : commonPayload;
       if (editMode === 'create') {
-        const created = await subvencionesService.createSubvencion(payload);
+        const created = await service.createSubvencion(payload);
         await loadSubvencionesData();
         setSelectedSubvencion(created);
       } else {
         const id = form?.id;
         if (!id) throw new Error('Falta el id para editar.');
-        const updated = await subvencionesService.updateSubvencion(id, payload);
+        const updated = await service.updateSubvencion(id, payload);
         await loadSubvencionesData();
         setSelectedSubvencion(updated);
       }
@@ -325,13 +380,9 @@ export default function SubvencionesPage() {
     } finally {
       setLoading(false);
     }
-  }, [closeEditModal, editMode, form, loadSubvencionesData, selectedEntity, toInternalForSave]);
+  }, [closeEditModal, editMode, form, loadSubvencionesData, mapCommonToMenjarPayload, selectedEntity, toInternalForSave]);
 
   const deleteSelected = useCallback(async (subvencion) => {
-    if (selectedEntity !== 'EI_SSS') {
-      setError('Eliminar solo disponible para EI SSS por ahora.');
-      return;
-    }
     if (!subvencion?.id) return;
     // eslint-disable-next-line no-alert
     const ok = window.confirm(`¿Eliminar la subvención "${subvencion.nombre}"?`);
@@ -339,7 +390,8 @@ export default function SubvencionesPage() {
     try {
       setLoading(true);
       setError('');
-      await subvencionesService.deleteSubvencion(subvencion.id);
+      const service = selectedEntity === 'MENJAR_DHORT' ? menjarDhortService : subvencionesService;
+      await service.deleteSubvencion(subvencion.id);
       setSelectedSubvencion(null);
       await loadSubvencionesData();
     } catch (e) {
@@ -420,7 +472,6 @@ export default function SubvencionesPage() {
   }, [filteredData]);
 
   const matrix = useMemo(() => {
-    if (selectedEntity !== 'EI_SSS') return null;
     if (!filteredData?.length) return null;
 
     const columns = filteredData;
@@ -428,7 +479,10 @@ export default function SubvencionesPage() {
     const visibleCount = Math.max(1, Math.min(matrixVisibleCols, totalCols));
     const safeStart = Math.max(0, Math.min(matrixPageStart, Math.max(0, totalCols - visibleCount)));
     const visibleColumns = columns.slice(safeStart, safeStart + visibleCount);
-    const headerTitle = 'EI SOLUCIONS SOCIALS SOSTENIBLES SCCL - SUBVENCIONES ENTIDADES PÚBLICAS';
+    const headerTitle =
+      selectedEntity === 'MENJAR_DHORT'
+        ? `MENJAR D'HORT - SUBVENCIONES`
+        : 'EI SOLUCIONS SOCIALS SOSTENIBLES SCCL - SUBVENCIONES ENTIDADES PÚBLICAS';
 
     const leftHeaderStyle = {
       position: 'sticky',
@@ -617,7 +671,7 @@ export default function SubvencionesPage() {
       { kind: 'row', label: 'SALDO PDTE DE ABONO', render: (s) => saldoPendienteCell(s) },
       { kind: 'row', label: 'PREVISIÓN PAGO TOTAL', render: (s) => s.previsionPago || '' },
       { kind: 'row', label: 'FECHA JUSTIFICACIÓN', render: (s) => s.fechaJustificacion || '' },
-      { kind: 'row', label: 'EMPLEADOS', render: (s) => empleadosResumenCell(s) },
+      ...(selectedEntity === 'EI_SSS' ? [{ kind: 'row', label: 'EMPLEADOS', render: (s) => empleadosResumenCell(s) }] : []),
       { kind: 'row', label: 'ESTADO', render: (s) => s.estado || getEstadoFaseLabel(s) },
       { kind: 'row', label: 'HOLDED ASENTAM.', render: (s) => s.holdedAsentamiento || '' },
       { kind: 'row', label: 'IMPORTES POR COBRAR', render: (s) => (s.importesPorCobrar ? formatCurrency(s.importesPorCobrar) : '') }
@@ -888,13 +942,7 @@ export default function SubvencionesPage() {
       </div>
 
       <div style={{ background: colors.surface, border: `1px solid ${colors.border}`, borderRadius: 12, overflow: 'hidden' }}>
-        {selectedEntity === 'EI_SSS' ? (
-          matrix
-        ) : (
-          <div style={{ padding: 16, color: colors.textSecondary }}>
-            Vista Menjar d&apos;Hort: pendiente de rehacer en matriz (por ahora la dejamos simple para no romper el layout).
-          </div>
-        )}
+        {matrix}
       </div>
 
       {showUploadModal && (
@@ -1155,7 +1203,8 @@ export default function SubvencionesPage() {
                 </div>
               </div>
 
-              {/* Empleados */}
+              {/* Empleados (solo EI SSS) */}
+              {selectedEntity === 'EI_SSS' ? (
               <div style={{ padding: 16, backgroundColor: colors.background, borderRadius: 12, border: `1px solid ${colors.border}` }}>
                 <h3 style={{ fontSize: '16px', fontWeight: '700', color: colors.primary, margin: '0 0 12px 0' }}>
                   Empleados (presentados)
@@ -1375,6 +1424,7 @@ export default function SubvencionesPage() {
                   </div>
                 </div>
               </div>
+              ) : null}
 
               {/* JSON (opcional) */}
               <div style={{ borderTop: `1px solid ${colors.border}`, paddingTop: 14 }}>
@@ -1523,6 +1573,20 @@ export default function SubvencionesPage() {
                       Si el Estado está vacío o es “FASE X”, se sincroniza automáticamente.
                     </div>
                   </div>
+                  {selectedEntity === 'MENJAR_DHORT' ? (
+                    <div>
+                      <div style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 6, fontWeight: 700 }}>Fase (texto)</div>
+                      <input
+                        value={form?.faseProyecto ?? ''}
+                        onChange={(e) => setForm((p) => ({ ...p, faseProyecto: e.target.value }))}
+                        style={{ width: '100%', padding: 10, borderRadius: 10, border: `1px solid ${colors.border}`, background: colors.surface, color: colors.text, boxSizing: 'border-box' }}
+                        placeholder="Ej: FASE 4 / PENDIENTE…"
+                      />
+                      <div style={{ marginTop: 6, fontSize: 11, color: colors.textSecondary }}>
+                        Campo propio de Menjar d&apos;Hort (`fase_proyecto`).
+                      </div>
+                    </div>
+                  ) : null}
                   <div>
                     <div style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 6, fontWeight: 700 }}>Expediente</div>
                     <input

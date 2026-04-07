@@ -49,6 +49,7 @@ import InnuvaConverterPage from './InnuvaConverterPage';
 import CateringApp from './catering/CateringApp';
 import SubvencionesPage from './SubvencionesPage';
 import EmpleadosPage from './EmpleadosPage';
+import PIGPage from './PIGPage';
 import HojaRutaPage from './HojaRutaPage';
 import SociosPage from './SociosPage';
 import SalesInvoicesPage from './SalesInvoicesPage';
@@ -462,6 +463,7 @@ const Layout = () => {
     { key: 'inventory', label: 'Inventario', path: '/inventory', icon: Package, roles: ['admin', 'manager', 'tienda'] },
     { key: 'innuva-converter', label: 'Conversor Innuva', path: '/innuva-converter', icon: UploadCloud, roles: ['admin', 'management', 'manager'] },
     { key: 'subvenciones', label: 'Subvenciones', path: '/subvenciones', icon: FileText, roles: ['admin', 'management', 'manager'] },
+    { key: 'pig', label: 'PIG', path: '/pig', icon: FileText, roles: ['admin', 'management', 'manager'] },
     { key: 'empleados', label: 'Empleados', path: '/empleados', icon: Users, roles: ['admin', 'management', 'manager'] },
     { key: 'hoja-ruta', label: 'Hoja de Ruta', path: '/hoja-ruta', icon: Calendar, roles: ['admin', 'management', 'manager'] },
     { key: 'fichaje', label: 'Fichaje', path: '/fichaje', icon: Clock, roles: ['admin', 'management', 'manager', 'user', 'tienda'] },
@@ -526,6 +528,8 @@ const Layout = () => {
         return <InnuvaConverterPage />;
       case 'subvenciones':
         return <SubvencionesPage />;
+      case 'pig':
+        return <PIGPage />;
       case 'empleados':
         return <EmpleadosPage />;
       case 'hoja-ruta':
