@@ -10,6 +10,7 @@ import {
   FileText,
   Layers,
   Search,
+  ExternalLink,
   Upload,
   X
 } from 'lucide-react';
@@ -18,6 +19,7 @@ import subvencionesService from '../services/subvencionesService';
 import * as menjarDhortService from '../services/menjarDhortService';
 import { useTheme } from './ThemeContext';
 import holdedEmployeesService from '../services/holdedEmployeesService';
+import { useNavigation } from './NavigationContext';
 
 const InfoField = ({ label, value, colors, icon, valueColor, fullWidth }) => {
   if (value === null || value === undefined || value === '') return null;
@@ -48,6 +50,7 @@ const InfoField = ({ label, value, colors, icon, valueColor, fullWidth }) => {
 
 export default function SubvencionesPage() {
   const { colors } = useTheme();
+  const { navigateTo } = useNavigation();
 
   const [selectedEntity, setSelectedEntity] = useState('EI_SSS');
   const [subvencionesData, setSubvencionesData] = useState([]);
@@ -68,6 +71,18 @@ export default function SubvencionesPage() {
   const [empleadosCatalogLoading, setEmpleadosCatalogLoading] = useState(false);
   const [empleadosSearch, setEmpleadosSearch] = useState('');
   const [hoverEmployeesForSubvencionId, setHoverEmployeesForSubvencionId] = useState(null);
+  const [pendingOpenSubvencionId, setPendingOpenSubvencionId] = useState(null);
+
+  // Abrir automáticamente una subvención desde navegación (por localStorage)
+  useEffect(() => {
+    const id = localStorage.getItem('selectedSubvencionId');
+    if (id) {
+      localStorage.removeItem('selectedSubvencionId');
+      setPendingOpenSubvencionId(String(id));
+      // La relación empleados↔subvención vive en EI_SSS; forzamos entidad para asegurar que exista.
+      setSelectedEntity('EI_SSS');
+    }
+  }, []);
 
   const formatCurrency = useCallback((amount) => {
     const num = typeof amount === 'number' ? amount : 0;
@@ -245,6 +260,19 @@ export default function SubvencionesPage() {
       setLoading(false);
     }
   }, [selectedEntity]);
+
+  // Si venimos con un id “pendiente”, abrir su modal cuando ya tengamos data cargada
+  useEffect(() => {
+    if (!pendingOpenSubvencionId) return;
+    if (loading) return;
+    if (!Array.isArray(subvencionesData) || subvencionesData.length === 0) return;
+
+    const found = subvencionesData.find((s) => String(s.id) === String(pendingOpenSubvencionId));
+    if (found) {
+      setSelectedSubvencion(found);
+      setPendingOpenSubvencionId(null);
+    }
+  }, [loading, pendingOpenSubvencionId, subvencionesData]);
 
   const ensureEmployeesCatalogLoaded = useCallback(async () => {
     if (empleadosCatalogLoading) return;
@@ -1186,8 +1214,30 @@ export default function SubvencionesPage() {
                           flexWrap: 'wrap'
                         }}
                       >
-                        <div style={{ fontWeight: 900, color: colors.text }}>
-                          {rel.empleado_nombre || rel.empleado_holded_id}
+                        <div
+                          onClick={() => {
+                            const eid = rel?.empleado_holded_id;
+                            if (eid) localStorage.setItem('selectedEmpleadoId', String(eid));
+                            setSelectedSubvencion(null);
+                            navigateTo('empleados');
+                          }}
+                          title="Clica para abrir el empleado"
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 10,
+                            minWidth: 220,
+                            fontWeight: 950,
+                            color: colors.text,
+                            cursor: 'pointer'
+                          }}
+                        >
+                          <span style={{ display: 'inline-flex', color: colors.textSecondary }}>
+                            <ExternalLink size={16} />
+                          </span>
+                          <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {rel.empleado_nombre || rel.empleado_holded_id}
+                          </span>
                         </div>
                         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
                           <select

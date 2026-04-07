@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import holdedEmployeesService from '../services/holdedEmployeesService';
 import hojaRutaService from '../services/hojaRutaSupabaseService';
+import subvencionesService from '../services/subvencionesService';
 import { useTheme } from './ThemeContext';
 import { useNavigation } from './NavigationContext';
 import { useAuth } from './AuthContext';
@@ -72,6 +73,9 @@ const EmpleadosPage = () => {
   const [showModal, setShowModal] = useState(false);
   const [historialServicios, setHistorialServicios] = useState([]);
   const [estadisticasHoras, setEstadisticasHoras] = useState(null);
+  const [subvencionesEmpleado, setSubvencionesEmpleado] = useState([]);
+  const [subvencionesEmpleadoLoading, setSubvencionesEmpleadoLoading] = useState(false);
+  const [hoverSubvRelKey, setHoverSubvRelKey] = useState(null);
 
   // Mapeo de entidades a company
   const entityToCompany = {
@@ -200,10 +204,36 @@ const EmpleadosPage = () => {
     }
   };
 
+  const loadSubvencionesEmpleado = useCallback(async (empleadoHoldedId) => {
+    if (!empleadoHoldedId) {
+      setSubvencionesEmpleado([]);
+      return;
+    }
+    try {
+      setSubvencionesEmpleadoLoading(true);
+      const rows = await subvencionesService.getSubvencionesByEmpleadoHoldedId(empleadoHoldedId);
+      setSubvencionesEmpleado(Array.isArray(rows) ? rows : []);
+    } catch (e) {
+      console.error('Error cargando subvenciones del empleado:', e);
+      setSubvencionesEmpleado([]);
+    } finally {
+      setSubvencionesEmpleadoLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (showModal && selectedEmpleado?.id) {
+      loadSubvencionesEmpleado(selectedEmpleado.id);
+    } else {
+      setSubvencionesEmpleado([]);
+    }
+  }, [loadSubvencionesEmpleado, selectedEmpleado?.id, showModal]);
+
   // Cerrar modal
   const closeModal = () => {
     setShowModal(false);
     setSelectedEmpleado(null);
+    setSubvencionesEmpleado([]);
   };
 
   // Exportar a Excel normal
@@ -946,6 +976,118 @@ const EmpleadosPage = () => {
                   <InfoField label="Subvención Previa 2025" value={selectedEmpleado.subvencionPrevia} colors={colors} />
                   <InfoField label="Fecha Inicio Subvención" value={selectedEmpleado.fechaInicioSubvencion} colors={colors} />
                   <InfoField label="Fecha Fin Subvención" value={selectedEmpleado.fechaFinSubvencion} colors={colors} />
+                </div>
+
+                <div style={{ marginTop: 16 }}>
+                  <div style={{ fontSize: 13, fontWeight: 800, color: colors.text, marginBottom: 10 }}>
+                    Subvenciones en las que está incluido
+                  </div>
+
+                  <div
+                    style={{
+                      padding: 12,
+                      backgroundColor: colors.background,
+                      borderRadius: 12,
+                      border: `1px solid ${colors.border}`
+                    }}
+                  >
+                    {subvencionesEmpleadoLoading ? (
+                      <div style={{ color: colors.textSecondary, fontSize: 13 }}>Cargando subvenciones…</div>
+                    ) : subvencionesEmpleado.length === 0 ? (
+                      <div style={{ color: colors.textSecondary, fontSize: 13 }}>No está presentado en ninguna subvención.</div>
+                    ) : (
+                      <div style={{ display: 'grid', gap: 10 }}>
+                        {subvencionesEmpleado
+                          .slice()
+                          .sort((a, b) => String(a?.estado || '').localeCompare(String(b?.estado || '')))
+                          .map((rel) => {
+                            const estado = rel?.estado || 'presentado';
+                            const pillColor =
+                              estado === 'aceptado' ? colors.success : estado === 'rechazado' ? colors.error : colors.primary;
+                            const nombreSubv = rel?.subvencion?.nombre || rel?.subvencion_id || '—';
+                            const relKey = rel.id || `${rel.subvencion_id}_${rel.empleado_holded_id}`;
+                            return (
+                              <div
+                                key={relKey}
+                                onClick={() => {
+                                  const sid = rel?.subvencion?.id || rel?.subvencion_id;
+                                  if (sid) {
+                                    localStorage.setItem('selectedSubvencionId', String(sid));
+                                  }
+                                  closeModal();
+                                  navigateTo('subvenciones');
+                                }}
+                                onMouseEnter={() => setHoverSubvRelKey(relKey)}
+                                onMouseLeave={() => setHoverSubvRelKey((k) => (k === relKey ? null : k))}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'space-between',
+                                  gap: 12,
+                                  padding: '10px 12px',
+                                  borderRadius: 10,
+                                  border: `1px solid ${colors.border}`,
+                                  background: hoverSubvRelKey === relKey ? colors.background : colors.surface,
+                                  cursor: 'pointer',
+                                  transition: 'background-color 0.15s ease, transform 0.15s ease'
+                                }}
+                                title="Clica para abrir la subvención"
+                              >
+                                <div style={{ minWidth: 0 }}>
+                                  <div
+                                    style={{
+                                      fontSize: 14,
+                                      fontWeight: 800,
+                                      color: colors.text,
+                                      whiteSpace: 'nowrap',
+                                      overflow: 'hidden',
+                                      textOverflow: 'ellipsis'
+                                    }}
+                                    title={nombreSubv}
+                                  >
+                                    {nombreSubv}
+                                  </div>
+                                  {rel?.subvencion?.estado ? (
+                                    <div
+                                      style={{
+                                        marginTop: 3,
+                                        fontSize: 12,
+                                        color: colors.textSecondary,
+                                        whiteSpace: 'nowrap',
+                                        overflow: 'hidden',
+                                        textOverflow: 'ellipsis'
+                                      }}
+                                      title={rel.subvencion.estado}
+                                    >
+                                      Estado subvención: {rel.subvencion.estado}
+                                    </div>
+                                  ) : null}
+                                </div>
+
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+                                  <ExternalLink size={16} color={colors.textSecondary} />
+                                  <div
+                                    style={{
+                                      padding: '6px 10px',
+                                      borderRadius: 999,
+                                      background: pillColor + '22',
+                                      border: `1px solid ${pillColor}55`,
+                                      color: pillColor,
+                                      fontSize: 12,
+                                      fontWeight: 900,
+                                      textTransform: 'uppercase'
+                                    }}
+                                    title="Estado del empleado dentro de la subvención"
+                                  >
+                                    {estado}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 

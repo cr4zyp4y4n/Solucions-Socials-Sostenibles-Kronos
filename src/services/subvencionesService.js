@@ -1001,6 +1001,31 @@ class SubvencionesService {
     return data || [];
   }
 
+  async getSubvencionesByEmpleadoHoldedId(empleadoHoldedId) {
+    if (!empleadoHoldedId) return [];
+    const { data, error } = await supabase
+      .from('subvenciones_empleados')
+      .select(
+        `
+        id,
+        subvencion_id,
+        empleado_holded_id,
+        empleado_nombre,
+        estado,
+        created_at,
+        updated_at,
+        subvencion:subvenciones (
+          id,
+          nombre,
+          estado
+        )
+      `
+      )
+      .eq('empleado_holded_id', String(empleadoHoldedId));
+    if (error) throw error;
+    return data || [];
+  }
+
   async addEmpleadoToSubvencion({ subvencionId, empleadoHoldedId, empleadoNombre, estado = 'presentado' }) {
     const payload = {
       subvencion_id: subvencionId,
