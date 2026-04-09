@@ -582,6 +582,9 @@ const Layout = () => {
         display: 'flex',
         height: '100vh',
         backgroundColor: colors.background,
+        width: '100%',
+        maxWidth: '100%',
+        overflowX: 'hidden',
       }}>
         {/* Sidebar */}
         <motion.div
@@ -590,6 +593,8 @@ const Layout = () => {
           transition={{ duration: 0.3 }}
           style={{
             width: '250px',
+            flex: '0 0 250px',
+            flexShrink: 0,
             backgroundColor: colors.sidebar,
             borderRight: `1px solid ${colors.border}`,
             padding: '0 0 20px 0',
@@ -722,6 +727,9 @@ const Layout = () => {
           flex: 1,
           display: 'flex',
           flexDirection: 'column',
+          minWidth: 0,
+          maxWidth: '100%',
+          overflowX: 'hidden',
         }}>
           {/* Header */}
           <motion.header
@@ -1330,13 +1338,15 @@ const Layout = () => {
               flex: 1,
               padding: '0',
               overflow: 'auto',
-              overflowX: 'hidden',
+              overflowX: 'clip',
               minWidth: 0,
               background: colors.background,
               scrollbarWidth: 'thin',
               scrollbarColor: `${colors.border} transparent`,
               height: '100%', /* Asegurar que no exceda el viewport */
-              boxSizing: 'border-box'
+              boxSizing: 'border-box',
+              width: '100%',
+              maxWidth: '100%',
             }}
           >
             {renderSection()}

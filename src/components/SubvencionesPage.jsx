@@ -56,6 +56,7 @@ export default function SubvencionesPage() {
   const [subvencionesData, setSubvencionesData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [editError, setEditError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [csvFile, setCsvFile] = useState(null);
   const [showUploadModal, setShowUploadModal] = useState(false);
@@ -115,10 +116,14 @@ export default function SubvencionesPage() {
       modalidad: String(safe.modalidad || '').trim(),
       fechaAdjudicacion: String(safe.fechaAdjudicacion || '').trim(),
       periodo: String(safe.periodo || '').trim(),
+      // "estado" legacy texto (solo para MENJAR_DHORT); en EI_SSS usamos aprobada + motivo
       estado: String(safe.estado || '').trim(),
       faseActual: safe.faseActual === '' || safe.faseActual === null || safe.faseActual === undefined
         ? null
         : Math.max(1, Math.min(8, Number(safe.faseActual))),
+      aprobada: safe.aprobada === true ? true : (safe.aprobada === false ? false : null),
+      estadoMotivo: String(safe.estadoMotivo || '').trim(),
+      observaciones: String(safe.observaciones || ''),
       // numéricos
       importeSolicitado: parseNumberEs(safe.importeSolicitado),
       importeOtorgado: parseNumberEs(safe.importeOtorgado),
@@ -173,6 +178,7 @@ export default function SubvencionesPage() {
 
   const openCreate = useCallback(() => {
     setEditMode('create');
+    setEditError('');
     setForm({
       nombre: '',
       proyecto: '',
@@ -182,6 +188,11 @@ export default function SubvencionesPage() {
       modalidad: '',
       fechaAdjudicacion: '',
       periodo: '',
+      // EI_SSS (nuevo): aprobada + motivo
+      aprobada: null,
+      estadoMotivo: '',
+      observaciones: '',
+      // MENJAR_DHORT (legacy)
       estado: '',
       faseActual: '',
       importeSolicitado: '',
@@ -211,6 +222,7 @@ export default function SubvencionesPage() {
   const openEdit = useCallback((subvencion) => {
     if (!subvencion) return;
     setEditMode('edit');
+    setEditError('');
     setForm({
       id: subvencion.id,
       nombre: subvencion.nombre || '',
@@ -221,6 +233,9 @@ export default function SubvencionesPage() {
       modalidad: subvencion.modalidad || '',
       fechaAdjudicacion: subvencion.fechaAdjudicacion || '',
       periodo: subvencion.periodo || '',
+      aprobada: subvencion.aprobada === true ? true : (subvencion.aprobada === false ? false : null),
+      estadoMotivo: subvencion.estadoMotivo || '',
+      observaciones: subvencion.observaciones || '',
       estado: subvencion.estado || '',
       faseActual: subvencion.faseActual ?? '',
       importeSolicitado: subvencion.importeSolicitado ?? '',
@@ -303,14 +318,12 @@ export default function SubvencionesPage() {
           }
           setSubvencionEmployeesById(map);
         } catch (e) {
-          console.error('Error cargando empleados por subvención:', e);
           setSubvencionEmployeesById({});
         }
       } else {
         setSubvencionEmployeesById({});
       }
     } catch (e) {
-      console.error(e);
       setSubvencionesData([]);
       setError('Error cargando subvenciones.');
     } finally {
@@ -339,7 +352,6 @@ export default function SubvencionesPage() {
       const emps = await holdedEmployeesService.getEmployeesTransformed('solucions');
       setEmpleadosCatalog(Array.isArray(emps) ? emps : []);
     } catch (e) {
-      console.error('Error cargando catálogo de empleados (Holded):', e);
       setEmpleadosCatalog([]);
     } finally {
       setEmpleadosCatalogLoading(false);
@@ -349,17 +361,18 @@ export default function SubvencionesPage() {
   const closeEditModal = useCallback(() => {
     setShowEditModal(false);
     setForm(null);
+    setEditError('');
   }, []);
 
   const saveForm = useCallback(async () => {
     const commonPayload = toInternalForSave(form);
     if (!commonPayload.nombre) {
-      setError('El campo "Nombre" es obligatorio.');
+      setEditError('El campo "Nombre" es obligatorio.');
       return;
     }
     try {
       setLoading(true);
-      setError('');
+      setEditError('');
       const service = selectedEntity === 'MENJAR_DHORT' ? menjarDhortService : subvencionesService;
       const payload = selectedEntity === 'MENJAR_DHORT' ? mapCommonToMenjarPayload(commonPayload) : commonPayload;
       if (editMode === 'create') {
@@ -375,8 +388,7 @@ export default function SubvencionesPage() {
       }
       closeEditModal();
     } catch (e) {
-      console.error(e);
-      setError(e?.message || 'Error guardando la subvención.');
+      setEditError(e?.message || 'Error guardando la subvención.');
     } finally {
       setLoading(false);
     }
@@ -395,7 +407,6 @@ export default function SubvencionesPage() {
       setSelectedSubvencion(null);
       await loadSubvencionesData();
     } catch (e) {
-      console.error(e);
       setError(e?.message || 'Error eliminando la subvención.');
     } finally {
       setLoading(false);
@@ -454,7 +465,6 @@ export default function SubvencionesPage() {
       setCsvFile(null);
       await loadSubvencionesData();
     } catch (e) {
-      console.error(e);
       setError('Error procesando CSV.');
     } finally {
       setLoading(false);
@@ -466,7 +476,6 @@ export default function SubvencionesPage() {
       const wb = subvencionesService.exportToExcel(filteredData);
       XLSX.writeFile(wb, `Subvenciones_${new Date().toISOString().slice(0, 10)}.xlsx`);
     } catch (e) {
-      console.error(e);
       setError('Error exportando Excel.');
     }
   }, [filteredData]);
@@ -672,7 +681,17 @@ export default function SubvencionesPage() {
       { kind: 'row', label: 'PREVISIÓN PAGO TOTAL', render: (s) => s.previsionPago || '' },
       { kind: 'row', label: 'FECHA JUSTIFICACIÓN', render: (s) => s.fechaJustificacion || '' },
       ...(selectedEntity === 'EI_SSS' ? [{ kind: 'row', label: 'EMPLEADOS', render: (s) => empleadosResumenCell(s) }] : []),
-      { kind: 'row', label: 'ESTADO', render: (s) => s.estado || getEstadoFaseLabel(s) },
+      {
+        kind: 'row',
+        label: 'ESTADO',
+        render: (s) => {
+          if (selectedEntity !== 'EI_SSS') return s.estado || '';
+          const v = s?.aprobada;
+          if (v === true) return 'APROBADA';
+          if (v === false) return 'RECHAZADA';
+          return 'PENDIENTE';
+        }
+      },
       { kind: 'row', label: 'HOLDED ASENTAM.', render: (s) => s.holdedAsentamiento || '' },
       { kind: 'row', label: 'IMPORTES POR COBRAR', render: (s) => (s.importesPorCobrar ? formatCurrency(s.importesPorCobrar) : '') }
     ];
@@ -1059,23 +1078,68 @@ export default function SubvencionesPage() {
                   <Layers size={14} />
                   {getEstadoFaseLabel(selectedSubvencion)}
                 </div>
-                {selectedSubvencion.estado ? (
+                {selectedEntity === 'EI_SSS' ? (
                   <div
                     style={{
                       display: 'inline-flex',
                       alignItems: 'center',
+                      gap: 8,
                       padding: '6px 10px',
                       borderRadius: 999,
-                      background: colors.background,
-                      border: `1px solid ${colors.border}`,
-                      color: colors.text,
-                      fontWeight: 900,
+                      background:
+                        selectedSubvencion.aprobada === true
+                          ? colors.success + '14'
+                          : (selectedSubvencion.aprobada === false ? colors.error + '14' : colors.background),
+                      border:
+                        selectedSubvencion.aprobada === true
+                          ? `1px solid ${colors.success}`
+                          : (selectedSubvencion.aprobada === false ? `1px solid ${colors.error}` : `1px solid ${colors.border}`),
+                      color:
+                        selectedSubvencion.aprobada === true
+                          ? colors.success
+                          : (selectedSubvencion.aprobada === false ? colors.error : colors.text),
+                      fontWeight: 950,
                       fontSize: 12
                     }}
+                    title={selectedSubvencion.estadoMotivo ? selectedSubvencion.estadoMotivo : undefined}
                   >
-                    {selectedSubvencion.estado}
+                    <div style={{ opacity: 0.8, fontWeight: 900 }}>ESTADO</div>
+                    <div style={{ fontWeight: 1000 }}>
+                      {selectedSubvencion.aprobada === true
+                        ? 'APROBADA'
+                        : (selectedSubvencion.aprobada === false ? 'RECHAZADA' : 'PENDIENTE')}
+                    </div>
+                    {selectedSubvencion.estadoMotivo ? (
+                      <div
+                        style={{
+                          width: 6,
+                          height: 6,
+                          borderRadius: 999,
+                          background: colors.textSecondary,
+                          opacity: 0.7
+                        }}
+                      />
+                    ) : null}
                   </div>
-                ) : null}
+                ) : (
+                  selectedSubvencion.estado ? (
+                    <div
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        padding: '6px 10px',
+                        borderRadius: 999,
+                        background: colors.background,
+                        border: `1px solid ${colors.border}`,
+                        color: colors.text,
+                        fontWeight: 900,
+                        fontSize: 12
+                      }}
+                    >
+                      {selectedSubvencion.estado}
+                    </div>
+                  ) : null
+                )}
 
                 <button
                   onClick={() => openEdit(selectedSubvencion)}
@@ -1203,6 +1267,35 @@ export default function SubvencionesPage() {
                 </div>
               </div>
 
+              {/* Observaciones */}
+              <div style={{ padding: 16, backgroundColor: colors.background, borderRadius: 12, border: `1px solid ${colors.border}` }}>
+                <h3 style={{ fontSize: '16px', fontWeight: '700', color: colors.primary, margin: '0 0 12px 0' }}>
+                  Observaciones
+                </h3>
+                {selectedSubvencion.observaciones ? (
+                  <div
+                    style={{
+                      background: colors.surface,
+                      border: `1px solid ${colors.border}`,
+                      borderRadius: 12,
+                      padding: 14,
+                      color: colors.text,
+                      fontSize: 13,
+                      lineHeight: 1.55,
+                      whiteSpace: 'pre-wrap',
+                      wordBreak: 'break-word',
+                      overflowWrap: 'anywhere'
+                    }}
+                  >
+                    {selectedSubvencion.observaciones}
+                  </div>
+                ) : (
+                  <div style={{ color: colors.textSecondary, fontSize: 13 }}>
+                    Sin observaciones.
+                  </div>
+                )}
+              </div>
+
               {/* Empleados (solo EI SSS) */}
               {selectedEntity === 'EI_SSS' ? (
               <div style={{ padding: 16, backgroundColor: colors.background, borderRadius: 12, border: `1px solid ${colors.border}` }}>
@@ -1297,7 +1390,6 @@ export default function SubvencionesPage() {
                                 await subvencionesService.updateEmpleadoSubvencion({ id: rel.id, estado: next });
                                 await loadSubvencionesData();
                               } catch (err) {
-                                console.error(err);
                                 setError('Error actualizando estado del empleado.');
                               }
                             }}
@@ -1324,7 +1416,6 @@ export default function SubvencionesPage() {
                                 await subvencionesService.removeEmpleadoFromSubvencion({ id: rel.id });
                                 await loadSubvencionesData();
                               } catch (err) {
-                                console.error(err);
                                 setError('Error quitando el empleado.');
                               }
                             }}
@@ -1392,7 +1483,6 @@ export default function SubvencionesPage() {
                                     });
                                     await loadSubvencionesData();
                                   } catch (err) {
-                                    console.error(err);
                                     setError('Error añadiendo empleado a la subvención.');
                                   }
                                 }}
@@ -1511,6 +1601,23 @@ export default function SubvencionesPage() {
               </button>
             </div>
 
+            {editError ? (
+              <div
+                style={{
+                  padding: 12,
+                  borderRadius: 12,
+                  border: `1px solid ${colors.error}`,
+                  background: colors.error + '14',
+                  color: colors.error,
+                  fontSize: 13,
+                  fontWeight: 800,
+                  marginBottom: 14
+                }}
+              >
+                {editError}
+              </div>
+            ) : null}
+
             <div style={{ display: 'grid', gap: 16 }}>
               <div style={{ padding: 16, backgroundColor: colors.background, borderRadius: 12, border: `1px solid ${colors.border}` }}>
                 <h3 style={{ fontSize: 16, fontWeight: 800, color: colors.primary, margin: '0 0 12px 0' }}>Información</h3>
@@ -1521,7 +1628,6 @@ export default function SubvencionesPage() {
                       value={form?.nombre ?? ''}
                       onChange={(e) => setForm((p) => ({ ...p, nombre: e.target.value }))}
                       style={{ width: '100%', padding: 10, borderRadius: 10, border: `1px solid ${colors.border}`, background: colors.surface, color: colors.text, boxSizing: 'border-box' }}
-                      placeholder="Ej: IMPULSEM 2024…"
                     />
                   </div>
                   <div>
@@ -1541,26 +1647,53 @@ export default function SubvencionesPage() {
                     />
                   </div>
                   <div>
-                    <div style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 6, fontWeight: 700 }}>Estado</div>
-                    <input
-                      value={form?.estado ?? ''}
-                      onChange={(e) => setForm((p) => ({ ...p, estado: e.target.value }))}
-                      style={{ width: '100%', padding: 10, borderRadius: 10, border: `1px solid ${colors.border}`, background: colors.surface, color: colors.text, boxSizing: 'border-box' }}
-                      placeholder="Ej: FASE 8 / CERRADA…"
-                    />
+                    {selectedEntity === 'EI_SSS' ? (
+                      <>
+                        <div style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 6, fontWeight: 700 }}>Estado (decisión)</div>
+                        <select
+                          value={form?.aprobada === true ? 'aprobada' : (form?.aprobada === false ? 'rechazada' : 'pendiente')}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            setForm((p) => ({
+                              ...p,
+                              aprobada: v === 'aprobada' ? true : (v === 'rechazada' ? false : null)
+                            }));
+                          }}
+                          style={{ width: '100%', padding: 10, borderRadius: 10, border: `1px solid ${colors.border}`, background: colors.surface, color: colors.text, boxSizing: 'border-box', cursor: 'pointer' }}
+                        >
+                          <option value="pendiente">Pendiente</option>
+                          <option value="aprobada">Aprobada</option>
+                          <option value="rechazada">Rechazada</option>
+                        </select>
+                      </>
+                    ) : (
+                      <>
+                        <div style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 6, fontWeight: 700 }}>Estado</div>
+                        <input
+                          value={form?.estado ?? ''}
+                          onChange={(e) => setForm((p) => ({ ...p, estado: e.target.value }))}
+                          style={{ width: '100%', padding: 10, borderRadius: 10, border: `1px solid ${colors.border}`, background: colors.surface, color: colors.text, boxSizing: 'border-box' }}
+                        />
+                      </>
+                    )}
                   </div>
+                  {selectedEntity === 'EI_SSS' ? (
+                    <div style={{ gridColumn: '1 / -1' }}>
+                      <div style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 6, fontWeight: 700 }}>Motivo (opcional)</div>
+                      <input
+                        value={form?.estadoMotivo ?? ''}
+                        onChange={(e) => setForm((p) => ({ ...p, estadoMotivo: e.target.value }))}
+                        style={{ width: '100%', padding: 10, borderRadius: 10, border: `1px solid ${colors.border}`, background: colors.surface, color: colors.text, boxSizing: 'border-box' }}
+                      />
+                    </div>
+                  ) : null}
                   <div>
                     <div style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 6, fontWeight: 700 }}>Fase (1-8)</div>
                     <select
                       value={form?.faseActual ?? ''}
                       onChange={(e) => {
                         const next = e.target.value;
-                        setForm((p) => {
-                          const prevEstado = String(p?.estado || '').trim();
-                          const prevLooksLikePhase = /^FASE\s+\d+$/i.test(prevEstado) || prevEstado === '';
-                          const nextEstado = prevLooksLikePhase && next ? `FASE ${next}` : (p?.estado ?? '');
-                          return { ...p, faseActual: next, estado: nextEstado };
-                        });
+                        setForm((p) => ({ ...p, faseActual: next }));
                       }}
                       style={{ width: '100%', padding: 10, borderRadius: 10, border: `1px solid ${colors.border}`, background: colors.surface, color: colors.text, boxSizing: 'border-box', cursor: 'pointer' }}
                     >
@@ -1570,7 +1703,7 @@ export default function SubvencionesPage() {
                       ))}
                     </select>
                     <div style={{ marginTop: 6, fontSize: 11, color: colors.textSecondary }}>
-                      Si el Estado está vacío o es “FASE X”, se sincroniza automáticamente.
+                      Esta fase se guarda en `fase_actual` y se usa para la “fase verde” de la tabla.
                     </div>
                   </div>
                   {selectedEntity === 'MENJAR_DHORT' ? (
@@ -1580,7 +1713,6 @@ export default function SubvencionesPage() {
                         value={form?.faseProyecto ?? ''}
                         onChange={(e) => setForm((p) => ({ ...p, faseProyecto: e.target.value }))}
                         style={{ width: '100%', padding: 10, borderRadius: 10, border: `1px solid ${colors.border}`, background: colors.surface, color: colors.text, boxSizing: 'border-box' }}
-                        placeholder="Ej: FASE 4 / PENDIENTE…"
                       />
                       <div style={{ marginTop: 6, fontSize: 11, color: colors.textSecondary }}>
                         Campo propio de Menjar d&apos;Hort (`fase_proyecto`).
@@ -1617,7 +1749,6 @@ export default function SubvencionesPage() {
                       value={form?.fechaAdjudicacion ?? ''}
                       onChange={(e) => setForm((p) => ({ ...p, fechaAdjudicacion: e.target.value }))}
                       style={{ width: '100%', padding: 10, borderRadius: 10, border: `1px solid ${colors.border}`, background: colors.surface, color: colors.text, boxSizing: 'border-box' }}
-                      placeholder="2025-01-31"
                     />
                   </div>
                   <div style={{ gridColumn: '1 / -1' }}>
@@ -1626,8 +1757,31 @@ export default function SubvencionesPage() {
                       value={form?.periodo ?? ''}
                       onChange={(e) => setForm((p) => ({ ...p, periodo: e.target.value }))}
                       style={{ width: '100%', padding: 10, borderRadius: 10, border: `1px solid ${colors.border}`, background: colors.surface, color: colors.text, boxSizing: 'border-box' }}
-                      placeholder="01/11/2023 - 30/11/2024"
                     />
+                  </div>
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <div style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 6, fontWeight: 700 }}>Observaciones</div>
+                    <textarea
+                      value={form?.observaciones ?? ''}
+                      onChange={(e) => setForm((p) => ({ ...p, observaciones: e.target.value }))}
+                      rows={5}
+                      style={{
+                        width: '100%',
+                        padding: 10,
+                        borderRadius: 10,
+                        border: `1px solid ${colors.border}`,
+                        background: colors.surface,
+                        color: colors.text,
+                        boxSizing: 'border-box',
+                        resize: 'vertical',
+                        minHeight: 120,
+                        outline: 'none',
+                        lineHeight: 1.4
+                      }}
+                    />
+                    <div style={{ marginTop: 6, fontSize: 11, color: colors.textSecondary }}>
+                      Texto libre para notas internas de esta subvención.
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1641,7 +1795,6 @@ export default function SubvencionesPage() {
                       value={form?.importeSolicitado ?? ''}
                       onChange={(e) => setForm((p) => ({ ...p, importeSolicitado: e.target.value }))}
                       style={{ width: '100%', padding: 10, borderRadius: 10, border: `1px solid ${colors.border}`, background: colors.surface, color: colors.text, boxSizing: 'border-box' }}
-                      placeholder="25000,00"
                     />
                   </div>
                   <div>
@@ -1650,7 +1803,6 @@ export default function SubvencionesPage() {
                       value={form?.importeOtorgado ?? ''}
                       onChange={(e) => setForm((p) => ({ ...p, importeOtorgado: e.target.value }))}
                       style={{ width: '100%', padding: 10, borderRadius: 10, border: `1px solid ${colors.border}`, background: colors.surface, color: colors.text, boxSizing: 'border-box' }}
-                      placeholder="17500,00"
                     />
                   </div>
                   <div>
@@ -1659,7 +1811,6 @@ export default function SubvencionesPage() {
                       value={form?.saldoPendiente ?? ''}
                       onChange={(e) => setForm((p) => ({ ...p, saldoPendiente: e.target.value }))}
                       style={{ width: '100%', padding: 10, borderRadius: 10, border: `1px solid ${colors.border}`, background: colors.surface, color: colors.text, boxSizing: 'border-box' }}
-                      placeholder="0,00"
                     />
                   </div>
                   <div>
@@ -1668,7 +1819,6 @@ export default function SubvencionesPage() {
                       value={form?.saldoPendienteTexto ?? ''}
                       onChange={(e) => setForm((p) => ({ ...p, saldoPendienteTexto: e.target.value }))}
                       style={{ width: '100%', padding: 10, borderRadius: 10, border: `1px solid ${colors.border}`, background: colors.surface, color: colors.text, boxSizing: 'border-box' }}
-                      placeholder="PEND. GESTIONAR…"
                     />
                   </div>
                   <div>
@@ -1677,7 +1827,6 @@ export default function SubvencionesPage() {
                       value={form?.importesPorCobrar ?? ''}
                       onChange={(e) => setForm((p) => ({ ...p, importesPorCobrar: e.target.value }))}
                       style={{ width: '100%', padding: 10, borderRadius: 10, border: `1px solid ${colors.border}`, background: colors.surface, color: colors.text, boxSizing: 'border-box' }}
-                      placeholder="30923,32"
                     />
                   </div>
                   <div>

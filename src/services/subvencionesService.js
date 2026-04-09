@@ -9,7 +9,7 @@ class SubvencionesService {
   // Procesar CSV y guardar en memoria (NO en Supabase)
   processCSVData(csvData) {
     try {
-      console.log('📋 Procesando CSV de subvenciones...');
+      // logs eliminados: demasiado ruido en producción
       
       // Convertir CSV a JSON
       const workbook = XLSX.read(csvData, { type: 'string' });
@@ -40,8 +40,7 @@ class SubvencionesService {
         }
       }
 
-      console.log(`✅ Encontradas ${subvencionesNames.length} subvenciones en el CSV`);
-      console.log('📝 Nombres encontrados:', subvencionesNames);
+      // logs eliminados
 
       // Procesar cada subvención
       const processedSubvenciones = subvencionesNames.map((subvencionName, index) => {
@@ -49,7 +48,7 @@ class SubvencionesService {
         return this.processSubvencionData(jsonData, columnIndex, subvencionName);
       });
 
-      console.log(`🔄 Procesadas ${processedSubvenciones.length} subvenciones`);
+      // logs eliminados
 
       // Filtrar subvenciones inválidas (nombres demasiado cortos o inválidos)
       const invalidSubvenciones = [];
@@ -66,17 +65,16 @@ class SubvencionesService {
       });
 
       if (invalidSubvenciones.length > 0) {
-        console.warn('⚠️ Subvenciones filtradas por ser inválidas:', invalidSubvenciones);
+        // logs eliminados
       }
 
       // Guardar en memoria
       this.subvencionesData = validSubvenciones;
-      console.log(`💾 ${validSubvenciones.length} subvenciones válidas guardadas en memoria`);
+      // logs eliminados
       
       return validSubvenciones;
 
     } catch (error) {
-      console.error('❌ Error procesando CSV:', error);
       throw error;
     }
   }
@@ -139,18 +137,6 @@ class SubvencionesService {
       fase7: subvencionData.fase7,
       fase8: subvencionData.fase8
     };
-
-    // Log para depuración
-    console.log(`📋 ${subvencionName}:`, {
-      importeOtorgado: subvencionData.importeOtorgado,
-      importeSolicitado: subvencionData.importeSolicitado,
-      primerAbono: subvencionData.primerAbono,
-      segundoAbono: subvencionData.segundoAbono,
-      saldoPendiente: subvencionData.saldoPendiente,
-      fechaPrimerAbono: subvencionData.fechaPrimerAbono,
-      fechaSegundoAbono: subvencionData.fechaSegundoAbono,
-      estado: subvencionData.estado
-    });
 
     return subvencionData;
   }
@@ -735,8 +721,6 @@ class SubvencionesService {
   // Cargar datos desde Supabase
   async loadFromSupabase() {
     try {
-      console.log('📥 Cargando datos desde Supabase...');
-      
       const { data, error } = await supabase
         .from('subvenciones')
         .select('*')
@@ -744,7 +728,6 @@ class SubvencionesService {
         .order('fecha_creacion', { ascending: true });
 
       if (error) {
-        console.error('Error cargando datos de Supabase:', error);
         throw error;
       }
 
@@ -754,10 +737,8 @@ class SubvencionesService {
       // Guardar en memoria también para compatibilidad
       this.subvencionesData = formattedData;
       
-      console.log(`✅ ${formattedData.length} subvenciones cargadas desde Supabase`);
       return formattedData;
     } catch (error) {
-      console.error('Error en loadFromSupabase:', error);
       throw error;
     }
   }
@@ -774,6 +755,9 @@ class SubvencionesService {
       modalidad: supabaseRecord.modalidad || '',
       fechaAdjudicacion: supabaseRecord.fecha_adjudicacion || '',
       faseActual: supabaseRecord.fase_actual ?? null,
+      aprobada: supabaseRecord.aprobada === true ? true : (supabaseRecord.aprobada === false ? false : null),
+      estadoMotivo: supabaseRecord.estado_motivo ?? '',
+      observaciones: supabaseRecord.observaciones ?? '',
       importeSolicitado: supabaseRecord.importe_solicitado || 0,
       importeOtorgado: supabaseRecord.importe_otorgado || 0,
       periodo: supabaseRecord.periodo_ejecucion || '',
@@ -848,6 +832,9 @@ class SubvencionesService {
       modalidad: internalData.modalidad || '',
       fecha_adjudicacion: internalData.fechaAdjudicacion || null,
       fase_actual: internalData.faseActual ?? null,
+      aprobada: internalData.aprobada === true ? true : (internalData.aprobada === false ? false : null),
+      estado_motivo: internalData.estadoMotivo ?? '',
+      observaciones: internalData.observaciones ?? '',
       importe_solicitado: cleanNumeric(internalData.importeSolicitado),
       importe_otorgado: cleanNumeric(internalData.importeOtorgado),
       periodo_ejecucion: internalData.periodo || '',
@@ -879,8 +866,6 @@ class SubvencionesService {
   // Sincronizar datos procesados del CSV a Supabase
   async syncToSupabase(processedData) {
     try {
-      console.log('🔄 Sincronizando datos con Supabase...');
-      
       const results = {
         created: 0,
         updated: 0,
@@ -894,9 +879,9 @@ class SubvencionesService {
         .neq('id', '00000000-0000-0000-0000-000000000000');
 
       if (deleteError) {
-        console.warn('⚠️ Error eliminando subvenciones existentes:', deleteError);
+        // logs eliminados
       } else {
-        console.log('🗑️ Subvenciones anteriores eliminadas');
+        // logs eliminados
       }
 
       // Insertar todas las subvenciones del CSV
@@ -910,23 +895,17 @@ class SubvencionesService {
             .select();
 
           if (insertError) {
-            console.error(`❌ Error insertando ${subvencion.nombre}:`, insertError);
-            console.error('📋 Datos que causaron el error:', supabaseData);
-            console.error('📋 Mensaje del error:', insertError.message);
             results.errors++;
           } else {
             results.created++;
           }
         } catch (error) {
-          console.error(`❌ Error procesando ${subvencion.nombre}:`, error);
           results.errors++;
         }
       }
 
-      console.log(`✅ Sincronización completada: ${results.created} creadas, ${results.errors} errores`);
       return results;
     } catch (error) {
-      console.error('Error en syncToSupabase:', error);
       throw error;
     }
   }
@@ -935,18 +914,30 @@ class SubvencionesService {
   async createSubvencion(subvencionData) {
     try {
       const supabaseData = this.formatInternalToSupabase(subvencionData);
-      
-      const { data, error } = await supabase
-        .from('subvenciones')
-        .insert([supabaseData])
-        .select()
-        .single();
+      const attemptInsert = async (payload) => {
+        const { data, error } = await supabase
+          .from('subvenciones')
+          .insert([payload])
+          .select()
+          .single();
+        if (error) throw error;
+        return data;
+      };
 
-      if (error) throw error;
-      
-      return this.formatSupabaseToInternal(data);
+      try {
+        const data = await attemptInsert(supabaseData);
+        return this.formatSupabaseToInternal(data);
+      } catch (error) {
+        // Compatibilidad: si en Supabase aún no existe fase_actual, PostgREST devuelve PGRST204
+        const msg = String(error?.message || '');
+        if (error?.code === 'PGRST204' && msg.toLowerCase().includes('fase_actual')) {
+          const { fase_actual, ...withoutFaseActual } = supabaseData;
+          const data = await attemptInsert(withoutFaseActual);
+          return this.formatSupabaseToInternal(data);
+        }
+        throw error;
+      }
     } catch (error) {
-      console.error('Error creando subvención:', error);
       throw error;
     }
   }
@@ -955,19 +946,31 @@ class SubvencionesService {
   async updateSubvencion(subvencionId, subvencionData) {
     try {
       const supabaseData = this.formatInternalToSupabase(subvencionData);
-      
-      const { data, error } = await supabase
-        .from('subvenciones')
-        .update(supabaseData)
-        .eq('id', subvencionId)
-        .select()
-        .single();
 
-      if (error) throw error;
-      
-      return this.formatSupabaseToInternal(data);
+      const attemptUpdate = async (payload) => {
+        const { data, error } = await supabase
+          .from('subvenciones')
+          .update(payload)
+          .eq('id', subvencionId)
+          .select()
+          .single();
+        if (error) throw error;
+        return data;
+      };
+
+      try {
+        const data = await attemptUpdate(supabaseData);
+        return this.formatSupabaseToInternal(data);
+      } catch (error) {
+        const msg = String(error?.message || '');
+        if (error?.code === 'PGRST204' && msg.toLowerCase().includes('fase_actual')) {
+          const { fase_actual, ...withoutFaseActual } = supabaseData;
+          const data = await attemptUpdate(withoutFaseActual);
+          return this.formatSupabaseToInternal(data);
+        }
+        throw error;
+      }
     } catch (error) {
-      console.error('Error actualizando subvención:', error);
       throw error;
     }
   }
@@ -984,7 +987,6 @@ class SubvencionesService {
       
       return true;
     } catch (error) {
-      console.error('Error eliminando subvención:', error);
       throw error;
     }
   }
@@ -1017,7 +1019,8 @@ class SubvencionesService {
         subvencion:subvenciones (
           id,
           nombre,
-          estado
+          estado,
+          fase_actual
         )
       `
       )
