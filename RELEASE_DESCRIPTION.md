@@ -1,4 +1,42 @@
-## v2.3.1
+## v2.3.2
+
+### Subvenciones – Estado (pendiente/aprobada/rechazada) + motivo
+
+- **Nuevo estado estructurado:** El estado de cada subvención pasa a ser **Pendiente / Aprobada / Rechazada** (campo `aprobada`: `null/true/false`).
+- **Motivo opcional:** Campo `estado_motivo` para explicar por qué está aprobada o rechazada.
+- **UI actualizada:** En el modal de crear/editar se elige el estado con selector y se puede añadir el motivo; en el modal de detalle se muestra como pill compacto (con tooltip si hay motivo).
+
+### Subvenciones – Observaciones (texto largo)
+
+- **Nuevo campo `observaciones`:** Texto libre “largo” para notas internas por subvención.
+- **UI:** Se edita desde el modal de crear/editar (textarea) y se visualiza en el modal de detalle en una tarjeta dedicada.
+
+### Subvenciones – Fase (`fase_actual`) y compatibilidad
+
+- **Persistencia de fase:** Soporte completo para `fase_actual` en Supabase.
+- **Compatibilidad automática:** Si la columna no existe, create/update reintenta sin `fase_actual` evitando bloqueos por schema cache.
+- **Relación con empleados:** La consulta de subvenciones por empleado vuelve a incluir `fase_actual` en el join cuando la columna existe.
+
+### Subvenciones – UX y estabilidad
+
+- **Errores en el modal:** Los errores de crear/editar se muestran **dentro del modal** (ya no en la página principal).
+- **Placeholders confusos eliminados:** Se retiraron placeholders “de ejemplo” en el modal de crear/editar para evitar que parezca que el campo ya está rellenado.
+- **Limpieza de logs:** Eliminados logs de consola innecesarios en la sección de Subvenciones (se mantienen los mensajes al usuario).
+
+### Innuva Converter – Cuentas por empleado en Supabase
+
+- **Mapeo persistente:** Las cuentas contables de nóminas por empleado se guardan en Supabase (`nominas_cuentas_empleados`) y se aplican automáticamente al generar el Excel para Holded.
+- **Importación única:** Botón para importar/actualizar el CSV de cuentas y guardarlo en BBDD (sin subirlo cada vez).
+- **Debug overflow:** Se mantiene el “Debug overflow” para detectar estiramientos horizontales.
+
+### Layout – Fix de “pantalla estirada hacia la derecha”
+
+- **Overflow horizontal corregido:** Ajustes en el layout para evitar que páginas con contenido ancho (tablas/previews) empujen el viewport hacia la derecha.
+
+### Base de datos (Supabase)
+
+- **`nominas_cuentas_empleados`:** Nueva tabla para cuentas por empleado (nóminas).
+- **`subvenciones`:** Scripts para añadir `fase_actual`, `aprobada`, `estado_motivo` y `observaciones`.
 
 ### Subvenciones – Vista matriz y navegación
 
