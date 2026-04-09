@@ -46,10 +46,40 @@ const parseEsNumber = (value) => {
   const negative = s.startsWith('-');
   // Normalización robusta:
   // - Si hay "," asumimos decimal "," (y "." miles)
+  // - Caso especial Innuva: a veces viene "1,33192" para significar "1331,92"
+  //   (5 decimales con coma y parte entera pequeña). Lo convertimos a 2 decimales.
   // - Si NO hay "," pero hay "." y parece decimal (1-2 decimales), asumimos decimal "."
   // - Si NO, "." se trata como miles
   const raw = s.replace(/€/g, '').replace(/\s/g, '');
   const hasComma = raw.includes(',');
+
+  // Si trae ambos separadores, decidimos el decimal por el separador más a la derecha:
+  // - "1.331,91" => decimal "," (ES)
+  // - "1,331.91" => decimal "." (EN)
+  if (hasComma && raw.includes('.')) {
+    const lastDot = raw.lastIndexOf('.');
+    const lastComma = raw.lastIndexOf(',');
+    const isDotDecimal = lastDot > lastComma;
+    const cleaned = (isDotDecimal
+      ? raw.replace(/,/g, '') // quitar miles ","
+      : raw.replace(/\./g, '').replace(',', '.') // quitar miles "." y decimal ","
+    ).replace(/[^0-9.\-]/g, '');
+    const n = Number.parseFloat(cleaned);
+    if (!Number.isFinite(n)) return 0;
+    return negative ? -Math.abs(n) : n;
+  }
+
+  if (hasComma && /^-?\d{1,3},\d{5}$/.test(raw)) {
+    const digits = raw.replace(/[^0-9\-]/g, '').replace('-', '');
+    if (digits.length >= 3) {
+      const intPart = digits.slice(0, -2);
+      const decPart = digits.slice(-2);
+      const fixed = `${negative ? '-' : ''}${intPart}.${decPart}`;
+      const n = Number.parseFloat(fixed);
+      return Number.isFinite(n) ? n : 0;
+    }
+  }
+
   const looksLikeDotDecimal = !hasComma && /-?\d+\.\d{1,2}$/.test(raw);
   const cleaned = (hasComma
     ? raw.replace(/\./g, '').replace(',', '.')
@@ -81,6 +111,8 @@ const monthNameEs = (monthIndex1to12) => {
   const idx = Number(monthIndex1to12) - 1;
   return names[idx] || '';
 };
+
+const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
 function parseInnuvaNominasCsv(csvText) {
   const lines = String(csvText || '')
@@ -197,7 +229,6 @@ const InnuvaConverterPage = () => {
     gastoSsEmpresaCompte642: '64200000',
     irpfCompte4751: '47510000',
     etiquetas: '',
-    dataPagament: '',
     compteCarrega: ''
   });
   const [cuentasByCodigo, setCuentasByCodigo] = useState(new Map());
@@ -450,24 +481,20 @@ const InnuvaConverterPage = () => {
       setRawRows(sourcePreview);
       setSourceObjects(sourcePreview);
 
-      // Autocompletar fecha de pago desde el CSV si existe (si el usuario no la ha puesto)
-      if (innuvaParsed?.meta?.paymentDate && !holdedNominasConfig.dataPagament) {
-        setHoldedNominasConfig((p) => ({ ...p, dataPagament: innuvaParsed.meta.paymentDate }));
-      }
-
       const dataDate = toDdMmYyyy(innuvaParsed?.meta?.periodEnd || innuvaParsed?.meta?.periodStart || '');
-      const paymentDate = toDdMmYyyy(holdedNominasConfig.dataPagament || innuvaParsed?.meta?.paymentDate || '');
+      // Holded rellenará la fecha de pago manualmente al importar
+      const paymentDate = '';
 
       const periodEnd = innuvaParsed?.meta?.periodEnd || innuvaParsed?.meta?.periodStart || '';
       const mPeriod = String(periodEnd).match(/^\d{2}\/(\d{2})\/(\d{4})$/);
       const monthLabel = mPeriod ? `${monthNameEs(mPeriod[1])} ${mPeriod[2]}`.trim() : '';
 
       const mapped = (innuvaParsed?.rows || []).map((r) => {
-        const salario = r.bruto || 0;
-        const totalSs = r.ssTrabajador || 0;
-        const gastoSsEmpresa = r.ssEmpresa || 0;
-        const irpf = r.irpf || 0;
-        const importePagament = r.liquido || 0;
+        const salario = round2(r.bruto || 0);
+        const totalSs = round2(r.ssTrabajador || 0);
+        const gastoSsEmpresa = round2(r.ssEmpresa || 0);
+        const irpf = round2(r.irpf || 0);
+        const importePagament = round2(r.liquido || 0);
 
         const nombreEmpleado = r.trabajador || r.nif;
         const desc = `Nómina${monthLabel ? ` ${monthLabel}` : ''} - ${nombreEmpleado}`.trim();
@@ -497,8 +524,39 @@ const InnuvaConverterPage = () => {
         };
       });
 
+      // Agrupar por empleado (NIF) para que, si hay varias nóminas, queden en una sola fila
+      const groupedByNif = new Map();
+      for (const row of mapped) {
+        const nifKey = String(row["Document d'identificació"] || '').trim();
+        if (!nifKey) continue;
+
+        const prev = groupedByNif.get(nifKey);
+        if (!prev) {
+          groupedByNif.set(nifKey, { ...row, __count: 1 });
+          continue;
+        }
+
+        // Aseguramos consistencia en campos no numéricos (si difieren, nos quedamos con el primero)
+        prev.__count += 1;
+
+        // Sumatorios numéricos importantes
+        prev['Salario'] = round2((prev['Salario'] || 0) + (row['Salario'] || 0));
+        prev['Total S.S.'] = round2((prev['Total S.S.'] || 0) + (row['Total S.S.'] || 0));
+        prev['Gasto S.S. Empresa'] = round2((prev['Gasto S.S. Empresa'] || 0) + (row['Gasto S.S. Empresa'] || 0));
+        prev['IRPF'] = round2((prev['IRPF'] || 0) + (row['IRPF'] || 0));
+        prev['Import del pagament'] = round2((prev['Import del pagament'] || 0) + (row['Import del pagament'] || 0));
+
+        // Si hay varias descripciones, dejamos la original pero indicamos cantidad
+        if (prev.__count > 1) {
+          const base = String(prev['Descripció'] || '').replace(/\s*\(x\d+\)\s*$/i, '').trim();
+          prev['Descripció'] = `${base} (x${prev.__count})`;
+        }
+      }
+
+      const merged = Array.from(groupedByNif.values()).map(({ __count, ...r }) => r);
+
       // Orden de columnas exacto como plantilla Holded
-      const ordered = mapped.map((row) => {
+      const ordered = merged.map((row) => {
         const obj = {};
         HOLDEN_NOMINAS_HEADERS.forEach((h) => {
           obj[h] = row[h] ?? '';
@@ -782,7 +840,6 @@ const InnuvaConverterPage = () => {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
             {[
               { key: 'etiquetas', label: 'Etiquetes separades per -' },
-              { key: 'dataPagament', label: 'Data de pagament (dd/mm/yyyy)' },
               { key: 'compteCarrega', label: 'Compte de càrrega' },
             ].map((field) => (
               <div key={field.key} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -790,7 +847,6 @@ const InnuvaConverterPage = () => {
                 <input
                   value={holdedNominasConfig[field.key] ?? ''}
                   onChange={(e) => setHoldedNominasConfig((p) => ({ ...p, [field.key]: e.target.value }))}
-                  placeholder={field.key === 'dataPagament' ? 'Ej: 07/04/2026 (si quieres forzarla)' : ''}
                   style={{
                     padding: '10px 12px',
                     borderRadius: 10,
