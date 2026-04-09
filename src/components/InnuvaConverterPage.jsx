@@ -4,6 +4,7 @@ import * as XLSX from 'xlsx';
 import { useTheme } from './ThemeContext';
 import {
   buildNominasCuentasIndex,
+  EMPRESAS_NOMINAS,
   loadNominasCuentasEmpleados,
   normalizeCodigo,
   upsertNominasCuentasEmpleados
@@ -11,6 +12,7 @@ import {
 import {
   UploadCloud,
   FileText,
+  Home,
   RefreshCw,
   DownloadCloud,
   AlertCircle,
@@ -216,6 +218,7 @@ const InnuvaConverterPage = () => {
   const rootRef = useRef(null);
 
   const [innuvaFile, setInnuvaFile] = useState(null);
+  const [empresa, setEmpresa] = useState(EMPRESAS_NOMINAS.SOLUCIONS);
   const [headers, setHeaders] = useState([]);
   const [rawRows, setRawRows] = useState([]);
   const [sourceObjects, setSourceObjects] = useState([]);
@@ -264,7 +267,7 @@ const InnuvaConverterPage = () => {
     try {
       setCuentasError('');
       setCuentasLoading(true);
-      const rows = await loadNominasCuentasEmpleados();
+      const rows = await loadNominasCuentasEmpleados(empresa);
       setCuentasByCodigo(buildNominasCuentasIndex(rows));
       addLogEntry(`Cuentas por empleado cargadas: ${rows.length}`, 'success');
     } catch (e) {
@@ -275,7 +278,7 @@ const InnuvaConverterPage = () => {
     } finally {
       setCuentasLoading(false);
     }
-  }, [addLogEntry]);
+  }, [addLogEntry, empresa]);
 
   useEffect(() => {
     refreshCuentasFromDb();
@@ -317,7 +320,7 @@ const InnuvaConverterPage = () => {
       setCuentasError('');
       setCuentasLoading(true);
       const rows = await parseCuentasEmpleadosCsv(cuentasCsvFile);
-      const res = await upsertNominasCuentasEmpleados(rows);
+      const res = await upsertNominasCuentasEmpleados(rows, empresa);
       addLogEntry(`Importadas/actualizadas cuentas: ${res.upserted}`, 'success');
       setCuentasCsvFile(null);
       await refreshCuentasFromDb();
@@ -328,7 +331,7 @@ const InnuvaConverterPage = () => {
     } finally {
       setCuentasLoading(false);
     }
-  }, [addLogEntry, cuentasCsvFile, parseCuentasEmpleadosCsv, refreshCuentasFromDb]);
+  }, [addLogEntry, cuentasCsvFile, empresa, parseCuentasEmpleadosCsv, refreshCuentasFromDb]);
 
   const debugOverflow = useCallback((reason = '') => {
     try {
@@ -649,21 +652,24 @@ const InnuvaConverterPage = () => {
             display: 'flex',
             alignItems: 'center',
             gap: '16px',
-            marginBottom: '4px',
+            marginBottom: '32px',
           }}
         >
-          <UploadCloud size={40} color={colors.primary} />
+          <UploadCloud size={32} color={colors.primary} />
           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
             <h1
               style={{
                 margin: 0,
                 color: colors.text,
-                fontSize: '30px',
+                fontSize: '28px',
                 fontWeight: 700,
               }}
             >
               Innuva → Holded
             </h1>
+            <p style={{ fontSize: '14px', color: colors.textSecondary, margin: '4px 0 0 0' }}>
+              Conversor de nóminas (Innuva) a plantilla importable en Holded
+            </p>
           </div>
         </motion.div>
 
@@ -674,72 +680,93 @@ const InnuvaConverterPage = () => {
           style={{
             background: colors.card,
             border: `1px solid ${colors.border}`,
-            borderRadius: '16px',
-            padding: '24px',
+            borderRadius: '12px',
+            padding: '18px',
             display: 'flex',
-            flexDirection: 'column',
-            gap: '18px',
-            boxShadow: '0 6px 18px rgba(0,0,0,0.08)',
+            alignItems: 'flex-start',
+            justifyContent: 'space-between',
+            gap: '14px',
+            flexWrap: 'wrap',
+            boxShadow: '0 2px 10px rgba(0,0,0,0.06)',
           }}
         >
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            <div style={{ color: colors.primary, fontWeight: 700, fontSize: '15px', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 280 }}>
+            <div style={{ color: colors.text, fontWeight: 900, fontSize: 16 }}>
               Conversor Innuva → Holded
             </div>
-            <h2 style={{ margin: 0, color: colors.text, fontSize: '28px', fontWeight: 700 }}>
-              Prepara los datos de Innuva para Holded
-            </h2>
-            <p style={{ margin: 0, color: colors.textSecondary, fontSize: '15px', lineHeight: 1.45 }}>
-              Sube el Excel/CSV generado en Innuva y la aplicación generará el fichero importable en Holded, aplicando automáticamente las cuentas por empleado desde Supabase.
-            </p>
+            <div style={{ margin: 0, color: colors.textSecondary, fontSize: 13, lineHeight: 1.45 }}>
+              Sube el Excel/CSV de Innuva y descarga el Excel importable en Holded. Las cuentas se aplican desde Supabase por empleado.
+            </div>
+            <div style={{ color: colors.textSecondary, fontSize: 12 }}>
+              Flujo: subir archivo • revisar vista previa • descargar
+            </div>
           </div>
 
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px' }}>
-            {[
-              { icon: UploadCloud, label: '1. Subir Excel de Innuva', description: 'Selecciona el archivo exportado desde Innuva (formato XLSX o CSV).' },
-              { icon: RefreshCw, label: '2. Transformación automática', description: 'Convertimos las nóminas y aplicamos cuentas por empleado (si existen en Supabase).' },
-              { icon: FileText, label: '3. Revisión previa', description: 'Visualiza una muestra de los datos antes de descargar el archivo.' },
-              { icon: DownloadCloud, label: '4. Descargar', description: 'Descarga el Excel listo para importar en Holded.' },
-            ].map((step, index) => {
-              const Icon = step.icon;
-              return (
-                <motion.div
-                  key={step.label}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.1 * index, duration: 0.2 }}
-                  style={{
-                    flex: '1 1 240px',
-                    background: colors.surface,
-                    border: `1px solid ${colors.border}`,
-                    borderRadius: '12px',
-                    padding: '16px',
-                    display: 'flex',
-                    gap: '14px',
-                    alignItems: 'flex-start',
-                  }}
-                >
-                  <div
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, minWidth: 320 }}>
+            <div style={{ color: colors.textSecondary, fontSize: 12, fontWeight: 900, letterSpacing: '0.02em' }}>
+              Seleccionar empresa
+            </div>
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+              {[
+                {
+                  key: EMPRESAS_NOMINAS.SOLUCIONS,
+                  title: 'Solucions Socials',
+                  subtitle: 'EI SSS SCCL'
+                },
+                {
+                  key: EMPRESAS_NOMINAS.MENJAR_DHORT,
+                  title: "Menjar d'Hort",
+                  subtitle: "Menjar d'Hort SCCL"
+                }
+              ].map((t) => {
+                const active = empresa === t.key;
+                return (
+                  <motion.div
+                    key={t.key}
+                    whileHover={{ scale: isProcessing ? 1 : 1.03, boxShadow: active ? `0 4px 16px 0 ${colors.primary}33` : `0 2px 8px 0 rgba(0,0,0,0.04)` }}
+                    whileTap={{ scale: isProcessing ? 1 : 0.98 }}
+                    onClick={() => {
+                      if (isProcessing) return;
+                      setEmpresa(t.key);
+                    }}
                     style={{
-                      width: 38,
-                      height: 38,
-                      borderRadius: '10px',
-                      background: colors.primary + '18',
+                      flex: '1 1 180px',
+                      minWidth: 180,
+                      background: colors.card || colors.surface,
+                      borderRadius: 12,
+                      boxShadow: active ? `0 4px 16px 0 ${colors.primary}33` : `0 2px 8px 0 rgba(0,0,0,0.04)`,
+                      border: active ? `2.5px solid ${colors.primary}` : `1.5px solid ${colors.border}`,
+                      cursor: isProcessing ? 'not-allowed' : 'pointer',
+                      padding: '14px 14px',
                       display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      flexShrink: 0,
+                      flexDirection: 'column',
+                      gap: 6,
+                      transition: 'all 0.18s',
+                      opacity: isProcessing ? 0.7 : 1
+                    }}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        if (isProcessing) return;
+                        setEmpresa(t.key);
+                      }
                     }}
                   >
-                    <Icon size={18} color={colors.primary} />
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    <div style={{ color: colors.text, fontWeight: 600, fontSize: '15px' }}>{step.label}</div>
-                    <div style={{ color: colors.textSecondary, fontSize: '13px', lineHeight: 1.4 }}>{step.description}</div>
-                  </div>
-                </motion.div>
-              );
-            })}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <Home size={18} color={active ? colors.primary : colors.textSecondary} />
+                      <div style={{ fontWeight: 950, color: active ? colors.primary : colors.text, fontSize: 14 }}>
+                        {t.title}
+                      </div>
+                    </div>
+                    <div style={{ fontSize: 12, color: colors.textSecondary, fontWeight: 700 }}>
+                      {t.subtitle}
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </div>
           </div>
         </motion.div>
 

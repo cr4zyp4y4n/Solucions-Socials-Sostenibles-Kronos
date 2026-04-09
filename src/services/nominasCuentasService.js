@@ -2,6 +2,11 @@ import { supabase } from '../config/supabase';
 
 const TABLE = 'nominas_cuentas_empleados';
 
+export const EMPRESAS_NOMINAS = {
+  SOLUCIONS: 'solucions',
+  MENJAR_DHORT: 'menjar_dhort'
+};
+
 const normalizeCodigo = (codigo) => {
   const s = String(codigo ?? '').trim();
   if (!s) return '';
@@ -9,15 +14,19 @@ const normalizeCodigo = (codigo) => {
   return Number.isFinite(n) ? String(n) : s.replace(/^0+/, '');
 };
 
-export async function loadNominasCuentasEmpleados() {
-  const { data, error } = await supabase.from(TABLE).select('*');
+export async function loadNominasCuentasEmpleados(empresa) {
+  const emp = String(empresa || '').trim();
+  const q = supabase.from(TABLE).select('*');
+  const { data, error } = emp ? await q.eq('empresa', emp) : await q;
   if (error) throw error;
   return data || [];
 }
 
-export async function upsertNominasCuentasEmpleados(rows = []) {
+export async function upsertNominasCuentasEmpleados(rows = [], empresa) {
+  const emp = String(empresa || '').trim() || EMPRESAS_NOMINAS.SOLUCIONS;
   const payload = (Array.isArray(rows) ? rows : [])
     .map((r) => ({
+      empresa: r.empresa ? String(r.empresa).trim() : emp,
       codigo_innuva: normalizeCodigo(r.codigo_innuva ?? r.codigo ?? r.CODIGO ?? ''),
       trabajador: r.trabajador ?? r.TRABAJADOR ?? null,
       salario_compte_640: String(r.salario_compte_640 ?? r['Salario Compte (640)'] ?? r.salario640 ?? '').trim(),
@@ -29,6 +38,7 @@ export async function upsertNominasCuentasEmpleados(rows = []) {
     }))
     .filter(
       (p) =>
+        p.empresa &&
         p.codigo_innuva &&
         p.salario_compte_640 &&
         p.total_ss_compte_476 &&
@@ -40,8 +50,8 @@ export async function upsertNominasCuentasEmpleados(rows = []) {
 
   const { data, error } = await supabase
     .from(TABLE)
-    .upsert(payload, { onConflict: 'codigo_innuva' })
-    .select('codigo_innuva');
+    .upsert(payload, { onConflict: 'empresa,codigo_innuva' })
+    .select('empresa,codigo_innuva');
   if (error) throw error;
   return { upserted: (data || []).length };
 }
