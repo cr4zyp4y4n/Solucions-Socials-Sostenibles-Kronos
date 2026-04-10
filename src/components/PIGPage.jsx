@@ -208,6 +208,132 @@ function styleGroupAccountsSheet({ ws, aoa, yellowRows = [] }) {
   }
 }
 
+function buildPigLineaCateringAoa({ title, months, cuentasMensuales = [] }) {
+  const aoa = [];
+  const cols = ['Cuenta', ...months, 'TOTAL 25', '', 'TOTAL 25 ESTIMADO SUBV'];
+  aoa.push([title, ...new Array(cols.length - 1).fill('')]);
+  aoa.push(new Array(cols.length).fill(''));
+  aoa.push(cols);
+
+  const isCatering = (c) => {
+    const hay = `${c?.code || ''} ${c?.name || ''}`.toLowerCase();
+    return hay.includes('catering');
+  };
+  const isSubv = (c) => {
+    const hay = `${c?.code || ''} ${c?.name || ''}`.toLowerCase();
+    return hay.includes('subv') || String(c?.code || '').startsWith('7404') || String(c?.code || '').startsWith('7408');
+  };
+
+  const catering = (cuentasMensuales || []).filter(isCatering);
+  const subv = catering.filter(isSubv).slice().sort((a, b) => String(a.code).localeCompare(String(b.code)));
+  const resto = catering.filter((c) => !isSubv(c)).slice().sort((a, b) => String(a.code).localeCompare(String(b.code)));
+
+  if (subv.length) {
+    aoa.push(['ESTIMADO DE SUBVENCIÓN ANTES DE INGRESO', ...new Array(cols.length - 1).fill('')]);
+    for (const c of subv) {
+      const monthsVals = (c.months || new Array(12).fill(0)).slice(0, 12);
+      const total = monthsVals.reduce((a, b) => a + (Number(b) || 0), 0);
+      aoa.push([`${c.code} - ${c.name}`.trim(), ...monthsVals, total, '', total]);
+    }
+    aoa.push(new Array(cols.length).fill(''));
+  }
+
+  for (const c of resto) {
+    const monthsVals = (c.months || new Array(12).fill(0)).slice(0, 12);
+    const total = monthsVals.reduce((a, b) => a + (Number(b) || 0), 0);
+    aoa.push([`${c.code} - ${c.name}`.trim(), ...monthsVals, total, '', total]);
+  }
+
+  return aoa;
+}
+
+function stylePigLineaCateringSheet({ ws, aoa }) {
+  ws['!sheetView'] = [{ showGridLines: false }];
+  // Cuenta + 12 meses + total + separador + total subv
+  ws['!cols'] = [
+    { wch: 62 },
+    ...new Array(12).fill({ wch: 12 }),
+    { wch: 14 },
+    { wch: 2 },
+    { wch: 18 }
+  ];
+  ws['!rows'] = [];
+  ws['!rows'][0] = { hpt: 18 };
+
+  const borderThin = {
+    top: { style: 'thin', color: { rgb: '000000' } },
+    bottom: { style: 'thin', color: { rgb: '000000' } },
+    left: { style: 'thin', color: { rgb: '000000' } },
+    right: { style: 'thin', color: { rgb: '000000' } }
+  };
+
+  // Merge título (fila 0, col 0..15)
+  ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 15 } }];
+  setRangeStyle(ws, 0, 0, 0, 15, {
+    font: { bold: true, color: { rgb: 'C00000' }, sz: 12, name: 'Calibri' },
+    alignment: { horizontal: 'center', vertical: 'center' }
+  });
+
+  const headerRow = 2;
+  // Cabecera gris (Cuenta + meses + total)
+  setRangeStyle(ws, headerRow, 0, headerRow, 13, {
+    font: { bold: true, name: 'Calibri' },
+    fill: makeFill('#E7E6E6'),
+    border: borderThin,
+    alignment: { horizontal: 'center', vertical: 'center', wrapText: true }
+  });
+  // Separador vacío con borde suave
+  setCellStyle(ws, headerRow, 14, { border: borderThin, fill: makeFill('#FFFFFF') });
+  // Cabecera amarilla "TOTAL 25 ESTIMADO SUBV"
+  setCellStyle(ws, headerRow, 15, {
+    font: { bold: true, name: 'Calibri' },
+    fill: makeFill('#FFFF00'),
+    border: borderThin,
+    alignment: { horizontal: 'center', vertical: 'center', wrapText: true }
+  });
+
+  // Columnas numéricas
+  for (let r = headerRow + 1; r < aoa.length; r++) {
+    // Col 0 label
+    setCellStyle(ws, r, 0, { border: borderThin, alignment: { vertical: 'center' } });
+
+    // Meses (1..12)
+    for (let c = 1; c <= 12; c++) {
+      setCellStyle(ws, r, c, { border: borderThin, numFmt: '#,##0.00;[Red]-#,##0.00', alignment: { horizontal: 'right' } });
+    }
+
+    // Total 25 (col 13) fondo verde suave
+    setCellStyle(ws, r, 13, {
+      border: borderThin,
+      fill: makeFill('#C6EFCE'),
+      numFmt: '#,##0.00;[Red]-#,##0.00',
+      alignment: { horizontal: 'right' }
+    });
+
+    // Separador (col 14)
+    setCellStyle(ws, r, 14, { border: borderThin, fill: makeFill('#FFFFFF') });
+
+    // Total estimado subv (col 15) fondo amarillo
+    setCellStyle(ws, r, 15, {
+      border: borderThin,
+      fill: makeFill('#FFFF00'),
+      numFmt: '#,##0.00;[Red]-#,##0.00',
+      alignment: { horizontal: 'right' }
+    });
+
+    // Resaltar filas de sección (texto, no cuenta)
+    const vA = ws[XLSX.utils.encode_cell({ r, c: 0 })]?.v;
+    if (vA && String(vA).toUpperCase().includes('ESTIMADO DE SUBVENCIÓN')) {
+      setRangeStyle(ws, r, 0, r, 15, {
+        font: { bold: true, name: 'Calibri' },
+        fill: makeFill('#FFFFFF'),
+        border: borderThin
+      });
+      setCellStyle(ws, r, 0, { alignment: { horizontal: 'center' } });
+    }
+  }
+}
+
 const SUMMARY_LABELS = [
   '1. Ingresos de la actividad propia',
   'd) Subvenciones imputadas al excedente del ejercicio',
@@ -631,6 +757,30 @@ export default function PIGPage() {
         XLSX.utils.book_append_sheet(wb, ws9, 'OTROS GASTOS');
       } catch (e) {
         console.error('Error generando hoja GRUPO 9 - OTROS GASTOS:', e);
+      }
+
+      // ===== PIG LINEA CATERING (multi-columna) =====
+      try {
+        const yy = yearGuess ? yearGuess.slice(2) : '';
+        const monthsCatering = (monthNames.length === 12 ? monthNames : months).map((m) => {
+          const base = String(m || '').trim();
+          if (!yy) return base;
+          // Si ya incluye el año (ej: "Gener 25"), no añadirlo otra vez
+          if (new RegExp(`\\b${yy}\\b`).test(base)) return base;
+          return `${base} ${yy}`.trim();
+        });
+        const titleCatering = `Cierre PIG LINEA CATERING  EI.SSS ${yy ? `01/01/${yy} A 31/12/${yy}` : ''}`.trim();
+
+        const aoaCat = buildPigLineaCateringAoa({
+          title: titleCatering,
+          months: monthsCatering,
+          cuentasMensuales: mensualParsed.cuentas || []
+        });
+        const wsCat = XLSX.utils.aoa_to_sheet(aoaCat);
+        stylePigLineaCateringSheet({ ws: wsCat, aoa: aoaCat });
+        XLSX.utils.book_append_sheet(wb, wsCat, 'PIG LINEA CATERING');
+      } catch (e) {
+        console.error('Error generando hoja PIG LINEA CATERING:', e);
       }
       XLSX.writeFile(wb, `PIG_GENERAL_EISSS_${new Date().toISOString().slice(0, 10)}.xlsx`);
     } catch (e) {

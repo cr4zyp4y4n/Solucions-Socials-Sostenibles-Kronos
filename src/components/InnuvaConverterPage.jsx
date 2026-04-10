@@ -21,7 +21,8 @@ import {
 
 const MAX_PREVIEW_ROWS = 10;
 
-const HOLDEN_NOMINAS_HEADERS = [
+// Columnas que se muestran en la vista previa
+const HOLDEN_NOMINAS_PREVIEW_HEADERS = [
   "Document d'identificació",
   'Data dd/mm/yyyy',
   'Descripció',
@@ -33,10 +34,23 @@ const HOLDEN_NOMINAS_HEADERS = [
   'Gasto S.S. Empresa Compte (642)',
   'IRPF',
   'IRPF Compte (4751)',
-  'Etiquetes separades per -',
-  'Import del pagament',
-  'Data de pagament',
-  'Compte de càrrega'
+  'Import del pagament'
+];
+
+// Columnas finales que se exportan al Excel para importar en Holded
+const HOLDEN_NOMINAS_EXPORT_HEADERS = [
+  "Document d'identificació",
+  'Data dd/mm/yyyy',
+  'Descripció',
+  'Salario',
+  'Salario Compte (640)',
+  'Total S.S.',
+  'Total S.S. Compte (476)',
+  'Gasto S.S. Empresa',
+  'Gasto S.S. Empresa Compte (642)',
+  'IRPF',
+  'IRPF Compte (4751)',
+  'Import del pagament'
 ];
 
 const parseEsNumber = (value) => {
@@ -231,8 +245,6 @@ const InnuvaConverterPage = () => {
     totalSsCompte476: '47600000',
     gastoSsEmpresaCompte642: '64200000',
     irpfCompte4751: '47510000',
-    etiquetas: '',
-    compteCarrega: ''
   });
   const [cuentasByCodigo, setCuentasByCodigo] = useState(new Map());
   const [cuentasLoading, setCuentasLoading] = useState(false);
@@ -485,8 +497,6 @@ const InnuvaConverterPage = () => {
       setSourceObjects(sourcePreview);
 
       const dataDate = toDdMmYyyy(innuvaParsed?.meta?.periodEnd || innuvaParsed?.meta?.periodStart || '');
-      // Holded rellenará la fecha de pago manualmente al importar
-      const paymentDate = '';
 
       const periodEnd = innuvaParsed?.meta?.periodEnd || innuvaParsed?.meta?.periodStart || '';
       const mPeriod = String(periodEnd).match(/^\d{2}\/(\d{2})\/(\d{4})$/);
@@ -494,9 +504,13 @@ const InnuvaConverterPage = () => {
 
       const mapped = (innuvaParsed?.rows || []).map((r) => {
         const salario = round2(r.bruto || 0);
-        const totalSs = round2(r.ssTrabajador || 0);
-        const gastoSsEmpresa = round2(r.ssEmpresa || 0);
-        const irpf = round2(r.irpf || 0);
+        // Holded transforma automáticamente a negativo ciertos campos al importar.
+        // Por eso, exportamos "Total S.S." e "IRPF" en positivo (magnitud).
+        const ssTrab = round2(r.ssTrabajador || 0);
+        const ssEmp = round2(r.ssEmpresa || 0);
+        const totalSs = round2(Math.abs(ssTrab) + Math.abs(ssEmp));
+        const gastoSsEmpresa = round2(Math.abs(ssEmp));
+        const irpf = round2(Math.abs(r.irpf || 0));
         const importePagament = round2(r.liquido || 0);
 
         const nombreEmpleado = r.trabajador || r.nif;
@@ -520,10 +534,7 @@ const InnuvaConverterPage = () => {
           'Gasto S.S. Empresa Compte (642)': gasto642,
           'IRPF': irpf,
           'IRPF Compte (4751)': irpf4751,
-          'Etiquetes separades per -': holdedNominasConfig.etiquetas,
-          'Import del pagament': importePagament,
-          'Data de pagament': paymentDate,
-          'Compte de càrrega': holdedNominasConfig.compteCarrega
+          'Import del pagament': importePagament
         };
       });
 
@@ -561,7 +572,7 @@ const InnuvaConverterPage = () => {
       // Orden de columnas exacto como plantilla Holded
       const ordered = merged.map((row) => {
         const obj = {};
-        HOLDEN_NOMINAS_HEADERS.forEach((h) => {
+        HOLDEN_NOMINAS_PREVIEW_HEADERS.forEach((h) => {
           obj[h] = row[h] ?? '';
         });
         return obj;
@@ -597,7 +608,14 @@ const InnuvaConverterPage = () => {
   const handleDownloadDraft = () => {
     if (!holdedDraft.length) return;
 
-    const worksheet = XLSX.utils.json_to_sheet(holdedDraft);
+    const exportRows = holdedDraft.map((row) => {
+      const out = {};
+      HOLDEN_NOMINAS_EXPORT_HEADERS.forEach((h) => {
+        out[h] = row?.[h] ?? '';
+      });
+      return out;
+    });
+    const worksheet = XLSX.utils.json_to_sheet(exportRows);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Holded Draft');
 
@@ -866,8 +884,7 @@ const InnuvaConverterPage = () => {
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
             {[
-              { key: 'etiquetas', label: 'Etiquetes separades per -' },
-              { key: 'compteCarrega', label: 'Compte de càrrega' },
+              // No hay campos extra: el archivo final solo incluye columnas de la plantilla
             ].map((field) => (
               <div key={field.key} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 <div style={{ fontSize: 12, color: colors.textSecondary, fontWeight: 700 }}>{field.label}</div>
@@ -887,31 +904,7 @@ const InnuvaConverterPage = () => {
             ))}
           </div>
 
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 6 }}>
-            <motion.button
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.97 }}
-              onClick={() => debugOverflow('manual')}
-              style={{
-                border: `1px solid ${colors.border}`,
-                outline: 'none',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '10px',
-                padding: '10px 14px',
-                borderRadius: '10px',
-                cursor: 'pointer',
-                background: colors.surface,
-                color: colors.text,
-                fontWeight: 600,
-                fontSize: '13px',
-              }}
-              title="Imprime en consola el elemento que provoca overflow horizontal"
-            >
-              <AlertCircle size={16} />
-              Debug overflow
-            </motion.button>
-          </div>
+          {/* Debug overflow button removed (kept util for future use) */}
         </motion.div>
 
         <motion.div

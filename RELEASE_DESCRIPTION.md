@@ -1,4 +1,14 @@
-## v2.3.2
+## v2.3.4
+
+### Conversor Innuva → Holded (multi-empresa + UI)
+
+- **Soporte 2 empresas:** Selector en tarjetas para **Solucions Socials** y **Menjar d’Hort** dentro del mismo conversor.
+- **Cuentas por empleado por empresa:** El mapeo de cuentas se guarda en Supabase por `empresa + CODIGO` (sin pisar Solucions/Menjar).
+- **Diseño alineado con la app:** Header y selector visual actualizados para encajar con el estilo de Empleados/Socios/Análisis.
+
+---
+
+## v2.3.3
 
 ### Conversor Innuva → Holded
 
