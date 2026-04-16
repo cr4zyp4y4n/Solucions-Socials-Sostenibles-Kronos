@@ -1,3 +1,31 @@
+## v2.3.6
+
+### PIG
+
+- **Suite PIG completada:** Se añaden y estabilizan las hojas `PIG LINEA CATERING`, `PIG LINEA IDONI`, `PIG LINEA KOIKI` y `COMPARATIVA ANUAL`.
+- **Soporte anual dinámico:** El generador detecta el año del CSV de Holded y adapta cabeceras, títulos, rangos y nombres de pestaña.
+- **Meses parciales compatibles:** Los CSV con solo algunos meses (por ejemplo enero-marzo) ya se procesan bien, rellenando el resto con `0` sin romper el layout.
+- **Totales computados dinámicos:** Las tablas inferiores de las hojas PIG LINEA ahora cortan en el último mes con datos y en el mes anterior.
+- **Comparativa anual correcta para 2026+:** La hoja `COMPARATIVA ANUAL` ya usa las bases del año anterior desde Supabase (`pig_bases_historicas`) y mantiene fallback a históricos hardcodeados para 2022-2024.
+- **Scripts SQL incluidos:** Se añaden `create_pig_bases_historicas.sql` y `seed_pig_bases_historicas_2025.sql` para persistir las bases históricas.
+
+---
+
+## v2.3.5
+
+### Conversor Innuva → Holded
+
+- **Import del pagament incluido:** Se añade la columna `Import del pagament` en preview y export.
+- **Signos compatibles con Holded:** `Total S.S.` e `IRPF` se exportan en **positivo** (Holded los transforma al importar).
+- **Multi-empresa estable:** Conversión idéntica para **Solucions Socials** y **Menjar d’Hort** (mapeo de cuentas separado por `empresa + CODIGO`).
+- **Overflow horizontal:** Retirado el botón de debug en UI y documentado el fix en `docs/HORIZONTAL_OVERFLOW_FIX.md`.
+
+### PIG
+
+- **Nueva hoja `PIG LINEA CATERING`:** Genera la hoja con meses, `TOTAL 25` y bloque de subvención estimada, filtrando cuentas “CATERING”.
+
+---
+
 ## v2.3.4
 
 ### Conversor Innuva → Holded (multi-empresa + UI)

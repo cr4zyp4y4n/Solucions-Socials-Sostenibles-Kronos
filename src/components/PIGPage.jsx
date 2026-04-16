@@ -2,22 +2,39 @@ import React, { useCallback, useMemo, useState } from 'react';
 import { Upload, Download, FileText, AlertCircle } from 'lucide-react';
 import * as XLSX from 'xlsx-js-style';
 import { useTheme } from './ThemeContext';
+import { loadPigBaseMensual } from '../services/pigBasesHistoricasService';
 
 function parseEuroNumber(input) {
   if (input === null || input === undefined) return 0;
   const s0 = String(input).replace(/\u00a0/g, ' ').trim(); // NBSP → space
   if (!s0) return 0;
-  // Holded a veces usa "-   €"
-  if (/^-\s*€?$/.test(s0) || s0.includes('-   €') || s0 === '-') return 0;
+  // Holded a veces usa "-   €" o "$ -"
+  if (/^-\s*€?$/.test(s0) || s0.includes('-   €') || s0 === '-' || /\$\s*-\s*/.test(s0)) return 0;
 
-  const negative = s0.startsWith('-');
-  const cleaned = s0
-    .replace(/€/g, '')
+  const hasParens = /\(.*\)/.test(s0);
+  const hasLeadingMinus = /^\s*-/.test(s0);
+  const negative = hasLeadingMinus || hasParens;
+
+  // Normalizar: quitar símbolos, espacios, comillas y paréntesis
+  const s = s0
+    .replace(/["']/g, '')
+    .replace(/[€$]/g, '')
+    .replace(/\(|\)/g, '')
     .replace(/\s/g, '')
-    .replace(/\./g, '')
-    .replace(',', '.')
-    .replace(/[^0-9.\-]/g, '');
-  const n = Number.parseFloat(cleaned);
+    .trim();
+
+  // Formatos típicos ES: 45.436,17  /  10.000,00
+  // También puede venir ya como 10000.00 (raro pero posible)
+  const normalized = (() => {
+    // Si hay coma, asumimos coma decimal y puntos miles
+    if (s.includes(',')) {
+      return s.replace(/\./g, '').replace(',', '.').replace(/[^0-9.\-]/g, '');
+    }
+    // Sin coma: quitar separadores raros y dejar punto decimal si existe
+    return s.replace(/[^0-9.\-]/g, '');
+  })();
+
+  const n = Number.parseFloat(normalized);
   if (!Number.isFinite(n)) return 0;
   return negative ? -Math.abs(n) : n;
 }
@@ -29,17 +46,49 @@ function isLikelyLabelCell(s) {
   return /[a-zA-ZÀ-ÿ]/.test(t);
 }
 
-function splitSemicolonCsv(text) {
-  // Los CSV de Holded aquí son simples (sin comillas con ; dentro)
-  return String(text || '')
-    .replace(/\r\n/g, '\n')
-    .replace(/\r/g, '\n')
-    .split('\n')
-    .map((line) => line.split(';').map((c) => c.trim()));
+function splitHoldedCsv(text) {
+  const raw = String(text || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  const lines = raw.split('\n');
+
+  // Detectar delimitador (Holded puede exportar con ; o con ,)
+  const sample = lines.find((l) => l && (l.includes(';') || l.includes(','))) || '';
+  const semis = (sample.match(/;/g) || []).length;
+  const commas = (sample.match(/,/g) || []).length;
+  const delim = semis >= commas ? ';' : ',';
+
+  const parseLine = (line) => {
+    const out = [];
+    let cur = '';
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '"') {
+        // CSV estándar: "" dentro de comillas = "
+        const next = line[i + 1];
+        if (inQuotes && next === '"') {
+          cur += '"';
+          i++;
+        } else {
+          inQuotes = !inQuotes;
+        }
+        continue;
+      }
+      if (!inQuotes && ch === delim) {
+        out.push(cur.trim());
+        cur = '';
+        continue;
+      }
+      cur += ch;
+    }
+    out.push(cur.trim());
+    return out;
+  };
+
+  return lines.map((line) => parseLine(line || ''));
 }
 
 function parseHoldedAnual(csvText) {
-  const rows = splitSemicolonCsv(csvText);
+  const rows = splitHoldedCsv(csvText);
   const map = new Map();
   const cuentas = []; // { code, name, total, groupLabel, subLabel, order }
   let currentGroupLabel = null;
@@ -81,9 +130,20 @@ function parseHoldedAnual(csvText) {
 }
 
 function parseHoldedMensual(csvText) {
-  const rows = splitSemicolonCsv(csvText);
-  const headerRow = rows.find((r) => r && r.length >= 13 && String(r[0] || '').trim() === '' && /Gener/i.test(r[1] || ''));
-  const monthNames = headerRow ? headerRow.slice(1, 13).map((m) => String(m || '').trim()).filter(Boolean) : [];
+  const rows = splitHoldedCsv(csvText);
+  const headerRow = rows.find((r) => r && r.length >= 2 && String(r[0] || '').trim() === '' && /(Gener|Enero|Jan)/i.test(r[1] || ''));
+  const headerMonths = headerRow ? headerRow.slice(1).map((m) => String(m || '').trim()).filter(Boolean) : [];
+  const monthCount = Math.min(12, headerMonths.length);
+  const monthNames = headerMonths.slice(0, monthCount);
+
+  const yearGuess = (() => {
+    const m = String(csvText || '').match(/01\/01\/(\d{4})/);
+    if (m) return m[1];
+    // fallback: intentar extraer del primer mes "Gener 26"
+    const first = monthNames[0] || '';
+    const y2 = String(first).match(/\b(\d{2})\b/);
+    return y2 ? `20${y2[1]}` : '';
+  })();
 
   const map = new Map(); // label -> number[12]
   const cuentas = []; // { code, name, months:number[12], groupLabel, subLabel, order }
@@ -91,7 +151,7 @@ function parseHoldedMensual(csvText) {
   let currentSubLabel = null;
   let order = 0;
   for (const row of rows) {
-    if (!row || row.length < 13) continue;
+    if (!row || row.length < 1 + monthCount) continue;
     const label = row[0]?.trim();
     if (!label || !isLikelyLabelCell(label)) continue;
 
@@ -105,20 +165,23 @@ function parseHoldedMensual(csvText) {
     }
     if (/^\d{3,}/.test(label)) {
       const m = label.match(/^(\d{3,})\s*-\s*(.*)$/);
+      const monthsRaw = row.slice(1, 1 + monthCount).map(parseEuroNumber);
+      const months = [...monthsRaw, ...new Array(Math.max(0, 12 - monthsRaw.length)).fill(0)];
       cuentas.push({
         code: m?.[1] || label.split(/\s+/)[0],
         name: (m?.[2] || '').trim(),
-        months: row.slice(1, 13).map(parseEuroNumber),
+        months,
         groupLabel: currentGroupLabel,
         subLabel: currentSubLabel,
         order: order++
       });
       continue;
     } // cuentas
-    const vals = row.slice(1, 13).map(parseEuroNumber);
+    const valsRaw = row.slice(1, 1 + monthCount).map(parseEuroNumber);
+    const vals = [...valsRaw, ...new Array(Math.max(0, 12 - valsRaw.length)).fill(0)];
     map.set(label, vals);
   }
-  return { map, monthNames, cuentas };
+  return { map, monthNames, cuentas, yearGuess, monthCount };
 }
 
 function buildGroupAccountsAoa({
@@ -208,12 +271,15 @@ function styleGroupAccountsSheet({ ws, aoa, yellowRows = [] }) {
   }
 }
 
-function buildPigLineaCateringAoa({ title, months, cuentasMensuales = [] }) {
+function buildPigLineaCateringAoa({ title, months, cuentasMensuales = [], mensualMap }) {
   const aoa = [];
   const cols = ['Cuenta', ...months, 'TOTAL 25', '', 'TOTAL 25 ESTIMADO SUBV'];
   aoa.push([title, ...new Array(cols.length - 1).fill('')]);
   aoa.push(new Array(cols.length).fill(''));
   aoa.push(cols);
+
+  const sumArray = (arrA, arrB) => arrA.map((v, i) => (Number(v) || 0) + (Number(arrB[i]) || 0));
+  const sumMonths = (arr, limit) => (arr || []).slice(0, limit).reduce((a, b) => a + (Number(b) || 0), 0);
 
   const isCatering = (c) => {
     const hay = `${c?.code || ''} ${c?.name || ''}`.toLowerCase();
@@ -223,13 +289,52 @@ function buildPigLineaCateringAoa({ title, months, cuentasMensuales = [] }) {
     const hay = `${c?.code || ''} ${c?.name || ''}`.toLowerCase();
     return hay.includes('subv') || String(c?.code || '').startsWith('7404') || String(c?.code || '').startsWith('7408');
   };
+  const isIncomeGroup = (c) => {
+    const g = String(c?.groupLabel || '');
+    return g.startsWith('1.') || g.startsWith('2.') || g.startsWith('7.');
+  };
+  const isExpenseGroup = (c) => {
+    const g = String(c?.groupLabel || '');
+    return g.startsWith('6.') || g.startsWith('8.') || g.startsWith('9.') || g.startsWith('10.') || g.startsWith('11.') || g.startsWith('12.') || g.startsWith('13.') || g.startsWith('14.') || g.startsWith('15.') || g.startsWith('16.');
+  };
 
   const catering = (cuentasMensuales || []).filter(isCatering);
   const subv = catering.filter(isSubv).slice().sort((a, b) => String(a.code).localeCompare(String(b.code)));
   const resto = catering.filter((c) => !isSubv(c)).slice().sort((a, b) => String(a.code).localeCompare(String(b.code)));
 
+  // ===== Tabla principal =====
+  const monthsLen = Math.min(12, months.length);
+
+  // Fila subtotal "ESTIMADO..." si existe en el CSV mensual (es una fila de concepto, no una cuenta)
+  const getMensualConcept = (label) => {
+    if (!mensualMap || !(mensualMap instanceof Map)) return null;
+    const normalize = (s) =>
+      String(s || '')
+        .replace(/\u00A0/g, ' ') // NBSP -> space
+        .replace(/^"+|"+$/g, '') // strip surrounding quotes
+        .trim()
+        .replace(/\s+/g, ' ')
+        .toUpperCase();
+
+    const want = normalize(label);
+    const keys = Array.from(mensualMap.keys());
+
+    // 1) Match exact normalizado
+    let k = keys.find((x) => normalize(x) === want);
+    if (k) return mensualMap.get(k);
+
+    // 2) Match por inclusión (por si el CSV añade cosas o espacios raros)
+    k = keys.find((x) => normalize(x).includes(want) || want.includes(normalize(x)));
+    return k ? mensualMap.get(k) : null;
+  };
+  const estimadoAntesIngreso = getMensualConcept('ESTIMADO DE SUBVENCIÓN ANTES DE INGRESO');
+  if (Array.isArray(estimadoAntesIngreso) && estimadoAntesIngreso.length) {
+    const vals = estimadoAntesIngreso.slice(0, monthsLen);
+    const total = vals.reduce((a, b) => a + (Number(b) || 0), 0);
+    aoa.push(['ESTIMADO DE SUBVENCIÓN ANTES DE INGRESO', ...vals, total, '', total]);
+  }
+
   if (subv.length) {
-    aoa.push(['ESTIMADO DE SUBVENCIÓN ANTES DE INGRESO', ...new Array(cols.length - 1).fill('')]);
     for (const c of subv) {
       const monthsVals = (c.months || new Array(12).fill(0)).slice(0, 12);
       const total = monthsVals.reduce((a, b) => a + (Number(b) || 0), 0);
@@ -244,7 +349,699 @@ function buildPigLineaCateringAoa({ title, months, cuentasMensuales = [] }) {
     aoa.push([`${c.code} - ${c.name}`.trim(), ...monthsVals, total, '', total]);
   }
 
+  // ===== Resumen inferior ligado a la tabla =====
+  const allCateringMonths = catering.reduce((acc, c) => sumArray(acc, (c.months || new Array(12).fill(0)).slice(0, monthsLen)), new Array(monthsLen).fill(0));
+  const totalBeneficioMes = allCateringMonths; // ingresos + gastos (gastos suelen venir negativos)
+  const totalBeneficioMesTotal = totalBeneficioMes.reduce((a, b) => a + (Number(b) || 0), 0);
+
+  const ingresosSinSubvMonths = catering
+    .filter((c) => isIncomeGroup(c) && !isSubv(c))
+    .reduce((acc, c) => sumArray(acc, (c.months || new Array(12).fill(0)).slice(0, monthsLen)), new Array(monthsLen).fill(0));
+  const ingresosSinSubvTotal = ingresosSinSubvMonths.reduce((a, b) => a + (Number(b) || 0), 0);
+
+  const despesesMonths = catering
+    .filter((c) => isExpenseGroup(c))
+    .reduce((acc, c) => sumArray(acc, (c.months || new Array(12).fill(0)).slice(0, monthsLen)), new Array(monthsLen).fill(0));
+  const despesesTotal = despesesMonths.reduce((a, b) => a + (Number(b) || 0), 0);
+
+  const beneficioSinSubvMonths = sumArray(ingresosSinSubvMonths, despesesMonths);
+  const beneficioSinSubvTotal = beneficioSinSubvMonths.reduce((a, b) => a + (Number(b) || 0), 0);
+
+  aoa.push(new Array(cols.length).fill(''));
+  const estimadoTotal = Array.isArray(estimadoAntesIngreso) ? sumMonths(estimadoAntesIngreso, monthsLen) : 0;
+  aoa.push(['TOTAL BENEFICIO POR MES CATERING', ...totalBeneficioMes, totalBeneficioMesTotal, '', (totalBeneficioMesTotal + estimadoTotal)]);
+  // 1 fila de espacio antes del bloque de 3 líneas
+  aoa.push(new Array(cols.length).fill(''));
+  aoa.push(['TOTAL INGRESOS CATERING SIN SUBVENCIONES', ...ingresosSinSubvMonths, ingresosSinSubvTotal, '', '']);
+  aoa.push(['TOTAL DESPESES', ...despesesMonths, despesesTotal, '', '']);
+  aoa.push(['BENEFICIO SIN SUBVENCIONES', ...beneficioSinSubvMonths, beneficioSinSubvTotal, '', '']);
+
+  // ===== Tablas inferiores (totales computados) =====
+  // Construimos 2 listados: enero–nov y enero–dic
+  const listAll = catering.slice().sort((a, b) => String(a.code).localeCompare(String(b.code)));
+  const lastNonZeroMonth = (() => {
+    let last = -1;
+    for (const c of listAll) {
+      const m = (c.months || []);
+      for (let i = 0; i < Math.min(12, m.length); i++) {
+        if (Number(m[i]) !== 0) last = Math.max(last, i);
+      }
+    }
+    return last;
+  })();
+  const decLimit = Math.max(1, Math.min(12, (lastNonZeroMonth >= 0 ? lastNonZeroMonth + 1 : 12)));
+  const novLimit = Math.max(1, decLimit - 1);
+
+  const endOfMonthStr = (monthIndex) => {
+    const yy = (title.match(/01\/01\/(\d{2})/)?.[1] || '').trim();
+    const year = yy ? Number(`20${yy}`) : new Date().getFullYear();
+    const m = Math.min(11, Math.max(0, monthIndex));
+    const d = new Date(year, m + 1, 0).getDate();
+    const dd = String(d).padStart(2, '0');
+    const mm = String(m + 1).padStart(2, '0');
+    return `${dd}/${mm}/${yy || String(year).slice(2)}`;
+  };
+
+  const novRows = listAll.map((c) => [`${c.code} - ${c.name}`.trim(), sumMonths(c.months, novLimit)]);
+  const decRows = listAll.map((c) => [`${c.code} - ${c.name}`.trim(), sumMonths(c.months, decLimit)]);
+
+  aoa.push(new Array(cols.length).fill(''));
+  // Títulos (en A y en I para que no choque con la tabla)
+  {
+    const row = new Array(cols.length).fill('');
+    row[0] = `TOTAL COMPUTADO ENERO A ${endOfMonthStr(novLimit - 1)}`;
+    // Tabla derecha: el label ocupará varias columnas (D..H) y el valor en I
+    row[3] = `TOTAL COMPUTADO ENERO A ${endOfMonthStr(decLimit - 1)}`;
+    aoa.push(row);
+  }
+  aoa.push(new Array(cols.length).fill(''));
+  // Separación extra para que no “pegue” con la tabla principal
+  aoa.push(new Array(cols.length).fill(''));
+
+  const maxLen = Math.max(novRows.length, decRows.length);
+  for (let i = 0; i < maxLen; i++) {
+    const left = novRows[i] || ['', ''];
+    const right = decRows[i] || ['', ''];
+    const row = new Array(cols.length).fill('');
+    row[0] = left[0];
+    row[1] = left[1];
+    // Right: label en D (se fusionará D..H), valor en I
+    row[3] = right[0];
+    row[8] = right[1];
+    aoa.push(row);
+  }
+
+  // Totales inferiores
+  const novTotal = listAll.reduce((sum, c) => sum + sumMonths(c.months, novLimit), 0);
+  const decTotal = listAll.reduce((sum, c) => sum + sumMonths(c.months, decLimit), 0);
+  aoa.push(new Array(cols.length).fill(''));
+  {
+    const row = new Array(cols.length).fill('');
+    row[0] = `TOTAL BENEFICIO CATERING A ${endOfMonthStr(novLimit - 1)}`;
+    row[1] = novTotal;
+    row[3] = `TOTAL BENEFICIO CATERING A ${endOfMonthStr(decLimit - 1)}`;
+    row[8] = decTotal;
+    aoa.push(row);
+  }
+
   return aoa;
+}
+
+function buildPigLineaIdoniAoa({ title, months, cuentasMensuales = [], mensualMap }) {
+  const aoa = [];
+  const cols = ['Cuenta', ...months, 'TOTAL 25', '', 'TOTAL 25 ESTIMADO'];
+  aoa.push([title, ...new Array(cols.length - 1).fill('')]);
+  aoa.push(new Array(cols.length).fill(''));
+  aoa.push(cols);
+
+  const sumArray = (arrA, arrB) => arrA.map((v, i) => (Number(v) || 0) + (Number(arrB[i]) || 0));
+  const sumMonths = (arr, limit) => (arr || []).slice(0, limit).reduce((a, b) => a + (Number(b) || 0), 0);
+
+  const isIdoni = (c) => {
+    const hay = `${c?.code || ''} ${c?.name || ''}`.toLowerCase();
+    return hay.includes('idoni');
+  };
+  const isSubv = (c) => {
+    const hay = `${c?.code || ''} ${c?.name || ''}`.toLowerCase();
+    return hay.includes('subv') || String(c?.code || '').startsWith('7404') || String(c?.code || '').startsWith('7406') || String(c?.code || '').startsWith('7408');
+  };
+  const isIncomeGroup = (c) => {
+    const g = String(c?.groupLabel || '');
+    return g.startsWith('1.') || g.startsWith('2.') || g.startsWith('7.');
+  };
+  const isExpenseGroup = (c) => {
+    const g = String(c?.groupLabel || '');
+    return g.startsWith('6.') || g.startsWith('8.') || g.startsWith('9.') || g.startsWith('10.') || g.startsWith('11.') || g.startsWith('12.') || g.startsWith('13.') || g.startsWith('14.') || g.startsWith('15.') || g.startsWith('16.');
+  };
+
+  const idoni = (cuentasMensuales || []).filter(isIdoni);
+  const subv = idoni.filter(isSubv).slice().sort((a, b) => String(a.code).localeCompare(String(b.code)));
+  const resto = idoni.filter((c) => !isSubv(c)).slice().sort((a, b) => String(a.code).localeCompare(String(b.code)));
+
+  const monthsLen = Math.min(12, months.length);
+
+  // Intentamos recuperar el concepto de “estimado” si existe en el CSV mensual
+  const getMensualConcept = (label) => {
+    if (!mensualMap || !(mensualMap instanceof Map)) return null;
+    const normalize = (s) =>
+      String(s || '')
+        .replace(/\u00A0/g, ' ')
+        .replace(/^"+|"+$/g, '')
+        .trim()
+        .replace(/\s+/g, ' ')
+        .toUpperCase();
+    const want = normalize(label);
+    const keys = Array.from(mensualMap.keys());
+    let k = keys.find((x) => normalize(x) === want);
+    if (k) return mensualMap.get(k);
+    k = keys.find((x) => normalize(x).includes(want) || want.includes(normalize(x)));
+    return k ? mensualMap.get(k) : null;
+  };
+  const estimadoAntesIngreso = getMensualConcept('ESTIMADO DE SUBVENCIÓN ANTES DE INGRESO');
+  if (Array.isArray(estimadoAntesIngreso) && estimadoAntesIngreso.length) {
+    const vals = estimadoAntesIngreso.slice(0, monthsLen);
+    const total = vals.reduce((a, b) => a + (Number(b) || 0), 0);
+    aoa.push(['ESTIMADO DE SUBVENCIÓN ANTES DE INGRESO', ...vals, total, '', total]);
+  }
+
+  if (subv.length) {
+    for (const c of subv) {
+      const monthsVals = (c.months || new Array(12).fill(0)).slice(0, 12);
+      const total = monthsVals.reduce((a, b) => a + (Number(b) || 0), 0);
+      aoa.push([`${c.code} - ${c.name}`.trim(), ...monthsVals, total, '', total]);
+    }
+  }
+
+  for (const c of resto) {
+    const monthsVals = (c.months || new Array(12).fill(0)).slice(0, 12);
+    const total = monthsVals.reduce((a, b) => a + (Number(b) || 0), 0);
+    aoa.push([`${c.code} - ${c.name}`.trim(), ...monthsVals, total, '', total]);
+  }
+
+  // ===== Resumen inferior =====
+  const allIdoniMonths = idoni.reduce((acc, c) => sumArray(acc, (c.months || new Array(12).fill(0)).slice(0, monthsLen)), new Array(monthsLen).fill(0));
+  const totalBeneficioMes = allIdoniMonths;
+  const totalBeneficioMesTotal = totalBeneficioMes.reduce((a, b) => a + (Number(b) || 0), 0);
+
+  const ingresosSinSubvMonths = idoni
+    .filter((c) => isIncomeGroup(c) && !isSubv(c))
+    .reduce((acc, c) => sumArray(acc, (c.months || new Array(12).fill(0)).slice(0, monthsLen)), new Array(monthsLen).fill(0));
+  const ingresosSinSubvTotal = ingresosSinSubvMonths.reduce((a, b) => a + (Number(b) || 0), 0);
+
+  const despesesMonths = idoni
+    .filter((c) => isExpenseGroup(c))
+    .reduce((acc, c) => sumArray(acc, (c.months || new Array(12).fill(0)).slice(0, monthsLen)), new Array(monthsLen).fill(0));
+  const despesesTotal = despesesMonths.reduce((a, b) => a + (Number(b) || 0), 0);
+
+  const beneficioSinSubvMonths = sumArray(ingresosSinSubvMonths, despesesMonths);
+  const beneficioSinSubvTotal = beneficioSinSubvMonths.reduce((a, b) => a + (Number(b) || 0), 0);
+
+  aoa.push(new Array(cols.length).fill(''));
+  const estimadoTotal = Array.isArray(estimadoAntesIngreso) ? sumMonths(estimadoAntesIngreso, monthsLen) : 0;
+  aoa.push(['TOTAL BENEFICIO POR MES IDONI', ...totalBeneficioMes, totalBeneficioMesTotal, '', (totalBeneficioMesTotal + estimadoTotal)]);
+  aoa.push(new Array(cols.length).fill(''));
+  aoa.push(['TOTAL INGRESOS IDONI SIN SUBV.', ...ingresosSinSubvMonths, ingresosSinSubvTotal, '', '']);
+  aoa.push(['TOTAL DESPESES', ...despesesMonths, despesesTotal, '', '']);
+  aoa.push(['BENEFICIO SIN SUBVENCIONES', ...beneficioSinSubvMonths, beneficioSinSubvTotal, '', '']);
+
+  // ===== Tablas inferiores (totales computados) =====
+  const listAll = idoni.slice().sort((a, b) => String(a.code).localeCompare(String(b.code)));
+  const lastNonZeroMonth = (() => {
+    let last = -1;
+    for (const c of listAll) {
+      const m = (c.months || []);
+      for (let i = 0; i < Math.min(12, m.length); i++) {
+        if (Number(m[i]) !== 0) last = Math.max(last, i);
+      }
+    }
+    return last;
+  })();
+  const decLimit = Math.max(1, Math.min(12, (lastNonZeroMonth >= 0 ? lastNonZeroMonth + 1 : 12)));
+  const novLimit = Math.max(1, decLimit - 1);
+  const endOfMonthStr = (monthIndex) => {
+    const yy = (title.match(/01\/01\/(\d{2})/)?.[1] || '').trim();
+    const year = yy ? Number(`20${yy}`) : new Date().getFullYear();
+    const m = Math.min(11, Math.max(0, monthIndex));
+    const d = new Date(year, m + 1, 0).getDate();
+    const dd = String(d).padStart(2, '0');
+    const mm = String(m + 1).padStart(2, '0');
+    return `${dd}/${mm}/${yy || String(year).slice(2)}`;
+  };
+
+  const novRows = listAll.map((c) => [`${c.code} - ${c.name}`.trim(), sumMonths(c.months, novLimit)]);
+  const decRows = listAll.map((c) => [`${c.code} - ${c.name}`.trim(), sumMonths(c.months, decLimit)]);
+
+  aoa.push(new Array(cols.length).fill(''));
+  {
+    const row = new Array(cols.length).fill('');
+    row[0] = `TOTAL COMPUTADO DE ENERO A ${endOfMonthStr(novLimit - 1)}`;
+    row[3] = `TOTAL COMPUTADO DE ENERO A ${endOfMonthStr(decLimit - 1)}`;
+    aoa.push(row);
+  }
+  aoa.push(new Array(cols.length).fill(''));
+  aoa.push(new Array(cols.length).fill(''));
+
+  const maxLen = Math.max(novRows.length, decRows.length);
+  for (let i = 0; i < maxLen; i++) {
+    const left = novRows[i] || ['', ''];
+    const right = decRows[i] || ['', ''];
+    const row = new Array(cols.length).fill('');
+    row[0] = left[0];
+    row[1] = left[1];
+    row[3] = right[0];
+    row[8] = right[1];
+    aoa.push(row);
+  }
+
+  const novTotal = listAll.reduce((sum, c) => sum + sumMonths(c.months, novLimit), 0);
+  const decTotal = listAll.reduce((sum, c) => sum + sumMonths(c.months, decLimit), 0);
+  aoa.push(new Array(cols.length).fill(''));
+  {
+    const row = new Array(cols.length).fill('');
+    row[0] = `TOTAL  BENEFICIO IDONI A ${endOfMonthStr(novLimit - 1)}`;
+    row[1] = novTotal;
+    row[3] = `TOTAL  BENEFICIO IDONI A ${endOfMonthStr(decLimit - 1)}`;
+    row[8] = decTotal;
+    aoa.push(row);
+  }
+
+  return aoa;
+}
+
+function buildPigLineaKoikiAoa({ title, months, cuentasMensuales = [], mensualMap }) {
+  const aoa = [];
+  const cols = ['Cuenta', ...months, 'TOTAL 25', '', 'TOTAL 25 ESTIMADO'];
+  aoa.push([title, ...new Array(cols.length - 1).fill('')]);
+  aoa.push(new Array(cols.length).fill(''));
+  aoa.push(cols);
+
+  const sumArray = (arrA, arrB) => arrA.map((v, i) => (Number(v) || 0) + (Number(arrB[i]) || 0));
+  const sumMonths = (arr, limit) => (arr || []).slice(0, limit).reduce((a, b) => a + (Number(b) || 0), 0);
+
+  const isKoiki = (c) => {
+    const hay = `${c?.code || ''} ${c?.name || ''}`.toLowerCase();
+    return hay.includes('koiki');
+  };
+  const isSubv = (c) => {
+    const hay = `${c?.code || ''} ${c?.name || ''}`.toLowerCase();
+    return hay.includes('subv') || String(c?.code || '').startsWith('7404') || String(c?.code || '').startsWith('7408');
+  };
+  const isIncomeGroup = (c) => {
+    const g = String(c?.groupLabel || '');
+    return g.startsWith('1.') || g.startsWith('2.') || g.startsWith('7.');
+  };
+  const isExpenseGroup = (c) => {
+    const g = String(c?.groupLabel || '');
+    return g.startsWith('6.') || g.startsWith('8.') || g.startsWith('9.') || g.startsWith('10.') || g.startsWith('11.') || g.startsWith('12.') || g.startsWith('13.') || g.startsWith('14.') || g.startsWith('15.') || g.startsWith('16.');
+  };
+
+  const koiki = (cuentasMensuales || []).filter(isKoiki);
+  const subv = koiki.filter(isSubv).slice().sort((a, b) => String(a.code).localeCompare(String(b.code)));
+  const resto = koiki.filter((c) => !isSubv(c)).slice().sort((a, b) => String(a.code).localeCompare(String(b.code)));
+
+  const monthsLen = Math.min(12, months.length);
+
+  const getMensualConcept = (label) => {
+    if (!mensualMap || !(mensualMap instanceof Map)) return null;
+    const normalize = (s) =>
+      String(s || '')
+        .replace(/\u00A0/g, ' ')
+        .replace(/^"+|"+$/g, '')
+        .trim()
+        .replace(/\s+/g, ' ')
+        .toUpperCase();
+    const want = normalize(label);
+    const keys = Array.from(mensualMap.keys());
+    let k = keys.find((x) => normalize(x) === want);
+    if (k) return mensualMap.get(k);
+    k = keys.find((x) => normalize(x).includes(want) || want.includes(normalize(x)));
+    return k ? mensualMap.get(k) : null;
+  };
+
+  const estimadoAntesIngreso = getMensualConcept('ESTIMADO DE SUBVENCIÓN ANTES DE INGRESO');
+  if (Array.isArray(estimadoAntesIngreso) && estimadoAntesIngreso.length) {
+    const vals = estimadoAntesIngreso.slice(0, monthsLen);
+    const total = vals.reduce((a, b) => a + (Number(b) || 0), 0);
+    aoa.push(['ESTIMADO DE SUBVENCIÓN ANTES DE INGRESO', ...vals, total, '', total]);
+  }
+
+  if (subv.length) {
+    for (const c of subv) {
+      const monthsVals = (c.months || new Array(12).fill(0)).slice(0, 12);
+      const total = monthsVals.reduce((a, b) => a + (Number(b) || 0), 0);
+      aoa.push([`${c.code} - ${c.name}`.trim(), ...monthsVals, total, '', total]);
+    }
+  }
+
+  for (const c of resto) {
+    const monthsVals = (c.months || new Array(12).fill(0)).slice(0, 12);
+    const total = monthsVals.reduce((a, b) => a + (Number(b) || 0), 0);
+    aoa.push([`${c.code} - ${c.name}`.trim(), ...monthsVals, total, '', total]);
+  }
+
+  // ===== Resumen inferior =====
+  const allKoikiMonths = koiki.reduce((acc, c) => sumArray(acc, (c.months || new Array(12).fill(0)).slice(0, monthsLen)), new Array(monthsLen).fill(0));
+  const totalBeneficioMes = allKoikiMonths;
+  const totalBeneficioMesTotal = totalBeneficioMes.reduce((a, b) => a + (Number(b) || 0), 0);
+
+  const ingresosSinSubvMonths = koiki
+    .filter((c) => isIncomeGroup(c) && !isSubv(c))
+    .reduce((acc, c) => sumArray(acc, (c.months || new Array(12).fill(0)).slice(0, monthsLen)), new Array(monthsLen).fill(0));
+  const ingresosSinSubvTotal = ingresosSinSubvMonths.reduce((a, b) => a + (Number(b) || 0), 0);
+
+  const despesesMonths = koiki
+    .filter((c) => isExpenseGroup(c))
+    .reduce((acc, c) => sumArray(acc, (c.months || new Array(12).fill(0)).slice(0, monthsLen)), new Array(monthsLen).fill(0));
+  const despesesTotal = despesesMonths.reduce((a, b) => a + (Number(b) || 0), 0);
+
+  const beneficioSinSubvMonths = sumArray(ingresosSinSubvMonths, despesesMonths);
+  const beneficioSinSubvTotal = beneficioSinSubvMonths.reduce((a, b) => a + (Number(b) || 0), 0);
+
+  aoa.push(new Array(cols.length).fill(''));
+  const estimadoTotal = Array.isArray(estimadoAntesIngreso) ? sumMonths(estimadoAntesIngreso, monthsLen) : 0;
+  aoa.push(['TOTAL BENEFICIO POR MES KOIKI', ...totalBeneficioMes, totalBeneficioMesTotal, '', (totalBeneficioMesTotal + estimadoTotal)]);
+  aoa.push(new Array(cols.length).fill(''));
+  aoa.push(['TOTAL INGRESOS KOIKI SIN SUBVENCIONES', ...ingresosSinSubvMonths, ingresosSinSubvTotal, '', '']);
+  aoa.push(['TOTAL DESPESES', ...despesesMonths, despesesTotal, '', '']);
+  aoa.push(['BENEFICIO SIN SUBVENCIONES', ...beneficioSinSubvMonths, beneficioSinSubvTotal, '', '']);
+
+  // ===== Tablas inferiores (totales computados) =====
+  const listAll = koiki.slice().sort((a, b) => String(a.code).localeCompare(String(b.code)));
+  const lastNonZeroMonth = (() => {
+    let last = -1;
+    for (const c of listAll) {
+      const m = (c.months || []);
+      for (let i = 0; i < Math.min(12, m.length); i++) {
+        if (Number(m[i]) !== 0) last = Math.max(last, i);
+      }
+    }
+    return last;
+  })();
+  const decLimit = Math.max(1, Math.min(12, (lastNonZeroMonth >= 0 ? lastNonZeroMonth + 1 : 12)));
+  const novLimit = Math.max(1, decLimit - 1);
+  const endOfMonthStr = (monthIndex) => {
+    const yy = (title.match(/01\/01\/(\d{2})/)?.[1] || '').trim();
+    const year = yy ? Number(`20${yy}`) : new Date().getFullYear();
+    const m = Math.min(11, Math.max(0, monthIndex));
+    const d = new Date(year, m + 1, 0).getDate();
+    const dd = String(d).padStart(2, '0');
+    const mm = String(m + 1).padStart(2, '0');
+    return `${dd}/${mm}/${yy || String(year).slice(2)}`;
+  };
+
+  const novRows = listAll.map((c) => [`${c.code} - ${c.name}`.trim(), sumMonths(c.months, novLimit)]);
+  const decRows = listAll.map((c) => [`${c.code} - ${c.name}`.trim(), sumMonths(c.months, decLimit)]);
+
+  aoa.push(new Array(cols.length).fill(''));
+  {
+    const row = new Array(cols.length).fill('');
+    row[0] = `TOTAL COMPUTADO ENERO A ${endOfMonthStr(novLimit - 1)}`;
+    row[3] = `TOTAL COMPUTADO ENERO A ${endOfMonthStr(decLimit - 1)}`;
+    aoa.push(row);
+  }
+  aoa.push(new Array(cols.length).fill(''));
+  aoa.push(new Array(cols.length).fill(''));
+
+  const maxLen = Math.max(novRows.length, decRows.length);
+  for (let i = 0; i < maxLen; i++) {
+    const left = novRows[i] || ['', ''];
+    const right = decRows[i] || ['', ''];
+    const row = new Array(cols.length).fill('');
+    row[0] = left[0];
+    row[1] = left[1];
+    row[3] = right[0];
+    row[8] = right[1];
+    aoa.push(row);
+  }
+
+  const novTotal = listAll.reduce((sum, c) => sum + sumMonths(c.months, novLimit), 0);
+  const decTotal = listAll.reduce((sum, c) => sum + sumMonths(c.months, decLimit), 0);
+  aoa.push(new Array(cols.length).fill(''));
+  {
+    const row = new Array(cols.length).fill('');
+    row[0] = `TOTAL  BENEFICIO KOIKI A ${endOfMonthStr(novLimit - 1)}`;
+    row[1] = novTotal;
+    row[3] = `TOTAL  BENEFICIO KOIKI A ${endOfMonthStr(decLimit - 1)}`;
+    row[8] = decTotal;
+    aoa.push(row);
+  }
+
+  return aoa;
+}
+
+function buildComparativaAnualAoa({ mensualParsed, objetivos, basesPrevYear }) {
+  const months = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+  const aoa = [];
+  const yearCurrent = Number(mensualParsed?.yearGuess || 2025) || 2025;
+  const yy = String(yearCurrent).slice(2);
+  const yearPrev = yearCurrent - 1;
+
+  const sumArray = (arrA, arrB) => arrA.map((v, i) => (Number(v) || 0) + (Number(arrB[i]) || 0));
+
+  const computeIngresosSinSubv = ({ contains, extraCodePred, subvCodePred }) => {
+    const cuentas = mensualParsed?.cuentas || [];
+    const inLine = (c) => {
+      const hay = `${c?.code || ''} ${c?.name || ''}`.toLowerCase();
+      if (extraCodePred && extraCodePred(c)) return true;
+      return hay.includes(String(contains).toLowerCase());
+    };
+    const isSubv = (c) => {
+      const hay = `${c?.code || ''} ${c?.name || ''}`.toLowerCase();
+      if (subvCodePred && subvCodePred(c)) return true;
+      return hay.includes('subv') || String(c?.code || '').startsWith('7404') || String(c?.code || '').startsWith('7406') || String(c?.code || '').startsWith('7408');
+    };
+    const isIncomeGroup = (c) => {
+      const g = String(c?.groupLabel || '');
+      return g.startsWith('1.') || g.startsWith('2.') || g.startsWith('7.');
+    };
+    const monthsLen = 12;
+    const vals = cuentas
+      .filter((c) => inLine(c) && isIncomeGroup(c) && !isSubv(c))
+      .reduce((acc, c) => sumArray(acc, (c.months || new Array(12).fill(0)).slice(0, monthsLen)), new Array(monthsLen).fill(0));
+    return vals;
+  };
+
+  const sum = (arr) => (arr || []).reduce((a, b) => a + (Number(b) || 0), 0);
+  const buildObjetivoRestante = (objetivoTotal, base2025Months) => {
+    const out = new Array(12).fill(0);
+    let rem = Number(objetivoTotal) || 0;
+    for (let i = 0; i < 12; i++) {
+      rem = rem - (Number(base2025Months?.[i]) || 0);
+      out[i] = rem;
+    }
+    return out;
+  };
+
+  // ===== Datos fijos (bases históricas) según el CSV “bueno” =====
+  const CATERING_BASE_2022 = [586.50, 1608.00, 6411.43, 19130.50, 17400.00, 41764.30, 14805.00, 0.00, 26804.76, 23986.00, 74105.20, 28063.50];
+  const CATERING_BASE_2023 = [8085.00, 19665.50, 59432.50, 24254.73, 30594.50, 39039.70, 43199.82, 0.00, 18551.50, 35462.68, 55584.10, 60249.31];
+  const CATERING_BASE_2024 = [16675.63, 34444.35, 31688.33, 23797.23, 62001.72, 64109.93, 51543.42, 0.00, 28529.52, 99723.71, 52183.66, 45869.00];
+
+  const IDONI_BASE_2024 = [0, 0, 0, 8659.96, 8921.72, 8770.40, 8489.19, 2377.82, 8412.98, 9782.84, 9776.04, 19841.28];
+
+  const KOIKI_BASE_2024 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 146.00, 1108.15];
+  const KOIKI_NOVDIC_REFERENCIA = { nov: 580.68, dic: 651.89 };
+
+  const prevBases = basesPrevYear || {};
+  const cateringPrev = (Array.isArray(prevBases.CATERING) && prevBases.CATERING.length === 12)
+    ? prevBases.CATERING
+    : (yearPrev === 2024 ? CATERING_BASE_2024 : new Array(12).fill(0));
+  const idoniPrev = (Array.isArray(prevBases.IDONI) && prevBases.IDONI.length === 12)
+    ? prevBases.IDONI
+    : (yearPrev === 2024 ? IDONI_BASE_2024 : new Array(12).fill(0));
+  const koikiPrev = (Array.isArray(prevBases.KOIKI) && prevBases.KOIKI.length === 12)
+    ? prevBases.KOIKI
+    : (yearPrev === 2024 ? KOIKI_BASE_2024 : new Array(12).fill(0));
+
+  // ===== Bases 2025 calculadas desde el CSV mensual (ingresos sin subvenciones) =====
+  const catering2025 = computeIngresosSinSubv({ contains: 'catering' });
+  const idoni2025 = computeIngresosSinSubv({ contains: 'idoni' });
+  const koiki2025Raw = computeIngresosSinSubv({ contains: 'koiki' });
+
+  // KOIKI: el “+ NOV/DIC” era un caso concreto del Excel 2025 (facturado en 2026).
+  // Solo lo aplicamos cuando el año actual es 2025.
+  const koikiCurrent = koiki2025Raw.slice();
+  const koikiCurrentPlusNovDic = koikiCurrent.slice();
+  if (yearCurrent === 2025) {
+    koikiCurrent[10] = 0;
+    koikiCurrent[11] = 0;
+    koikiCurrentPlusNovDic[10] = KOIKI_NOVDIC_REFERENCIA.nov;
+    koikiCurrentPlusNovDic[11] = KOIKI_NOVDIC_REFERENCIA.dic;
+  }
+
+  // ===== Objetivos (inputs) =====
+  const obj = objetivos || {};
+  const cateringObjNormal = Number(obj?.catering?.normal ?? 525849.55) || 0;
+  const cateringObjOptim = Number(obj?.catering?.optim ?? 575849.55) || 0;
+  const idoniObjNormal = Number(obj?.idoni?.normal ?? 140000.0) || 0;
+  const idoniObjOptim = Number(obj?.idoni?.optim ?? 150000.0) || 0;
+  const koikiObjNormal = Number(obj?.koiki?.normal ?? 20207.0) || 0;
+  const koikiObjOptim = Number(obj?.koiki?.optim ?? 23881.0) || 0;
+
+  const cateringObjNormalRest = buildObjetivoRestante(cateringObjNormal, catering2025);
+  const cateringObjOptimRest = buildObjetivoRestante(cateringObjOptim, catering2025);
+  const idoniObjNormalRest = buildObjetivoRestante(idoniObjNormal, idoni2025);
+  const idoniObjOptimRest = buildObjetivoRestante(idoniObjOptim, idoni2025);
+  const koikiObjNormalRest = buildObjetivoRestante(koikiObjNormal, koikiCurrent);
+  const koikiObjOptimRest = buildObjetivoRestante(koikiObjOptim, koikiCurrent);
+
+  // ===== Construcción AOA =====
+  const blank = () => [];
+  aoa.push(['CATERING']);
+  aoa.push([
+    'MES',
+    'Base 2022',
+    'Base 2023',
+    `BASE ${yearPrev}`,
+    `DIFERENCIA 23 - ${String(yearPrev).slice(2)}`,
+    `BASE ${yearCurrent}`,
+    `DIFERENCIA ${String(yearPrev).slice(2)} - ${yy}`,
+    `OBJECTIU ${yy} ESCENARI NORMAL`,
+    `OBJECTIU ${yy} ESCENARI ÒPTIM`
+  ]);
+  aoa.push(['', '', '', '', '', '', '', cateringObjNormal, cateringObjOptim]); // objetivo inicial
+  for (let i = 0; i < 12; i++) {
+    aoa.push([
+      months[i],
+      CATERING_BASE_2022[i],
+      CATERING_BASE_2023[i],
+      cateringPrev[i],
+      (cateringPrev[i] - CATERING_BASE_2023[i]),
+      catering2025[i],
+      (catering2025[i] - cateringPrev[i]),
+      cateringObjNormalRest[i],
+      cateringObjOptimRest[i]
+    ]);
+  }
+  aoa.push(blank());
+  aoa.push([
+    'TOTAL ACUMULADO',
+    sum(CATERING_BASE_2022),
+    sum(CATERING_BASE_2023),
+    sum(cateringPrev),
+    sum(cateringPrev) - sum(CATERING_BASE_2023),
+    sum(catering2025),
+    sum(catering2025) - sum(cateringPrev),
+    (sum(catering2025) - cateringObjNormal),
+    (sum(catering2025) - cateringObjOptim)
+  ]);
+
+  aoa.push(blank());
+  aoa.push(blank());
+  aoa.push(['IDONI']);
+  aoa.push([
+    'MES',
+    `BASE ${yearPrev}`,
+    `BASE ${yearCurrent}`,
+    `DIFERENCIA ${String(yearPrev).slice(2)} - ${yy}`,
+    `OBJECTIU ${yy} ESCENARI NORMAL`,
+    `OBJECTIU ${yy} ESCENARI ÒPTIM`
+  ]);
+  aoa.push(['', '', '', '', idoniObjNormal, idoniObjOptim]); // objetivo inicial
+  for (let i = 0; i < 12; i++) {
+    aoa.push([months[i], idoniPrev[i], idoni2025[i], (idoni2025[i] - idoniPrev[i]), idoniObjNormalRest[i], idoniObjOptimRest[i]]);
+  }
+  aoa.push(blank());
+  aoa.push([
+    'TOTAL ACUMULADO',
+    sum(idoniPrev),
+    sum(idoni2025),
+    sum(idoni2025) - sum(idoniPrev),
+    (sum(idoni2025) - idoniObjNormal),
+    (sum(idoni2025) - idoniObjOptim)
+  ]);
+
+  aoa.push(blank());
+  aoa.push(blank());
+  aoa.push(['KOIKI']);
+  aoa.push([
+    'MES',
+    `BASE ${yearPrev}`,
+    `BASE ${yearCurrent}`,
+    `BASE ${yearCurrent} + NOV/DIC`,
+    `DIFERENCIA ${String(yearPrev).slice(2)} - ${yy}`,
+    `OBJECTIU ${yy} ESCENARI NORMAL`,
+    `OBJECTIU ${yy} ESCENARI ÒPTIM`
+  ]);
+  aoa.push(['', '', '', '', '', koikiObjNormal, koikiObjOptim]); // objetivo inicial
+  const koikiDiff = new Array(12).fill(0);
+  for (let i = 0; i < 12; i++) {
+    // Regla general: diferencia = 2025 - 2024
+    // Caso especial KOIKI (en el Excel de referencia): Nov/Dic 2025 se dejaron a 0 (facturado en 2026),
+    // pero 2024 sí tiene base; en ese caso mostramos 2024 - 2025 para que no salga negativo.
+    const bPrev = Number(koikiPrev[i]) || 0;
+    const bCur = Number(koikiCurrent[i]) || 0;
+    // Caso especial KOIKI 2025 (facturado en 2026): evitar negativo cuando el mes está a 0 por ese motivo
+    koikiDiff[i] = (yearCurrent === 2025 && bCur === 0 && bPrev > 0) ? (bPrev - bCur) : (bCur - bPrev);
+    aoa.push([
+      months[i],
+      koikiPrev[i],
+      koikiCurrent[i],
+      koikiCurrentPlusNovDic[i],
+      koikiDiff[i],
+      koikiObjNormalRest[i],
+      koikiObjOptimRest[i]
+    ]);
+  }
+  aoa.push(blank());
+  aoa.push([
+    'TOTAL ACUMULADO',
+    sum(koikiPrev),
+    sum(koikiCurrent),
+    sum(koikiCurrentPlusNovDic),
+    sum(koikiDiff),
+    (sum(koikiCurrent) - koikiObjNormal),
+    (sum(koikiCurrent) - koikiObjOptim)
+  ]);
+
+  return aoa;
+}
+
+function styleComparativaAnualSheet({ ws, aoa }) {
+  ws['!sheetView'] = [{ showGridLines: false }];
+  ws['!cols'] = [
+    { wch: 18 },
+    { wch: 14 },
+    { wch: 14 },
+    { wch: 14 },
+    { wch: 16 },
+    { wch: 14 },
+    { wch: 16 },
+    { wch: 22 },
+    { wch: 22 }
+  ];
+
+  const borderThin = {
+    top: { style: 'thin', color: { rgb: '000000' } },
+    bottom: { style: 'thin', color: { rgb: '000000' } },
+    left: { style: 'thin', color: { rgb: '000000' } },
+    right: { style: 'thin', color: { rgb: '000000' } }
+  };
+  const numStyle = { border: borderThin, numFmt: '#,##0.00;[Red]-#,##0.00', alignment: { horizontal: 'right', vertical: 'center' } };
+  const labelStyle = { border: borderThin, alignment: { vertical: 'center' } };
+
+  const isSectionTitle = (v) => ['CATERING', 'IDONI', 'KOIKI'].includes(String(v || '').trim().toUpperCase());
+
+  for (let r = 0; r < aoa.length; r++) {
+    const v0 = ws[XLSX.utils.encode_cell({ r, c: 0 })]?.v;
+    if (isSectionTitle(v0)) {
+      // Fondo suave de sección
+      const fill =
+        String(v0).toUpperCase() === 'CATERING'
+          ? makeFill('#E2EFDA')
+          : String(v0).toUpperCase() === 'IDONI'
+            ? makeFill('#FCE4D6')
+            : makeFill('#DDEBF7');
+      setRangeStyle(ws, r, 0, r, 8, { fill, border: borderThin, font: { bold: true, name: 'Calibri' } });
+      // Merge título a lo ancho
+      ws['!merges'] = ws['!merges'] || [];
+      ws['!merges'].push({ s: { r, c: 0 }, e: { r, c: 8 } });
+      continue;
+    }
+
+    // Cabeceras (MES, BASE..., etc.)
+    if (v0 && String(v0).trim().toUpperCase() === 'MES') {
+      setRangeStyle(ws, r, 0, r, 8, { fill: makeFill('#E7E6E6'), border: borderThin, font: { bold: true, name: 'Calibri' }, alignment: { horizontal: 'center', vertical: 'center', wrapText: true } });
+      continue;
+    }
+
+    // Total acumulado
+    if (v0 && String(v0).toUpperCase().includes('TOTAL ACUMULADO')) {
+      setRangeStyle(ws, r, 0, r, 8, { fill: makeFill('#F8CBAD'), border: borderThin, font: { bold: true, name: 'Calibri' } });
+    }
+
+    // Bordes/formatos por defecto en filas con datos (si hay números en B)
+    const v1 = ws[XLSX.utils.encode_cell({ r, c: 1 })]?.v;
+    if (v0 && (typeof v1 === 'number' || v0 === 'TOTAL ACUMULADO')) {
+      setCellStyle(ws, r, 0, labelStyle);
+      for (let c = 1; c <= 8; c++) {
+        const cell = ws[XLSX.utils.encode_cell({ r, c })];
+        if (!cell) continue;
+        if (typeof cell.v === 'number') setCellStyle(ws, r, c, numStyle);
+        else setCellStyle(ws, r, c, { border: borderThin, alignment: { horizontal: 'center', vertical: 'center' } });
+      }
+    }
+  }
 }
 
 function stylePigLineaCateringSheet({ ws, aoa }) {
@@ -292,8 +1089,18 @@ function stylePigLineaCateringSheet({ ws, aoa }) {
     alignment: { horizontal: 'center', vertical: 'center', wrapText: true }
   });
 
-  // Columnas numéricas
-  for (let r = headerRow + 1; r < aoa.length; r++) {
+  const isBottomTitle = (v) => /TOTAL\s+COMPUTADO.*ENERO/i.test(String(v || '').replace(/\s+/g, ' '));
+  const bottomStartRow = (() => {
+    for (let r = headerRow + 1; r < aoa.length; r++) {
+      const vA = ws[XLSX.utils.encode_cell({ r, c: 0 })]?.v;
+      if (isBottomTitle(vA)) return r;
+    }
+    return -1;
+  })();
+
+  // Columnas numéricas (bloque principal + resumen). Evitamos machacar las tablas inferiores.
+  const rEndMain = bottomStartRow > 0 ? bottomStartRow - 1 : aoa.length - 1;
+  for (let r = headerRow + 1; r <= rEndMain; r++) {
     // Col 0 label
     setCellStyle(ws, r, 0, { border: borderThin, alignment: { vertical: 'center' } });
 
@@ -321,7 +1128,7 @@ function stylePigLineaCateringSheet({ ws, aoa }) {
       alignment: { horizontal: 'right' }
     });
 
-    // Resaltar filas de sección (texto, no cuenta)
+    // Resaltar filas de sección / totales
     const vA = ws[XLSX.utils.encode_cell({ r, c: 0 })]?.v;
     if (vA && String(vA).toUpperCase().includes('ESTIMADO DE SUBVENCIÓN')) {
       setRangeStyle(ws, r, 0, r, 15, {
@@ -330,6 +1137,97 @@ function stylePigLineaCateringSheet({ ws, aoa }) {
         border: borderThin
       });
       setCellStyle(ws, r, 0, { alignment: { horizontal: 'center' } });
+    }
+
+    if (vA && (
+      String(vA).toUpperCase().includes('TOTAL BENEFICIO POR MES') ||
+      String(vA).toUpperCase().includes('TOTAL INGRESOS') ||
+      String(vA).toUpperCase().includes('TOTAL DESPESES') ||
+      String(vA).toUpperCase().includes('BENEFICIO SIN SUBVENCIONES')
+    )) {
+      setRangeStyle(ws, r, 0, r, 15, { font: { bold: true, name: 'Calibri' }, border: borderThin });
+      // rellenos tipo captura
+      if (String(vA).toUpperCase().includes('TOTAL BENEFICIO POR MES')) {
+        setRangeStyle(ws, r, 0, r, 15, { fill: makeFill('#FFF2CC'), border: borderThin });
+      }
+      if (String(vA).toUpperCase().includes('TOTAL INGRESOS')) {
+        setRangeStyle(ws, r, 0, r, 15, { fill: makeFill('#E2EFDA'), border: borderThin });
+      }
+      if (String(vA).toUpperCase().includes('TOTAL DESPESES')) {
+        setRangeStyle(ws, r, 0, r, 15, { fill: makeFill('#FCE4D6'), border: borderThin });
+      }
+      if (String(vA).toUpperCase().includes('BENEFICIO SIN SUBVENCIONES')) {
+        setRangeStyle(ws, r, 0, r, 15, { fill: makeFill('#E2EFDA'), border: borderThin });
+      }
+    }
+  }
+
+  // Estilos tablas inferiores (A-B y derecha con merge D..H + valor en I)
+  if (bottomStartRow > 0) {
+    const rightLabelStartCol = 3; // D
+    const rightLabelEndCol = 7; // H
+    const rightValueCol = 8; // I
+
+    // 1) Limpiar estilos de TODA la zona inferior para evitar herencias del bloque superior
+    for (let r = bottomStartRow; r < aoa.length; r++) {
+      for (let c = 0; c <= 15; c++) {
+        const addr = XLSX.utils.encode_cell({ r, c });
+        if (ws[addr] && ws[addr].s) delete ws[addr].s;
+      }
+    }
+
+    for (let r = bottomStartRow; r < aoa.length; r++) {
+      const a0 = ws[XLSX.utils.encode_cell({ r, c: 0 })]?.v;
+      const a1 = ws[XLSX.utils.encode_cell({ r, c: 1 })]?.v;
+      const d0 = ws[XLSX.utils.encode_cell({ r, c: rightLabelStartCol })]?.v;
+      const d1 = ws[XLSX.utils.encode_cell({ r, c: rightValueCol })]?.v;
+
+      if (a0 && isBottomTitle(a0)) {
+        setRangeStyle(ws, r, 0, r, 1, { font: { bold: true, name: 'Calibri' }, fill: makeFill('#E7E6E6'), border: borderThin });
+      } else if (a0 && /^\d{3,}/.test(String(a0))) {
+        setCellStyle(ws, r, 0, { border: borderThin, font: { bold: true, name: 'Calibri' } });
+        setCellStyle(ws, r, 1, { border: borderThin, numFmt: '#,##0.00;[Red]-#,##0.00', alignment: { horizontal: 'right' } });
+      } else {
+        // filas vacías / labels
+        setCellStyle(ws, r, 0, { border: borderThin });
+        if (a1 !== undefined) setCellStyle(ws, r, 1, { border: borderThin, numFmt: '#,##0.00;[Red]-#,##0.00', alignment: { horizontal: 'right' } });
+      }
+
+      if (d0 && isBottomTitle(d0)) {
+        // Merge título derecha D..H y valor en I vacío
+        ws['!merges'] = ws['!merges'] || [];
+        ws['!merges'].push({ s: { r, c: rightLabelStartCol }, e: { r, c: rightLabelEndCol } });
+        setRangeStyle(ws, r, rightLabelStartCol, r, rightLabelEndCol, { font: { bold: true, name: 'Calibri' }, fill: makeFill('#E7E6E6'), border: borderThin });
+        setCellStyle(ws, r, rightValueCol, { font: { bold: true, name: 'Calibri' }, fill: makeFill('#E7E6E6'), border: borderThin });
+      } else if (d0 && /^\d{3,}/.test(String(d0))) {
+        // Merge label D..H para dar ancho suficiente al texto
+        ws['!merges'] = ws['!merges'] || [];
+        ws['!merges'].push({ s: { r, c: rightLabelStartCol }, e: { r, c: rightLabelEndCol } });
+        setRangeStyle(ws, r, rightLabelStartCol, r, rightLabelEndCol, {
+          border: borderThin,
+          font: { bold: true, name: 'Calibri' },
+          alignment: { horizontal: 'left', vertical: 'center', wrapText: false }
+        });
+        setCellStyle(ws, r, rightValueCol, { border: borderThin, numFmt: '#,##0.00;[Red]-#,##0.00', alignment: { horizontal: 'right' } });
+      } else {
+        if (d0) {
+          ws['!merges'] = ws['!merges'] || [];
+          ws['!merges'].push({ s: { r, c: rightLabelStartCol }, e: { r, c: rightLabelEndCol } });
+        }
+        setRangeStyle(ws, r, rightLabelStartCol, r, rightLabelEndCol, { border: borderThin });
+        if (d1 !== undefined) setCellStyle(ws, r, rightValueCol, { border: borderThin, numFmt: '#,##0.00;[Red]-#,##0.00', alignment: { horizontal: 'right' } });
+      }
+
+      // Totales finales (amarillo en valores)
+      if (a0 && String(a0).toUpperCase().includes('TOTAL BENEFICIO') && String(a0).includes('30')) {
+        setRangeStyle(ws, r, 0, r, 1, { font: { bold: true, name: 'Calibri' }, fill: makeFill('#FFFF00'), border: borderThin });
+      }
+      if (d0 && String(d0).toUpperCase().includes('TOTAL BENEFICIO') && String(d0).includes('31')) {
+        ws['!merges'] = ws['!merges'] || [];
+        ws['!merges'].push({ s: { r, c: rightLabelStartCol }, e: { r, c: rightLabelEndCol } });
+        setRangeStyle(ws, r, rightLabelStartCol, r, rightLabelEndCol, { font: { bold: true, name: 'Calibri' }, fill: makeFill('#FFFF00'), border: borderThin });
+        setCellStyle(ws, r, rightValueCol, { font: { bold: true, name: 'Calibri' }, fill: makeFill('#FFFF00'), border: borderThin, numFmt: '#,##0.00;[Red]-#,##0.00', alignment: { horizontal: 'right' } });
+      }
     }
   }
 }
@@ -527,6 +1425,14 @@ export default function PIGPage() {
   const [anualFile, setAnualFile] = useState(null);
   const [mensualFile, setMensualFile] = useState(null);
   const [error, setError] = useState('');
+  const [objetivosComparativa, setObjetivosComparativa] = useState({
+    cateringNormal: '525849,55',
+    cateringOptim: '575849,55',
+    idoniNormal: '140000',
+    idoniOptim: '150000',
+    koikiNormal: '20207',
+    koikiOptim: '23881'
+  });
 
   const canGenerate = useMemo(() => Boolean(anualFile && mensualFile), [anualFile, mensualFile]);
 
@@ -544,25 +1450,72 @@ export default function PIGPage() {
       const anual = anualParsed.map;
       const mensual = mensualParsed.map;
       const monthNames = mensualParsed.monthNames;
-
-      // Construcción de hoja
-      const months = monthNames.length === 12 ? monthNames : [
-        'Gener', 'Febrer', 'Març', 'Abril', 'Maig', 'Juny', 'Juliol', 'Agost', 'Setembre', 'Octubre', 'Novembre', 'Desembre'
-      ];
-      const yearGuess = (() => {
+      const yearGuess = mensualParsed.yearGuess || (() => {
         const m = mensualText.match(/01\/01\/(\d{4})/);
         return m ? m[1] : '';
       })();
 
-      const titleFull = `Cierre PIG GENERAL  EI.SSS ${yearGuess ? `01/01/${yearGuess.slice(2)} A 31/12/${yearGuess.slice(2)}` : ''}`.trim();
-      const titleNov = `PIG GENERAL EISSS A NOVIEMBRE ${yearGuess ? `01/01/${yearGuess.slice(2)} A 30/11/${yearGuess.slice(2)}` : ''}`.trim();
+      const getLastNonZeroMonthIndex = () => {
+        let last = -1;
+        // mirar cuentas (más “real” que map)
+        for (const c of (mensualParsed.cuentas || [])) {
+          const m = c?.months || [];
+          for (let i = 0; i < Math.min(12, m.length); i++) {
+            if (Number(m[i]) !== 0) last = Math.max(last, i);
+          }
+        }
+        // fallback: usar monthCount-1 si no encontramos nada
+        if (last < 0) {
+          const mc = Number(mensualParsed.monthCount || 12) || 12;
+          return Math.max(0, Math.min(11, mc - 1));
+        }
+        return Math.max(0, Math.min(11, last));
+      };
+
+      const lastIdx = getLastNonZeroMonthIndex(); // último mes con datos
+      const prevIdx = Math.max(0, lastIdx - 1); // mes anterior
+      const monthLimitFull = lastIdx + 1;
+      const monthLimitPrev = prevIdx + 1;
+
+      const endOfMonthStr = (monthIndex) => {
+        const yy = String(yearGuess || '').slice(2);
+        const year = yearGuess ? Number(yearGuess) : new Date().getFullYear();
+        const m = Math.min(11, Math.max(0, monthIndex));
+        const d = new Date(year, m + 1, 0).getDate();
+        const dd = String(d).padStart(2, '0');
+        const mm = String(m + 1).padStart(2, '0');
+        return `${dd}/${mm}/${yy || String(year).slice(2)}`;
+      };
+
+      const monthLabelUpper = (idx) => {
+        const src = (monthNames.length ? monthNames : [
+          'Gener', 'Febrer', 'Març', 'Abril', 'Maig', 'Juny', 'Juliol', 'Agost', 'Setembre', 'Octubre', 'Novembre', 'Desembre'
+        ])[idx] || '';
+        return String(src || '').toUpperCase();
+      };
+
+      // Construcción de hoja
+      // IMPORTANTE: aunque Holded venga con 3/4 meses, las hojas PIG LINEA y GENERAL
+      // deben mantener SIEMPRE 12 columnas de meses para que no se desplace TOTAL/TOTAL ESTIMADO.
+      const defaultMonths = [
+        'Gener', 'Febrer', 'Març', 'Abril', 'Maig', 'Juny', 'Juliol', 'Agost', 'Setembre', 'Octubre', 'Novembre', 'Desembre'
+      ];
+      const months = new Array(12).fill(null).map((_, idx) => {
+        const fromCsv = monthNames[idx];
+        return fromCsv && String(fromCsv).trim() ? String(fromCsv).trim() : defaultMonths[idx];
+      });
+
+      const yy = yearGuess ? yearGuess.slice(2) : '';
+      const titleFull = `Cierre PIG GENERAL  EI.SSS ${yy ? `01/01/${yy} A ${endOfMonthStr(lastIdx)}` : ''}`.trim();
+      const titlePrev = `PIG GENERAL EISSS A ${monthLabelUpper(prevIdx)} ${yy ? `01/01/${yy} A ${endOfMonthStr(prevIdx)}` : ''}`.trim();
+      const sheetNamePrev = (`PIG GENERAL EISSS A ${monthLabelUpper(prevIdx)}`.trim()).slice(0, 31);
 
       const { aoa: aoaFull, monthsLimited: monthsFull } = buildGeneralAoa({
         title: titleFull,
         months,
         mensualMap: mensual,
         annualTotalsMap: anual,
-        monthLimit: 12
+        monthLimit: monthLimitFull
       });
       const ws = XLSX.utils.aoa_to_sheet(aoaFull);
       styleGeneralSheet({ ws, aoa: aoaFull, monthsLimited: monthsFull });
@@ -572,67 +1525,18 @@ export default function PIGPage() {
 
       // Hoja hasta Noviembre (enero–noviembre)
       const { aoa: aoaNov, monthsLimited: monthsNov } = buildGeneralAoa({
-        title: titleNov,
+        title: titlePrev,
         months,
         mensualMap: mensual,
         annualTotalsMap: anual,
-        monthLimit: 11
+        monthLimit: monthLimitPrev
       });
       const wsNov = XLSX.utils.aoa_to_sheet(aoaNov);
       styleGeneralSheet({ ws: wsNov, aoa: aoaNov, monthsLimited: monthsNov });
-      XLSX.utils.book_append_sheet(wb, wsNov, 'PIG GENERAL EISSS A NOVIEMBRE');
+      XLSX.utils.book_append_sheet(wb, wsNov, sheetNamePrev);
 
-      // ===== Hojas auxiliares (CUENTAS) para siguientes informes =====
-      if (Array.isArray(anualParsed.cuentas) && anualParsed.cuentas.length > 0) {
-        const aoaC = [['Cuenta', 'Nombre', 'Total']];
-        for (const c of anualParsed.cuentas) aoaC.push([c.code, c.name, c.total]);
-        const wsC = XLSX.utils.aoa_to_sheet(aoaC);
-        wsC['!cols'] = [{ wch: 14 }, { wch: 70 }, { wch: 16 }];
-        wsC['!sheetView'] = [{ showGridLines: false }];
-        // estilos básicos
-        setRangeStyle(wsC, 0, 0, 0, 2, {
-          font: { bold: true, name: 'Calibri' },
-          fill: makeFill('#E7E6E6'),
-          border: {
-            top: { style: 'thin', color: { rgb: '000000' } },
-            bottom: { style: 'thin', color: { rgb: '000000' } },
-            left: { style: 'thin', color: { rgb: '000000' } },
-            right: { style: 'thin', color: { rgb: '000000' } }
-          },
-          alignment: { horizontal: 'center' }
-        });
-        for (let r = 1; r < aoaC.length; r++) {
-          setCellStyle(wsC, r, 2, { numFmt: '#,##0.00;[Red]-#,##0.00', alignment: { horizontal: 'right' } });
-        }
-        XLSX.utils.book_append_sheet(wb, wsC, 'PIG CUENTAS ANUAL');
-      }
-
-      if (Array.isArray(mensualParsed.cuentas) && mensualParsed.cuentas.length > 0) {
-        const months2 = monthNames.length === 12 ? monthNames : months;
-        const aoaM = [['Cuenta', 'Nombre', ...months2, 'TOTAL']];
-        for (const c of mensualParsed.cuentas) {
-          const total = (c.months || []).reduce((a, b) => a + b, 0);
-          aoaM.push([c.code, c.name, ...(c.months || new Array(12).fill(0)), total]);
-        }
-        const wsM = XLSX.utils.aoa_to_sheet(aoaM);
-        wsM['!cols'] = [{ wch: 14 }, { wch: 60 }, ...new Array(12).fill({ wch: 14 }), { wch: 14 }];
-        wsM['!sheetView'] = [{ showGridLines: false }];
-        setRangeStyle(wsM, 0, 0, 0, 14, {
-          font: { bold: true, name: 'Calibri' },
-          fill: makeFill('#E7E6E6'),
-          border: {
-            top: { style: 'thin', color: { rgb: '000000' } },
-            bottom: { style: 'thin', color: { rgb: '000000' } },
-            left: { style: 'thin', color: { rgb: '000000' } },
-            right: { style: 'thin', color: { rgb: '000000' } }
-          },
-          alignment: { horizontal: 'center', wrapText: true }
-        });
-        for (let r = 1; r < aoaM.length; r++) {
-          for (let c = 2; c <= 14; c++) setCellStyle(wsM, r, c, { numFmt: '#,##0.00;[Red]-#,##0.00', alignment: { horizontal: 'right' } });
-        }
-        XLSX.utils.book_append_sheet(wb, wsM, 'PIG CUENTAS MENSUAL');
-      }
+      // Nota: Las hojas auxiliares "PIG CUENTAS ANUAL" y "PIG CUENTAS MENSUAL" eran solo para debug.
+      // Las quitamos para que el Excel generado coincida con el original.
 
       // ===== DESPESES MP-APROV-PRFIRPF (Grupo 6) =====
       try {
@@ -642,7 +1546,7 @@ export default function PIGPage() {
           anual.get('Aprovisionamientos') ??
           cuentasG6.reduce((sum, c) => sum + (Number(c.total) || 0), 0);
 
-        const titleG6 = `GASTOS MP/APROVIZONAMENT/PROF.IRPF EI SSS ${yearGuess ? `01/01/${yearGuess.slice(2)} A 31/12/${yearGuess.slice(2)}` : ''}`.trim();
+        const titleG6 = `GASTOS MP/APROVIZONAMENT/PROF.IRPF EI SSS ${yy ? `01/01/${yy} A ${endOfMonthStr(lastIdx)}` : ''}`.trim();
         const aoaG6 = [];
         aoaG6.push([titleG6, '']);
         aoaG6.push(['', '']);
@@ -711,7 +1615,7 @@ export default function PIGPage() {
         const secA = 'a) Sueldos,salarios y asimilados';
         const secB = 'b) Cargas sociales';
         const aoa8 = buildGroupAccountsAoa({
-          title: `SUELDOS Y SALARIOS GENERA EI SSS ${yearGuess ? `01/01/${yearGuess.slice(2)} A 31/12/${yearGuess.slice(2)}` : ''}`.trim(),
+          title: `SUELDOS Y SALARIOS GENERA EI SSS ${yy ? `01/01/${yy} A ${endOfMonthStr(lastIdx)}` : ''}`.trim(),
           groupLabel,
           groupTotal,
           sections: [
@@ -743,7 +1647,7 @@ export default function PIGPage() {
         const secA = 'a) Sevicios exteriores';
         const secB = 'b) Tributos';
         const aoa9 = buildGroupAccountsAoa({
-          title: `CONCEPTE OTROS GASTOS ${yearGuess ? `01/01/${yearGuess} al 31/12/${yearGuess}` : ''}`.trim(),
+          title: `CONCEPTE OTROS GASTOS ${yearGuess ? `01/01/${yearGuess} al ${endOfMonthStr(lastIdx)}` : ''}`.trim(),
           groupLabel,
           groupTotal,
           sections: [
@@ -769,12 +1673,13 @@ export default function PIGPage() {
           if (new RegExp(`\\b${yy}\\b`).test(base)) return base;
           return `${base} ${yy}`.trim();
         });
-        const titleCatering = `Cierre PIG LINEA CATERING  EI.SSS ${yy ? `01/01/${yy} A 31/12/${yy}` : ''}`.trim();
+        const titleCatering = `Cierre PIG LINEA CATERING  EI.SSS ${yy ? `01/01/${yy} A ${endOfMonthStr(lastIdx)}` : ''}`.trim();
 
         const aoaCat = buildPigLineaCateringAoa({
           title: titleCatering,
           months: monthsCatering,
-          cuentasMensuales: mensualParsed.cuentas || []
+          cuentasMensuales: mensualParsed.cuentas || [],
+          mensualMap: mensual
         });
         const wsCat = XLSX.utils.aoa_to_sheet(aoaCat);
         stylePigLineaCateringSheet({ ws: wsCat, aoa: aoaCat });
@@ -782,12 +1687,88 @@ export default function PIGPage() {
       } catch (e) {
         console.error('Error generando hoja PIG LINEA CATERING:', e);
       }
+
+      // ===== PIG LINEA IDONI (multi-columna) =====
+      try {
+        const yy = yearGuess ? yearGuess.slice(2) : '';
+        const monthsIdoni = (monthNames.length === 12 ? monthNames : months).map((m) => {
+          const base = String(m || '').trim();
+          if (!yy) return base;
+          if (new RegExp(`\\b${yy}\\b`).test(base)) return base;
+          return `${base} ${yy}`.trim();
+        });
+        const titleIdoni = `Cierre PIG LINEA IDONI  EI.SSS ${yy ? `01/01/${yy} A ${endOfMonthStr(lastIdx)}` : ''}`.trim();
+
+        const aoaIdoni = buildPigLineaIdoniAoa({
+          title: titleIdoni,
+          months: monthsIdoni,
+          cuentasMensuales: mensualParsed.cuentas || [],
+          mensualMap: mensual
+        });
+        const wsIdoni = XLSX.utils.aoa_to_sheet(aoaIdoni);
+        stylePigLineaCateringSheet({ ws: wsIdoni, aoa: aoaIdoni });
+        XLSX.utils.book_append_sheet(wb, wsIdoni, 'PIG LINEA IDONI');
+      } catch (e) {
+        console.error('Error generando hoja PIG LINEA IDONI:', e);
+      }
+
+      // ===== PIG LINEA KOIKI (multi-columna) =====
+      try {
+        const yy = yearGuess ? yearGuess.slice(2) : '';
+        const monthsKoiki = (monthNames.length === 12 ? monthNames : months).map((m) => {
+          const base = String(m || '').trim();
+          if (!yy) return base;
+          if (new RegExp(`\\b${yy}\\b`).test(base)) return base;
+          return `${base} ${yy}`.trim();
+        });
+        const titleKoiki = `Cierre PIG LINEA KOIKI  EI.SSS ${yy ? `01/01/${yy} A ${endOfMonthStr(lastIdx)}` : ''}`.trim();
+
+        const aoaKoiki = buildPigLineaKoikiAoa({
+          title: titleKoiki,
+          months: monthsKoiki,
+          cuentasMensuales: mensualParsed.cuentas || [],
+          mensualMap: mensual
+        });
+        const wsKoiki = XLSX.utils.aoa_to_sheet(aoaKoiki);
+        stylePigLineaCateringSheet({ ws: wsKoiki, aoa: aoaKoiki });
+        XLSX.utils.book_append_sheet(wb, wsKoiki, 'PIG LINEA KOIKI');
+      } catch (e) {
+        console.error('Error generando hoja PIG LINEA KOIKI:', e);
+      }
+
+      // ===== COMPARATIVA ANUAL =====
+      try {
+        const objetivos = {
+          catering: { normal: parseEuroNumber(objetivosComparativa.cateringNormal), optim: parseEuroNumber(objetivosComparativa.cateringOptim) },
+          idoni: { normal: parseEuroNumber(objetivosComparativa.idoniNormal), optim: parseEuroNumber(objetivosComparativa.idoniOptim) },
+          koiki: { normal: parseEuroNumber(objetivosComparativa.koikiNormal), optim: parseEuroNumber(objetivosComparativa.koikiOptim) }
+        };
+        const yearCurrent = Number(mensualParsed.yearGuess || 0) || 0;
+        const yearPrev = yearCurrent ? yearCurrent - 1 : 0;
+        const [cPrev, iPrev, kPrev] = await Promise.all([
+          yearPrev ? loadPigBaseMensual({ linea: 'CATERING', year: yearPrev }) : Promise.resolve({ months: null, error: null }),
+          yearPrev ? loadPigBaseMensual({ linea: 'IDONI', year: yearPrev }) : Promise.resolve({ months: null, error: null }),
+          yearPrev ? loadPigBaseMensual({ linea: 'KOIKI', year: yearPrev }) : Promise.resolve({ months: null, error: null })
+        ]);
+        const basesPrevYear = {
+          CATERING: cPrev.months,
+          IDONI: iPrev.months,
+          KOIKI: kPrev.months
+        };
+
+        const aoaComp = buildComparativaAnualAoa({ mensualParsed, objetivos, basesPrevYear });
+        const wsComp = XLSX.utils.aoa_to_sheet(aoaComp);
+        styleComparativaAnualSheet({ ws: wsComp, aoa: aoaComp });
+        XLSX.utils.book_append_sheet(wb, wsComp, 'COMPARATIVA ANUAL');
+      } catch (e) {
+        console.error('Error generando hoja COMPARATIVA ANUAL:', e);
+      }
       XLSX.writeFile(wb, `PIG_GENERAL_EISSS_${new Date().toISOString().slice(0, 10)}.xlsx`);
     } catch (e) {
       console.error(e);
       setError(e?.message || 'Error generando el Excel.');
     }
-  }, [anualFile, mensualFile]);
+  }, [anualFile, mensualFile, objetivosComparativa]);
 
   return (
     <div style={{ padding: 24, background: colors.background, minHeight: '100vh', color: colors.text }}>
@@ -825,6 +1806,40 @@ export default function PIGPage() {
             {mensualFile ? mensualFile.name : 'Seleccionar archivo'}
             <input type="file" accept=".csv,text/csv" style={{ display: 'none' }} onChange={(e) => setMensualFile(e.target.files?.[0] || null)} />
           </label>
+        </div>
+
+        <div style={{ padding: 14, borderRadius: 12, border: `1px solid ${colors.border}`, background: colors.surface }}>
+          <div style={{ fontSize: 13, fontWeight: 950, marginBottom: 10 }}>Objetivos (COMPARATIVA ANUAL)</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            {[
+              { key: 'cateringNormal', label: 'CATERING · Normal' },
+              { key: 'cateringOptim', label: 'CATERING · Òptim' },
+              { key: 'idoniNormal', label: 'IDONI · Normal' },
+              { key: 'idoniOptim', label: 'IDONI · Òptim' },
+              { key: 'koikiNormal', label: 'KOIKI · Normal' },
+              { key: 'koikiOptim', label: 'KOIKI · Òptim' }
+            ].map((f) => (
+              <label key={f.key} style={{ display: 'grid', gap: 6 }}>
+                <div style={{ fontSize: 12, fontWeight: 900, color: colors.textSecondary }}>{f.label}</div>
+                <input
+                  value={objetivosComparativa[f.key]}
+                  onChange={(e) => setObjetivosComparativa((prev) => ({ ...prev, [f.key]: e.target.value }))}
+                  placeholder="Ej: 525849,55"
+                  style={{
+                    padding: '10px 12px',
+                    borderRadius: 10,
+                    border: `1px solid ${colors.border}`,
+                    background: colors.background,
+                    color: colors.text,
+                    fontWeight: 800
+                  }}
+                />
+              </label>
+            ))}
+          </div>
+          <div style={{ marginTop: 8, fontSize: 12, color: colors.textSecondary, lineHeight: 1.35 }}>
+            Estos valores alimentan las columnas <b>OBJECTIU 25</b>: se calcula el “restante” restando la <b>BASE 2025</b> mes a mes (cadena tipo H3-F4, H4-F5...).
+          </div>
         </div>
 
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
