@@ -87,6 +87,24 @@ function splitHoldedCsv(text) {
   return lines.map((line) => parseLine(line || ''));
 }
 
+async function readHoldedFileAsText(file) {
+  const name = String(file?.name || '').toLowerCase();
+  const isExcel = name.endsWith('.xlsx') || name.endsWith('.xls');
+  if (!isExcel) return file.text();
+
+  const buffer = await file.arrayBuffer();
+  const workbook = XLSX.read(buffer, { type: 'array' });
+  const firstSheetName = workbook.SheetNames?.[0];
+  if (!firstSheetName) throw new Error('El archivo Excel no contiene ninguna hoja.');
+  const sheet = workbook.Sheets[firstSheetName];
+  return XLSX.utils.sheet_to_csv(sheet, {
+    FS: ';',
+    RS: '\n',
+    strip: false,
+    blankrows: true
+  });
+}
+
 function parseHoldedAnual(csvText) {
   const rows = splitHoldedCsv(csvText);
   const map = new Map();
@@ -1440,11 +1458,14 @@ export default function PIGPage() {
     try {
       setError('');
       if (!anualFile || !mensualFile) {
-        setError('Sube los 2 CSV: PIG anual y PIG mensual.');
+        setError('Sube los 2 archivos del PIG: anual y mensual (CSV o Excel).');
         return;
       }
 
-      const [anualText, mensualText] = await Promise.all([anualFile.text(), mensualFile.text()]);
+      const [anualText, mensualText] = await Promise.all([
+        readHoldedFileAsText(anualFile),
+        readHoldedFileAsText(mensualFile)
+      ]);
       const anualParsed = parseHoldedAnual(anualText);
       const mensualParsed = parseHoldedMensual(mensualText);
       const anual = anualParsed.map;
@@ -1791,20 +1812,30 @@ export default function PIGPage() {
 
       <div style={{ display: 'grid', gap: 12, maxWidth: 720 }}>
         <div style={{ padding: 14, borderRadius: 12, border: `1px solid ${colors.border}`, background: colors.surface }}>
-          <div style={{ fontSize: 13, fontWeight: 950, marginBottom: 8 }}>1) CSV anual (Pèrdues i guanys)</div>
+          <div style={{ fontSize: 13, fontWeight: 950, marginBottom: 8 }}>1) Archivo anual (Pèrdues i guanys)</div>
           <label style={{ display: 'inline-flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 10, cursor: 'pointer', border: `1px solid ${colors.border}`, background: colors.background, fontWeight: 900 }}>
             <Upload size={18} />
             {anualFile ? anualFile.name : 'Seleccionar archivo'}
-            <input type="file" accept=".csv,text/csv" style={{ display: 'none' }} onChange={(e) => setAnualFile(e.target.files?.[0] || null)} />
+            <input
+              type="file"
+              accept=".csv,.xlsx,.xls,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              style={{ display: 'none' }}
+              onChange={(e) => setAnualFile(e.target.files?.[0] || null)}
+            />
           </label>
         </div>
 
         <div style={{ padding: 14, borderRadius: 12, border: `1px solid ${colors.border}`, background: colors.surface }}>
-          <div style={{ fontSize: 13, fontWeight: 950, marginBottom: 8 }}>2) CSV mensual (Pèrdues i guanys Mensual)</div>
+          <div style={{ fontSize: 13, fontWeight: 950, marginBottom: 8 }}>2) Archivo mensual (Pèrdues i guanys Mensual)</div>
           <label style={{ display: 'inline-flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 10, cursor: 'pointer', border: `1px solid ${colors.border}`, background: colors.background, fontWeight: 900 }}>
             <Upload size={18} />
             {mensualFile ? mensualFile.name : 'Seleccionar archivo'}
-            <input type="file" accept=".csv,text/csv" style={{ display: 'none' }} onChange={(e) => setMensualFile(e.target.files?.[0] || null)} />
+            <input
+              type="file"
+              accept=".csv,.xlsx,.xls,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              style={{ display: 'none' }}
+              onChange={(e) => setMensualFile(e.target.files?.[0] || null)}
+            />
           </label>
         </div>
 
