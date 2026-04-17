@@ -26,12 +26,38 @@ function parseEuroNumber(input) {
   // Formatos típicos ES: 45.436,17  /  10.000,00
   // También puede venir ya como 10000.00 (raro pero posible)
   const normalized = (() => {
-    // Si hay coma, asumimos coma decimal y puntos miles
+    // Si hay coma y punto, decidir decimal por el último separador.
+    // Ej XLSX (US): 10,000.00  => '.' decimal, ',' miles
+    // Ej CSV (ES): 10.000,00   => ',' decimal, '.' miles
+    if (s.includes(',') && s.includes('.')) {
+      const lastComma = s.lastIndexOf(',');
+      const lastDot = s.lastIndexOf('.');
+      if (lastDot > lastComma) {
+        // '.' decimal (US): quitar comas miles
+        return s.replace(/,/g, '').replace(/[^0-9.\-]/g, '');
+      }
+      // ',' decimal (ES): quitar puntos miles y cambiar ',' por '.'
+      return s.replace(/\./g, '').replace(',', '.').replace(/[^0-9.\-]/g, '');
+    }
+    // Si hay coma (sin punto), asumimos coma decimal (ES)
     if (s.includes(',')) {
       return s.replace(/\./g, '').replace(',', '.').replace(/[^0-9.\-]/g, '');
     }
-    // Sin coma: quitar separadores raros y dejar punto decimal si existe
-    return s.replace(/[^0-9.\-]/g, '');
+    // Sin coma: puede venir como "10.000" (miles) o "10000.00" (decimal)
+    const sClean = s.replace(/[^0-9.\-]/g, '');
+    const dots = (sClean.match(/\./g) || []).length;
+    if (dots >= 2) {
+      // 1.234.567 => miles
+      return sClean.replace(/\./g, '');
+    }
+    if (dots === 1) {
+      const [a, b] = sClean.split('.');
+      // 10.000 => miles (grupo de 3)
+      if (b && b.length === 3) return `${a}${b}`.replace(/[^0-9\-]/g, '');
+      // 10000.00 => decimal
+      return sClean;
+    }
+    return sClean;
   })();
 
   const n = Number.parseFloat(normalized);
@@ -52,9 +78,9 @@ function splitHoldedCsv(text) {
 
   // Detectar delimitador (Holded puede exportar con ; o con ,)
   const sample = lines.find((l) => l && (l.includes(';') || l.includes(','))) || '';
-  const semis = (sample.match(/;/g) || []).length;
-  const commas = (sample.match(/,/g) || []).length;
-  const delim = semis >= commas ? ';' : ',';
+  // IMPORTANTE: si existe ';', preferimos ';' siempre.
+  // En números procedentes de XLSX -> CSV pueden aparecer comas (10,000.00) y romper el auto-detect.
+  const delim = sample.includes(';') ? ';' : ',';
 
   const parseLine = (line) => {
     const out = [];
@@ -87,6 +113,14 @@ function splitHoldedCsv(text) {
   return lines.map((line) => parseLine(line || ''));
 }
 
+function isPigDebugEnabled() {
+  try {
+    return typeof window !== 'undefined' && window.localStorage?.getItem('DEBUG_PIG_IMPORT') === '1';
+  } catch {
+    return false;
+  }
+}
+
 async function readHoldedFileAsText(file) {
   const name = String(file?.name || '').toLowerCase();
   const isExcel = name.endsWith('.xlsx') || name.endsWith('.xls');
@@ -97,12 +131,25 @@ async function readHoldedFileAsText(file) {
   const firstSheetName = workbook.SheetNames?.[0];
   if (!firstSheetName) throw new Error('El archivo Excel no contiene ninguna hoja.');
   const sheet = workbook.Sheets[firstSheetName];
-  return XLSX.utils.sheet_to_csv(sheet, {
+  const csv = XLSX.utils.sheet_to_csv(sheet, {
     FS: ';',
     RS: '\n',
     strip: false,
     blankrows: true
   });
+
+  if (isPigDebugEnabled()) {
+    const lines = String(csv || '').split('\n').map((l) => l.trim()).filter(Boolean);
+    const sample = lines.slice(0, 25);
+    console.log('🧪 [PIG] Import XLSX → CSV', {
+      fileName: file?.name,
+      sheet: firstSheetName,
+      linesTotal: lines.length,
+      sample
+    });
+  }
+
+  return csv;
 }
 
 function parseHoldedAnual(csvText) {
@@ -323,33 +370,15 @@ function buildPigLineaCateringAoa({ title, months, cuentasMensuales = [], mensua
   // ===== Tabla principal =====
   const monthsLen = Math.min(12, months.length);
 
-  // Fila subtotal "ESTIMADO..." si existe en el CSV mensual (es una fila de concepto, no una cuenta)
-  const getMensualConcept = (label) => {
-    if (!mensualMap || !(mensualMap instanceof Map)) return null;
-    const normalize = (s) =>
-      String(s || '')
-        .replace(/\u00A0/g, ' ') // NBSP -> space
-        .replace(/^"+|"+$/g, '') // strip surrounding quotes
-        .trim()
-        .replace(/\s+/g, ' ')
-        .toUpperCase();
-
-    const want = normalize(label);
-    const keys = Array.from(mensualMap.keys());
-
-    // 1) Match exact normalizado
-    let k = keys.find((x) => normalize(x) === want);
-    if (k) return mensualMap.get(k);
-
-    // 2) Match por inclusión (por si el CSV añade cosas o espacios raros)
-    k = keys.find((x) => normalize(x).includes(want) || want.includes(normalize(x)));
-    return k ? mensualMap.get(k) : null;
-  };
-  const estimadoAntesIngreso = getMensualConcept('ESTIMADO DE SUBVENCIÓN ANTES DE INGRESO');
-  if (Array.isArray(estimadoAntesIngreso) && estimadoAntesIngreso.length) {
+  // Fila hardcodeada: "ESTIMADO DE SUBVENCIÓN ANTES DE INGRESO"
+  // Nota: estos importes NO entran en "TOTAL BENEFICIO POR MES", solo se suman en la columna de TOTAL ESTIMADO SUBV.
+  const ESTIMADO_SUBV_CATERING = new Array(12).fill(1200);
+  const estimadoAntesIngreso = ESTIMADO_SUBV_CATERING;
+  {
     const vals = estimadoAntesIngreso.slice(0, monthsLen);
     const total = vals.reduce((a, b) => a + (Number(b) || 0), 0);
-    aoa.push(['ESTIMADO DE SUBVENCIÓN ANTES DE INGRESO', ...vals, total, '', total]);
+    // En el Excel de referencia esta fila no suma en TOTAL 25 (solo en ESTIMADO)
+    aoa.push(['ESTIMADO DE SUBVENCIÓN ANTES DE INGRESO', ...vals, '', '', total]);
   }
 
   if (subv.length) {
@@ -386,7 +415,7 @@ function buildPigLineaCateringAoa({ title, months, cuentasMensuales = [], mensua
   const beneficioSinSubvTotal = beneficioSinSubvMonths.reduce((a, b) => a + (Number(b) || 0), 0);
 
   aoa.push(new Array(cols.length).fill(''));
-  const estimadoTotal = Array.isArray(estimadoAntesIngreso) ? sumMonths(estimadoAntesIngreso, monthsLen) : 0;
+  const estimadoTotal = sumMonths(estimadoAntesIngreso, monthsLen);
   aoa.push(['TOTAL BENEFICIO POR MES CATERING', ...totalBeneficioMes, totalBeneficioMesTotal, '', (totalBeneficioMesTotal + estimadoTotal)]);
   // 1 fila de espacio antes del bloque de 3 líneas
   aoa.push(new Array(cols.length).fill(''));
@@ -498,28 +527,13 @@ function buildPigLineaIdoniAoa({ title, months, cuentasMensuales = [], mensualMa
 
   const monthsLen = Math.min(12, months.length);
 
-  // Intentamos recuperar el concepto de “estimado” si existe en el CSV mensual
-  const getMensualConcept = (label) => {
-    if (!mensualMap || !(mensualMap instanceof Map)) return null;
-    const normalize = (s) =>
-      String(s || '')
-        .replace(/\u00A0/g, ' ')
-        .replace(/^"+|"+$/g, '')
-        .trim()
-        .replace(/\s+/g, ' ')
-        .toUpperCase();
-    const want = normalize(label);
-    const keys = Array.from(mensualMap.keys());
-    let k = keys.find((x) => normalize(x) === want);
-    if (k) return mensualMap.get(k);
-    k = keys.find((x) => normalize(x).includes(want) || want.includes(normalize(x)));
-    return k ? mensualMap.get(k) : null;
-  };
-  const estimadoAntesIngreso = getMensualConcept('ESTIMADO DE SUBVENCIÓN ANTES DE INGRESO');
-  if (Array.isArray(estimadoAntesIngreso) && estimadoAntesIngreso.length) {
+  // Fila hardcodeada: "ESTIMADO DE SUBVENCIÓN ANTES DE INGRESO"
+  const ESTIMADO_SUBV_IDONI = new Array(12).fill(2500);
+  const estimadoAntesIngreso = ESTIMADO_SUBV_IDONI;
+  {
     const vals = estimadoAntesIngreso.slice(0, monthsLen);
     const total = vals.reduce((a, b) => a + (Number(b) || 0), 0);
-    aoa.push(['ESTIMADO DE SUBVENCIÓN ANTES DE INGRESO', ...vals, total, '', total]);
+    aoa.push(['ESTIMADO DE SUBVENCIÓN ANTES DE INGRESO', ...vals, '', '', total]);
   }
 
   if (subv.length) {
@@ -555,7 +569,7 @@ function buildPigLineaIdoniAoa({ title, months, cuentasMensuales = [], mensualMa
   const beneficioSinSubvTotal = beneficioSinSubvMonths.reduce((a, b) => a + (Number(b) || 0), 0);
 
   aoa.push(new Array(cols.length).fill(''));
-  const estimadoTotal = Array.isArray(estimadoAntesIngreso) ? sumMonths(estimadoAntesIngreso, monthsLen) : 0;
+  const estimadoTotal = sumMonths(estimadoAntesIngreso, monthsLen);
   aoa.push(['TOTAL BENEFICIO POR MES IDONI', ...totalBeneficioMes, totalBeneficioMesTotal, '', (totalBeneficioMesTotal + estimadoTotal)]);
   aoa.push(new Array(cols.length).fill(''));
   aoa.push(['TOTAL INGRESOS IDONI SIN SUBV.', ...ingresosSinSubvMonths, ingresosSinSubvTotal, '', '']);
@@ -659,28 +673,13 @@ function buildPigLineaKoikiAoa({ title, months, cuentasMensuales = [], mensualMa
 
   const monthsLen = Math.min(12, months.length);
 
-  const getMensualConcept = (label) => {
-    if (!mensualMap || !(mensualMap instanceof Map)) return null;
-    const normalize = (s) =>
-      String(s || '')
-        .replace(/\u00A0/g, ' ')
-        .replace(/^"+|"+$/g, '')
-        .trim()
-        .replace(/\s+/g, ' ')
-        .toUpperCase();
-    const want = normalize(label);
-    const keys = Array.from(mensualMap.keys());
-    let k = keys.find((x) => normalize(x) === want);
-    if (k) return mensualMap.get(k);
-    k = keys.find((x) => normalize(x).includes(want) || want.includes(normalize(x)));
-    return k ? mensualMap.get(k) : null;
-  };
-
-  const estimadoAntesIngreso = getMensualConcept('ESTIMADO DE SUBVENCIÓN ANTES DE INGRESO');
-  if (Array.isArray(estimadoAntesIngreso) && estimadoAntesIngreso.length) {
+  // Fila hardcodeada: "ESTIMADO DE SUBVENCIÓN ANTES DE INGRESO"
+  const ESTIMADO_SUBV_KOIKI = new Array(12).fill(900);
+  const estimadoAntesIngreso = ESTIMADO_SUBV_KOIKI;
+  {
     const vals = estimadoAntesIngreso.slice(0, monthsLen);
     const total = vals.reduce((a, b) => a + (Number(b) || 0), 0);
-    aoa.push(['ESTIMADO DE SUBVENCIÓN ANTES DE INGRESO', ...vals, total, '', total]);
+    aoa.push(['ESTIMADO DE SUBVENCIÓN ANTES DE INGRESO', ...vals, '', '', total]);
   }
 
   if (subv.length) {
@@ -716,7 +715,7 @@ function buildPigLineaKoikiAoa({ title, months, cuentasMensuales = [], mensualMa
   const beneficioSinSubvTotal = beneficioSinSubvMonths.reduce((a, b) => a + (Number(b) || 0), 0);
 
   aoa.push(new Array(cols.length).fill(''));
-  const estimadoTotal = Array.isArray(estimadoAntesIngreso) ? sumMonths(estimadoAntesIngreso, monthsLen) : 0;
+  const estimadoTotal = sumMonths(estimadoAntesIngreso, monthsLen);
   aoa.push(['TOTAL BENEFICIO POR MES KOIKI', ...totalBeneficioMes, totalBeneficioMesTotal, '', (totalBeneficioMesTotal + estimadoTotal)]);
   aoa.push(new Array(cols.length).fill(''));
   aoa.push(['TOTAL INGRESOS KOIKI SIN SUBVENCIONES', ...ingresosSinSubvMonths, ingresosSinSubvTotal, '', '']);
