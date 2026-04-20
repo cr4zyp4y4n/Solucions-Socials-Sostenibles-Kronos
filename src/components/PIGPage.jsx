@@ -72,6 +72,55 @@ function isLikelyLabelCell(s) {
   return /[a-zA-ZÀ-ÿ]/.test(t);
 }
 
+function pigAccountOrderKey(c) {
+  // Orden preferido en hojas PIG LINEA:
+  // 1) Ingresos y subvenciones (70x/74x/75x...)
+  // 2) Compras / aprovisionamientos (grupo 6, 60x/602/607)
+  // 3) Resto de gastos (62x/64x/65x/66x..., grupos 8/9/15...)
+  const code = String(c?.code || '');
+  const group = String(c?.groupLabel || '');
+  const n = Number.parseInt(code, 10);
+
+  const isCompras =
+    group.startsWith('6.') ||
+    (Number.isFinite(n) && n >= 60000000 && n < 61000000) ||
+    code.startsWith('600') ||
+    code.startsWith('602') ||
+    code.startsWith('607');
+
+  const isIngresos =
+    group.startsWith('1.') ||
+    group.startsWith('2.') ||
+    group.startsWith('7.') ||
+    code.startsWith('700') ||
+    code.startsWith('740') ||
+    code.startsWith('759');
+
+  if (isIngresos) return [0, code];
+  if (isCompras) return [1, code];
+  return [2, code];
+}
+
+function pigAccountCompare(a, b) {
+  const ka = pigAccountOrderKey(a);
+  const kb = pigAccountOrderKey(b);
+  if (ka[0] !== kb[0]) return ka[0] - kb[0];
+  return String(ka[1]).localeCompare(String(kb[1]));
+}
+
+function inferYearSuffix2({ title, months }) {
+  // Intenta inferir el año (2 dígitos) desde el título (01/01/26) o desde el primer mes ("Gener 26").
+  const t = String(title || '');
+  const mTitle = t.match(/01\/01\/(\d{2})/);
+  if (mTitle?.[1]) return mTitle[1];
+
+  const m0 = String((months && months[0]) || '').trim();
+  const mMonth = m0.match(/\b(\d{2})\b/);
+  if (mMonth?.[1]) return mMonth[1];
+
+  return '';
+}
+
 function splitHoldedCsv(text) {
   const raw = String(text || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
   const lines = raw.split('\n');
@@ -338,7 +387,10 @@ function styleGroupAccountsSheet({ ws, aoa, yellowRows = [] }) {
 
 function buildPigLineaCateringAoa({ title, months, cuentasMensuales = [], mensualMap }) {
   const aoa = [];
-  const cols = ['Cuenta', ...months, 'TOTAL 25', '', 'TOTAL 25 ESTIMADO SUBV'];
+  const yy = inferYearSuffix2({ title, months });
+  const totalLabel = `TOTAL ${yy || ''}`.trim();
+  const totalEstLabel = `TOTAL ${yy || ''} ESTIMADO SUBV`.trim();
+  const cols = ['Cuenta', ...months, totalLabel, '', totalEstLabel];
   aoa.push([title, ...new Array(cols.length - 1).fill('')]);
   aoa.push(new Array(cols.length).fill(''));
   aoa.push(cols);
@@ -364,8 +416,8 @@ function buildPigLineaCateringAoa({ title, months, cuentasMensuales = [], mensua
   };
 
   const catering = (cuentasMensuales || []).filter(isCatering);
-  const subv = catering.filter(isSubv).slice().sort((a, b) => String(a.code).localeCompare(String(b.code)));
-  const resto = catering.filter((c) => !isSubv(c)).slice().sort((a, b) => String(a.code).localeCompare(String(b.code)));
+  const subv = catering.filter(isSubv).slice().sort(pigAccountCompare);
+  const resto = catering.filter((c) => !isSubv(c)).slice().sort(pigAccountCompare);
 
   // ===== Tabla principal =====
   const monthsLen = Math.min(12, months.length);
@@ -425,7 +477,7 @@ function buildPigLineaCateringAoa({ title, months, cuentasMensuales = [], mensua
 
   // ===== Tablas inferiores (totales computados) =====
   // Construimos 2 listados: enero–nov y enero–dic
-  const listAll = catering.slice().sort((a, b) => String(a.code).localeCompare(String(b.code)));
+  const listAll = catering.slice().sort(pigAccountCompare);
   const lastNonZeroMonth = (() => {
     let last = -1;
     for (const c of listAll) {
@@ -496,7 +548,10 @@ function buildPigLineaCateringAoa({ title, months, cuentasMensuales = [], mensua
 
 function buildPigLineaIdoniAoa({ title, months, cuentasMensuales = [], mensualMap }) {
   const aoa = [];
-  const cols = ['Cuenta', ...months, 'TOTAL 25', '', 'TOTAL 25 ESTIMADO'];
+  const yy = inferYearSuffix2({ title, months });
+  const totalLabel = `TOTAL ${yy || ''}`.trim();
+  const totalEstLabel = `TOTAL ${yy || ''} ESTIMADO`.trim();
+  const cols = ['Cuenta', ...months, totalLabel, '', totalEstLabel];
   aoa.push([title, ...new Array(cols.length - 1).fill('')]);
   aoa.push(new Array(cols.length).fill(''));
   aoa.push(cols);
@@ -522,8 +577,8 @@ function buildPigLineaIdoniAoa({ title, months, cuentasMensuales = [], mensualMa
   };
 
   const idoni = (cuentasMensuales || []).filter(isIdoni);
-  const subv = idoni.filter(isSubv).slice().sort((a, b) => String(a.code).localeCompare(String(b.code)));
-  const resto = idoni.filter((c) => !isSubv(c)).slice().sort((a, b) => String(a.code).localeCompare(String(b.code)));
+  const subv = idoni.filter(isSubv).slice().sort(pigAccountCompare);
+  const resto = idoni.filter((c) => !isSubv(c)).slice().sort(pigAccountCompare);
 
   const monthsLen = Math.min(12, months.length);
 
@@ -577,7 +632,7 @@ function buildPigLineaIdoniAoa({ title, months, cuentasMensuales = [], mensualMa
   aoa.push(['BENEFICIO SIN SUBVENCIONES', ...beneficioSinSubvMonths, beneficioSinSubvTotal, '', '']);
 
   // ===== Tablas inferiores (totales computados) =====
-  const listAll = idoni.slice().sort((a, b) => String(a.code).localeCompare(String(b.code)));
+  const listAll = idoni.slice().sort(pigAccountCompare);
   const lastNonZeroMonth = (() => {
     let last = -1;
     for (const c of listAll) {
@@ -642,7 +697,10 @@ function buildPigLineaIdoniAoa({ title, months, cuentasMensuales = [], mensualMa
 
 function buildPigLineaKoikiAoa({ title, months, cuentasMensuales = [], mensualMap }) {
   const aoa = [];
-  const cols = ['Cuenta', ...months, 'TOTAL 25', '', 'TOTAL 25 ESTIMADO'];
+  const yy = inferYearSuffix2({ title, months });
+  const totalLabel = `TOTAL ${yy || ''}`.trim();
+  const totalEstLabel = `TOTAL ${yy || ''} ESTIMADO`.trim();
+  const cols = ['Cuenta', ...months, totalLabel, '', totalEstLabel];
   aoa.push([title, ...new Array(cols.length - 1).fill('')]);
   aoa.push(new Array(cols.length).fill(''));
   aoa.push(cols);
@@ -668,8 +726,8 @@ function buildPigLineaKoikiAoa({ title, months, cuentasMensuales = [], mensualMa
   };
 
   const koiki = (cuentasMensuales || []).filter(isKoiki);
-  const subv = koiki.filter(isSubv).slice().sort((a, b) => String(a.code).localeCompare(String(b.code)));
-  const resto = koiki.filter((c) => !isSubv(c)).slice().sort((a, b) => String(a.code).localeCompare(String(b.code)));
+  const subv = koiki.filter(isSubv).slice().sort(pigAccountCompare);
+  const resto = koiki.filter((c) => !isSubv(c)).slice().sort(pigAccountCompare);
 
   const monthsLen = Math.min(12, months.length);
 
@@ -723,7 +781,7 @@ function buildPigLineaKoikiAoa({ title, months, cuentasMensuales = [], mensualMa
   aoa.push(['BENEFICIO SIN SUBVENCIONES', ...beneficioSinSubvMonths, beneficioSinSubvTotal, '', '']);
 
   // ===== Tablas inferiores (totales computados) =====
-  const listAll = koiki.slice().sort((a, b) => String(a.code).localeCompare(String(b.code)));
+  const listAll = koiki.slice().sort(pigAccountCompare);
   const lastNonZeroMonth = (() => {
     let last = -1;
     for (const c of listAll) {
