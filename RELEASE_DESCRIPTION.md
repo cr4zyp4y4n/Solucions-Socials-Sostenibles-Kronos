@@ -1,4 +1,26 @@
-## v2.3.7
+## v2.3.9
+
+### PIG
+
+- **PIG completo + robusto:** Se estabilizan todas las hojas del PIG (`PIG LINEA CATERING`, `PIG LINEA IDONI`, `PIG LINEA KOIKI` y `COMPARATIVA ANUAL`) para que funcionen con años completos o parciales (ej. enero–marzo) sin romper cabeceras ni totales.
+- **Fechas y cortes dinámicos:** Títulos, rangos y tablas `TOTAL COMPUTADO` se adaptan automáticamente al **último mes con datos** y al **mes anterior**.
+- **Importación CSV/XLSX/XLS:** Se permite subir archivos de Holded tanto en CSV como en Excel. Se corrige el parseo de formatos **ES** y **US** (ej. `$10,000.00` y negativos con paréntesis).
+- **Fila “Estimado subvención” fija:** Se añade una fila hardcodeada de *estimado de subvención antes de ingreso* en las hojas de líneas (Catering/Idoni/Koiki) sin afectar al “TOTAL BENEFICIO POR MES”, pero sí al total estimado.
+- **Comparativa anual con base histórica real:** Para años 2026+ la `COMPARATIVA ANUAL` usa la base del **año anterior** desde Supabase (`pig_bases_historicas`) en lugar de depender de hardcodes.
+
+### Base de datos (Supabase)
+
+- **Nueva tabla `pig_bases_historicas`:** Scripts incluidos para crear y cargar bases 2025:
+  - `database/create_pig_bases_historicas.sql`
+  - `database/seed_pig_bases_historicas_2025.sql`
+
+### Windows / Icono de la app
+
+- **Icono del acceso directo y ejecutable:** Se genera automáticamente `src/assets/icons/app.ico` desde el PNG del logo durante el empaquetado y se usa para `.exe` e instalador.
+
+---
+
+## v2.3.8
 
 ### PIG
 
