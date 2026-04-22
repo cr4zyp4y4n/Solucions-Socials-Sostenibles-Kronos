@@ -1,17 +1,20 @@
-## v2.4.0
+## v2.4.1
 
-### PIG
+### PIG (Menjar d’Hort)
 
-- **Orden de cuentas en PIG LINEA:** Ingresos/subvenciones arriba, compras primero dentro de gastos y resto de gastos al final, aplicando el mismo orden también en las tablas de `TOTAL COMPUTADO`.
-- **Cabeceras de totales dinámicas:** En `PIG LINEA CATERING/IDONI/KOIKI` las columnas `TOTAL XX` y `TOTAL XX ESTIMADO...` detectan el año automáticamente.
-- **Import Excel Holded estable:** Se arregla el parseo de XLSX (formato US tipo `$10,000.00` y negativos con paréntesis) para que los importes no se “acorten” (`10.000` → `10`).
+- **Selector de empresa (EISSS vs MH):** el generador de PIG permite escoger empresa y evita mezclar hojas entre reportes.
+- **Workbook MH con hojas exactas:**
+  - `PIG GENERAL MH`
+  - `PIG GENERAL MH A <MES ANTERIOR>` (dinámico según último mes con datos)
+  - `DESPESES MP-APROV-PRFIRPF` (Grupo 6)
+  - `SUELDOS Y SALARIOS GENERAL` (Grupo 8)
+  - `OTROS GASTOS` (Grupo 9)
+  - `PIG LINEA OBRADOR` (sin subvenciones/estimados)
+  - `PIG LINEA OBRADOR 2` (subset de cuentas definidas)
+- **`PIG LINEA OBRADOR`:** incluye `TOTAL BENEFICIO POR MES OBRADOR` y las 2 tablas de `TOTAL COMPUTADO` (último mes con datos y mes anterior).
+- **Estilos tablas inferiores (Obrador):** se arreglan merges/estilos de las tablas de `TOTAL COMPUTADO` para que no hereden el formato de la tabla principal (misma solución que en EISSS).
 
-### Base de datos (Supabase)
+### Import Holded (CSV/XLSX)
 
-- **Nueva tabla `pig_bases_historicas`:** Scripts incluidos para crear y cargar bases 2025:
-  - `database/create_pig_bases_historicas.sql`
-  - `database/seed_pig_bases_historicas_2025.sql`
-
-### Windows / Icono de la app
-
-- **Icono del acceso directo y ejecutable:** Se genera automáticamente `src/assets/icons/app.ico` desde el PNG del logo durante el empaquetado y se usa para `.exe` e instalador.
+- **Soporte “trimestre actual”:** el mensual detecta cabeceras que empiezan por cualquier mes (Abril/Julio/Octubre…) y mapea correctamente las columnas al mes real (ej. Abril–Junio → 04–06), evitando que se desplacen a Enero–Marzo.
+- **Títulos/rangos reales:** los títulos de PIG GENERAL usan el inicio real del rango cuando el export es trimestral (ej. `01/04/26 A 30/06/26`).
