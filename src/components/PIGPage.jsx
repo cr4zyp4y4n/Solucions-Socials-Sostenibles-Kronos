@@ -294,6 +294,11 @@ function parseHoldedMensual(csvText) {
     if (range?.startMonthIdx !== undefined) return Math.min(11, range.startMonthIdx + pos);
     return pos; // fallback antiguo: asume Enero..N
   });
+  const monthNamesByIndex = new Array(12).fill('');
+  for (let i = 0; i < monthNames.length; i++) {
+    const idx = colMonthIndices[i] ?? i;
+    if (idx >= 0 && idx < 12) monthNamesByIndex[idx] = monthNames[i];
+  }
 
   const yearGuess = (() => {
     if (range?.year) return range.year;
@@ -354,6 +359,7 @@ function parseHoldedMensual(csvText) {
   return {
     map,
     monthNames,
+    monthNamesByIndex,
     cuentas,
     yearGuess,
     monthCount,
@@ -1871,23 +1877,18 @@ export default function PIGPage() {
         return `01/${mm}/${yy || String(new Date().getFullYear()).slice(2)}`;
       };
 
-      const monthLabelUpper = (idx) => {
-        const src = (monthNames.length ? monthNames : [
-          'Gener', 'Febrer', 'Març', 'Abril', 'Maig', 'Juny', 'Juliol', 'Agost', 'Setembre', 'Octubre', 'Novembre', 'Desembre'
-        ])[idx] || '';
-        return String(src || '').toUpperCase();
-      };
-
       // Construcción de hoja
       // IMPORTANTE: aunque Holded venga con 3/4 meses, las hojas PIG LINEA y GENERAL
       // deben mantener SIEMPRE 12 columnas de meses para que no se desplace TOTAL/TOTAL ESTIMADO.
       const defaultMonths = [
         'Gener', 'Febrer', 'Març', 'Abril', 'Maig', 'Juny', 'Juliol', 'Agost', 'Setembre', 'Octubre', 'Novembre', 'Desembre'
       ];
+      const monthNamesByIndex = Array.isArray(mensualParsed.monthNamesByIndex) ? mensualParsed.monthNamesByIndex : [];
       const months = new Array(12).fill(null).map((_, idx) => {
-        const fromCsv = monthNames[idx];
+        const fromCsv = monthNamesByIndex[idx];
         return fromCsv && String(fromCsv).trim() ? String(fromCsv).trim() : defaultMonths[idx];
       });
+      const monthLabelUpper = (idx) => String(months[idx] || defaultMonths[idx] || '').toUpperCase();
 
       const yy = yearGuess ? yearGuess.slice(2) : '';
       const empresaLabel = pigEmpresa === 'MH' ? 'MH' : 'EI.SSS';
