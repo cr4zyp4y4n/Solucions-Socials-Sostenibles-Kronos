@@ -258,7 +258,7 @@ function parseHoldedMensual(csvText) {
     if (/\b(feb|febrer|febrero|february)\b/.test(s)) return 1;
     if (/\b(mar|marc|marzo|march)\b/.test(s)) return 2;
     if (/\b(abr|abril|april)\b/.test(s)) return 3;
-    if (/\b(mai|mayo|may)\b/.test(s)) return 4;
+    if (/\b(mai|maig|mayo|may)\b/.test(s)) return 4;
     if (/\b(jun|juny|junio|june)\b/.test(s)) return 5;
     if (/\b(jul|juliol|julio|july)\b/.test(s)) return 6;
     if (/\b(ago|agost|agosto|august)\b/.test(s)) return 7;
