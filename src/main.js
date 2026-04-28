@@ -200,6 +200,68 @@ function setupIpcHandlers() {
   ipcMain.handle('download-latest-executable', async () => {
     console.log('📡 Handler IPC: download-latest-executable llamado');
     try {
+      const downloadToFile = ({ url, filePath }) => new Promise((resolve, reject) => {
+        const cleanup = (err) => {
+          try { if (fs.existsSync(filePath)) fs.unlinkSync(filePath); } catch (_) {}
+          reject(err);
+        };
+
+        const doGet = (u, redirectsLeft = 5) => {
+          https.get(u, {
+            headers: {
+              'User-Agent': 'SSS-Kronos-App',
+              'Accept': 'application/octet-stream'
+            }
+          }, (res) => {
+            const sc = res.statusCode || 0;
+            const isRedirect = sc >= 300 && sc < 400 && !!res.headers.location;
+            if (isRedirect) {
+              if (redirectsLeft <= 0) {
+                res.resume();
+                cleanup(new Error('Demasiadas redirecciones descargando el archivo'));
+                return;
+              }
+              const nextUrl = res.headers.location.startsWith('http')
+                ? res.headers.location
+                : new URL(res.headers.location, u).toString();
+              res.resume();
+              doGet(nextUrl, redirectsLeft - 1);
+              return;
+            }
+
+            if (sc < 200 || sc >= 300) {
+              res.resume();
+              cleanup(new Error(`Descarga fallida. HTTP ${sc}`));
+              return;
+            }
+
+            const file = fs.createWriteStream(filePath);
+            let hadError = false;
+
+            file.on('error', (err) => {
+              hadError = true;
+              try { file.close(); } catch (_) {}
+              cleanup(err);
+            });
+
+            res.on('error', (err) => {
+              hadError = true;
+              try { file.close(); } catch (_) {}
+              cleanup(err);
+            });
+
+            file.on('finish', () => {
+              if (hadError) return;
+              file.close(() => resolve(true));
+            });
+
+            res.pipe(file);
+          }).on('error', cleanup);
+        };
+
+        doGet(url);
+      });
+
       // 1. Obtener información del último release
       const releaseInfo = await new Promise((resolve, reject) => {
         https.get('https://api.github.com/repos/cr4zyp4y4n/Solucions-Socials-Sostenibles-Kronos/releases/latest', {
@@ -248,62 +310,14 @@ function setupIpcHandlers() {
       }
 
       // 4. Descargar el archivo
-      return new Promise((resolve, reject) => {
-        const file = fs.createWriteStream(filePath);
-
-        https.get(executableAsset.browser_download_url, {
-          headers: {
-            'User-Agent': 'SSS-Kronos-App',
-            'Accept': 'application/octet-stream'
-          }
-        }, (response) => {
-          // Redirigir si hay una redirección
-          if (response.statusCode === 302 || response.statusCode === 301) {
-            https.get(response.headers.location, {
-              headers: {
-                'User-Agent': 'SSS-Kronos-App',
-                'Accept': 'application/octet-stream'
-              }
-            }, (redirectResponse) => {
-              redirectResponse.pipe(file);
-              redirectResponse.on('end', () => {
-                file.close();
-                console.log('✅ Archivo descargado exitosamente:', filePath);
-                resolve({
-                  success: true,
-                  message: 'Archivo descargado exitosamente',
-                  filePath: filePath,
-                  version: releaseInfo.tag_name
-                });
-              });
-            }).on('error', (err) => {
-              fs.unlinkSync(filePath); // Eliminar archivo parcial
-              reject(err);
-            });
-          } else {
-            response.pipe(file);
-            response.on('end', () => {
-              file.close();
-              console.log('✅ Archivo descargado exitosamente:', filePath);
-              resolve({
-                success: true,
-                message: 'Archivo descargado exitosamente',
-                filePath: filePath,
-                version: releaseInfo.tag_name
-              });
-            });
-          }
-        }).on('error', (err) => {
-          if (fs.existsSync(filePath)) {
-            fs.unlinkSync(filePath); // Eliminar archivo parcial
-          }
-          reject(err);
-        });
-
-        file.on('error', (err) => {
-          reject(err);
-        });
-      });
+      await downloadToFile({ url: executableAsset.browser_download_url, filePath });
+      console.log('✅ Archivo descargado exitosamente:', filePath);
+      return {
+        success: true,
+        message: 'Archivo descargado exitosamente',
+        filePath: filePath,
+        version: releaseInfo.tag_name
+      };
 
     } catch (error) {
       console.error('❌ Error descargando ejecutable:', error);
