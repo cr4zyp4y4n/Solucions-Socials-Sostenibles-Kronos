@@ -50,6 +50,18 @@ const InfoField = ({ label, value, colors, icon, valueColor, fullWidth }) => {
 
 export default function SubvencionesPage() {
   const { colors } = useTheme();
+  const FASES_DEFINICION = useMemo(() => ([
+    { value: '1', label: 'FASE 1', desc: 'CONVOCATORIA-POSTULACIÓN, Se acompaña de una resolución y-o una Orden' },
+    { value: '2', label: 'FASE 2', desc: 'PRESENTACIÓN Y REGISTRO DE PRESUPUESTO Y MEMORIA TECNICA + OTROS DOC QUE SE PUEDAN SOLICITAR SEGÚN LA SUBV' },
+    { value: '3', label: 'FASE 3', desc: 'RESOLUCIÓN (ACEPTACIÓN-REVOCATORIA) (PROVISIONAL)' },
+    { value: '4', label: 'FASE 4', desc: 'RESOLUCIÓN DEFINITIVA (ACEPTACIÓN 100% O REFORMULACIÓN DE LA PROPUESTA PRESENTADA) SI SE REALIZA REFORMULACIÓN PASAMOS DE NUEVO A FASE 2.' },
+    { value: '4.1', label: 'FASE 4.1', desc: 'CONFIRMAR SI SE RECIBE ANTICIPO (% DE ANTICIPO)' },
+    { value: '5', label: 'FASE 5', desc: 'DESARROLLO DEL PROYECTO (EJECUCIÓN INICIO-FIN)' },
+    { value: '6', label: 'FASE 6', desc: 'JUSTIFICACIÓN DEL PROYECTO (ORGANIZAR INFORMACIÓN FACTURAS, JUSTIFICANTES BANCARIOS, NOMINAS ETC)' },
+    { value: '7', label: 'FASE 7', desc: 'ACEPTACIÓN DE LA JUSTIFICACIÓN O REQUERIMIENTOS DE LA MISMA PARA SUBSANAR Y PASAR AL CIERRE FINAL (SI SE PIDE REQUERIMIENTO VOLVEMOS A LA FASE 6.1)' },
+    { value: '8', label: 'FASE 8', desc: 'CIERRE TOTAL DEL PROYECTO SUBVENCIÓN 100% DE LOS INGRESOS RECIBIDOS PARA DAR POR CERRADO LA SUBVENCIÓN' }
+  ]), []);
+  const FASES_ALLOWED = useMemo(() => new Set(FASES_DEFINICION.map((f) => f.value)), [FASES_DEFINICION]);
   const { navigateTo } = useNavigation();
 
   const [selectedEntity, setSelectedEntity] = useState('EI_SSS');
@@ -107,6 +119,8 @@ export default function SubvencionesPage() {
 
   const toInternalForSave = useCallback((f) => {
     const safe = f || {};
+    const faseRaw = safe.faseActual === null || safe.faseActual === undefined ? '' : String(safe.faseActual).trim();
+    const faseNormalized = !faseRaw ? null : (FASES_ALLOWED.has(faseRaw) ? faseRaw : null);
     return {
       nombre: String(safe.nombre || '').trim(),
       proyecto: String(safe.proyecto || '').trim(),
@@ -118,9 +132,7 @@ export default function SubvencionesPage() {
       periodo: String(safe.periodo || '').trim(),
       // "estado" legacy texto (solo para MENJAR_DHORT); en EI_SSS usamos aprobada + motivo
       estado: String(safe.estado || '').trim(),
-      faseActual: safe.faseActual === '' || safe.faseActual === null || safe.faseActual === undefined
-        ? null
-        : Math.max(1, Math.min(8, Number(safe.faseActual))),
+      faseActual: faseNormalized,
       aprobada: safe.aprobada === true ? true : (safe.aprobada === false ? false : null),
       estadoMotivo: String(safe.estadoMotivo || '').trim(),
       observaciones: String(safe.observaciones || ''),
@@ -130,7 +142,6 @@ export default function SubvencionesPage() {
       primerAbono: parseNumberEs(safe.primerAbono),
       segundoAbono: parseNumberEs(safe.segundoAbono),
       saldoPendiente: parseNumberEs(safe.saldoPendiente),
-      importesPorCobrar: parseNumberEs(safe.importesPorCobrar),
       socL1Acomp: safe.socL1Acomp ?? '',
       socL2Contrat: safe.socL2Contrat ?? '',
       saldoPendienteTexto: String(safe.saldoPendienteTexto || '').trim(),
@@ -141,7 +152,7 @@ export default function SubvencionesPage() {
       fechaPrimerAbono: String(safe.fechaPrimerAbono || '').trim(),
       fechaSegundoAbono: String(safe.fechaSegundoAbono || '').trim()
     };
-  }, [parseNumberEs]);
+  }, [FASES_ALLOWED, parseNumberEs]);
 
   const mapCommonToMenjarPayload = useCallback((common) => {
     const c = common || {};
@@ -252,7 +263,6 @@ export default function SubvencionesPage() {
       fechaJustificacion: subvencion.fechaJustificacion || '',
       revisadoGestoria: subvencion.revisadoGestoria || '',
       holdedAsentamiento: subvencion.holdedAsentamiento || '',
-      importesPorCobrar: subvencion.importesPorCobrar ?? '',
       // Menjar d'Hort extras (si existen)
       faseProyecto: subvencion.faseProyecto || '',
       arrelsEssL3: subvencion.arrelsEssL3 || '',
@@ -264,9 +274,9 @@ export default function SubvencionesPage() {
 
   const getEstadoFaseLabel = useCallback((subvencion) => {
     if (!subvencion) return '—';
-    if (subvencion.faseActual && Number.isFinite(Number(subvencion.faseActual))) {
-      const n = Number(subvencion.faseActual);
-      if (n >= 1 && n <= 8) return `Fase ${n}`;
+    if (subvencion.faseActual) {
+      const v = String(subvencion.faseActual).trim();
+      if (v) return `Fase ${v}`;
     }
     if (subvencion.fasesProyecto && typeof subvencion.fasesProyecto === 'object') {
       const maxN = subvencionesService.obtenerNumeroFaseMaximaDesdeMarcas(subvencion.fasesProyecto);
@@ -671,8 +681,8 @@ export default function SubvencionesPage() {
       { kind: 'row', label: 'IMPORTE SOLICITADO', render: (s) => (s.importeSolicitado ? formatCurrency(s.importeSolicitado) : '') },
       { kind: 'row', label: 'PERIODO DE EJECUCIÓN', render: (s) => s.periodo || '' },
       { kind: 'row', label: 'IMPORTE OTORGADO', render: (s) => (s.importeOtorgado ? formatCurrency(s.importeOtorgado) : '') },
-      { kind: 'row', label: 'SOC: L1  ACOMP', render: (s) => s.socL1Acomp || '' },
-      { kind: 'row', label: 'SOC: L2 CONTRAT. TRABAJ', render: (s) => s.socL2Contrat || '' },
+      { kind: 'row', label: 'SOC: L1  ACOMP (solo SOC / Empresa de Inserción)', render: (s) => s.socL1Acomp || '' },
+      { kind: 'row', label: 'SOC: L2 CONTRAT. TRABAJ (solo SOC / Empresa de Inserción)', render: (s) => s.socL2Contrat || '' },
       { kind: 'row', label: '1r ABONO', render: (s) => (s.primerAbono ? formatCurrency(s.primerAbono) : '') },
       { kind: 'row', label: 'FECHA/CTA', render: (s) => s.fechaPrimerAbono || '' },
       { kind: 'row', label: '2o ABONO', render: (s) => (s.segundoAbono ? formatCurrency(s.segundoAbono) : '') },
@@ -692,8 +702,7 @@ export default function SubvencionesPage() {
           return 'PENDIENTE';
         }
       },
-      { kind: 'row', label: 'HOLDED ASENTAM.', render: (s) => s.holdedAsentamiento || '' },
-      { kind: 'row', label: 'IMPORTES POR COBRAR', render: (s) => (s.importesPorCobrar ? formatCurrency(s.importesPorCobrar) : '') }
+      { kind: 'row', label: 'HOLDED ASENTAM.', render: (s) => s.holdedAsentamiento || '' }
     ];
 
     return (
@@ -1220,12 +1229,6 @@ export default function SubvencionesPage() {
                     icon={<Euro size={16} />}
                     valueColor={colors.warning}
                   />
-                  <InfoField
-                    label="Importes por cobrar"
-                    value={selectedSubvencion.importesPorCobrar ? formatCurrency(selectedSubvencion.importesPorCobrar) : null}
-                    colors={colors}
-                    icon={<Euro size={16} />}
-                  />
                 </div>
               </div>
 
@@ -1258,8 +1261,8 @@ export default function SubvencionesPage() {
                   Gestión
                 </h3>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '16px' }}>
-                  <InfoField label="SOC: L1 ACOMP" value={selectedSubvencion.socL1Acomp} colors={colors} fullWidth />
-                  <InfoField label="SOC: L2 CONTRAT. TRABAJ" value={selectedSubvencion.socL2Contrat} colors={colors} fullWidth />
+                  <InfoField label="SOC: L1 ACOMP (solo SOC / Empresa de Inserción)" value={selectedSubvencion.socL1Acomp} colors={colors} fullWidth />
+                  <InfoField label="SOC: L2 CONTRAT. TRABAJ (solo SOC / Empresa de Inserción)" value={selectedSubvencion.socL2Contrat} colors={colors} fullWidth />
                   <InfoField label="Previsión pago total" value={selectedSubvencion.previsionPago} colors={colors} />
                   <InfoField label="Fecha justificación" value={selectedSubvencion.fechaJustificacion} colors={colors} icon={<Calendar size={16} />} />
                   <InfoField label="Rev. gestoría" value={selectedSubvencion.revisadoGestoria} colors={colors} />
@@ -1698,8 +1701,8 @@ export default function SubvencionesPage() {
                       style={{ width: '100%', padding: 10, borderRadius: 10, border: `1px solid ${colors.border}`, background: colors.surface, color: colors.text, boxSizing: 'border-box', cursor: 'pointer' }}
                     >
                       <option value="">(sin fase)</option>
-                      {[1,2,3,4,5,6,7,8].map((n) => (
-                        <option key={n} value={String(n)}>{`Fase ${n}`}</option>
+                      {FASES_DEFINICION.map((f) => (
+                        <option key={f.value} value={f.value}>{`${f.label} (${f.desc})`}</option>
                       ))}
                     </select>
                     <div style={{ marginTop: 6, fontSize: 11, color: colors.textSecondary }}>
@@ -1821,14 +1824,7 @@ export default function SubvencionesPage() {
                       style={{ width: '100%', padding: 10, borderRadius: 10, border: `1px solid ${colors.border}`, background: colors.surface, color: colors.text, boxSizing: 'border-box' }}
                     />
                   </div>
-                  <div>
-                    <div style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 6, fontWeight: 700 }}>Importes por cobrar</div>
-                    <input
-                      value={form?.importesPorCobrar ?? ''}
-                      onChange={(e) => setForm((p) => ({ ...p, importesPorCobrar: e.target.value }))}
-                      style={{ width: '100%', padding: 10, borderRadius: 10, border: `1px solid ${colors.border}`, background: colors.surface, color: colors.text, boxSizing: 'border-box' }}
-                    />
-                  </div>
+                  {/* Importes por cobrar eliminado */}
                   <div>
                     <div style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 6, fontWeight: 700 }}>Previsión pago total</div>
                     <input
@@ -1882,7 +1878,7 @@ export default function SubvencionesPage() {
                 <h3 style={{ fontSize: 16, fontWeight: 800, color: colors.primary, margin: '0 0 12px 0' }}>Gestión</h3>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 14 }}>
                   <div style={{ gridColumn: '1 / -1' }}>
-                    <div style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 6, fontWeight: 700 }}>SOC: L1 ACOMP</div>
+                    <div style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 6, fontWeight: 700 }}>SOC: L1 ACOMP (solo SOC / Empresa de Inserción)</div>
                     <input
                       value={form?.socL1Acomp ?? ''}
                       onChange={(e) => setForm((p) => ({ ...p, socL1Acomp: e.target.value }))}
@@ -1890,7 +1886,7 @@ export default function SubvencionesPage() {
                     />
                   </div>
                   <div style={{ gridColumn: '1 / -1' }}>
-                    <div style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 6, fontWeight: 700 }}>SOC: L2 CONTRAT. TRABAJ</div>
+                    <div style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 6, fontWeight: 700 }}>SOC: L2 CONTRAT. TRABAJ (solo SOC / Empresa de Inserción)</div>
                     <input
                       value={form?.socL2Contrat ?? ''}
                       onChange={(e) => setForm((p) => ({ ...p, socL2Contrat: e.target.value }))}

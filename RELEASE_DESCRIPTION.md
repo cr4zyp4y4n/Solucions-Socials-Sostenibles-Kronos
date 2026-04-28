@@ -1,4 +1,4 @@
-## v2.4.1
+## v2.4.2
 
 ### PIG (Menjar d’Hort)
 
@@ -18,3 +18,9 @@
 
 - **Soporte “trimestre actual”:** el mensual detecta cabeceras que empiezan por cualquier mes (Abril/Julio/Octubre…) y mapea correctamente las columnas al mes real (ej. Abril–Junio → 04–06), evitando que se desplacen a Enero–Marzo.
 - **Títulos/rangos reales:** los títulos de PIG GENERAL usan el inicio real del rango cuando el export es trimestral (ej. `01/04/26 A 30/06/26`).
+
+### Subvenciones
+
+- **Eliminado “Importes por cobrar”:** se retira de la tabla y del modal (ya no se muestra ni se envía al guardar).
+- **Fases más claras en el modal:** el selector muestra `FASE X (descripción)` e incorpora la **FASE 4.1 (anticipo)**.
+- **SOC L1 / SOC L2:** se indica en el modal que estos campos aplican **solo** a SOC / Empresa de Inserción.

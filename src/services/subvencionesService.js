@@ -396,8 +396,15 @@ class SubvencionesService {
     // Filtro por fase
     if (fase && fase !== 'Todas') {
       filtered = filtered.filter(subvencion => {
+        // 1) fase_actual (incluye valores tipo "4.1")
+        const faseActual = subvencion?.faseActual ?? subvencion?.fase_actual ?? null;
+        if (faseActual !== null && faseActual !== undefined && String(faseActual).trim() !== '') {
+          if (String(faseActual).trim() === String(fase).trim()) return true;
+        }
+
+        // 2) fallback: marcas fase_proyecto_* (histórico EI_SSS)
         const fases = this.analizarFasesProyecto(subvencion.fasesProyecto);
-        return fases.some(f => f.numero.toString() === fase);
+        return fases.some(f => String(f.numero) === String(fase));
       });
     }
 
@@ -446,17 +453,11 @@ class SubvencionesService {
       sum + (subvencion.saldoPendiente || 0), 0
     );
 
-    // También calcular total por cobrar desde el campo importesPorCobrar
-    const totalPorCobrar = this.subvencionesData.reduce((sum, subvencion) => 
-      sum + (subvencion.importesPorCobrar || 0), 0
-    );
-
     return {
       totalOtorgado,
       totalSolicitado,
       totalAbonado,
       totalPendiente,
-      totalPorCobrar,
       total: this.subvencionesData.length,
       totalSubvenciones: this.subvencionesData.length
     };
@@ -774,7 +775,6 @@ class SubvencionesService {
       revisadoGestoria: supabaseRecord.revisado_gestoria || '',
       estado: supabaseRecord.estado || '',
       holdedAsentamiento: supabaseRecord.holded_asentamiento || '',
-      importesPorCobrar: supabaseRecord.importes_por_cobrar || 0,
       fasesProyecto: {
         fase1: this.normalizeMarcadoFaseFromDb(supabaseRecord.fase_proyecto_1),
         fase2: this.normalizeMarcadoFaseFromDb(supabaseRecord.fase_proyecto_2),
@@ -859,7 +859,7 @@ class SubvencionesService {
       revisado_gestoria: internalData.revisadoGestoria || '',
       estado: internalData.estado || '',
       holded_asentamiento: internalData.holdedAsentamiento || '',
-      importes_por_cobrar: cleanNumeric(internalData.importesPorCobrar)
+      // importes_por_cobrar eliminado (no se usa)
     };
   }
 

@@ -54,7 +54,7 @@ class SubvencionesSupabaseService {
         fecha_justificacion: subvencionData.fecha_justificacion || null,
         revisado_gestoria: subvencionData.revisado_gestoria || false,
         holded_asentamiento: subvencionData.holded_asentamiento || '',
-        importes_por_cobrar: subvencionData.importes_por_cobrar || 0
+        // importes_por_cobrar eliminado (no se usa)
       };
 
       const { data, error } = await supabase
