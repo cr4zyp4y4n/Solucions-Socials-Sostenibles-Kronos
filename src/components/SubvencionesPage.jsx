@@ -58,6 +58,7 @@ export default function SubvencionesPage() {
     { value: '4.1', label: 'FASE 4.1', desc: 'CONFIRMAR SI SE RECIBE ANTICIPO (% DE ANTICIPO)' },
     { value: '5', label: 'FASE 5', desc: 'DESARROLLO DEL PROYECTO (EJECUCIÓN INICIO-FIN)' },
     { value: '6', label: 'FASE 6', desc: 'JUSTIFICACIÓN DEL PROYECTO (ORGANIZAR INFORMACIÓN FACTURAS, JUSTIFICANTES BANCARIOS, NOMINAS ETC)' },
+    { value: '6.1', label: 'FASE 6.1', desc: 'REQUERIMIENTO DE JUSTIFICACIÓN PARA SUBSANAR ANTES DEL CIERRE FINAL' },
     { value: '7', label: 'FASE 7', desc: 'ACEPTACIÓN DE LA JUSTIFICACIÓN O REQUERIMIENTOS DE LA MISMA PARA SUBSANAR Y PASAR AL CIERRE FINAL (SI SE PIDE REQUERIMIENTO VOLVEMOS A LA FASE 6.1)' },
     { value: '8', label: 'FASE 8', desc: 'CIERRE TOTAL DEL PROYECTO SUBVENCIÓN 100% DE LOS INGRESOS RECIBIDOS PARA DAR POR CERRADO LA SUBVENCIÓN' }
   ]), []);
@@ -1691,7 +1692,7 @@ export default function SubvencionesPage() {
                     </div>
                   ) : null}
                   <div>
-                    <div style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 6, fontWeight: 700 }}>Fase (1-8)</div>
+                    <div style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 6, fontWeight: 700 }}>Fase</div>
                     <select
                       value={form?.faseActual ?? ''}
                       onChange={(e) => {
