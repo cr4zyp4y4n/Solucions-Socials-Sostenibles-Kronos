@@ -26,6 +26,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   
   // API para descargar el ejecutable del último release
   downloadLatestExecutable: () => ipcRenderer.invoke('download-latest-executable'),
+
+  // Abrir enlaces en el navegador del sistema
+  openExternal: (url) => ipcRenderer.invoke('open-external', url),
   
   // Listeners para eventos del auto-updater
   onUpdateAvailable: (callback) => ipcRenderer.on('update-available', callback),

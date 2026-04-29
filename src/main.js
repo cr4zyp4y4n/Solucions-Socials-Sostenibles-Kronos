@@ -1,7 +1,7 @@
 // Cargar variables de entorno al inicio
 require('dotenv').config();
 
-const { app, BrowserWindow, dialog } = require('electron');
+const { app, BrowserWindow, dialog, shell } = require('electron');
 const path = require('node:path');
 const { ipcMain } = require('electron');
 const https = require('https');
@@ -129,6 +129,18 @@ function setupAutoUpdaterEvents() {
 
 // Función para configurar handlers IPC
 function setupIpcHandlers() {
+  // Abrir enlaces en el navegador del sistema (evita limitaciones de Electron con PDFs/DevTools)
+  ipcMain.handle('open-external', async (event, url) => {
+    if (typeof url !== 'string' || !url) {
+      throw new Error('URL inválida');
+    }
+    if (!/^https?:\/\//i.test(url)) {
+      throw new Error('Solo se permiten URLs http/https');
+    }
+    await shell.openExternal(url);
+    return true;
+  });
+
   // Handlers IPC para el auto-updater
   ipcMain.handle('check-for-updates', () => {
     console.log('📡 Handler IPC: check-for-updates llamado');

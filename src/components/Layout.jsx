@@ -59,6 +59,7 @@ import PanelFichajesPage from './PanelFichajesPage';
 import GestionTiendaPage from './GestionTiendaPage';
 import AlbaranOCRPage from './AlbaranOCRPage';
 import ObradorDashboardPage from './ObradorDashboardPage';
+import FirmaPage from './FirmaPage';
 
 
 // Componente visual de acceso denegado reutilizable
@@ -465,6 +466,7 @@ const Layout = () => {
     { key: 'subvenciones', label: 'Subvenciones', path: '/subvenciones', icon: FileText, roles: ['admin', 'management', 'manager'] },
     { key: 'pig', label: 'PIG', path: '/pig', icon: FileText, roles: ['admin', 'management', 'manager'] },
     { key: 'empleados', label: 'Empleados', path: '/empleados', icon: Users, roles: ['admin', 'management', 'manager'] },
+    { key: 'firma', label: 'Firma', path: '/firma', icon: FileText, roles: ['admin', 'management', 'manager'] },
     { key: 'hoja-ruta', label: 'Hoja de Ruta', path: '/hoja-ruta', icon: Calendar, roles: ['admin', 'management', 'manager'] },
     { key: 'fichaje', label: 'Fichaje', path: '/fichaje', icon: Clock, roles: ['admin', 'management', 'manager', 'user', 'tienda'] },
     { key: 'panel-fichajes', label: 'Panel Fichajes', path: '/panel-fichajes', icon: Activity, roles: ['admin', 'management', 'manager'] },
@@ -532,6 +534,8 @@ const Layout = () => {
         return <PIGPage />;
       case 'empleados':
         return <EmpleadosPage />;
+      case 'firma':
+        return <FirmaPage />;
       case 'hoja-ruta':
         return <HojaRutaPage />;
       case 'fichaje':
