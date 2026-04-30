@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '@/lib/supabase';
 import { sha256Hex } from '@/lib/otp';
 import { getRequestInfo } from '@/lib/requestInfo';
+import { createOtpSessionCookie } from '@/lib/otpSession';
 
 export async function POST(req: Request, ctx: { params: Promise<{ token: string }> }) {
   const { token } = await ctx.params;
@@ -83,6 +84,17 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
     .update({ consumed_at: new Date().toISOString(), attempts: nextAttempts })
     .eq('id', challenge.id);
 
-  return Response.json({ ok: true });
+  return Response.json(
+    { ok: true },
+    {
+      headers: {
+        'Set-Cookie': createOtpSessionCookie({
+          token,
+          documentoId: documento.id,
+          challengeId: challenge.id
+        })
+      }
+    }
+  );
 }
 
