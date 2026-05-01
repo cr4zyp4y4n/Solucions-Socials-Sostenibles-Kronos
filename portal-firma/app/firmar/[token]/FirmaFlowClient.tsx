@@ -17,6 +17,7 @@ export default function FirmaFlowClient({ token, canAttempt, isUsed, isRevoked, 
   const [msg, setMsg] = useState<string>('');
   const [err, setErr] = useState<string>('');
   const [debugOtp, setDebugOtp] = useState<string>('');
+  const [otpReceipt, setOtpReceipt] = useState<string>('');
 
   const disabledReason = useMemo(() => {
     if (!canAttempt) return 'No disponible.';
@@ -31,6 +32,7 @@ export default function FirmaFlowClient({ token, canAttempt, isUsed, isRevoked, 
     setErr('');
     setMsg('');
     setDebugOtp('');
+    setOtpReceipt('');
     try {
       const res = await fetch(`/firmar/${encodeURIComponent(token)}/otp/request`, { method: 'POST' });
       const json = await res.json().catch(() => ({}));
@@ -58,6 +60,8 @@ export default function FirmaFlowClient({ token, canAttempt, isUsed, isRevoked, 
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json.ok) throw new Error(json.error || 'Código incorrecto');
+      if (!json.otpReceipt) throw new Error('No se recibió la verificación OTP');
+      setOtpReceipt(String(json.otpReceipt));
       setStep('verified');
       setMsg('Código verificado correctamente.');
     } catch (e: any) {
@@ -72,7 +76,11 @@ export default function FirmaFlowClient({ token, canAttempt, isUsed, isRevoked, 
     setErr('');
     setMsg('');
     try {
-      const res = await fetch(`/firmar/${encodeURIComponent(token)}/accept`, { method: 'POST' });
+      const res = await fetch(`/firmar/${encodeURIComponent(token)}/accept`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ otpReceipt })
+      });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json.ok) throw new Error(json.error || 'No se pudo completar la firma');
       setStep('done');
