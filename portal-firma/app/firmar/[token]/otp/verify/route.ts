@@ -83,6 +83,6 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
     .update({ consumed_at: new Date().toISOString(), attempts: nextAttempts })
     .eq('id', challenge.id);
 
-  return Response.json({ ok: true });
+  return Response.json({ ok: true, verificationId: challenge.id });
 }
 
