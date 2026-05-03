@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation';
 import { supabaseAdmin } from '@/lib/supabase';
+import { getFirmaTokenAccessState } from '@/lib/firmaTokenAccess';
 import FirmaFlowClient from './FirmaFlowClient';
 
 type TokenPageProps = {
@@ -59,10 +60,7 @@ export default async function FirmaTokenPage({ params }: TokenPageProps) {
     notFound();
   }
 
-  const expiresAt = new Date(tokenRow.expires_at);
-  const isExpired = Number.isFinite(expiresAt.getTime()) && expiresAt.getTime() < Date.now();
-  const isRevoked = !!tokenRow.revoked_at;
-  const isUsed = !!tokenRow.used_at;
+  const { isExpired, isRevoked, isUsed, canAccessDocument } = getFirmaTokenAccessState(tokenRow);
   const documento = Array.isArray(tokenRow.documento) ? tokenRow.documento[0] : tokenRow.documento;
   const trabajador = documento && Array.isArray(documento.trabajador) ? documento.trabajador[0] : documento?.trabajador;
 
@@ -79,7 +77,7 @@ export default async function FirmaTokenPage({ params }: TokenPageProps) {
 
   let signedUrl = '';
   // Renderizamos el PDF vía misma-origin para evitar CSP bloqueando iframes/object
-  if (documento.storage_path && !isExpired && !isRevoked) {
+  if (documento.storage_path && canAccessDocument) {
     signedUrl = `/firmar/${encodeURIComponent(token)}/pdf`;
   }
 
