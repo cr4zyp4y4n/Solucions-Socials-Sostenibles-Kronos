@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '@/lib/supabase';
+import { canReadFirmaPdf } from '@/lib/firmaTokenAccess';
 
 export async function GET(_req: Request, ctx: { params: Promise<{ token: string }> }) {
   const { token } = await ctx.params;
@@ -29,12 +30,14 @@ export async function GET(_req: Request, ctx: { params: Promise<{ token: string 
     return new Response('Token no válido', { status: 404 });
   }
 
-  const expiresAt = new Date(tokenRow.expires_at);
-  const isExpired = Number.isFinite(expiresAt.getTime()) && expiresAt.getTime() < Date.now();
-  const isRevoked = !!tokenRow.revoked_at;
+  const canReadPdf = canReadFirmaPdf({
+    expires_at: tokenRow.expires_at,
+    revoked_at: tokenRow.revoked_at,
+    used_at: tokenRow.used_at
+  });
 
-  if (isExpired || isRevoked) {
-    return new Response('Token caducado o revocado', { status: 410 });
+  if (!canReadPdf) {
+    return new Response('Token caducado, revocado o usado', { status: 410 });
   }
 
   const documento = Array.isArray(tokenRow.documento) ? tokenRow.documento[0] : tokenRow.documento;
