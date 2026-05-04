@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import { supabaseAdmin } from '@/lib/supabase';
 import { asSingle } from '@/lib/relation';
+import { getInactiveDocumentStateError, getSigningBlockedDocumentStateError } from '@/lib/documentStatus';
 import FirmaFlowClient from './FirmaFlowClient';
 
 type TokenPageProps = {
@@ -67,6 +68,8 @@ export default async function FirmaTokenPage({ params }: TokenPageProps) {
   const isUsed = !!tokenRow.used_at;
   const documento = asSingle(tokenRow.documento);
   const trabajador = documento ? asSingle(documento.trabajador) : undefined;
+  const inactiveDocumentReason = getInactiveDocumentStateError(documento?.estado);
+  const unsignableDocumentReason = getSigningBlockedDocumentStateError(documento?.estado);
 
   if (!documento) {
     return (
@@ -81,7 +84,7 @@ export default async function FirmaTokenPage({ params }: TokenPageProps) {
 
   let signedUrl = '';
   // Renderizamos el PDF vía misma-origin para evitar CSP bloqueando iframes/object
-  if ((documento.storage_path_firmado || documento.storage_path) && !isExpired && !isRevoked) {
+  if ((documento.storage_path_firmado || documento.storage_path) && !isExpired && !isRevoked && !inactiveDocumentReason) {
     signedUrl = `/firmar/${encodeURIComponent(token)}/pdf`;
   }
 
@@ -167,6 +170,7 @@ export default async function FirmaTokenPage({ params }: TokenPageProps) {
                 isExpired={isExpired}
                 isRevoked={isRevoked}
                 isUsed={isUsed}
+                blockedDocumentReason={unsignableDocumentReason}
               />
             </div>
           </section>

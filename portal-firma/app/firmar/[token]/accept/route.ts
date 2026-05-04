@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '@/lib/supabase';
 import { getRequestInfo } from '@/lib/requestInfo';
 import { stampPdfLastPage } from '@/lib/pdfSign';
+import { getSigningBlockedDocumentStateError } from '@/lib/documentStatus';
 
 export async function POST(_req: Request, ctx: { params: Promise<{ token: string }> }) {
   const { token } = await ctx.params;
@@ -41,6 +42,8 @@ export async function POST(_req: Request, ctx: { params: Promise<{ token: string
 
   const documento = Array.isArray(tokenRow.documento) ? tokenRow.documento[0] : tokenRow.documento;
   if (!documento?.id) return Response.json({ ok: false, error: 'Documento no encontrado' }, { status: 404 });
+  const blockedStateError = getSigningBlockedDocumentStateError(documento.estado);
+  if (blockedStateError) return Response.json({ ok: false, error: blockedStateError }, { status: 409 });
   if (!documento.storage_path) return Response.json({ ok: false, error: 'Documento sin PDF' }, { status: 400 });
 
   // Exigimos OTP consumido recientemente (para evitar aceptar sin verificación).

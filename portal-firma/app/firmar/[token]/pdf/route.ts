@@ -1,4 +1,6 @@
 import { supabaseAdmin } from '@/lib/supabase';
+import { asSingle } from '@/lib/relation';
+import { getInactiveDocumentStateError } from '@/lib/documentStatus';
 
 export async function GET(_req: Request, ctx: { params: Promise<{ token: string }> }) {
   const { token } = await ctx.params;
@@ -14,6 +16,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ token: string 
       revoked_at,
       documento:firma_documentos!firma_tokens_documento_id_fkey (
         id,
+        estado,
         storage_path,
         storage_path_firmado,
         file_name
@@ -38,7 +41,11 @@ export async function GET(_req: Request, ctx: { params: Promise<{ token: string 
     return new Response('Token caducado o revocado', { status: 410 });
   }
 
-  const documento = Array.isArray(tokenRow.documento) ? tokenRow.documento[0] : tokenRow.documento;
+  const documento = asSingle(tokenRow.documento);
+  const blockedReason = getInactiveDocumentStateError(documento?.estado);
+  if (blockedReason) {
+    return new Response(blockedReason, { status: 410 });
+  }
   const storagePath = documento?.storage_path_firmado || documento?.storage_path;
   if (!storagePath) {
     return new Response('Documento sin PDF', { status: 404 });
