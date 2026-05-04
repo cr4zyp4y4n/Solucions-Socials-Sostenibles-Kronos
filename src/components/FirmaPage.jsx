@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { CheckCircle, Copy, FileText, Link2, Plus, RefreshCw, Upload, Users, XCircle } from 'feather-icons-react';
+import { CheckCircle, Copy, FileText, Link2, Phone, Plus, RefreshCw, Upload, Users, XCircle } from 'feather-icons-react';
 import { useTheme } from './ThemeContext';
 import firmaService from '../services/firmaService';
 
@@ -40,6 +40,7 @@ export default function FirmaPage() {
   const [pdfFile, setPdfFile] = useState(null);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [sendingSmsId, setSendingSmsId] = useState('');
 
   const selectedTrabajador = useMemo(
     () => trabajadores.find((t) => t.id === documentoForm.trabajadorId) || null,
@@ -123,6 +124,39 @@ export default function FirmaPage() {
       setError('');
     } catch (_) {
       setError('No se ha podido copiar el enlace.');
+    }
+  };
+
+  const sendSmsLink = async (doc) => {
+    if (!doc?.portal_link) {
+      setError('No hay enlace de portal para enviar.');
+      return;
+    }
+    if (doc.estado === 'firmado' || doc.estado === 'cancelado') {
+      setError('Este envío no se puede notificar por SMS en su estado actual.');
+      return;
+    }
+    const to = String(doc.trabajador?.telefono || '').trim();
+    if (!to) {
+      setError('El trabajador no tiene teléfono.');
+      return;
+    }
+    setSendingSmsId(doc.id);
+    setError('');
+    setMessage('');
+    try {
+      await firmaService.sendLinkSms({
+        documentoId: doc.id,
+        to,
+        portalLink: doc.portal_link,
+        trabajadorNombre: doc.trabajador?.nombre
+      });
+      setMessage(`SMS enviado a ${to}.`);
+      await loadAll();
+    } catch (e) {
+      setError(e?.message || 'Error enviando SMS.');
+    } finally {
+      setSendingSmsId('');
     }
   };
 
@@ -345,6 +379,16 @@ export default function FirmaPage() {
                           >
                             <Link2 size={14} />
                             Abrir
+                          </button>
+                        ) : null}
+                        {doc.portal_link && doc.estado !== 'firmado' && doc.estado !== 'cancelado' ? (
+                          <button
+                            onClick={() => sendSmsLink(doc)}
+                            disabled={!!sendingSmsId}
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 10px', borderRadius: 10, border: `1px solid ${colors.border}`, background: colors.background, color: colors.text, cursor: sendingSmsId ? 'not-allowed' : 'pointer', opacity: sendingSmsId ? 0.6 : 1 }}
+                          >
+                            <Phone size={14} />
+                            {sendingSmsId === doc.id ? 'Enviando SMS...' : 'SMS enlace'}
                           </button>
                         ) : null}
                         {doc.estado !== 'cancelado' ? (

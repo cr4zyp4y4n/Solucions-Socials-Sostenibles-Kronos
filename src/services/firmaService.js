@@ -1,3 +1,4 @@
+/* global __FIRMA_SMS_API_BASE__, __FIRMA_SMS_API_SECRET__ */
 import { supabase } from '../config/supabase';
 
 const TABLE_TRABAJADORES = 'firma_trabajadores';
@@ -6,6 +7,22 @@ const TABLE_TOKENS = 'firma_tokens';
 const TABLE_AUDITORIAS = 'firma_auditorias';
 const BUCKET = 'firma-documentos';
 
+async function getFirmaSmsConfigFromMain() {
+  if (typeof window === 'undefined' || !window.electronAPI?.getFirmaSmsConfig) {
+    return null;
+  }
+  try {
+    const cfg = await window.electronAPI.getFirmaSmsConfig();
+    if (!cfg || typeof cfg !== 'object') return null;
+    return {
+      apiBase: String(cfg.apiBase || '').trim(),
+      apiSecret: String(cfg.apiSecret || '').trim()
+    };
+  } catch (_) {
+    return null;
+  }
+}
+
 function buildPortalLink(token) {
   const storedBase =
     typeof window !== 'undefined'
@@ -13,6 +30,68 @@ function buildPortalLink(token) {
       : '';
   const base = storedBase || 'https://pendiente-configurar-portal.local/firmar';
   return `${base.replace(/\/$/, '')}/${token}`;
+}
+
+function getSmsApiBase() {
+  // DefinePlugin (si aplica) inyecta __FIRMA_SMS_API_BASE__ como literal en build.
+  const fromBundle =
+    typeof __FIRMA_SMS_API_BASE__ !== 'undefined'
+      ? String(__FIRMA_SMS_API_BASE__ || '').trim()
+      : '';
+  if (fromBundle) return fromBundle.replace(/\/$/, '');
+
+  const fromEnv =
+    typeof process !== 'undefined' && process.env && process.env.FIRMA_SMS_API_BASE
+      ? String(process.env.FIRMA_SMS_API_BASE).trim()
+      : '';
+  if (fromEnv) return fromEnv.replace(/\/$/, '');
+  if (typeof window !== 'undefined') {
+    const fromLs = String(localStorage.getItem('FIRMA_SMS_API_BASE') || '').trim();
+    if (fromLs) return fromLs.replace(/\/$/, '');
+  }
+  return '';
+}
+
+function getSmsApiSecret() {
+  const fromBundle =
+    typeof __FIRMA_SMS_API_SECRET__ !== 'undefined'
+      ? String(__FIRMA_SMS_API_SECRET__ || '').trim()
+      : '';
+  if (fromBundle) return fromBundle;
+
+  const fromEnv =
+    typeof process !== 'undefined' && process.env && process.env.FIRMA_SMS_API_SECRET
+      ? String(process.env.FIRMA_SMS_API_SECRET).trim()
+      : '';
+  if (fromEnv) return fromEnv;
+  if (typeof window !== 'undefined') {
+    return String(localStorage.getItem('FIRMA_SMS_API_SECRET') || '').trim();
+  }
+  return '';
+}
+
+function debugFirmaSmsConfig(mainCfg, base, hasSecret) {
+  const bundleBaseLen =
+    typeof __FIRMA_SMS_API_BASE__ !== 'undefined' ? String(__FIRMA_SMS_API_BASE__ || '').length : -1;
+  const nodeEnv =
+    typeof process !== 'undefined' && process.env ? String(process.env.NODE_ENV || '') : '';
+  const mainBaseLen = mainCfg ? String(mainCfg.apiBase || '').length : -1;
+  // No imprimimos secretos. Siempre log al pulsar SMS.
+  // eslint-disable-next-line no-console
+  console.info('[FirmaService][SMS]', {
+    fuente: mainCfg?.apiBase
+      ? 'main/ipc'
+      : typeof __FIRMA_SMS_API_BASE__ !== 'undefined'
+        ? 'webpack'
+        : 'sin-inyeccion-webpack',
+    FIRMA_SMS_API_BASE: base || '(vacío)',
+    FIRMA_SMS_API_SECRET: hasSecret ? '(presente)' : '(vacío)',
+    mainBaseLen,
+    bundleBaseLen,
+    NODE_ENV: nodeEnv || '(n/a)',
+    FIRMA_PORTAL_BASE_URL_LS:
+      typeof window !== 'undefined' ? String(localStorage.getItem('FIRMA_PORTAL_BASE_URL') || '') : ''
+  });
 }
 
 async function sha256File(file) {
@@ -212,6 +291,61 @@ class FirmaService {
       detalle: { accion: 'cancelado_desde_kronos' }
     });
     return true;
+  }
+
+  /**
+   * Envía un SMS con el enlace de firma vía API del portal-firma (Twilio en servidor).
+   * Requiere FIRMA_SMS_API_BASE (ej. http://localhost:3001) y FIRMA_SMS_API_SECRET (mismo valor en portal .env.local).
+   */
+  async sendLinkSms({ documentoId, to, portalLink, trabajadorNombre }) {
+    const mainCfg = await getFirmaSmsConfigFromMain();
+    const baseRaw = String(mainCfg?.apiBase || '').trim() || getSmsApiBase();
+    const base = baseRaw ? baseRaw.replace(/\/$/, '') : '';
+    const secret = String(mainCfg?.apiSecret || '').trim() || getSmsApiSecret();
+    debugFirmaSmsConfig(mainCfg, base, !!secret);
+    if (!base) throw new Error('Falta FIRMA_SMS_API_BASE (URL del portal, ej. http://localhost:3001)');
+    if (!secret) throw new Error('Falta FIRMA_SMS_API_SECRET (debe coincidir con portal-firma .env.local)');
+    if (!documentoId) throw new Error('Falta documentoId');
+
+    const nombre = trabajadorNombre ? String(trabajadorNombre).trim() : '';
+    const body = nombre
+      ? `Hola ${nombre}, tienes un documento para firmar en Kronos. Abre el enlace: ${portalLink}`
+      : `Tienes un documento para firmar en Kronos. Abre el enlace: ${portalLink}`;
+
+    const res = await fetch(`${base}/api/firma/sms`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${secret}`
+      },
+      body: JSON.stringify({ to, body })
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || !json.ok) {
+      throw new Error(json.error || `Error enviando SMS (${res.status})`);
+    }
+
+    const nowIso = new Date().toISOString();
+    const { error: docErr } = await supabase
+      .from(TABLE_DOCUMENTOS)
+      .update({ estado: 'enviado', enviado_at: nowIso })
+      .eq('id', documentoId);
+    if (docErr) {
+      // El SMS ya salió; no rompemos el flujo, pero dejamos trazabilidad
+      await supabase.from(TABLE_AUDITORIAS).insert({
+        documento_id: documentoId,
+        resultado: 'ok',
+        detalle: { accion: 'sms_enviado_sin_actualizar_estado', error: docErr.message }
+      });
+    } else {
+      await supabase.from(TABLE_AUDITORIAS).insert({
+        documento_id: documentoId,
+        resultado: 'ok',
+        detalle: { accion: 'sms_enlace_enviado', delivery: json.delivery || 'sms' }
+      });
+    }
+
+    return json;
   }
 }
 

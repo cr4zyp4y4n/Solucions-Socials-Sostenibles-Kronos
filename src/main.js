@@ -1,12 +1,26 @@
-// Cargar variables de entorno al inicio
-require('dotenv').config();
+const path = require('node:path');
+const fs = require('node:fs');
+
+// Cargar .env desde rutas probables (cwd y raíz del proyecto en dev con webpack en .webpack/main)
+(function loadProjectEnv() {
+  const candidates = [
+    path.resolve(process.cwd(), '.env'),
+    path.resolve(__dirname, '..', '..', '.env'),
+    path.resolve(__dirname, '..', '.env')
+  ];
+  for (const envPath of candidates) {
+    if (fs.existsSync(envPath)) {
+      require('dotenv').config({ path: envPath });
+      return;
+    }
+  }
+  require('dotenv').config();
+})();
 
 const { app, BrowserWindow, dialog, shell } = require('electron');
-const path = require('node:path');
 const { ipcMain } = require('electron');
 const https = require('https');
 const http = require('http');
-const fs = require('fs');
 const { autoUpdater } = require('electron-updater');
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
@@ -140,6 +154,12 @@ function setupIpcHandlers() {
     await shell.openExternal(url);
     return true;
   });
+
+  /** Firma SMS (portal-firma): variables del .env cargadas en el proceso principal (fiable con Electron+Webpack). */
+  ipcMain.handle('get-firma-sms-config', () => ({
+    apiBase: String(process.env.FIRMA_SMS_API_BASE || '').trim(),
+    apiSecret: String(process.env.FIRMA_SMS_API_SECRET || '').trim()
+  }));
 
   // Handlers IPC para el auto-updater
   ipcMain.handle('check-for-updates', () => {
@@ -545,7 +565,7 @@ const createWindow = () => {
           "default-src 'self' 'unsafe-inline' data:; " +
           "script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +
           "style-src 'self' 'unsafe-inline'; " +
-          "connect-src 'self' https://v6.exchangerate-api.com https://api.exchangerate-api.com https://zalnsacawwekmibhoiba.supabase.co https://*.supabase.co wss://zalnsacawwekmibhoiba.supabase.co wss://*.supabase.co https://api.holded.com https://api.github.com https://ipapi.co; " +
+          "connect-src 'self' http://127.0.0.1:* http://localhost:* https://*.netlify.app https://*.vercel.app https://v6.exchangerate-api.com https://api.exchangerate-api.com https://zalnsacawwekmibhoiba.supabase.co https://*.supabase.co wss://zalnsacawwekmibhoiba.supabase.co wss://*.supabase.co https://api.holded.com https://api.github.com https://ipapi.co; " +
           "img-src 'self' data: blob: https://zalnsacawwekmibhoiba.supabase.co https://*.supabase.co;"
         ]
       }

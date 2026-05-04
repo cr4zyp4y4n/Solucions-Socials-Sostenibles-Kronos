@@ -13,10 +13,20 @@ function normalizePhone(phone: string) {
   return raw;
 }
 
+function envTrim(key: string): string {
+  return String(process.env[key] ?? '').trim();
+}
+
 export async function sendSms({ to, body }: SendSmsArgs) {
-  const accountSid = process.env.TWILIO_ACCOUNT_SID || '';
-  const authToken = process.env.TWILIO_AUTH_TOKEN || '';
-  const from = process.env.TWILIO_FROM || '';
+  // .trim(): espacios o saltos al final de línea en .env rompen Basic Auth (401 20003).
+  const accountSid = envTrim('TWILIO_ACCOUNT_SID');
+  const authToken = envTrim('TWILIO_AUTH_TOKEN');
+  const from = envTrim('TWILIO_FROM');
+  // Para cuentas con Twilio Region (p.ej. IE1), el host puede no ser api.twilio.com.
+  // Ejemplos (según Twilio): https://api.dublin.ie1.twilio.com
+  // Solo el host (sin /2010-04-01): esa ruta la añadimos nosotros abajo.
+  let apiBase = (envTrim('TWILIO_API_BASE') || 'https://api.twilio.com').replace(/\/$/, '');
+  apiBase = apiBase.replace(/\/2010-04-01$/i, '').replace(/\/$/, '');
 
   const toNorm = normalizePhone(to);
   if (!toNorm) throw new Error('Teléfono destino inválido');
@@ -26,7 +36,7 @@ export async function sendSms({ to, body }: SendSmsArgs) {
     return { delivery: 'debug' as const, to: toNorm };
   }
 
-  const url = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`;
+  const url = `${apiBase}/2010-04-01/Accounts/${accountSid}/Messages.json`;
   const form = new URLSearchParams();
   form.set('To', toNorm);
   form.set('From', from);

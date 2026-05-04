@@ -1,0 +1,15 @@
+# Next.js en Netlify (OpenNext): no uses el patrón del portal-fichajes (Vite + dist + SPA redirect).
+#
+# Si el repo conectado es la raíz "Administracio Management App", en Netlify → Site settings →
+# Build & deploy → Base directory: seleccion-proveedores/portal-firma
+#
+# Variables de entorno (Site → Environment variables), mismas claves que .env.local:
+# NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY,
+# TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM, TWILIO_API_BASE (opcional),
+# FIRMA_SMS_API_SECRET (debe coincidir con seleccion-proveedores/.env en Kronos).
+
+[build]
+  command = "npm run build"
+
+[build.environment]
+  NODE_VERSION = "20"

@@ -31,6 +31,7 @@ export default async function FirmaTokenPage({ params }: TokenPageProps) {
         fecha_inicio,
         fecha_fin,
         storage_path,
+        storage_path_firmado,
         file_name,
         firmado_at,
         trabajador:firma_trabajadores!firma_documentos_trabajador_id_fkey (
@@ -79,7 +80,7 @@ export default async function FirmaTokenPage({ params }: TokenPageProps) {
 
   let signedUrl = '';
   // Renderizamos el PDF vía misma-origin para evitar CSP bloqueando iframes/object
-  if (documento.storage_path && !isExpired && !isRevoked) {
+  if ((documento.storage_path_firmado || documento.storage_path) && !isExpired && !isRevoked) {
     signedUrl = `/firmar/${encodeURIComponent(token)}/pdf`;
   }
 

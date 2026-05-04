@@ -15,6 +15,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ token: string 
       documento:firma_documentos!firma_tokens_documento_id_fkey (
         id,
         storage_path,
+        storage_path_firmado,
         file_name
       )
     `
@@ -38,7 +39,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ token: string 
   }
 
   const documento = Array.isArray(tokenRow.documento) ? tokenRow.documento[0] : tokenRow.documento;
-  const storagePath = documento?.storage_path;
+  const storagePath = documento?.storage_path_firmado || documento?.storage_path;
   if (!storagePath) {
     return new Response('Documento sin PDF', { status: 404 });
   }

@@ -29,6 +29,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Abrir enlaces en el navegador del sistema
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
+
+  /** Config SMS firma (portal-firma): IPC al proceso principal (lee .env allí; evita Webpack en preload/renderer). */
+  getFirmaSmsConfig: () => ipcRenderer.invoke('get-firma-sms-config'),
   
   // Listeners para eventos del auto-updater
   onUpdateAvailable: (callback) => ipcRenderer.on('update-available', callback),
