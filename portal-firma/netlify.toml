@@ -14,3 +14,7 @@
 
 [build.environment]
   NODE_VERSION = "20"
+
+# Sin este plugin, Netlify trata el sitio como estático y / da 404 (no hay index.html en la raíz del repo).
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
