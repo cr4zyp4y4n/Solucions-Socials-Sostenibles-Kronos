@@ -7,29 +7,46 @@ const TABLE_TOKENS = 'firma_tokens';
 const TABLE_AUDITORIAS = 'firma_auditorias';
 const BUCKET = 'firma-documentos';
 
-async function getFirmaSmsConfigFromMain() {
+/** Cache por sesión: lectura IPC del proceso principal (.env en main). */
+let firmaMainConfigCache = undefined;
+
+async function getFirmaMainConfig() {
+  if (firmaMainConfigCache !== undefined) return firmaMainConfigCache;
   if (typeof window === 'undefined' || !window.electronAPI?.getFirmaSmsConfig) {
+    firmaMainConfigCache = null;
     return null;
   }
   try {
     const cfg = await window.electronAPI.getFirmaSmsConfig();
-    if (!cfg || typeof cfg !== 'object') return null;
-    return {
+    if (!cfg || typeof cfg !== 'object') {
+      firmaMainConfigCache = null;
+      return null;
+    }
+    firmaMainConfigCache = {
       apiBase: String(cfg.apiBase || '').trim(),
-      apiSecret: String(cfg.apiSecret || '').trim()
+      apiSecret: String(cfg.apiSecret || '').trim(),
+      portalBaseUrl: String(cfg.portalBaseUrl || '').trim()
     };
+    return firmaMainConfigCache;
   } catch (_) {
+    firmaMainConfigCache = null;
     return null;
   }
 }
 
+function getPortalBaseForLinks() {
+  const fromMain = firmaMainConfigCache?.portalBaseUrl;
+  if (fromMain) return fromMain.replace(/\/$/, '');
+  if (typeof window !== 'undefined') {
+    const fromLs = String(localStorage.getItem('FIRMA_PORTAL_BASE_URL') || '').trim();
+    if (fromLs) return fromLs.replace(/\/$/, '');
+  }
+  return 'https://pendiente-configurar-portal.local/firmar'.replace(/\/$/, '');
+}
+
 function buildPortalLink(token) {
-  const storedBase =
-    typeof window !== 'undefined'
-      ? String(localStorage.getItem('FIRMA_PORTAL_BASE_URL') || '').trim()
-      : '';
-  const base = storedBase || 'https://pendiente-configurar-portal.local/firmar';
-  return `${base.replace(/\/$/, '')}/${token}`;
+  const base = getPortalBaseForLinks();
+  return `${base}/${token}`;
 }
 
 function getSmsApiBase() {
@@ -89,6 +106,7 @@ function debugFirmaSmsConfig(mainCfg, base, hasSecret) {
     mainBaseLen,
     bundleBaseLen,
     NODE_ENV: nodeEnv || '(n/a)',
+    FIRMA_PORTAL_BASE_URL_env: mainCfg?.portalBaseUrl || '(vacío)',
     FIRMA_PORTAL_BASE_URL_LS:
       typeof window !== 'undefined' ? String(localStorage.getItem('FIRMA_PORTAL_BASE_URL') || '') : ''
   });
@@ -137,6 +155,7 @@ class FirmaService {
   }
 
   async loadDocumentos() {
+    await getFirmaMainConfig();
     const { data, error } = await supabase
       .from(TABLE_DOCUMENTOS)
       .select(`
@@ -204,6 +223,7 @@ class FirmaService {
   }
 
   async createTokenFirma({ documentoId, expiresHours = 48 }) {
+    await getFirmaMainConfig();
     const nowIso = new Date().toISOString();
     await supabase
       .from(TABLE_TOKENS)
@@ -298,7 +318,7 @@ class FirmaService {
    * Requiere FIRMA_SMS_API_BASE (ej. http://localhost:3001) y FIRMA_SMS_API_SECRET (mismo valor en portal .env.local).
    */
   async sendLinkSms({ documentoId, to, portalLink, trabajadorNombre }) {
-    const mainCfg = await getFirmaSmsConfigFromMain();
+    const mainCfg = await getFirmaMainConfig();
     const baseRaw = String(mainCfg?.apiBase || '').trim() || getSmsApiBase();
     const base = baseRaw ? baseRaw.replace(/\/$/, '') : '';
     const secret = String(mainCfg?.apiSecret || '').trim() || getSmsApiSecret();

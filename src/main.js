@@ -155,10 +155,11 @@ function setupIpcHandlers() {
     return true;
   });
 
-  /** Firma SMS (portal-firma): variables del .env cargadas en el proceso principal (fiable con Electron+Webpack). */
+  /** Firma (portal): API SMS + base de enlaces /firmar desde .env (todas las máquinas, sin localStorage). */
   ipcMain.handle('get-firma-sms-config', () => ({
     apiBase: String(process.env.FIRMA_SMS_API_BASE || '').trim(),
-    apiSecret: String(process.env.FIRMA_SMS_API_SECRET || '').trim()
+    apiSecret: String(process.env.FIRMA_SMS_API_SECRET || '').trim(),
+    portalBaseUrl: String(process.env.FIRMA_PORTAL_BASE_URL || '').trim()
   }));
 
   // Handlers IPC para el auto-updater
