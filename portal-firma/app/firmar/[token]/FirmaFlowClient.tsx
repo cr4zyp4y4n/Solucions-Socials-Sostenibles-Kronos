@@ -8,9 +8,17 @@ type Props = {
   isUsed: boolean;
   isRevoked: boolean;
   isExpired: boolean;
+  blockedDocumentReason?: string;
 };
 
-export default function FirmaFlowClient({ token, canAttempt, isUsed, isRevoked, isExpired }: Props) {
+export default function FirmaFlowClient({
+  token,
+  canAttempt,
+  isUsed,
+  isRevoked,
+  isExpired,
+  blockedDocumentReason
+}: Props) {
   const [step, setStep] = useState<'idle' | 'requested' | 'verified' | 'done'>('idle');
   const [otp, setOtp] = useState('');
   const [loading, setLoading] = useState(false);
@@ -19,12 +27,13 @@ export default function FirmaFlowClient({ token, canAttempt, isUsed, isRevoked, 
   const [debugOtp, setDebugOtp] = useState<string>('');
 
   const disabledReason = useMemo(() => {
+    if (blockedDocumentReason) return blockedDocumentReason;
     if (!canAttempt) return 'No disponible.';
     if (isExpired) return 'Este enlace ha caducado.';
     if (isRevoked) return 'Este enlace ha sido revocado.';
     if (isUsed) return 'Este enlace ya ha sido utilizado.';
     return '';
-  }, [canAttempt, isExpired, isRevoked, isUsed]);
+  }, [blockedDocumentReason, canAttempt, isExpired, isRevoked, isUsed]);
 
   const requestOtp = async () => {
     setLoading(true);

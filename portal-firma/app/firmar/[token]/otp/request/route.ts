@@ -3,6 +3,7 @@ import { generateOtpCode, sha256Hex } from '@/lib/otp';
 import { sendSms } from '@/lib/sms';
 import { getRequestInfo } from '@/lib/requestInfo';
 import { asSingle } from '@/lib/relation';
+import { getSigningBlockedDocumentStateError } from '@/lib/documentStatus';
 
 export async function POST(_req: Request, ctx: { params: Promise<{ token: string }> }) {
   const { token } = await ctx.params;
@@ -41,6 +42,10 @@ export async function POST(_req: Request, ctx: { params: Promise<{ token: string
 
   const documento = asSingle(tokenRow.documento);
   const trabajador = documento ? asSingle(documento.trabajador) : undefined;
+  const stateError = getSigningBlockedDocumentStateError(documento?.estado);
+  if (stateError) {
+    return Response.json({ ok: false, error: stateError }, { status: 410 });
+  }
   const telefono = trabajador?.telefono;
   if (!documento?.id || !telefono) {
     return Response.json({ ok: false, error: 'Documento o teléfono no disponible' }, { status: 400 });

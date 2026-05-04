@@ -1,6 +1,8 @@
 import { supabaseAdmin } from '@/lib/supabase';
 import { sha256Hex } from '@/lib/otp';
 import { getRequestInfo } from '@/lib/requestInfo';
+import { asSingle } from '@/lib/relation';
+import { getSigningBlockedDocumentStateError } from '@/lib/documentStatus';
 
 export async function POST(req: Request, ctx: { params: Promise<{ token: string }> }) {
   const { token } = await ctx.params;
@@ -18,7 +20,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
       used_at,
       revoked_at,
       documento:firma_documentos!firma_tokens_documento_id_fkey (
-        id
+        id,
+        estado
       )
     `
     )
@@ -36,8 +39,10 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
     return Response.json({ ok: false, error: 'Token caducado, revocado o usado' }, { status: 410 });
   }
 
-  const documento = Array.isArray(tokenRow.documento) ? tokenRow.documento[0] : tokenRow.documento;
+  const documento = asSingle(tokenRow.documento);
   if (!documento?.id) return Response.json({ ok: false, error: 'Documento no encontrado' }, { status: 404 });
+  const blockedError = getSigningBlockedDocumentStateError(documento.estado);
+  if (blockedError) return Response.json({ ok: false, error: blockedError }, { status: 410 });
 
   // Cogemos el último challenge no consumido (si el usuario pidió varios, vale el último)
   const { data: challenges, error: challErr } = await supabaseAdmin
