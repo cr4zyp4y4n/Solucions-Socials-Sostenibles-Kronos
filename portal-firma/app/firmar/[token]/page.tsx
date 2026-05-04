@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation';
 import { supabaseAdmin } from '@/lib/supabase';
+import { asSingle } from '@/lib/relation';
 import FirmaFlowClient from './FirmaFlowClient';
 
 type TokenPageProps = {
@@ -64,8 +65,8 @@ export default async function FirmaTokenPage({ params }: TokenPageProps) {
   const isExpired = Number.isFinite(expiresAt.getTime()) && expiresAt.getTime() < Date.now();
   const isRevoked = !!tokenRow.revoked_at;
   const isUsed = !!tokenRow.used_at;
-  const documento = Array.isArray(tokenRow.documento) ? tokenRow.documento[0] : tokenRow.documento;
-  const trabajador = documento && Array.isArray(documento.trabajador) ? documento.trabajador[0] : documento?.trabajador;
+  const documento = asSingle(tokenRow.documento);
+  const trabajador = documento ? asSingle(documento.trabajador) : undefined;
 
   if (!documento) {
     return (

@@ -1,7 +1,8 @@
 # Next.js en Netlify (OpenNext): no uses el patrón del portal-fichajes (Vite + dist + SPA redirect).
 #
-# Si el repo conectado es la raíz "Administracio Management App", en Netlify → Site settings →
-# Build & deploy → Base directory: seleccion-proveedores/portal-firma
+# Base directory en Netlify (Site settings → Build & deploy):
+# - Repo Kronos (raíz = esta carpeta padre, como en GitHub Solucions-Socials-Sostenibles-Kronos): portal-firma
+# - Repo monorepo cuya raíz es "Administracio Management App" con subcarpeta: seleccion-proveedores/portal-firma
 #
 # Variables de entorno (Site → Environment variables), mismas claves que .env.local:
 # NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY,

@@ -1,5 +1,11 @@
+const path = require('path');
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Repo padre puede tener otro package-lock; fijar raíz del proyecto Next (Netlify / monorepo).
+  turbopack: {
+    root: path.resolve(__dirname)
+  },
   async headers() {
     // CSP necesaria para poder embeber el PDF desde Supabase (bucket privado con signed URL)
     const csp = [

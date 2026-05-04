@@ -2,6 +2,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { generateOtpCode, sha256Hex } from '@/lib/otp';
 import { sendSms } from '@/lib/sms';
 import { getRequestInfo } from '@/lib/requestInfo';
+import { asSingle } from '@/lib/relation';
 
 export async function POST(_req: Request, ctx: { params: Promise<{ token: string }> }) {
   const { token } = await ctx.params;
@@ -38,8 +39,8 @@ export async function POST(_req: Request, ctx: { params: Promise<{ token: string
     return Response.json({ ok: false, error: 'Token caducado, revocado o usado' }, { status: 410 });
   }
 
-  const documento = Array.isArray(tokenRow.documento) ? tokenRow.documento[0] : tokenRow.documento;
-  const trabajador = documento && Array.isArray(documento.trabajador) ? documento.trabajador[0] : documento?.trabajador;
+  const documento = asSingle(tokenRow.documento);
+  const trabajador = documento ? asSingle(documento.trabajador) : undefined;
   const telefono = trabajador?.telefono;
   if (!documento?.id || !telefono) {
     return Response.json({ ok: false, error: 'Documento o teléfono no disponible' }, { status: 400 });
