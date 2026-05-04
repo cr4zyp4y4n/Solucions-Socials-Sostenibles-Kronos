@@ -11,6 +11,8 @@
 
 [build]
   command = "npm run build"
+  # Debe ser distinto del base directory (portal-firma); si no, @netlify/plugin-nextjs falla.
+  publish = ".next"
 
 [build.environment]
   NODE_VERSION = "20"
