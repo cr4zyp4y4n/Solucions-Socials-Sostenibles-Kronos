@@ -1,6 +1,9 @@
 import { supabaseAdmin } from '@/lib/supabase';
+import { getOtpSessionFromRequest } from '@/lib/otpSession';
 
-export async function GET(_req: Request, ctx: { params: Promise<{ token: string }> }) {
+export const runtime = 'nodejs';
+
+export async function GET(req: Request, ctx: { params: Promise<{ token: string }> }) {
   const { token } = await ctx.params;
 
   const { data: tokenRow, error } = await supabaseAdmin
@@ -39,6 +42,14 @@ export async function GET(_req: Request, ctx: { params: Promise<{ token: string 
   }
 
   const documento = Array.isArray(tokenRow.documento) ? tokenRow.documento[0] : tokenRow.documento;
+  const hasSignedPdf = !!documento?.storage_path_firmado;
+  if (!hasSignedPdf) {
+    const otpSession = getOtpSessionFromRequest(req);
+    if (otpSession?.tokenId !== tokenRow.id || otpSession.documentoId !== documento?.id) {
+      return new Response('Falta verificación OTP de esta sesión', { status: 401 });
+    }
+  }
+
   const storagePath = documento?.storage_path_firmado || documento?.storage_path;
   if (!storagePath) {
     return new Response('Documento sin PDF', { status: 404 });

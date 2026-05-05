@@ -5,12 +5,13 @@ import { useMemo, useState } from 'react';
 type Props = {
   token: string;
   canAttempt: boolean;
+  pdfUrl: string;
   isUsed: boolean;
   isRevoked: boolean;
   isExpired: boolean;
 };
 
-export default function FirmaFlowClient({ token, canAttempt, isUsed, isRevoked, isExpired }: Props) {
+export default function FirmaFlowClient({ token, canAttempt, pdfUrl, isUsed, isRevoked, isExpired }: Props) {
   const [step, setStep] = useState<'idle' | 'requested' | 'verified' | 'done'>('idle');
   const [otp, setOtp] = useState('');
   const [loading, setLoading] = useState(false);
@@ -155,13 +156,25 @@ export default function FirmaFlowClient({ token, canAttempt, isUsed, isRevoked, 
       ) : null}
 
       {step === 'verified' ? (
-        <button
-          onClick={accept}
-          disabled={loading}
-          className="w-full rounded-full bg-emerald-700 px-4 py-3 text-sm font-black text-white transition hover:bg-emerald-800 disabled:opacity-60"
-        >
-          {loading ? 'Firmando...' : 'Acepto y firmo'}
-        </button>
+        <div className="space-y-3">
+          {pdfUrl ? (
+            <a
+              href={pdfUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="block rounded-full border border-zinc-200 bg-white px-4 py-3 text-center text-sm font-black text-zinc-900 transition hover:bg-zinc-50"
+            >
+              Revisar PDF
+            </a>
+          ) : null}
+          <button
+            onClick={accept}
+            disabled={loading}
+            className="w-full rounded-full bg-emerald-700 px-4 py-3 text-sm font-black text-white transition hover:bg-emerald-800 disabled:opacity-60"
+          >
+            {loading ? 'Firmando...' : 'Acepto y firmo'}
+          </button>
+        </div>
       ) : null}
 
       {step === 'done' ? (
