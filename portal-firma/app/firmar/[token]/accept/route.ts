@@ -1,11 +1,14 @@
 import { supabaseAdmin } from '@/lib/supabase';
 import { getRequestInfo } from '@/lib/requestInfo';
 import { stampPdfLastPage } from '@/lib/pdfSign';
+import { getOtpSessionFromRequest } from '@/lib/otpSession';
 
-export async function POST(_req: Request, ctx: { params: Promise<{ token: string }> }) {
+export const runtime = 'nodejs';
+
+export async function POST(req: Request, ctx: { params: Promise<{ token: string }> }) {
   const { token } = await ctx.params;
   // aceptamos body vacío; el portal solo registra la aceptación y genera el PDF firmado con sello
-  await _req.json().catch(() => ({}));
+  await req.json().catch(() => ({}));
 
   const { data: tokenRow, error } = await supabaseAdmin
     .from('firma_tokens')
@@ -43,6 +46,11 @@ export async function POST(_req: Request, ctx: { params: Promise<{ token: string
   if (!documento?.id) return Response.json({ ok: false, error: 'Documento no encontrado' }, { status: 404 });
   if (!documento.storage_path) return Response.json({ ok: false, error: 'Documento sin PDF' }, { status: 400 });
 
+  const otpSession = getOtpSessionFromRequest(req);
+  if (otpSession?.tokenId !== tokenRow.id || otpSession.documentoId !== documento.id) {
+    return Response.json({ ok: false, error: 'Falta verificación OTP de esta sesión' }, { status: 401 });
+  }
+
   // Exigimos OTP consumido recientemente (para evitar aceptar sin verificación).
   // Como el challenge se marca consumed_at, validamos que haya uno en los últimos 30 minutos.
   const sinceIso = new Date(Date.now() - 30 * 60 * 1000).toISOString();
@@ -50,6 +58,7 @@ export async function POST(_req: Request, ctx: { params: Promise<{ token: string
     .from('firma_otp_challenges')
     .select('id, consumed_at')
     .eq('documento_id', documento.id)
+    .eq('id', otpSession.challengeId)
     .not('consumed_at', 'is', null)
     .gte('consumed_at', sinceIso)
     .order('consumed_at', { ascending: false })

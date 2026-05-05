@@ -80,8 +80,8 @@ export default async function FirmaTokenPage({ params }: TokenPageProps) {
   }
 
   let signedUrl = '';
-  // Renderizamos el PDF vía misma-origin para evitar CSP bloqueando iframes/object
-  if ((documento.storage_path_firmado || documento.storage_path) && !isExpired && !isRevoked) {
+  // El PDF original solo se sirve tras OTP; aquí mostramos directamente el firmado si ya existe.
+  if (documento.storage_path_firmado && !isExpired && !isRevoked) {
     signedUrl = `/firmar/${encodeURIComponent(token)}/pdf`;
   }
 
@@ -167,6 +167,7 @@ export default async function FirmaTokenPage({ params }: TokenPageProps) {
                 isExpired={isExpired}
                 isRevoked={isRevoked}
                 isUsed={isUsed}
+                pdfUrl={`/firmar/${encodeURIComponent(token)}/pdf`}
               />
             </div>
           </section>
@@ -206,7 +207,7 @@ export default async function FirmaTokenPage({ params }: TokenPageProps) {
               </div>
             ) : (
               <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-5 text-sm text-zinc-600">
-                No se ha podido generar la vista previa del PDF. El enlace puede estar caducado o revocado.
+                Verifica el código SMS para visualizar el PDF original antes de firmarlo.
               </div>
             )}
           </section>
