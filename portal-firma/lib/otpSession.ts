@@ -92,4 +92,3 @@ export function getOtpSessionFromRequest(req: Request): OtpSession | null {
     return null;
   }
 }
-
