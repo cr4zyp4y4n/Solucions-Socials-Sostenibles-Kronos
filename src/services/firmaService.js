@@ -34,14 +34,20 @@ async function getFirmaMainConfig() {
   }
 }
 
+function normalizePortalBaseForLinks(rawBase) {
+  const base = String(rawBase || '').trim().replace(/\/+$/, '');
+  if (!base) return '';
+  return /\/firmar$/i.test(base) ? base : `${base}/firmar`;
+}
+
 function getPortalBaseForLinks() {
   const fromMain = firmaMainConfigCache?.portalBaseUrl;
-  if (fromMain) return fromMain.replace(/\/$/, '');
+  if (fromMain) return normalizePortalBaseForLinks(fromMain);
   if (typeof window !== 'undefined') {
     const fromLs = String(localStorage.getItem('FIRMA_PORTAL_BASE_URL') || '').trim();
-    if (fromLs) return fromLs.replace(/\/$/, '');
+    if (fromLs) return normalizePortalBaseForLinks(fromLs);
   }
-  return 'https://pendiente-configurar-portal.local/firmar'.replace(/\/$/, '');
+  return normalizePortalBaseForLinks('https://pendiente-configurar-portal.local');
 }
 
 function buildPortalLink(token) {
