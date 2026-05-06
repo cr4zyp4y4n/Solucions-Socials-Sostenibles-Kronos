@@ -3,6 +3,10 @@ type SendSmsArgs = {
   body: string;
 };
 
+type SendSmsResult =
+  | { delivery: 'debug'; to: string; via: 'debug' }
+  | { delivery: 'sms'; to: string; via: 'messagingService' | 'from' };
+
 function normalizePhone(phone: string) {
   // Asumimos números españoles; si ya viene con +, lo respetamos
   const raw = String(phone || '').trim().replace(/\s+/g, '');
@@ -17,11 +21,12 @@ function envTrim(key: string): string {
   return String(process.env[key] ?? '').trim();
 }
 
-export async function sendSms({ to, body }: SendSmsArgs) {
+export async function sendSms({ to, body }: SendSmsArgs): Promise<SendSmsResult> {
   // .trim(): espacios o saltos al final de línea en .env rompen Basic Auth (401 20003).
   const accountSid = envTrim('TWILIO_ACCOUNT_SID');
   const authToken = envTrim('TWILIO_AUTH_TOKEN');
   const from = envTrim('TWILIO_FROM');
+  const messagingServiceSid = envTrim('TWILIO_MESSAGING_SERVICE_SID');
   // Para cuentas con Twilio Region (p.ej. IE1), el host puede no ser api.twilio.com.
   // Ejemplos (según Twilio): https://api.dublin.ie1.twilio.com
   // Solo el host (sin /2010-04-01): esa ruta la añadimos nosotros abajo.
@@ -32,14 +37,19 @@ export async function sendSms({ to, body }: SendSmsArgs) {
   if (!toNorm) throw new Error('Teléfono destino inválido');
 
   // Modo dev: si no hay Twilio configurado, no enviamos (y lo tratamos como "debug")
-  if (!accountSid || !authToken || !from) {
-    return { delivery: 'debug' as const, to: toNorm };
+  // Requiere From o MessagingServiceSid.
+  if (!accountSid || !authToken || (!from && !messagingServiceSid)) {
+    return { delivery: 'debug' as const, to: toNorm, via: 'debug' };
   }
 
   const url = `${apiBase}/2010-04-01/Accounts/${accountSid}/Messages.json`;
   const form = new URLSearchParams();
   form.set('To', toNorm);
-  form.set('From', from);
+  if (messagingServiceSid) {
+    form.set('MessagingServiceSid', messagingServiceSid);
+  } else {
+    form.set('From', from);
+  }
   form.set('Body', body);
 
   const basic = Buffer.from(`${accountSid}:${authToken}`, 'utf8').toString('base64');
@@ -57,6 +67,10 @@ export async function sendSms({ to, body }: SendSmsArgs) {
     throw new Error(`Twilio error (${res.status}): ${txt}`);
   }
 
-  return { delivery: 'sms' as const, to: toNorm };
+  return {
+    delivery: 'sms' as const,
+    to: toNorm,
+    via: messagingServiceSid ? 'messagingService' : 'from'
+  };
 }
 

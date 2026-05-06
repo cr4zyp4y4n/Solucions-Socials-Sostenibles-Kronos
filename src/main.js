@@ -159,7 +159,14 @@ function setupIpcHandlers() {
   ipcMain.handle('get-firma-sms-config', () => ({
     apiBase: String(process.env.FIRMA_SMS_API_BASE || '').trim(),
     apiSecret: String(process.env.FIRMA_SMS_API_SECRET || '').trim(),
-    portalBaseUrl: String(process.env.FIRMA_PORTAL_BASE_URL || '').trim()
+    portalBaseUrl: String(process.env.FIRMA_PORTAL_BASE_URL || '').trim(),
+    // Debug/experimentos: forzar que el SMS de enlace NO incluya URL (para aislar filtros de operadora).
+    linkTextOnly: String(process.env.FIRMA_SMS_LINK_TEXT_ONLY || '').trim(),
+    // Debug/experimentos: controlar qué URL se incluye en el SMS de enlace.
+    // - full (default): URL completa con token (portalLink)
+    // - base: solo el dominio (origin), sin token
+    // - none: no incluir ninguna URL (equivalente a linkTextOnly=1)
+    linkUrlMode: String(process.env.FIRMA_SMS_LINK_URL_MODE || '').trim()
   }));
 
   // Handlers IPC para el auto-updater
@@ -566,7 +573,7 @@ const createWindow = () => {
           "default-src 'self' 'unsafe-inline' data:; " +
           "script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +
           "style-src 'self' 'unsafe-inline'; " +
-          "connect-src 'self' http://127.0.0.1:* http://localhost:* https://*.netlify.app https://*.vercel.app https://v6.exchangerate-api.com https://api.exchangerate-api.com https://zalnsacawwekmibhoiba.supabase.co https://*.supabase.co wss://zalnsacawwekmibhoiba.supabase.co wss://*.supabase.co https://api.holded.com https://api.github.com https://ipapi.co; " +
+          "connect-src 'self' http://127.0.0.1:* http://localhost:* https://*.netlify.app https://*.vercel.app https://*.solucionssocials.org https://v6.exchangerate-api.com https://api.exchangerate-api.com https://zalnsacawwekmibhoiba.supabase.co https://*.supabase.co wss://zalnsacawwekmibhoiba.supabase.co wss://*.supabase.co https://api.holded.com https://api.github.com https://ipapi.co; " +
           "img-src 'self' data: blob: https://zalnsacawwekmibhoiba.supabase.co https://*.supabase.co;"
         ]
       }

@@ -10,6 +10,25 @@ const BUCKET = 'firma-documentos';
 /** Cache por sesión: lectura IPC del proceso principal (.env en main). */
 let firmaMainConfigCache = undefined;
 
+function parseBool(value) {
+  const v = String(value || '').trim().toLowerCase();
+  return v === '1' || v === 'true' || v === 'yes' || v === 'on';
+}
+
+function normalizeLinkUrlMode(value) {
+  const v = String(value || '').trim().toLowerCase();
+  return v === 'base' || v === 'none' || v === 'full' ? v : 'full';
+}
+
+function getOriginFromPortalBaseUrl(portalBaseUrl) {
+  try {
+    const u = new URL(String(portalBaseUrl || '').trim());
+    return u.origin;
+  } catch (_) {
+    return '';
+  }
+}
+
 async function getFirmaMainConfig() {
   if (firmaMainConfigCache !== undefined) return firmaMainConfigCache;
   if (typeof window === 'undefined' || !window.electronAPI?.getFirmaSmsConfig) {
@@ -25,7 +44,9 @@ async function getFirmaMainConfig() {
     firmaMainConfigCache = {
       apiBase: String(cfg.apiBase || '').trim(),
       apiSecret: String(cfg.apiSecret || '').trim(),
-      portalBaseUrl: String(cfg.portalBaseUrl || '').trim()
+      portalBaseUrl: String(cfg.portalBaseUrl || '').trim(),
+      linkTextOnly: parseBool(cfg.linkTextOnly),
+      linkUrlMode: normalizeLinkUrlMode(cfg.linkUrlMode)
     };
     return firmaMainConfigCache;
   } catch (_) {
@@ -107,6 +128,8 @@ function debugFirmaSmsConfig(mainCfg, base, hasSecret) {
     bundleBaseLen,
     NODE_ENV: nodeEnv || '(n/a)',
     FIRMA_PORTAL_BASE_URL_env: mainCfg?.portalBaseUrl || '(vacío)',
+    FIRMA_SMS_LINK_TEXT_ONLY: mainCfg?.linkTextOnly ? '1' : '0',
+    FIRMA_SMS_LINK_URL_MODE: mainCfg?.linkUrlMode || 'full',
     FIRMA_PORTAL_BASE_URL_LS:
       typeof window !== 'undefined' ? String(localStorage.getItem('FIRMA_PORTAL_BASE_URL') || '') : ''
   });
@@ -328,9 +351,20 @@ class FirmaService {
     if (!documentoId) throw new Error('Falta documentoId');
 
     const nombre = trabajadorNombre ? String(trabajadorNombre).trim() : '';
-    const body = nombre
-      ? `Hola ${nombre}, tienes un documento para firmar en Kronos. Abre el enlace: ${portalLink}`
-      : `Tienes un documento para firmar en Kronos. Abre el enlace: ${portalLink}`;
+    const linkUrlMode = mainCfg?.linkUrlMode || 'full';
+    const textOnly = !!mainCfg?.linkTextOnly || linkUrlMode === 'none';
+    const linkForSms =
+      linkUrlMode === 'base'
+        ? (getOriginFromPortalBaseUrl(mainCfg?.portalBaseUrl) || portalLink)
+        : portalLink;
+
+    const body = textOnly
+      ? (nombre
+        ? `Hola ${nombre}, tienes un documento para firmar en Kronos.`
+        : 'Tienes un documento para firmar en Kronos.')
+      : (nombre
+        ? `Kronos: documento pendiente de firma. Enlace: ${linkForSms}`
+        : `Kronos: documento pendiente de firma. Enlace: ${linkForSms}`);
 
     const res = await fetch(`${base}/api/firma/sms`, {
       method: 'POST',
