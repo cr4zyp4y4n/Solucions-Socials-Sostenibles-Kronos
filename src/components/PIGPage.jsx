@@ -3,6 +3,7 @@ import { Upload, Download, FileText, AlertCircle } from 'lucide-react';
 import * as XLSX from 'xlsx-js-style';
 import { useTheme } from './ThemeContext';
 import { loadPigBaseMensual } from '../services/pigBasesHistoricasService';
+import SectionHeader from './SectionHeader';
 
 function parseEuroNumber(input) {
   if (input === null || input === undefined) return 0;
@@ -2176,15 +2177,16 @@ export default function PIGPage() {
 
   return (
     <div style={{ padding: 24, background: colors.background, minHeight: '100vh', color: colors.text }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
-        <FileText size={28} color={colors.primary} />
-        <h1 style={{ margin: 0, fontSize: 26, fontWeight: 900 }}>PIG</h1>
-      </div>
-
-      <div style={{ color: colors.textSecondary, marginBottom: 16, maxWidth: 900 }}>
-        Sube los 2 CSV exportados desde Holded (<b>Pèrdues i guanys</b> anual y <b>Pèrdues i guanys mensual</b>) y KRONOS generará un Excel
-        con la hoja <b>{pigEmpresa === 'MH' ? 'PIG GENERAL MH' : 'PIG GENERAL EISSS'}</b>.
-      </div>
+      <SectionHeader
+        icon={FileText}
+        title="PIG"
+        subtitle={(
+          <span>
+            Sube los 2 CSV exportados desde Holded (<b>Pèrdues i guanys</b> anual y <b>Pèrdues i guanys mensual</b>) y KRONOS generará un Excel con la hoja{' '}
+            <b>{pigEmpresa === 'MH' ? 'PIG GENERAL MH' : 'PIG GENERAL EISSS'}</b>.
+          </span>
+        )}
+      />
 
       {error ? (
         <div style={{ marginBottom: 14, padding: 12, borderRadius: 10, border: `1px solid ${colors.error}`, background: colors.error + '18', display: 'flex', gap: 10, alignItems: 'center' }}>

@@ -10,6 +10,7 @@ import holdedApi, { HoldedApiService } from '../services/holdedApi';
 import { brunoInvoicesService } from '../services/brunoInvoicesService';
 import { solucionsInvoicesService } from '../services/solucionsInvoicesService';
 import { Calendar, Filter, Upload, FileText, Check, X, ChevronDown, ChevronRight, Download, Copy, Loader2, RotateCcw } from 'lucide-react';
+import SectionHeader from './SectionHeader';
 import * as XLSX from 'xlsx';
 import {
   Chart as ChartJS,
@@ -5373,14 +5374,11 @@ const AnalyticsPage = () => {
       transition={{ duration: 0.5, ease: 'easeOut' }}
       style={{ padding: '24px', height: '100%', display: 'flex', flexDirection: 'column' }}
     >
-      <motion.h2
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, delay: 0.1 }}
-        style={{ margin: '0 0 24px 0', color: colors.text, fontWeight: 700, fontSize: 28, lineHeight: 1.2 }}
-      >
-        {canViewAllDatasets ? (invoiceType === 'sale' ? 'Análisis de Ventas' : 'Análisis de Compras') : 'Análisis IDONI'}
-      </motion.h2>
+      <SectionHeader
+        icon={FileText}
+        title={canViewAllDatasets ? (invoiceType === 'sale' ? 'Análisis de Ventas' : 'Análisis de Compras') : 'Análisis IDONI'}
+        subtitle="Explora y exporta análisis; filtros por dataset, fecha y proveedor/canal."
+      />
 
       {/* Toggle Facturas de compra / Facturas de venta - Solo para Holded (Solucions/Menjar) */}
       {canViewAllDatasets && (

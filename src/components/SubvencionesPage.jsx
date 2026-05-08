@@ -20,6 +20,7 @@ import * as menjarDhortService from '../services/menjarDhortService';
 import { useTheme } from './ThemeContext';
 import holdedEmployeesService from '../services/holdedEmployeesService';
 import { useNavigation } from './NavigationContext';
+import SectionHeader from './SectionHeader';
 
 const InfoField = ({ label, value, colors, icon, valueColor, fullWidth }) => {
   if (value === null || value === undefined || value === '') return null;
@@ -859,10 +860,11 @@ export default function SubvencionesPage() {
 
   return (
     <div style={{ padding: 24, background: colors.background, minHeight: '100vh', maxWidth: '100%', overflowX: 'hidden', boxSizing: 'border-box', color: colors.text }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-        <FileText size={28} color={colors.primary} />
-        <h1 style={{ margin: 0, fontSize: 26, fontWeight: 900 }}>Subvenciones</h1>
-      </div>
+      <SectionHeader
+        icon={FileText}
+        title="Subvenciones"
+        subtitle="Gestión, seguimiento y carga de subvenciones (EI SSS / Menjar d'Hort)."
+      />
 
       {error ? (
         <div style={{ marginBottom: 14, padding: 12, borderRadius: 10, border: `1px solid ${colors.error}`, background: colors.error + '18' }}>

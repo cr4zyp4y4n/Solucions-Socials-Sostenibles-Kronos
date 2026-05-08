@@ -160,6 +160,63 @@ class FirmaService {
     return data || [];
   }
 
+  async getOrCreateTrabajadorFromHolded(holdedEmployee) {
+    const holdedId = String(holdedEmployee?.id || '').trim();
+    if (!holdedId) throw new Error('Empleado Holded inválido (falta id).');
+
+    const payload = {
+      holded_employee_id: holdedId,
+      nombre: String(holdedEmployee?.nombreCompleto || holdedEmployee?.nombre || '').trim(),
+      dni: String(holdedEmployee?.dni || '').trim() || null,
+      telefono: String(holdedEmployee?.telefono || '').trim(),
+      email: String(holdedEmployee?.email || '').trim() || null
+    };
+
+    if (!payload.nombre) throw new Error('El empleado de Holded no tiene nombre.');
+    if (!payload.telefono) throw new Error('El empleado de Holded no tiene teléfono móvil.');
+
+    // 1) Buscar por holded_employee_id (fuente de verdad)
+    const { data: existing, error: findErr } = await supabase
+      .from(TABLE_TRABAJADORES)
+      .select('*')
+      .eq('holded_employee_id', payload.holded_employee_id)
+      .maybeSingle();
+    if (findErr) throw findErr;
+    if (existing?.id) {
+      // 2) Mantener actualizado teléfono/email/nombre por si cambian en Holded
+      const shouldUpdate =
+        (payload.nombre && payload.nombre !== existing.nombre) ||
+        (payload.dni !== (existing.dni || null)) ||
+        (payload.telefono && payload.telefono !== existing.telefono) ||
+        ((payload.email || null) !== (existing.email || null));
+
+      if (!shouldUpdate) return existing;
+
+      const { data: updated, error: updErr } = await supabase
+        .from(TABLE_TRABAJADORES)
+        .update({
+          nombre: payload.nombre,
+          dni: payload.dni,
+          telefono: payload.telefono,
+          email: payload.email
+        })
+        .eq('id', existing.id)
+        .select()
+        .single();
+      if (updErr) throw updErr;
+      return updated;
+    }
+
+    // 3) Insertar nuevo trabajador de firma vinculado a Holded
+    const { data: created, error: createErr } = await supabase
+      .from(TABLE_TRABAJADORES)
+      .insert(payload)
+      .select()
+      .single();
+    if (createErr) throw createErr;
+    return created;
+  }
+
   async createTrabajador(payload) {
     const insertPayload = {
       holded_employee_id: payload.holdedEmployeeId || null,

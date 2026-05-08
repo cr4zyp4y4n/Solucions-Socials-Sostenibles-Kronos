@@ -2,13 +2,8 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { CheckCircle, Copy, FileText, Link2, Phone, Plus, RefreshCw, Upload, Users, XCircle } from 'feather-icons-react';
 import { useTheme } from './ThemeContext';
 import firmaService from '../services/firmaService';
-
-const initialTrabajador = {
-  nombre: '',
-  dni: '',
-  telefono: '',
-  email: ''
-};
+import holdedEmployeesService from '../services/holdedEmployeesService';
+import SectionHeader from './SectionHeader';
 
 const initialDocumento = {
   trabajadorId: '',
@@ -31,21 +26,34 @@ const estadoColor = (estado, colors) => {
 export default function FirmaPage() {
   const { colors } = useTheme();
   const [loading, setLoading] = useState(true);
-  const [savingTrabajador, setSavingTrabajador] = useState(false);
   const [savingDocumento, setSavingDocumento] = useState(false);
   const [trabajadores, setTrabajadores] = useState([]);
   const [documentos, setDocumentos] = useState([]);
-  const [trabajadorForm, setTrabajadorForm] = useState(initialTrabajador);
   const [documentoForm, setDocumentoForm] = useState(initialDocumento);
   const [pdfFile, setPdfFile] = useState(null);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
-  const [sendingSmsId, setSendingSmsId] = useState('');
+  const [selectedEntity, setSelectedEntity] = useState('EI_SSS');
+  const [holdedEmployees, setHoldedEmployees] = useState([]);
+  const [holdedLoading, setHoldedLoading] = useState(false);
+  const [holdedError, setHoldedError] = useState('');
+  const [holdedSearch, setHoldedSearch] = useState('');
+  const [selectedHoldedId, setSelectedHoldedId] = useState('');
 
   const selectedTrabajador = useMemo(
     () => trabajadores.find((t) => t.id === documentoForm.trabajadorId) || null,
     [trabajadores, documentoForm.trabajadorId]
   );
+
+  const selectedHoldedEmployee = useMemo(
+    () => holdedEmployees.find((e) => String(e.id) === String(selectedHoldedId)) || null,
+    [holdedEmployees, selectedHoldedId]
+  );
+
+  const entityToCompany = useMemo(() => ({
+    EI_SSS: 'solucions',
+    MENJAR_DHORT: 'menjar'
+  }), []);
 
   const loadAll = useCallback(async () => {
     setLoading(true);
@@ -68,30 +76,28 @@ export default function FirmaPage() {
     loadAll();
   }, [loadAll]);
 
-  const saveTrabajador = async () => {
-    if (!trabajadorForm.nombre.trim() || !trabajadorForm.telefono.trim()) {
-      setError('Nombre y teléfono son obligatorios para crear el trabajador.');
-      return;
-    }
-    setSavingTrabajador(true);
-    setError('');
-    setMessage('');
+  const loadHoldedEmployees = useCallback(async () => {
+    setHoldedLoading(true);
+    setHoldedError('');
     try {
-      const created = await firmaService.createTrabajador(trabajadorForm);
-      setTrabajadores((prev) => [created, ...prev]);
-      setDocumentoForm((prev) => ({ ...prev, trabajadorId: created.id }));
-      setTrabajadorForm(initialTrabajador);
-      setMessage('Trabajador creado correctamente.');
+      const company = entityToCompany[selectedEntity] || 'solucions';
+      const list = await holdedEmployeesService.getEmployeesTransformed(company);
+      setHoldedEmployees(Array.isArray(list) ? list : []);
     } catch (e) {
-      setError(e?.message || 'Error creando trabajador.');
+      setHoldedEmployees([]);
+      setHoldedError(e?.message || 'Error cargando empleados desde Holded.');
     } finally {
-      setSavingTrabajador(false);
+      setHoldedLoading(false);
     }
-  };
+  }, [entityToCompany, selectedEntity]);
+
+  useEffect(() => {
+    loadHoldedEmployees();
+  }, [loadHoldedEmployees]);
 
   const saveDocumento = async () => {
-    if (!documentoForm.trabajadorId) {
-      setError('Selecciona un trabajador.');
+    if (!selectedHoldedEmployee) {
+      setError('Selecciona un empleado de Holded.');
       return;
     }
     if (!pdfFile) {
@@ -102,13 +108,16 @@ export default function FirmaPage() {
     setError('');
     setMessage('');
     try {
+      const trabajador = await firmaService.getOrCreateTrabajadorFromHolded(selectedHoldedEmployee);
       const result = await firmaService.createDocumento({
         ...documentoForm,
+        trabajadorId: trabajador.id,
         file: pdfFile
       });
       await loadAll();
       setDocumentoForm(initialDocumento);
       setPdfFile(null);
+      setSelectedHoldedId('');
       setMessage(`Envío creado correctamente. Enlace generado: ${result.tokenInfo.portalLink}`);
     } catch (e) {
       setError(e?.message || 'Error creando envío de firma.');
@@ -127,38 +136,39 @@ export default function FirmaPage() {
     }
   };
 
-  const sendSmsLink = async (doc) => {
-    if (!doc?.portal_link) {
-      setError('No hay enlace de portal para enviar.');
-      return;
-    }
-    if (doc.estado === 'firmado' || doc.estado === 'cancelado') {
-      setError('Este envío no se puede notificar por SMS en su estado actual.');
-      return;
-    }
-    const to = String(doc.trabajador?.telefono || '').trim();
-    if (!to) {
-      setError('El trabajador no tiene teléfono.');
-      return;
-    }
-    setSendingSmsId(doc.id);
-    setError('');
-    setMessage('');
+  const buildShareText = (doc) => {
+    const trabajador = String(doc?.trabajador?.nombre || '').trim();
+    const prefix = trabajador ? `Kronos: ${trabajador}. Documento pendiente de firma.` : 'Kronos: documento pendiente de firma.';
+    const link = String(doc?.portal_link || '').trim();
+    return link ? `${prefix} Enlace: ${link}` : prefix;
+  };
+
+  const copyShareText = async (doc) => {
+    const text = buildShareText(doc);
     try {
-      await firmaService.sendLinkSms({
-        documentoId: doc.id,
-        to,
-        portalLink: doc.portal_link,
-        trabajadorNombre: doc.trabajador?.nombre
-      });
-      setMessage(`SMS enviado a ${to}.`);
-      await loadAll();
-    } catch (e) {
-      setError(e?.message || 'Error enviando SMS.');
-    } finally {
-      setSendingSmsId('');
+      await navigator.clipboard.writeText(text);
+      setMessage('Mensaje copiado al portapapeles.');
+      setError('');
+    } catch (_) {
+      setError('No se ha podido copiar el mensaje.');
     }
   };
+
+  function normalizeEmail(email) {
+    const e = String(email || '').trim();
+    if (!e) return '';
+    return e;
+  }
+
+  function normalizeWhatsAppPhone(phone) {
+    const raw = String(phone || '').trim();
+    if (!raw) return '';
+    const digits = raw.replace(/[^\d+]/g, '');
+    const noPlus = digits.startsWith('+') ? digits.slice(1) : digits;
+    // si viene como 9 dígitos español, asumimos +34
+    if (/^\d{9}$/.test(noPlus)) return `34${noPlus}`;
+    return noPlus;
+  }
 
   const openLink = async (url) => {
     if (!url) return;
@@ -171,6 +181,38 @@ export default function FirmaPage() {
       console.warn('No se pudo abrir en navegador externo:', e);
     }
     window.open(url, '_blank', 'noreferrer');
+  };
+
+  const openWhatsApp = async (doc) => {
+    if (!doc?.portal_link) {
+      setError('No hay enlace de portal para compartir.');
+      return;
+    }
+    const to = normalizeWhatsAppPhone(doc.trabajador?.telefono || '');
+    if (!to) {
+      setError('El trabajador no tiene teléfono móvil para WhatsApp.');
+      return;
+    }
+    const text = buildShareText(doc);
+    const encoded = encodeURIComponent(text);
+    const url = `https://wa.me/${to}?text=${encoded}`;
+    await openLink(url);
+  };
+
+  const openEmail = async (doc) => {
+    if (!doc?.portal_link) {
+      setError('No hay enlace de portal para compartir.');
+      return;
+    }
+    const to = normalizeEmail(doc.trabajador?.email || '');
+    if (!to) {
+      setError('El trabajador no tiene email.');
+      return;
+    }
+    const subject = 'Documento pendiente de firma (Kronos)';
+    const body = buildShareText(doc);
+    const url = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    await openLink(url);
   };
 
   const cancelDocumento = async (id) => {
@@ -187,22 +229,21 @@ export default function FirmaPage() {
 
   return (
     <div style={{ padding: 24, color: colors.text }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
-        <div>
-          <div style={{ fontSize: 28, fontWeight: 900, color: colors.primary }}>Firma</div>
-          <div style={{ color: colors.textSecondary, fontSize: 14 }}>
-            Gestión interna de contratos y enlaces de firma para trabajadores.
-          </div>
-        </div>
-        <button
-          onClick={loadAll}
-          disabled={loading}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderRadius: 10, border: `1px solid ${colors.border}`, background: colors.surface, color: colors.text, cursor: 'pointer', fontWeight: 800 }}
-        >
-          <RefreshCw size={16} />
-          Refrescar
-        </button>
-      </div>
+      <SectionHeader
+        icon={FileText}
+        title="Firma"
+        subtitle="Gestión interna de contratos y enlaces de firma para trabajadores."
+        actions={(
+          <button
+            onClick={loadAll}
+            disabled={loading}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderRadius: 10, border: `1px solid ${colors.border}`, background: colors.surface, color: colors.text, cursor: loading ? 'not-allowed' : 'pointer', fontWeight: 800, opacity: loading ? 0.6 : 1 }}
+          >
+            <RefreshCw size={16} />
+            Refrescar
+          </button>
+        )}
+      />
 
       {message ? (
         <div style={{ marginBottom: 12, padding: 12, borderRadius: 12, background: `${colors.success}1A`, border: `1px solid ${colors.success}55`, color: colors.text }}>
@@ -220,32 +261,67 @@ export default function FirmaPage() {
           <div style={{ background: colors.surface, border: `1px solid ${colors.border}`, borderRadius: 14, padding: 18 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
               <Users size={18} color={colors.primary} />
-              <div style={{ fontSize: 18, fontWeight: 800 }}>Nuevo trabajador</div>
+              <div style={{ fontSize: 18, fontWeight: 800 }}>Trabajador (Holded)</div>
             </div>
             <div style={{ display: 'grid', gap: 10 }}>
-              {[
-                ['nombre', 'Nombre'],
-                ['dni', 'DNI'],
-                ['telefono', 'Teléfono'],
-                ['email', 'Email']
-              ].map(([key, label]) => (
-                <div key={key}>
-                  <div style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 6, fontWeight: 700 }}>{label}</div>
-                  <input
-                    value={trabajadorForm[key]}
-                    onChange={(e) => setTrabajadorForm((p) => ({ ...p, [key]: e.target.value }))}
-                    style={{ width: '100%', padding: 10, borderRadius: 10, border: `1px solid ${colors.border}`, background: colors.background, color: colors.text, boxSizing: 'border-box' }}
-                  />
+              <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                <select
+                  value={selectedEntity}
+                  onChange={(e) => setSelectedEntity(e.target.value)}
+                  style={{ padding: 10, borderRadius: 10, border: `1px solid ${colors.border}`, background: colors.background, color: colors.text, fontWeight: 800 }}
+                >
+                  <option value="EI_SSS">EI_SSS</option>
+                  <option value="MENJAR_DHORT">MENJAR_DHORT</option>
+                </select>
+                <button
+                  onClick={loadHoldedEmployees}
+                  disabled={holdedLoading}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderRadius: 10, border: `1px solid ${colors.border}`, background: colors.surface, color: colors.text, cursor: holdedLoading ? 'not-allowed' : 'pointer', fontWeight: 800 }}
+                >
+                  <RefreshCw size={16} />
+                  {holdedLoading ? 'Cargando…' : 'Recargar'}
+                </button>
+              </div>
+
+              <div>
+                <div style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 6, fontWeight: 700 }}>Buscar</div>
+                <input
+                  value={holdedSearch}
+                  onChange={(e) => setHoldedSearch(e.target.value)}
+                  placeholder={holdedLoading ? 'Cargando empleados…' : 'Buscar por nombre/DNI/email/teléfono…'}
+                  style={{ width: '100%', padding: 10, borderRadius: 10, border: `1px solid ${colors.border}`, background: colors.background, color: colors.text, boxSizing: 'border-box' }}
+                />
+              </div>
+
+              <div>
+                <div style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 6, fontWeight: 700 }}>Empleado</div>
+                <select
+                  value={selectedHoldedId}
+                  onChange={(e) => setSelectedHoldedId(e.target.value)}
+                  style={{ width: '100%', padding: 10, borderRadius: 10, border: `1px solid ${colors.border}`, background: colors.background, color: colors.text, boxSizing: 'border-box' }}
+                >
+                  <option value="">{holdedLoading ? 'Cargando…' : 'Selecciona un empleado'}</option>
+                  {holdedEmployeesService.searchEmployees(holdedEmployees, holdedSearch)
+                    .slice(0, 200)
+                    .map((emp) => (
+                      <option key={emp.id} value={emp.id}>
+                        {emp.nombreCompleto} {emp.dni ? `· ${emp.dni}` : ''} {emp.telefono ? `· ${emp.telefono}` : ''}
+                      </option>
+                    ))}
+                </select>
+                {holdedError ? (
+                  <div style={{ marginTop: 8, fontSize: 12, color: colors.error, fontWeight: 700 }}>{holdedError}</div>
+                ) : null}
+              </div>
+
+              {selectedHoldedEmployee ? (
+                <div style={{ padding: 12, borderRadius: 12, border: `1px solid ${colors.border}`, background: colors.background }}>
+                  <div style={{ fontWeight: 900 }}>{selectedHoldedEmployee.nombreCompleto}</div>
+                  <div style={{ fontSize: 12, color: colors.textSecondary }}>
+                    {selectedHoldedEmployee.email || '—'} · {selectedHoldedEmployee.telefono || '—'}
+                  </div>
                 </div>
-              ))}
-              <button
-                onClick={saveTrabajador}
-                disabled={savingTrabajador}
-                style={{ marginTop: 4, display: 'inline-flex', justifyContent: 'center', alignItems: 'center', gap: 8, padding: '10px 14px', borderRadius: 10, border: 'none', background: colors.primary, color: '#fff', cursor: 'pointer', fontWeight: 900 }}
-              >
-                <Plus size={16} />
-                {savingTrabajador ? 'Guardando...' : 'Crear trabajador'}
-              </button>
+              ) : null}
             </div>
           </div>
 
@@ -256,17 +332,28 @@ export default function FirmaPage() {
             </div>
             <div style={{ display: 'grid', gap: 10 }}>
               <div>
-                <div style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 6, fontWeight: 700 }}>Trabajador</div>
-                <select
-                  value={documentoForm.trabajadorId}
-                  onChange={(e) => setDocumentoForm((p) => ({ ...p, trabajadorId: e.target.value }))}
-                  style={{ width: '100%', padding: 10, borderRadius: 10, border: `1px solid ${colors.border}`, background: colors.background, color: colors.text }}
-                >
-                  <option value="">Selecciona trabajador...</option>
-                  {trabajadores.map((t) => (
-                    <option key={t.id} value={t.id}>{t.nombre} · {t.telefono}</option>
-                  ))}
-                </select>
+                <div style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 6, fontWeight: 700 }}>Empleado seleccionado</div>
+                <div style={{ padding: 10, borderRadius: 10, border: `1px solid ${colors.border}`, background: colors.background, color: colors.text }}>
+                  {selectedHoldedEmployee ? (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center' }}>
+                      <div>
+                        <div style={{ fontWeight: 900 }}>{selectedHoldedEmployee.nombreCompleto}</div>
+                        <div style={{ fontSize: 12, color: colors.textSecondary }}>
+                          {selectedHoldedEmployee.email || '—'} · {selectedHoldedEmployee.telefono || '—'}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => setSelectedHoldedId('')}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 10px', borderRadius: 10, border: `1px solid ${colors.border}`, background: colors.surface, color: colors.text, cursor: 'pointer', fontWeight: 800 }}
+                      >
+                        <XCircle size={14} />
+                        Cambiar
+                      </button>
+                    </div>
+                  ) : (
+                    <span style={{ color: colors.textSecondary }}>Selecciona un empleado en el panel de arriba.</span>
+                  )}
+                </div>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                 <div>
@@ -372,6 +459,15 @@ export default function FirmaPage() {
                           <Copy size={14} />
                           Copiar enlace
                         </button>
+                        <button
+                          onClick={() => copyShareText(doc)}
+                          disabled={!doc.portal_link}
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 10px', borderRadius: 10, border: `1px solid ${colors.border}`, background: colors.background, color: colors.text, cursor: doc.portal_link ? 'pointer' : 'not-allowed' }}
+                          title="Copia el mensaje completo para pegar en WhatsApp u otros canales"
+                        >
+                          <Copy size={14} />
+                          Copiar mensaje
+                        </button>
                         {doc.portal_link ? (
                           <button
                             onClick={() => openLink(doc.portal_link)}
@@ -381,14 +477,22 @@ export default function FirmaPage() {
                             Abrir
                           </button>
                         ) : null}
-                        {doc.portal_link && doc.estado !== 'firmado' && doc.estado !== 'cancelado' ? (
+                        {doc.portal_link ? (
                           <button
-                            onClick={() => sendSmsLink(doc)}
-                            disabled={!!sendingSmsId}
-                            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 10px', borderRadius: 10, border: `1px solid ${colors.border}`, background: colors.background, color: colors.text, cursor: sendingSmsId ? 'not-allowed' : 'pointer', opacity: sendingSmsId ? 0.6 : 1 }}
+                            onClick={() => openWhatsApp(doc)}
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 10px', borderRadius: 10, border: `1px solid ${colors.border}`, background: colors.background, color: colors.text, cursor: 'pointer' }}
                           >
                             <Phone size={14} />
-                            {sendingSmsId === doc.id ? 'Enviando SMS...' : 'SMS enlace'}
+                            WhatsApp
+                          </button>
+                        ) : null}
+                        {doc.portal_link ? (
+                          <button
+                            onClick={() => openEmail(doc)}
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 10px', borderRadius: 10, border: `1px solid ${colors.border}`, background: colors.background, color: colors.text, cursor: 'pointer' }}
+                          >
+                            <FileText size={14} />
+                            Email
                           </button>
                         ) : null}
                         {doc.estado !== 'cancelado' ? (

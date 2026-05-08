@@ -20,6 +20,12 @@ export const ThemeProvider = ({ children }) => {
   useEffect(() => {
     // Guardar el tema en localStorage cuando cambie
     localStorage.setItem('darkMode', JSON.stringify(isDarkMode));
+
+    // Exponer el tema al DOM para CSS (scrollbars, etc.)
+    if (typeof document !== 'undefined') {
+      document.body.classList.toggle('theme-dark', isDarkMode);
+      document.body.classList.toggle('theme-light', !isDarkMode);
+    }
   }, [isDarkMode]);
 
   const toggleTheme = () => {

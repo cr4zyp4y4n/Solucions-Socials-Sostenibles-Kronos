@@ -631,7 +631,7 @@ const Layout = () => {
           </div>
 
           {/* Menu Items */}
-          <nav style={{ flex: 1, overflowY: 'auto', paddingBottom: '16px' }}>
+          <nav className="sidebar-scroll" style={{ flex: 1, overflowY: 'auto', paddingBottom: '16px' }}>
             {menuItems.map((item) => {
               const Icon = item.icon;
               const isActive = activeSection === item.key;
