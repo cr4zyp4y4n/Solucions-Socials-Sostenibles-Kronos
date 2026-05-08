@@ -47,7 +47,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
   if (!documento.storage_path) return Response.json({ ok: false, error: 'Documento sin PDF' }, { status: 400 });
 
   const otpSession = getOtpSessionFromRequest(req);
-  if (otpSession?.tokenId !== tokenRow.id || otpSession.documentoId !== documento.id) {
+  if (!otpSession || otpSession.tokenId !== tokenRow.id || otpSession.documentoId !== documento.id) {
     return Response.json({ ok: false, error: 'Falta verificación OTP de esta sesión' }, { status: 401 });
   }
 
