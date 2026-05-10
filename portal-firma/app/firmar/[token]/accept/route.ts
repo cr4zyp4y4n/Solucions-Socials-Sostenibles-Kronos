@@ -1,11 +1,12 @@
 import { supabaseAdmin } from '@/lib/supabase';
 import { getRequestInfo } from '@/lib/requestInfo';
 import { stampPdfLastPage } from '@/lib/pdfSign';
+import { verifyOtpVerificationToken } from '@/lib/otpVerificationToken';
 
-export async function POST(_req: Request, ctx: { params: Promise<{ token: string }> }) {
+export async function POST(req: Request, ctx: { params: Promise<{ token: string }> }) {
   const { token } = await ctx.params;
-  // aceptamos body vacío; el portal solo registra la aceptación y genera el PDF firmado con sello
-  await _req.json().catch(() => ({}));
+  const body = await req.json().catch(() => ({}));
+  const otpVerificationToken = String(body?.otpVerificationToken || '').trim();
 
   const { data: tokenRow, error } = await supabaseAdmin
     .from('firma_tokens')
@@ -43,19 +44,9 @@ export async function POST(_req: Request, ctx: { params: Promise<{ token: string
   if (!documento?.id) return Response.json({ ok: false, error: 'Documento no encontrado' }, { status: 404 });
   if (!documento.storage_path) return Response.json({ ok: false, error: 'Documento sin PDF' }, { status: 400 });
 
-  // Exigimos OTP consumido recientemente (para evitar aceptar sin verificación).
-  // Como el challenge se marca consumed_at, validamos que haya uno en los últimos 30 minutos.
-  const sinceIso = new Date(Date.now() - 30 * 60 * 1000).toISOString();
-  const { data: consumed, error: otpErr } = await supabaseAdmin
-    .from('firma_otp_challenges')
-    .select('id, consumed_at')
-    .eq('documento_id', documento.id)
-    .not('consumed_at', 'is', null)
-    .gte('consumed_at', sinceIso)
-    .order('consumed_at', { ascending: false })
-    .limit(1);
-  if (otpErr) return Response.json({ ok: false, error: otpErr.message }, { status: 500 });
-  if (!consumed?.length) {
+  // El comprobante se emite únicamente tras verificar el OTP correcto y evita
+  // aceptar desde otro navegador que solo tenga el enlace del documento.
+  if (!verifyOtpVerificationToken(otpVerificationToken, { documentoId: documento.id, tokenId: tokenRow.id })) {
     return Response.json({ ok: false, error: 'Falta verificación OTP' }, { status: 401 });
   }
 
