@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '@/lib/supabase';
 import { sha256Hex } from '@/lib/otp';
 import { getRequestInfo } from '@/lib/requestInfo';
+import { createOtpVerificationToken } from '@/lib/otpVerificationToken';
 
 export async function POST(req: Request, ctx: { params: Promise<{ token: string }> }) {
   const { token } = await ctx.params;
@@ -83,6 +84,12 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
     .update({ consumed_at: new Date().toISOString(), attempts: nextAttempts })
     .eq('id', challenge.id);
 
-  return Response.json({ ok: true });
+  const verificationToken = createOtpVerificationToken({
+    documentoId: documento.id,
+    tokenId: tokenRow.id,
+    challengeId: challenge.id
+  });
+
+  return Response.json({ ok: true, verificationToken });
 }
 

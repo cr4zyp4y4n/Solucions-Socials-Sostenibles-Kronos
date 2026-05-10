@@ -10,6 +10,10 @@ type Props = {
   isExpired: boolean;
 };
 
+function errorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
+}
+
 export default function FirmaFlowClient({ token, canAttempt, isUsed, isRevoked, isExpired }: Props) {
   const [step, setStep] = useState<'idle' | 'requested' | 'verified' | 'done'>('idle');
   const [otp, setOtp] = useState('');
@@ -17,6 +21,7 @@ export default function FirmaFlowClient({ token, canAttempt, isUsed, isRevoked, 
   const [msg, setMsg] = useState<string>('');
   const [err, setErr] = useState<string>('');
   const [debugOtp, setDebugOtp] = useState<string>('');
+  const [otpVerificationToken, setOtpVerificationToken] = useState<string>('');
 
   const disabledReason = useMemo(() => {
     if (!canAttempt) return 'No disponible.';
@@ -31,6 +36,7 @@ export default function FirmaFlowClient({ token, canAttempt, isUsed, isRevoked, 
     setErr('');
     setMsg('');
     setDebugOtp('');
+    setOtpVerificationToken('');
     try {
       const res = await fetch(`/firmar/${encodeURIComponent(token)}/otp/request`, { method: 'POST' });
       const json = await res.json().catch(() => ({}));
@@ -38,8 +44,8 @@ export default function FirmaFlowClient({ token, canAttempt, isUsed, isRevoked, 
       setStep('requested');
       if (json.delivery === 'debug' && json.otp) setDebugOtp(String(json.otp));
       setMsg(json.delivery === 'sms' ? 'Código enviado por SMS.' : 'Modo debug: código generado (solo dev).');
-    } catch (e: any) {
-      setErr(e?.message || 'Error enviando OTP');
+    } catch (e: unknown) {
+      setErr(errorMessage(e, 'Error enviando OTP'));
     } finally {
       setLoading(false);
     }
@@ -58,16 +64,23 @@ export default function FirmaFlowClient({ token, canAttempt, isUsed, isRevoked, 
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json.ok) throw new Error(json.error || 'Código incorrecto');
+      if (!json.verificationToken) throw new Error('No se recibió comprobante de verificación OTP');
+      setOtpVerificationToken(String(json.verificationToken));
       setStep('verified');
       setMsg('Código verificado correctamente.');
-    } catch (e: any) {
-      setErr(e?.message || 'Error verificando OTP');
+    } catch (e: unknown) {
+      setErr(errorMessage(e, 'Error verificando OTP'));
     } finally {
       setLoading(false);
     }
   };
 
   const accept = async () => {
+    if (!otpVerificationToken) {
+      setErr('Falta verificación OTP. Solicita y verifica un código de nuevo.');
+      setStep('idle');
+      return;
+    }
     setLoading(true);
     setErr('');
     setMsg('');
@@ -75,14 +88,14 @@ export default function FirmaFlowClient({ token, canAttempt, isUsed, isRevoked, 
       const res = await fetch(`/firmar/${encodeURIComponent(token)}/accept`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({})
+        body: JSON.stringify({ otpVerificationToken })
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json.ok) throw new Error(json.error || 'No se pudo completar la firma');
       setStep('done');
       setMsg('Documento aceptado correctamente.');
-    } catch (e: any) {
-      setErr(e?.message || 'Error aceptando documento');
+    } catch (e: unknown) {
+      setErr(errorMessage(e, 'Error aceptando documento'));
     } finally {
       setLoading(false);
     }
@@ -157,7 +170,7 @@ export default function FirmaFlowClient({ token, canAttempt, isUsed, isRevoked, 
       {step === 'verified' ? (
         <button
           onClick={accept}
-          disabled={loading}
+          disabled={loading || !otpVerificationToken}
           className="w-full rounded-full bg-emerald-700 px-4 py-3 text-sm font-black text-white transition hover:bg-emerald-800 disabled:opacity-60"
         >
           {loading ? 'Firmando...' : 'Acepto y firmo'}
