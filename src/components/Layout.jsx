@@ -141,6 +141,7 @@ const Layout = () => {
   const isManager = effectiveRole === 'manager';
   const isTienda = effectiveRole === 'tienda';
   const isManagementOrManager = effectiveRole === 'management' || effectiveRole === 'manager';
+  const canAccessInventory = isAdmin || isManager || isTienda;
   const isUser = !isAdmin && !isManagementOrManager && !isTienda;
 
   // Limpiar eventId cuando se navega a otra sección
@@ -523,7 +524,7 @@ const Layout = () => {
       case 'sales-invoices':
         return <SalesInvoicesPage />;
       case 'inventory':
-        if (!isAdmin && !isManager && !isTienda) {
+        if (!canAccessInventory) {
           return <AccessDenied message="No tienes permisos para acceder al Inventario." />;
         }
         return <InventoryPage />;
@@ -538,8 +539,11 @@ const Layout = () => {
       case 'firma':
         return <FirmaPage />;
       case 'hoja-ruta':
-        return <HojaRutaPage />;
+        return <HojaRutaPage canAccessInventory={canAccessInventory} />;
       case 'hoja-ruta-equipamiento':
+        if (!canAccessInventory) {
+          return <AccessDenied message="No tienes permisos para acceder a la vinculación de inventario." />;
+        }
         return <HojaRutaEquipamientoLinkPage />;
       case 'fichaje':
         return <FichajePage />;
