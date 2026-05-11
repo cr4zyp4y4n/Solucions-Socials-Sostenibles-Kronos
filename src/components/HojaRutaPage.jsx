@@ -39,7 +39,7 @@ import PersonalSection from './PersonalSection';
 import EmpleadoDetailModal from './EmpleadoDetailModal';
 
 // Componente para editar un elemento de equipamiento
-const EquipamientoItem = ({ item, hojaId, onUpdate, canEdit, colors }) => {
+const EquipamientoItem = ({ item, hojaId, onUpdate, canEdit, colors, linkStatus }) => {
   const [editando, setEditando] = useState(false);
   const [itemEdit, setItemEdit] = useState(item.item || '');
   const [cantidadEdit, setCantidadEdit] = useState(item.cantidad || '');
@@ -182,14 +182,87 @@ const EquipamientoItem = ({ item, hojaId, onUpdate, canEdit, colors }) => {
         position: 'relative'
       }}
     >
-      <p style={{ 
-        fontSize: '14px', 
-        fontWeight: '600',
-        color: colors.text,
-        margin: '0 0 4px 0'
-      }}>
-        {item.item}
-      </p>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'flex-start' }}>
+        <p style={{
+          fontSize: '14px',
+          fontWeight: '700',
+          color: colors.text,
+          margin: '0 0 4px 0',
+          flex: 1,
+          minWidth: 0,
+          wordBreak: 'break-word'
+        }}>
+          {item.item}
+        </p>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+          {/* Badge de vinculación inventario */}
+          {linkStatus ? (
+            <span style={{
+              fontSize: 11,
+              fontWeight: 800,
+              padding: '4px 10px',
+              borderRadius: 999,
+              border: `1px solid ${(linkStatus === 'linked' ? colors.primary : colors.error)}55`,
+              background: linkStatus === 'linked' ? `${colors.primary}18` : `${colors.error}18`,
+              color: linkStatus === 'linked' ? colors.primary : colors.error,
+              whiteSpace: 'nowrap',
+              marginTop: 1
+            }}>
+              {linkStatus === 'linked' ? 'Enlazado' : 'Pendiente'}
+            </span>
+          ) : null}
+
+          {/* Botones editar / eliminar (en línea, sin absolute) */}
+          {canEdit && (
+            <div style={{ display: 'flex', gap: '4px' }}>
+              <motion.button
+                whileHover={{ scale: 1.1 }}
+                whileTap={{ scale: 0.9 }}
+                onClick={() => {
+                  setEditando(true);
+                  setItemEdit(item.item || '');
+                  setCantidadEdit(item.cantidad || '');
+                  setNotaEdit(item.nota || '');
+                }}
+                style={{
+                  padding: '4px',
+                  backgroundColor: colors.primary + '20',
+                  color: colors.primary,
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+                title="Editar"
+              >
+                <Edit3 size={12} />
+              </motion.button>
+              <motion.button
+                whileHover={{ scale: 1.1 }}
+                whileTap={{ scale: 0.9 }}
+                onClick={handleEliminar}
+                style={{
+                  padding: '4px',
+                  backgroundColor: colors.error + '20',
+                  color: colors.error,
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+                title="Eliminar"
+              >
+                <Trash2 size={12} />
+              </motion.button>
+            </div>
+          )}
+        </div>
+      </div>
       {item.cantidad && (
         <p style={{ 
           fontSize: '12px', 
@@ -209,57 +282,7 @@ const EquipamientoItem = ({ item, hojaId, onUpdate, canEdit, colors }) => {
           Nota: {item.nota}
         </p>
       )}
-      {canEdit && (
-        <div style={{ 
-          position: 'absolute', 
-          top: '8px', 
-          right: '8px', 
-          display: 'flex', 
-          gap: '4px' 
-        }}>
-          <motion.button
-            whileHover={{ scale: 1.1 }}
-            whileTap={{ scale: 0.9 }}
-            onClick={() => {
-              setEditando(true);
-              setItemEdit(item.item || '');
-              setCantidadEdit(item.cantidad || '');
-              setNotaEdit(item.nota || '');
-            }}
-            style={{
-              padding: '4px',
-              backgroundColor: colors.primary + '20',
-              color: colors.primary,
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center'
-            }}
-          >
-            <Edit3 size={12} />
-          </motion.button>
-          <motion.button
-            whileHover={{ scale: 1.1 }}
-            whileTap={{ scale: 0.9 }}
-            onClick={handleEliminar}
-            style={{
-              padding: '4px',
-              backgroundColor: colors.error + '20',
-              color: colors.error,
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center'
-            }}
-          >
-            <Trash2 size={12} />
-          </motion.button>
-        </div>
-      )}
+      {/* (botones movidos al header para evitar solapes) */}
     </motion.div>
   );
 };
@@ -754,7 +777,7 @@ const BebidaItem = ({ bebida, hojaId, onUpdate, canEdit, colors }) => {
 const HojaRutaPage = () => {
   const { colors, isDark } = useTheme();
   const { user } = useAuth();
-  const { activeSection } = useNavigation();
+  const { activeSection, navigateTo } = useNavigation();
   const [hojaActual, setHojaActual] = useState(null);
   const [historico, setHistorico] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -775,6 +798,27 @@ const HojaRutaPage = () => {
   // Referencia para evitar bucles en la actualización del checklist
   const hojaActualizandoRef = useRef(false);
   const ultimaHojaIdRef = useRef(null);
+
+  const normalizeText = useCallback((text) => {
+    const s = String(text || '').toLowerCase().trim();
+    if (!s) return '';
+    return s
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^\p{L}\p{N}]+/gu, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }, []);
+
+  const loadEquipmentAliasMap = useCallback(() => {
+    try {
+      const raw = localStorage.getItem('kronos.equipmentAlias.v1.solucions.font-honrada-catering');
+      const parsed = raw ? JSON.parse(raw) : {};
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch {
+      return {};
+    }
+  }, []);
 
   // Función para cargar datos - usando función directa para evitar problemas de inicialización
   const loadDatos = async () => {
@@ -1865,6 +1909,57 @@ const HojaRutaPage = () => {
                   <Utensils size={20} color={colors.primary} />
                   Equipamiento y Material
                 </h3>
+                {hojaActual?.id && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                    {(() => {
+                      const items = Array.isArray(hojaActual?.equipamiento) ? hojaActual.equipamiento : [];
+                      const aliasMap = loadEquipmentAliasMap();
+                      let confirmed = 0;
+                      for (const it of items) {
+                        const norm = normalizeText(it?.item);
+                        if (norm && aliasMap[norm]) confirmed += 1;
+                      }
+                      const pending = Math.max(0, items.length - confirmed);
+                      const ok = pending === 0;
+                      return (
+                        <>
+                          <span style={{
+                            fontSize: 12,
+                            padding: '6px 10px',
+                            borderRadius: 999,
+                            border: `1px solid ${ok ? colors.primary : colors.border}`,
+                            background: ok ? `${colors.primary}18` : colors.background,
+                            color: ok ? colors.primary : colors.textSecondary,
+                            fontWeight: 700
+                          }}>
+                            Vinculación inventario: {confirmed} OK · {pending} pendientes
+                          </span>
+                          <motion.button
+                            whileHover={{ scale: 1.03 }}
+                            whileTap={{ scale: 0.97 }}
+                            onClick={() => {
+                              localStorage.setItem('selectedHojaRutaId', hojaActual.id);
+                              navigateTo('hoja-ruta-equipamiento');
+                            }}
+                            style={{
+                              padding: '8px 12px',
+                              borderRadius: 8,
+                              border: `1px solid ${colors.border}`,
+                              background: colors.background,
+                              color: colors.text,
+                              cursor: 'pointer',
+                              fontSize: 12,
+                              fontWeight: 600
+                            }}
+                            title="Abrir pantalla de vinculación (Inventario Solucions · Font Honrada)"
+                          >
+                            Abrir vinculación
+                          </motion.button>
+                        </>
+                      );
+                    })()}
+                  </div>
+                )}
                 {canEdit && (
                   <motion.button
                     whileHover={{ scale: 1.05 }}
@@ -1902,19 +1997,28 @@ const HojaRutaPage = () => {
 
               {hojaActual.equipamiento && hojaActual.equipamiento.length > 0 ? (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '12px' }}>
-                  {hojaActual.equipamiento.map((item, index) => (
-                    <EquipamientoItem
-                      key={item.id || index}
-                      item={item}
-                      hojaId={hojaActual.id}
-                      onUpdate={async () => {
-                        const hojaActualizada = await hojaRutaService.getHojaRuta(hojaActual.id);
-                        setHojaActual(hojaActualizada);
-                      }}
-                      canEdit={canEdit}
-                      colors={colors}
-                    />
-                  ))}
+                  {(() => {
+                    const aliasMap = loadEquipmentAliasMap();
+                    return hojaActual.equipamiento.map((item, index) => {
+                      const norm = normalizeText(item?.item);
+                      const linked = !!(norm && aliasMap[norm]);
+                      const linkStatus = linked ? 'linked' : 'pending';
+                      return (
+                        <EquipamientoItem
+                          key={item.id || index}
+                          item={item}
+                          hojaId={hojaActual.id}
+                          onUpdate={async () => {
+                            const hojaActualizada = await hojaRutaService.getHojaRuta(hojaActual.id);
+                            setHojaActual(hojaActualizada);
+                          }}
+                          canEdit={canEdit}
+                          colors={colors}
+                          linkStatus={linkStatus}
+                        />
+                      );
+                    });
+                  })()}
                 </div>
               ) : (
                 <p style={{ 

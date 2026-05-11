@@ -2062,6 +2062,39 @@ class HoldedApiService {
   }
 
   // ==================== PRODUCTOS / INVENTARIO ====================
+
+  /**
+   * Obtener los almacenes (warehouses) de Holded
+   * @param {string} company - Empresa ('solucions' o 'menjar')
+   * @returns {Promise<Array>} Array de almacenes
+   */
+  async getWarehouses(company = 'solucions') {
+    try {
+      const endpoint = `/warehouses`;
+      const warehouses = await this.makeRequest(endpoint, {}, company);
+      return Array.isArray(warehouses) ? warehouses : (warehouses?.warehouses || warehouses?.data || []);
+    } catch (error) {
+      console.error(`Error obteniendo almacenes de Holded (${company}):`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Obtener el stock por almacén (warehouse) para todos los productos
+   * @param {string} warehouseId - ID del almacén
+   * @param {string} company - Empresa ('solucions' o 'menjar')
+   * @returns {Promise<Object>} Objeto con información del almacén y productos
+   */
+  async getWarehouseStock(warehouseId, company = 'solucions') {
+    try {
+      if (!warehouseId) throw new Error('warehouseId requerido');
+      const endpoint = `/warehouses/${encodeURIComponent(String(warehouseId))}/stock`;
+      return await this.makeRequest(endpoint, {}, company);
+    } catch (error) {
+      console.error(`Error obteniendo stock del almacén ${warehouseId} (${company}):`, error);
+      throw error;
+    }
+  }
   
   /**
    * Obtener todos los productos de Holded

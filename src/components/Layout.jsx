@@ -51,6 +51,7 @@ import SubvencionesPage from './SubvencionesPage';
 import EmpleadosPage from './EmpleadosPage';
 import PIGPage from './PIGPage';
 import HojaRutaPage from './HojaRutaPage';
+import HojaRutaEquipamientoLinkPage from './HojaRutaEquipamientoLinkPage';
 import SociosPage from './SociosPage';
 import SalesInvoicesPage from './SalesInvoicesPage';
 import InventoryPage from './InventoryPage';
@@ -538,6 +539,8 @@ const Layout = () => {
         return <FirmaPage />;
       case 'hoja-ruta':
         return <HojaRutaPage />;
+      case 'hoja-ruta-equipamiento':
+        return <HojaRutaEquipamientoLinkPage />;
       case 'fichaje':
         return <FichajePage />;
       case 'panel-fichajes':
