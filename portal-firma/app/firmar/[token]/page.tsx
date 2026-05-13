@@ -1,7 +1,11 @@
 import { notFound } from 'next/navigation';
 import { supabaseAdmin } from '@/lib/supabase';
 import { asSingle } from '@/lib/relation';
+import { marcarPortalAbiertoSiCorresponde } from '@/lib/firmaPortalTracking';
 import FirmaFlowClient from './FirmaFlowClient';
+
+/** Cada visita debe poder ejecutar el seguimiento de apertura (no cachear la página del token). */
+export const dynamic = 'force-dynamic';
 
 type TokenPageProps = {
   params: Promise<{ token: string }>;
@@ -77,6 +81,16 @@ export default async function FirmaTokenPage({ params }: TokenPageProps) {
         </div>
       </main>
     );
+  }
+
+  // Primera visita al enlace (servidor). El cliente también llama a POST …/open por si el RSC quedara cacheado.
+  try {
+    const track = await marcarPortalAbiertoSiCorresponde(token);
+    if (!track.ok) {
+      console.warn('[firma portal] portal_abierto_at:', track.error);
+    }
+  } catch (e) {
+    console.warn('[firma portal] portal_abierto_at:', e);
   }
 
   let signedUrl = '';

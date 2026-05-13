@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 type Props = {
   token: string;
@@ -11,6 +11,13 @@ type Props = {
 };
 
 export default function FirmaFlowClient({ token, canAttempt, isUsed, isRevoked, isExpired }: Props) {
+  // Asegura el UPDATE aunque el Server Component esté cacheado o falle silenciosamente en edge.
+  useEffect(() => {
+    if (isExpired || isRevoked) return;
+    const url = `/firmar/${encodeURIComponent(token)}/open`;
+    void fetch(url, { method: 'POST', cache: 'no-store' }).catch(() => {});
+  }, [token, isExpired, isRevoked]);
+
   const [step, setStep] = useState<'idle' | 'requested' | 'verified' | 'done'>('idle');
   const [otp, setOtp] = useState('');
   const [loading, setLoading] = useState(false);

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { CheckCircle, Copy, FileText, Link2, Phone, Plus, RefreshCw, Upload, Users, XCircle } from 'feather-icons-react';
+import { CheckCircle, Copy, Eye, FileText, Link2, Phone, Plus, RefreshCw, Upload, Users, XCircle } from 'feather-icons-react';
 import { useTheme } from './ThemeContext';
 import firmaService from '../services/firmaService';
 import holdedEmployeesService from '../services/holdedEmployeesService';
@@ -13,15 +13,35 @@ const initialDocumento = {
   notasInternas: ''
 };
 
-const estadoColor = (estado, colors) => {
-  switch (estado) {
+/** Etiqueta de seguimiento: envío → apertura del portal → firma (no sustituye el campo `estado` en BD). */
+function flowEstadoFirma(doc) {
+  if (!doc) return { key: 'pendiente', label: 'Pendiente de envío' };
+  if (doc.estado === 'cancelado') return { key: 'cancelado', label: 'Cancelado' };
+  if (doc.estado === 'firmado' || doc.firmado_at) return { key: 'firmado', label: 'Firmado' };
+  if (doc.portal_abierto_at) return { key: 'portal_abierto', label: 'Enlace abierto' };
+  const compartido =
+    !!doc.link_compartido_at || doc.estado === 'enviado' || !!doc.enviado_at;
+  if (compartido) return { key: 'link_enviado', label: 'Enlace enviado' };
+  return { key: 'pendiente', label: 'Pendiente de envío' };
+}
+
+const estadoFlowColor = (flowKey, colors) => {
+  switch (flowKey) {
     case 'firmado': return colors.success;
     case 'cancelado': return colors.error;
-    case 'caducado': return colors.warning;
-    case 'enviado': return colors.info;
+    case 'portal_abierto': return colors.info;
+    case 'link_enviado': return colors.warning;
+    case 'pendiente':
     default: return colors.textSecondary;
   }
 };
+
+function flowEstadoIcon(flowKey) {
+  if (flowKey === 'firmado') return CheckCircle;
+  if (flowKey === 'cancelado') return XCircle;
+  if (flowKey === 'portal_abierto') return Eye;
+  return FileText;
+}
 
 export default function FirmaPage() {
   const { colors } = useTheme();
@@ -71,6 +91,20 @@ export default function FirmaPage() {
       setLoading(false);
     }
   }, []);
+
+  const marcarEnlaceCompartido = useCallback(
+    async (doc) => {
+      if (!doc?.id) return;
+      try {
+        await firmaService.marcarLinkCompartido(doc.id);
+      } catch (e) {
+        console.warn('marcarLinkCompartido:', e?.message || e);
+      } finally {
+        await loadAll();
+      }
+    },
+    [loadAll]
+  );
 
   useEffect(() => {
     loadAll();
@@ -126,11 +160,17 @@ export default function FirmaPage() {
     }
   };
 
-  const copyLink = async (link) => {
+  const copyLink = async (doc) => {
+    const link = String(doc?.portal_link || '').trim();
+    if (!link) {
+      setError('No hay enlace de portal para copiar.');
+      return;
+    }
     try {
       await navigator.clipboard.writeText(link);
       setMessage('Enlace copiado al portapapeles.');
       setError('');
+      await marcarEnlaceCompartido(doc);
     } catch (_) {
       setError('No se ha podido copiar el enlace.');
     }
@@ -149,6 +189,7 @@ export default function FirmaPage() {
       await navigator.clipboard.writeText(text);
       setMessage('Mensaje copiado al portapapeles.');
       setError('');
+      await marcarEnlaceCompartido(doc);
     } catch (_) {
       setError('No se ha podido copiar el mensaje.');
     }
@@ -197,6 +238,7 @@ export default function FirmaPage() {
     const encoded = encodeURIComponent(text);
     const url = `https://wa.me/${to}?text=${encoded}`;
     await openLink(url);
+    await marcarEnlaceCompartido(doc);
   };
 
   const openEmail = async (doc) => {
@@ -213,6 +255,7 @@ export default function FirmaPage() {
     const body = buildShareText(doc);
     const url = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
     await openLink(url);
+    await marcarEnlaceCompartido(doc);
   };
 
   const cancelDocumento = async (id) => {
@@ -440,10 +483,45 @@ export default function FirmaPage() {
                     </td>
                     <td style={{ padding: '12px 8px', borderBottom: `1px solid ${colors.border}` }}>{doc.tipo_documento}</td>
                     <td style={{ padding: '12px 8px', borderBottom: `1px solid ${colors.border}` }}>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 999, background: `${estadoColor(doc.estado, colors)}18`, color: estadoColor(doc.estado, colors), fontWeight: 900, fontSize: 12 }}>
-                        {doc.estado === 'firmado' ? <CheckCircle size={14} /> : <FileText size={14} />}
-                        {doc.estado}
-                      </span>
+                      {(() => {
+                        const flow = flowEstadoFirma(doc);
+                        const FlowIcon = flowEstadoIcon(flow.key);
+                        return (
+                          <div>
+                            <span
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: 6,
+                                padding: '6px 10px',
+                                borderRadius: 999,
+                                background: `${estadoFlowColor(flow.key, colors)}18`,
+                                color: estadoFlowColor(flow.key, colors),
+                                fontWeight: 900,
+                                fontSize: 12
+                              }}
+                            >
+                              <FlowIcon size={14} />
+                              {flow.label}
+                            </span>
+                            <div style={{ marginTop: 6, fontSize: 11, color: colors.textSecondary, lineHeight: 1.35 }}>
+                              <span title="Estado en base de datos">BD: {doc.estado}</span>
+                              {doc.link_compartido_at ? (
+                                <span>
+                                  {' · '}
+                                  Compartido: {new Date(doc.link_compartido_at).toLocaleString()}
+                                </span>
+                              ) : null}
+                              {doc.portal_abierto_at ? (
+                                <span>
+                                  {' · '}
+                                  Abierto: {new Date(doc.portal_abierto_at).toLocaleString()}
+                                </span>
+                              ) : null}
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </td>
                     <td style={{ padding: '12px 8px', borderBottom: `1px solid ${colors.border}` }}>{doc.trabajador?.telefono || '—'}</td>
                     <td style={{ padding: '12px 8px', borderBottom: `1px solid ${colors.border}` }}>{doc.fecha_inicio || '—'}</td>
@@ -452,7 +530,7 @@ export default function FirmaPage() {
                     <td style={{ padding: '12px 8px', borderBottom: `1px solid ${colors.border}` }}>
                       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                         <button
-                          onClick={() => copyLink(doc.portal_link)}
+                          onClick={() => copyLink(doc)}
                           disabled={!doc.portal_link}
                           style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 10px', borderRadius: 10, border: `1px solid ${colors.border}`, background: colors.background, color: colors.text, cursor: doc.portal_link ? 'pointer' : 'not-allowed' }}
                         >

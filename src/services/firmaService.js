@@ -439,7 +439,12 @@ class FirmaService {
     const nowIso = new Date().toISOString();
     const { error: docErr } = await supabase
       .from(TABLE_DOCUMENTOS)
-      .update({ estado: 'enviado', enviado_at: nowIso })
+      .update({
+        estado: 'enviado',
+        enviado_at: nowIso,
+        // SMS de enlace cuenta como “enlace enviado” si la columna existe
+        link_compartido_at: nowIso
+      })
       .eq('id', documentoId);
     if (docErr) {
       // El SMS ya salió; no rompemos el flujo, pero dejamos trazabilidad
@@ -457,6 +462,37 @@ class FirmaService {
     }
 
     return json;
+  }
+
+  /**
+   * Marca la primera vez que se compartió el enlace desde Kronos (WhatsApp, email, copiar mensaje, etc.).
+   * Idempotente: no sobrescribe si ya había fecha.
+   */
+  async marcarLinkCompartido(documentoId) {
+    if (!documentoId) throw new Error('Falta documentoId');
+    const nowIso = new Date().toISOString();
+    const { data: row, error: readErr } = await supabase
+      .from(TABLE_DOCUMENTOS)
+      .select('id, link_compartido_at')
+      .eq('id', documentoId)
+      .maybeSingle();
+    if (readErr) throw readErr;
+    if (!row) throw new Error('Documento no encontrado');
+    if (row.link_compartido_at) return { ok: true, already: true };
+
+    const { error } = await supabase
+      .from(TABLE_DOCUMENTOS)
+      .update({ link_compartido_at: nowIso })
+      .eq('id', documentoId)
+      .is('link_compartido_at', null);
+    if (error) throw error;
+
+    await supabase.from(TABLE_AUDITORIAS).insert({
+      documento_id: documentoId,
+      resultado: 'ok',
+      detalle: { accion: 'link_compartido_desde_kronos' }
+    });
+    return { ok: true };
   }
 }
 
