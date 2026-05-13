@@ -4,6 +4,8 @@ import { sendSms } from '@/lib/sms';
 import { getRequestInfo } from '@/lib/requestInfo';
 import { asSingle } from '@/lib/relation';
 
+export const runtime = 'nodejs';
+
 export async function POST(_req: Request, ctx: { params: Promise<{ token: string }> }) {
   const { token } = await ctx.params;
 
@@ -61,6 +63,37 @@ export async function POST(_req: Request, ctx: { params: Promise<{ token: string
   const smsBody = `Código de verificación Kronos: ${otp}. Caduca en 10 minutos.`;
   const delivery = await sendSms({ to: telefono, body: smsBody });
 
+  const otpMarcadoIso = new Date().toISOString();
+  const { data: updRows, error: otpTrackErr } = await supabaseAdmin
+    .from('firma_documentos')
+    .update({ otp_primera_solicitud_at: otpMarcadoIso })
+    .eq('id', documento.id)
+    .is('otp_primera_solicitud_at', null)
+    .select('id, otp_primera_solicitud_at');
+
+  let otpSeguimiento: { ok: true; yaEstaba?: boolean } | { ok: false; error: string } = { ok: true };
+  if (otpTrackErr) {
+    console.warn('[firma otp] otp_primera_solicitud_at:', otpTrackErr.message);
+    otpSeguimiento = { ok: false, error: otpTrackErr.message };
+  } else if (!updRows?.length) {
+    const { data: snap, error: snapErr } = await supabaseAdmin
+      .from('firma_documentos')
+      .select('otp_primera_solicitud_at')
+      .eq('id', documento.id)
+      .maybeSingle();
+    if (snapErr) {
+      console.warn('[firma otp] lectura tras update:', snapErr.message);
+      otpSeguimiento = { ok: false, error: snapErr.message };
+    } else if (snap?.otp_primera_solicitud_at) {
+      otpSeguimiento = { ok: true, yaEstaba: true };
+    } else {
+      const hint =
+        'El UPDATE no tocó ninguna fila. Suele ser: columna otp_primera_solicitud_at inexistente (ejecuta el SQL en el proyecto correcto y en Supabase: Settings → API → Reload schema), o clave service_role ausente en el portal.';
+      console.warn('[firma otp]', hint, 'documento_id=', documento.id);
+      otpSeguimiento = { ok: false, error: hint };
+    }
+  }
+
   const { ip, userAgent } = await getRequestInfo();
   await supabaseAdmin.from('firma_auditorias').insert({
     documento_id: documento.id,
@@ -77,6 +110,7 @@ export async function POST(_req: Request, ctx: { params: Promise<{ token: string
     ok: true,
     delivery: delivery.delivery,
     expiresAt: expiresAtIso,
+    otpSeguimiento,
     ...(includeOtp ? { otp } : {})
   });
 }

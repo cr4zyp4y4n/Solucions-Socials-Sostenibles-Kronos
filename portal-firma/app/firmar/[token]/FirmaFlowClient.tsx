@@ -44,7 +44,16 @@ export default function FirmaFlowClient({ token, canAttempt, isUsed, isRevoked, 
       if (!res.ok || !json.ok) throw new Error(json.error || 'No se pudo enviar el código');
       setStep('requested');
       if (json.delivery === 'debug' && json.otp) setDebugOtp(String(json.otp));
-      setMsg(json.delivery === 'sms' ? 'Código enviado por SMS.' : 'Modo debug: código generado (solo dev).');
+      const baseMsg =
+        json.delivery === 'sms' ? 'Código enviado por SMS.' : 'Modo debug: código generado (solo dev).';
+      const seg = json.otpSeguimiento as { ok?: boolean; error?: string; yaEstaba?: boolean } | undefined;
+      if (seg && seg.ok === false && seg.error) {
+        setMsg(
+          `${baseMsg} Atención: el historial en Kronos puede no actualizarse hasta solucionar esto: ${seg.error}`
+        );
+      } else {
+        setMsg(baseMsg);
+      }
     } catch (e: any) {
       setErr(e?.message || 'Error enviando OTP');
     } finally {

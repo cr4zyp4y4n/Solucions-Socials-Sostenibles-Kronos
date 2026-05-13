@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { CheckCircle, Copy, Eye, FileText, Link2, Phone, Plus, RefreshCw, Upload, Users, XCircle } from 'feather-icons-react';
+import { CheckCircle, Copy, Eye, FileText, Link2, Phone, Plus, RefreshCw, Send, Upload, Users, X, XCircle } from 'feather-icons-react';
 import { useTheme } from './ThemeContext';
 import firmaService from '../services/firmaService';
 import holdedEmployeesService from '../services/holdedEmployeesService';
@@ -18,9 +18,10 @@ function flowEstadoFirma(doc) {
   if (!doc) return { key: 'pendiente', label: 'Pendiente de envío' };
   if (doc.estado === 'cancelado') return { key: 'cancelado', label: 'Cancelado' };
   if (doc.estado === 'firmado' || doc.firmado_at) return { key: 'firmado', label: 'Firmado' };
+  if (doc.otp_primera_solicitud_at) return { key: 'otp_enviado', label: 'SMS OTP enviado' };
   if (doc.portal_abierto_at) return { key: 'portal_abierto', label: 'Enlace abierto' };
   const compartido =
-    !!doc.link_compartido_at || doc.estado === 'enviado' || !!doc.enviado_at;
+    !!doc.link_compartido_at || doc.estado === 'enviado';
   if (compartido) return { key: 'link_enviado', label: 'Enlace enviado' };
   return { key: 'pendiente', label: 'Pendiente de envío' };
 }
@@ -29,6 +30,7 @@ const estadoFlowColor = (flowKey, colors) => {
   switch (flowKey) {
     case 'firmado': return colors.success;
     case 'cancelado': return colors.error;
+    case 'otp_enviado': return colors.info;
     case 'portal_abierto': return colors.info;
     case 'link_enviado': return colors.warning;
     case 'pendiente':
@@ -39,8 +41,49 @@ const estadoFlowColor = (flowKey, colors) => {
 function flowEstadoIcon(flowKey) {
   if (flowKey === 'firmado') return CheckCircle;
   if (flowKey === 'cancelado') return XCircle;
+  if (flowKey === 'otp_enviado') return Send;
   if (flowKey === 'portal_abierto') return Eye;
   return FileText;
+}
+
+function formatFirmaDate(iso) {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return String(iso);
+  return d.toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' });
+}
+
+/** Pasos ordenados para el modal de seguimiento (fechas que tenemos en BD). */
+function buildFirmaTimeline(doc) {
+  if (!doc) return [];
+  const rows = [
+    { key: 'creado', title: 'Envío creado en Kronos', at: doc.created_at || null },
+    {
+      key: 'compartido',
+      title: 'Enlace compartido (WhatsApp, email, copiar enlace…)',
+      at: doc.link_compartido_at || null
+    },
+    { key: 'portal', title: 'Primera visita al portal de firma', at: doc.portal_abierto_at || null },
+    {
+      key: 'otp',
+      title: 'SMS con código OTP (desde el portal)',
+      at: doc.otp_primera_solicitud_at || null,
+      note: 'Se registra al pulsar «Enviar código» en el portal; en desarrollo sin Twilio puede ser modo debug sin SMS real.'
+    },
+    { key: 'firmado', title: 'Documento firmado', at: doc.firmado_at || null }
+  ];
+  if (doc.estado === 'cancelado') {
+    rows.push({
+      key: 'cancel',
+      title: 'Envío cancelado',
+      at: doc.updated_at || null,
+      note: 'Fecha aproximada (última actualización del registro).'
+    });
+  }
+  return rows.map((r) => ({
+    ...r,
+    display: r.at ? formatFirmaDate(r.at) : null
+  }));
 }
 
 export default function FirmaPage() {
@@ -59,6 +102,7 @@ export default function FirmaPage() {
   const [holdedError, setHoldedError] = useState('');
   const [holdedSearch, setHoldedSearch] = useState('');
   const [selectedHoldedId, setSelectedHoldedId] = useState('');
+  const [firmaTimelineDoc, setFirmaTimelineDoc] = useState(null);
 
   const selectedTrabajador = useMemo(
     () => trabajadores.find((t) => t.id === documentoForm.trabajadorId) || null,
@@ -109,6 +153,15 @@ export default function FirmaPage() {
   useEffect(() => {
     loadAll();
   }, [loadAll]);
+
+  useEffect(() => {
+    if (!firmaTimelineDoc) return;
+    const onKey = (e) => {
+      if (e.key === 'Escape') setFirmaTimelineDoc(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [firmaTimelineDoc]);
 
   const loadHoldedEmployees = useCallback(async () => {
     setHoldedLoading(true);
@@ -488,22 +541,28 @@ export default function FirmaPage() {
                         const FlowIcon = flowEstadoIcon(flow.key);
                         return (
                           <div>
-                            <span
+                            <button
+                              type="button"
+                              title="Ver cronología del envío"
+                              onClick={() => setFirmaTimelineDoc(doc)}
                               style={{
                                 display: 'inline-flex',
                                 alignItems: 'center',
                                 gap: 6,
                                 padding: '6px 10px',
                                 borderRadius: 999,
+                                border: 'none',
+                                cursor: 'pointer',
                                 background: `${estadoFlowColor(flow.key, colors)}18`,
                                 color: estadoFlowColor(flow.key, colors),
                                 fontWeight: 900,
-                                fontSize: 12
+                                fontSize: 12,
+                                fontFamily: 'inherit'
                               }}
                             >
                               <FlowIcon size={14} />
                               {flow.label}
-                            </span>
+                            </button>
                             <div style={{ marginTop: 6, fontSize: 11, color: colors.textSecondary, lineHeight: 1.35 }}>
                               <span title="Estado en base de datos">BD: {doc.estado}</span>
                               {doc.link_compartido_at ? (
@@ -598,6 +657,144 @@ export default function FirmaPage() {
           )}
         </div>
       </div>
+
+      {firmaTimelineDoc ? (
+        <div
+          role="presentation"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 1000,
+            background: 'rgba(0,0,0,0.45)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 16
+          }}
+          onClick={() => setFirmaTimelineDoc(null)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="firma-timeline-title"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: 'min(440px, 100%)',
+              maxHeight: 'min(80vh, 560px)',
+              overflow: 'auto',
+              borderRadius: 16,
+              background: colors.surface,
+              border: `1px solid ${colors.border}`,
+              boxShadow: '0 16px 48px rgba(0,0,0,0.18)',
+              color: colors.text
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, padding: '16px 18px', borderBottom: `1px solid ${colors.border}` }}>
+              <div>
+                <div id="firma-timeline-title" style={{ fontSize: 17, fontWeight: 900 }}>
+                  Seguimiento del envío
+                </div>
+                <div style={{ marginTop: 4, fontSize: 13, color: colors.textSecondary, fontWeight: 600 }}>
+                  {firmaTimelineDoc.trabajador?.nombre || 'Trabajador'} · {firmaTimelineDoc.file_name || 'Sin archivo'}
+                </div>
+              </div>
+              <button
+                type="button"
+                aria-label="Cerrar"
+                onClick={() => setFirmaTimelineDoc(null)}
+                style={{
+                  flexShrink: 0,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: 36,
+                  height: 36,
+                  borderRadius: 10,
+                  border: `1px solid ${colors.border}`,
+                  background: colors.background,
+                  color: colors.text,
+                  cursor: 'pointer'
+                }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div style={{ padding: '14px 18px 18px' }}>
+              <div style={{ fontSize: 11, fontWeight: 800, color: colors.textSecondary, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 12 }}>
+                Estado en BD: {firmaTimelineDoc.estado}
+              </div>
+              <ol style={{ margin: 0, padding: 0, listStyle: 'none' }}>
+                {buildFirmaTimeline(firmaTimelineDoc).map((step, idx, arr) => (
+                  <li
+                    key={step.key}
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: '14px 1fr',
+                      columnGap: 12,
+                      paddingBottom: idx < arr.length - 1 ? 14 : 0
+                    }}
+                  >
+                    <div style={{ position: 'relative', width: 14 }}>
+                      <span
+                        style={{
+                          display: 'block',
+                          width: 10,
+                          height: 10,
+                          marginTop: 5,
+                          marginLeft: 2,
+                          borderRadius: '50%',
+                          background: step.display ? colors.success : colors.border,
+                          boxShadow: step.display ? `0 0 0 3px ${colors.success}22` : 'none'
+                        }}
+                      />
+                      {idx < arr.length - 1 ? (
+                        <span
+                          style={{
+                            position: 'absolute',
+                            left: '6px',
+                            top: 18,
+                            bottom: -14,
+                            width: 2,
+                            background: colors.border,
+                            borderRadius: 1
+                          }}
+                        />
+                      ) : null}
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: 800, fontSize: 13, lineHeight: 1.35 }}>{step.title}</div>
+                      <div style={{ marginTop: 4, fontSize: 13, color: step.display ? colors.text : colors.textSecondary, fontWeight: step.display ? 600 : 500 }}>
+                        {step.display || 'Pendiente'}
+                      </div>
+                      {step.note ? (
+                        <div style={{ marginTop: 4, fontSize: 11, color: colors.textSecondary, lineHeight: 1.35 }}>{step.note}</div>
+                      ) : null}
+                    </div>
+                  </li>
+                ))}
+              </ol>
+              <button
+                type="button"
+                onClick={() => setFirmaTimelineDoc(null)}
+                style={{
+                  marginTop: 18,
+                  width: '100%',
+                  padding: '10px 14px',
+                  borderRadius: 10,
+                  border: `1px solid ${colors.border}`,
+                  background: colors.background,
+                  color: colors.text,
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  fontFamily: 'inherit'
+                }}
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
