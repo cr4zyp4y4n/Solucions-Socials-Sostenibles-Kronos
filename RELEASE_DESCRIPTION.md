@@ -1,3 +1,23 @@
+## v2.4.4
+
+### Firma (Kronos + portal de firma)
+
+- **Seguimiento por fases en la lista de envíos:** el badge ya no muestra solo el estado crudo de base de datos; refleja el flujo **Enlace enviado → Enlace abierto → SMS OTP enviado → Firmado** (y **Cancelado** cuando aplique), con iconos distintos.
+- **Marcas de tiempo en base de datos** (requieren SQL en Supabase; ver `database/alter_firma_documentos_tracking.sql` y `database/alter_firma_documentos_otp.sql`):
+  - **`link_compartido_at`:** primera vez que se comparte el enlace desde Kronos (WhatsApp, email, copiar enlace o copiar mensaje); el SMS de enlace desde Kronos también lo rellena.
+  - **`portal_abierto_at`:** primera carga válida de la página del portal con el token (servidor + `POST` desde el cliente para evitar cachés).
+  - **`otp_primera_solicitud_at`:** primera solicitud de código OTP en el portal (tras envío SMS o modo debug).
+- **Modal de cronología:** al pulsar el badge se abre un resumen con fecha/hora de cada paso (creación, compartir, portal, OTP, firma y cancelación con nota sobre `updated_at`).
+- **Kronos — fiabilidad del paso OTP:** si la columna `otp_primera_solicitud_at` no llega a actualizarse desde el portal, la lista infiere la primera solicitud OTP desde **`firma_otp_challenges.created_at`** al refrescar, para que el estado siga avanzando.
+- **Portal de firma:** ruta `POST /firmar/[token]/open` para registrar apertura; ruta OTP devuelve **`otpSeguimiento`** y el cliente puede mostrar aviso si el registro en documento falla; `export const dynamic = 'force-dynamic'` en la página del token; aviso en consola si falta `SUPABASE_SERVICE_ROLE_KEY`.
+- **Limpieza de UX:** eliminado del modal el paso independiente «SMS del enlace (desde Kronos)»; el compartir por canales queda unificado en el paso de enlace compartido (WhatsApp, etc.).
+
+### Supabase (opcional)
+
+- **`database/optional_firma_otp_challenges_select_authenticated.sql`:** solo si `firma_otp_challenges` tiene RLS y Kronos no puede leer filas para el merge del OTP; permite `SELECT` al rol `authenticated`.
+
+---
+
 ## v2.4.2
 
 ### PIG (Menjar d’Hort)
