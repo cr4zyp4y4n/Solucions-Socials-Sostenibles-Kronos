@@ -255,23 +255,34 @@ class FirmaService {
     const rows = data || [];
     const docIds = rows.map((r) => r.id).filter(Boolean);
 
-    /** Si la columna otp_primera_solicitud_at no se rellenó en el portal, inferimos la primera solicitud desde firma_otp_challenges (mismo SMS OK). */
+    /** Si la columna otp_primera_solicitud_at no se rellenó en el portal, inferimos la primera solicitud desde un agregado seguro. */
     let otpPrimeraPorDoc = new Map();
     if (docIds.length) {
-      const { data: challRows, error: challError } = await supabase
-        .from(TABLE_OTP_CHALLENGES)
-        .select('documento_id, created_at')
-        .in('documento_id', docIds);
-      if (challError) {
-        console.warn('[firma] firma_otp_challenges (merge OTP):', challError.message);
-      } else {
-        for (const c of challRows || []) {
+      const { data: rpcRows, error: rpcError } = await supabase
+        .rpc('firma_otp_first_requests', { documento_ids: docIds });
+      if (!rpcError) {
+        for (const c of rpcRows || []) {
           const did = c.documento_id;
           const ts = c.created_at;
-          if (!did || !ts) continue;
-          const prev = otpPrimeraPorDoc.get(did);
-          if (!prev || new Date(ts).getTime() < new Date(prev).getTime()) {
-            otpPrimeraPorDoc.set(did, ts);
+          if (did && ts) otpPrimeraPorDoc.set(did, ts);
+        }
+      } else {
+        // Compatibilidad con entornos que aun no han instalado la RPC segura.
+        const { data: challRows, error: challError } = await supabase
+          .from(TABLE_OTP_CHALLENGES)
+          .select('documento_id, created_at')
+          .in('documento_id', docIds);
+        if (challError) {
+          console.warn('[firma] firma_otp_first_requests/firma_otp_challenges (merge OTP):', rpcError.message, challError.message);
+        } else {
+          for (const c of challRows || []) {
+            const did = c.documento_id;
+            const ts = c.created_at;
+            if (!did || !ts) continue;
+            const prev = otpPrimeraPorDoc.get(did);
+            if (!prev || new Date(ts).getTime() < new Date(prev).getTime()) {
+              otpPrimeraPorDoc.set(did, ts);
+            }
           }
         }
       }
