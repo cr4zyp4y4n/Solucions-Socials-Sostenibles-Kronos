@@ -5,7 +5,6 @@ const TABLE_TRABAJADORES = 'firma_trabajadores';
 const TABLE_DOCUMENTOS = 'firma_documentos';
 const TABLE_TOKENS = 'firma_tokens';
 const TABLE_AUDITORIAS = 'firma_auditorias';
-const TABLE_OTP_CHALLENGES = 'firma_otp_challenges';
 const BUCKET = 'firma-documentos';
 
 /** Cache por sesión: lectura IPC del proceso principal (.env en main). */
@@ -255,24 +254,19 @@ class FirmaService {
     const rows = data || [];
     const docIds = rows.map((r) => r.id).filter(Boolean);
 
-    /** Si la columna otp_primera_solicitud_at no se rellenó en el portal, inferimos la primera solicitud desde firma_otp_challenges (mismo SMS OK). */
+    /** Si la columna otp_primera_solicitud_at no se rellenó en el portal, inferimos la primera solicitud vía RPC sin exponer hashes OTP al cliente. */
     let otpPrimeraPorDoc = new Map();
     if (docIds.length) {
       const { data: challRows, error: challError } = await supabase
-        .from(TABLE_OTP_CHALLENGES)
-        .select('documento_id, created_at')
-        .in('documento_id', docIds);
+        .rpc('firma_otp_primera_solicitud', { p_documento_ids: docIds });
       if (challError) {
-        console.warn('[firma] firma_otp_challenges (merge OTP):', challError.message);
+        console.warn('[firma] firma_otp_primera_solicitud:', challError.message);
       } else {
         for (const c of challRows || []) {
           const did = c.documento_id;
-          const ts = c.created_at;
+          const ts = c.primera_solicitud_at;
           if (!did || !ts) continue;
-          const prev = otpPrimeraPorDoc.get(did);
-          if (!prev || new Date(ts).getTime() < new Date(prev).getTime()) {
-            otpPrimeraPorDoc.set(did, ts);
-          }
+          otpPrimeraPorDoc.set(did, ts);
         }
       }
     }
