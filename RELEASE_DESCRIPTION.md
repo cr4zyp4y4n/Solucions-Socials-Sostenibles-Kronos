@@ -14,7 +14,7 @@
 
 ### Supabase (opcional)
 
-- **`database/optional_firma_otp_challenges_select_authenticated.sql`:** solo si `firma_otp_challenges` tiene RLS y Kronos no puede leer filas para el merge del OTP; permite `SELECT` al rol `authenticated`.
+- **`database/optional_firma_otp_challenges_select_authenticated.sql`:** solo si Kronos necesita inferir la primera solicitud OTP; crea la RPC segura `firma_otp_primera_solicitud(uuid[])` y elimina la política antigua de `SELECT` directo sobre hashes OTP.
 
 ---
 
