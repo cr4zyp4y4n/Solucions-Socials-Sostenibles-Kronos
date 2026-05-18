@@ -33,9 +33,10 @@ export async function GET(_req: Request, ctx: { params: Promise<{ token: string 
   const expiresAt = new Date(tokenRow.expires_at);
   const isExpired = Number.isFinite(expiresAt.getTime()) && expiresAt.getTime() < Date.now();
   const isRevoked = !!tokenRow.revoked_at;
+  const isUsed = !!tokenRow.used_at;
 
-  if (isExpired || isRevoked) {
-    return new Response('Token caducado o revocado', { status: 410 });
+  if (isExpired || isRevoked || isUsed) {
+    return new Response('Token caducado, revocado o usado', { status: 410 });
   }
 
   const documento = Array.isArray(tokenRow.documento) ? tokenRow.documento[0] : tokenRow.documento;
