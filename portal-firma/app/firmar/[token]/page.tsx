@@ -83,6 +83,19 @@ export default async function FirmaTokenPage({ params }: TokenPageProps) {
     );
   }
 
+  if (isUsed) {
+    return (
+      <main className="min-h-screen bg-zinc-50 px-6 py-16 text-zinc-900">
+        <div className="mx-auto max-w-3xl rounded-2xl border border-emerald-200 bg-white p-8 shadow-sm">
+          <h1 className="mb-3 text-3xl font-black text-emerald-700">Enlace ya utilizado</h1>
+          <p className="text-zinc-600">
+            Este enlace de firma ya se ha usado y no permite volver a consultar el documento.
+          </p>
+        </div>
+      </main>
+    );
+  }
+
   // Primera visita al enlace (servidor). El cliente también llama a POST …/open por si el RSC quedara cacheado.
   try {
     const track = await marcarPortalAbiertoSiCorresponde(token);
