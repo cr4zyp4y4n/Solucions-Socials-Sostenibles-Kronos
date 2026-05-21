@@ -1,11 +1,12 @@
 import { supabaseAdmin } from '@/lib/supabase';
 import { getRequestInfo } from '@/lib/requestInfo';
 import { stampPdfLastPage } from '@/lib/pdfSign';
+import { hasValidOtpSession } from '@/lib/otpSession';
 
-export async function POST(_req: Request, ctx: { params: Promise<{ token: string }> }) {
+export async function POST(req: Request, ctx: { params: Promise<{ token: string }> }) {
   const { token } = await ctx.params;
   // aceptamos body vacío; el portal solo registra la aceptación y genera el PDF firmado con sello
-  await _req.json().catch(() => ({}));
+  await req.json().catch(() => ({}));
 
   const { data: tokenRow, error } = await supabaseAdmin
     .from('firma_tokens')
@@ -57,6 +58,16 @@ export async function POST(_req: Request, ctx: { params: Promise<{ token: string
   if (otpErr) return Response.json({ ok: false, error: otpErr.message }, { status: 500 });
   if (!consumed?.length) {
     return Response.json({ ok: false, error: 'Falta verificación OTP' }, { status: 401 });
+  }
+  const consumedChallenge = consumed[0];
+  if (
+    !hasValidOtpSession(req.headers.get('cookie'), {
+      tokenId: tokenRow.id,
+      documentoId: documento.id,
+      challengeId: consumedChallenge.id
+    })
+  ) {
+    return Response.json({ ok: false, error: 'La verificación OTP no corresponde a esta sesión.' }, { status: 401 });
   }
 
   const nowIso = new Date().toISOString();
