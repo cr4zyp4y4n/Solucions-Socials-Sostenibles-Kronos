@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '@/lib/supabase';
 import { sha256Hex } from '@/lib/otp';
 import { getRequestInfo } from '@/lib/requestInfo';
+import { buildOtpSessionCookie } from '@/lib/otpSession';
 
 export async function POST(req: Request, ctx: { params: Promise<{ token: string }> }) {
   const { token } = await ctx.params;
@@ -78,11 +79,27 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
     return Response.json({ ok: false, error: 'Código incorrecto' }, { status: 401 });
   }
 
-  await supabaseAdmin
+  const { data: consumedRows, error: consumeErr } = await supabaseAdmin
     .from('firma_otp_challenges')
     .update({ consumed_at: new Date().toISOString(), attempts: nextAttempts })
-    .eq('id', challenge.id);
+    .eq('id', challenge.id)
+    .is('consumed_at', null)
+    .select('id');
+  if (consumeErr) return Response.json({ ok: false, error: consumeErr.message }, { status: 500 });
+  if (!consumedRows?.length) {
+    return Response.json({ ok: false, error: 'OTP ya utilizado. Solicita un código nuevo.' }, { status: 409 });
+  }
 
-  return Response.json({ ok: true });
+  return Response.json(
+    { ok: true },
+    {
+      headers: {
+        'Set-Cookie': buildOtpSessionCookie(
+          { tokenId: tokenRow.id, documentoId: documento.id, challengeId: challenge.id },
+          token
+        )
+      }
+    }
+  );
 }
 

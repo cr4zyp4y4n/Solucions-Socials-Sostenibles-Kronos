@@ -48,6 +48,23 @@ export async function POST(_req: Request, ctx: { params: Promise<{ token: string
     return Response.json({ ok: false, error: 'Documento o teléfono no disponible' }, { status: 400 });
   }
 
+  const oneMinuteAgoIso = new Date(Date.now() - 60 * 1000).toISOString();
+  const oneHourAgoIso = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const { data: recentChallenges, error: recentErr } = await supabaseAdmin
+    .from('firma_otp_challenges')
+    .select('created_at')
+    .eq('documento_id', documento.id)
+    .gte('created_at', oneHourAgoIso)
+    .order('created_at', { ascending: false })
+    .limit(5);
+  if (recentErr) return Response.json({ ok: false, error: recentErr.message }, { status: 500 });
+  if (recentChallenges?.[0]?.created_at && recentChallenges[0].created_at >= oneMinuteAgoIso) {
+    return Response.json({ ok: false, error: 'Espera un minuto antes de solicitar otro código.' }, { status: 429 });
+  }
+  if ((recentChallenges?.length || 0) >= 5) {
+    return Response.json({ ok: false, error: 'Demasiadas solicitudes de código. Inténtalo más tarde.' }, { status: 429 });
+  }
+
   const otp = generateOtpCode(6);
   const otpHash = sha256Hex(otp);
   const expiresAtIso = new Date(Date.now() + 10 * 60 * 1000).toISOString(); // 10 minutos
