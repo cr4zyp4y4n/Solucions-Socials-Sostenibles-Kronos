@@ -42,6 +42,9 @@ export async function POST(_req: Request, ctx: { params: Promise<{ token: string
   const documento = Array.isArray(tokenRow.documento) ? tokenRow.documento[0] : tokenRow.documento;
   if (!documento?.id) return Response.json({ ok: false, error: 'Documento no encontrado' }, { status: 404 });
   if (!documento.storage_path) return Response.json({ ok: false, error: 'Documento sin PDF' }, { status: 400 });
+  if (documento.estado === 'firmado') {
+    return Response.json({ ok: false, error: 'Documento ya firmado' }, { status: 410 });
+  }
 
   // Exigimos OTP consumido recientemente (para evitar aceptar sin verificación).
   // Como el challenge se marca consumed_at, validamos que haya uno en los últimos 30 minutos.
@@ -101,7 +104,7 @@ export async function POST(_req: Request, ctx: { params: Promise<{ token: string
     });
   if (uploadErr) return Response.json({ ok: false, error: `Error subiendo PDF firmado: ${uploadErr.message}` }, { status: 500 });
 
-  const { error: docErr } = await supabaseAdmin
+  const { data: updatedDocs, error: docErr } = await supabaseAdmin
     .from('firma_documentos')
     .update({
       estado: 'firmado',
@@ -110,14 +113,23 @@ export async function POST(_req: Request, ctx: { params: Promise<{ token: string
       storage_path_firmado: signedPath,
       file_name_firmado: `SIGNED-${baseName}`
     })
-    .eq('id', documento.id);
+    .eq('id', documento.id)
+    .neq('estado', 'firmado')
+    .select('id');
   if (docErr) return Response.json({ ok: false, error: docErr.message }, { status: 500 });
+  if (!updatedDocs?.length) {
+    await supabaseAdmin.storage.from('firma-documentos').remove([signedPath]).catch(() => null);
+    return Response.json({ ok: false, error: 'Documento ya firmado' }, { status: 409 });
+  }
 
   const { error: tokenErr } = await supabaseAdmin
     .from('firma_tokens')
     .update({ used_at: nowIso })
-    .eq('id', tokenRow.id);
-  if (tokenErr) return Response.json({ ok: false, error: tokenErr.message }, { status: 500 });
+    .eq('id', tokenRow.id)
+    .is('used_at', null);
+  if (tokenErr) {
+    console.warn('[firma accept] no se pudo marcar token usado:', tokenErr.message);
+  }
 
   await supabaseAdmin.from('firma_auditorias').insert({
     documento_id: documento.id,
