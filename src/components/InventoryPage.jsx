@@ -45,6 +45,10 @@ const InventoryPage = () => {
   const [showProductModal, setShowProductModal] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [deletingProduct, setDeletingProduct] = useState(null);
+  const isWarehouseScoped = selectedWarehouseId && selectedWarehouseId !== 'all';
+  const selectedWarehouseName = isWarehouseScoped
+    ? ((warehouses[selectedCompany] || []).find(w => w.id === selectedWarehouseId)?.name || selectedWarehouseId)
+    : '';
 
   // Columnas de la tabla
   const columns = [
@@ -326,11 +330,24 @@ const InventoryPage = () => {
   };
 
   const handleEditProduct = (product) => {
-    setSelectedProduct(product);
+    const productId = getProductIdCandidates(product)[0];
+    const originalProduct = (products[selectedCompany] || []).find((p) =>
+      getProductIdCandidates(p).includes(productId)
+    );
+
+    setSelectedProduct(originalProduct || product);
     setShowProductModal(true);
   };
 
   const handleDeleteProduct = async (product) => {
+    if (isWarehouseScoped) {
+      alert(
+        `Estás viendo el almacén "${selectedWarehouseName}". ` +
+        'Para evitar borrar el producto completo de Holded por error, cambia a "Todos los productos" antes de eliminar.'
+      );
+      return;
+    }
+
     if (!window.confirm(`¿Estás seguro de que quieres eliminar el producto "${product.name || product.id}"?`)) {
       return;
     }
@@ -756,11 +773,11 @@ const InventoryPage = () => {
                 Mostrando <b style={{ color: colors.text }}>{pagedProducts.length}</b> de{' '}
                 <b style={{ color: colors.text }}>{filteredAndSortedProducts.length}</b> (total empresa:{' '}
                 {products[selectedCompany]?.length || 0})
-                {selectedWarehouseId !== 'all' ? (
+                {isWarehouseScoped ? (
                   <>
                     {' '}· Almacén:{' '}
                     <b style={{ color: colors.text }}>
-                      {(warehouses[selectedCompany] || []).find(w => w.id === selectedWarehouseId)?.name || selectedWarehouseId}
+                      {selectedWarehouseName}
                     </b>
                     {' '}· Stock cargado:{' '}
                     <b style={{ color: colors.text }}>
@@ -957,20 +974,20 @@ const InventoryPage = () => {
                               whileHover={{ scale: 1.1 }}
                               whileTap={{ scale: 0.9 }}
                               onClick={() => handleDeleteProduct(product)}
-                              disabled={deletingProduct === getProductIdCandidates(product)[0]}
+                              disabled={isWarehouseScoped || deletingProduct === getProductIdCandidates(product)[0]}
                               style={{
                                 padding: '6px',
                                 borderRadius: '6px',
                                 border: `1px solid ${colors.error}`,
-                                backgroundColor: deletingProduct === getProductIdCandidates(product)[0] ? colors.surface : 'transparent',
+                                backgroundColor: (isWarehouseScoped || deletingProduct === getProductIdCandidates(product)[0]) ? colors.surface : 'transparent',
                                 color: colors.error,
-                                cursor: deletingProduct === getProductIdCandidates(product)[0] ? 'not-allowed' : 'pointer',
+                                cursor: (isWarehouseScoped || deletingProduct === getProductIdCandidates(product)[0]) ? 'not-allowed' : 'pointer',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
-                                opacity: deletingProduct === product.id ? 0.6 : 1
+                                opacity: (isWarehouseScoped || deletingProduct === getProductIdCandidates(product)[0]) ? 0.6 : 1
                               }}
-                              title="Eliminar producto"
+                              title={isWarehouseScoped ? 'Cambia a Todos los productos para eliminar el producto completo de Holded' : 'Eliminar producto'}
                             >
                               <Trash2 size={16} />
                             </motion.button>
