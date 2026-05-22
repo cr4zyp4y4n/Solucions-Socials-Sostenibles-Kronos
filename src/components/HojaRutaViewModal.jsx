@@ -284,22 +284,6 @@ const HojaRutaViewModal = ({
     }
   };
 
-  if (!isOpen || !hojaRuta) return null;
-
-  const formatFecha = (fecha) => {
-    if (!fecha) return '';
-    return new Date(fecha).toLocaleDateString('es-ES', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
-    });
-  };
-
-  const formatHora = (hora) => {
-    if (!hora) return '';
-    return hora.replace('H', 'h');
-  };
-
   const filteredEquipamiento = useMemo(() => {
     const list = Array.isArray(hojaRuta?.equipamiento) ? hojaRuta.equipamiento : [];
     const term = normalizeText(equipSearch);
@@ -315,6 +299,22 @@ const HojaRutaViewModal = ({
       return pid && allowedProductIds.has(pid);
     });
   }, [invProducts, allowedProductIds]);
+
+  if (!isOpen || !hojaRuta) return null;
+
+  const formatFecha = (fecha) => {
+    if (!fecha) return '';
+    return new Date(fecha).toLocaleDateString('es-ES', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+  };
+
+  const formatHora = (hora) => {
+    if (!hora) return '';
+    return hora.replace('H', 'h');
+  };
 
   return (
     <div style={{

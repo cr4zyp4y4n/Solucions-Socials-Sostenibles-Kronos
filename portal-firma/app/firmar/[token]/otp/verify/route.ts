@@ -18,7 +18,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
       used_at,
       revoked_at,
       documento:firma_documentos!firma_tokens_documento_id_fkey (
-        id
+        id,
+        estado
       )
     `
     )
@@ -38,6 +39,9 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
 
   const documento = Array.isArray(tokenRow.documento) ? tokenRow.documento[0] : tokenRow.documento;
   if (!documento?.id) return Response.json({ ok: false, error: 'Documento no encontrado' }, { status: 404 });
+  if (documento.estado === 'firmado') {
+    return Response.json({ ok: false, error: 'Documento ya firmado' }, { status: 410 });
+  }
 
   // Cogemos el último challenge no consumido (si el usuario pidió varios, vale el último)
   const { data: challenges, error: challErr } = await supabaseAdmin

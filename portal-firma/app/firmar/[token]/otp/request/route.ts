@@ -47,6 +47,9 @@ export async function POST(_req: Request, ctx: { params: Promise<{ token: string
   if (!documento?.id || !telefono) {
     return Response.json({ ok: false, error: 'Documento o teléfono no disponible' }, { status: 400 });
   }
+  if (documento.estado === 'firmado') {
+    return Response.json({ ok: false, error: 'Documento ya firmado' }, { status: 410 });
+  }
 
   const otp = generateOtpCode(6);
   const otpHash = sha256Hex(otp);
