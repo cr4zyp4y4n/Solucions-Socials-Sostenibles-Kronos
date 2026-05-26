@@ -1,11 +1,13 @@
 import { supabaseAdmin } from '@/lib/supabase';
 import { getRequestInfo } from '@/lib/requestInfo';
 import { stampPdfLastPage } from '@/lib/pdfSign';
+import { sha256Hex } from '@/lib/otp';
 
 export async function POST(_req: Request, ctx: { params: Promise<{ token: string }> }) {
   const { token } = await ctx.params;
-  // aceptamos body vacío; el portal solo registra la aceptación y genera el PDF firmado con sello
-  await _req.json().catch(() => ({}));
+  const body = await _req.json().catch(() => ({}));
+  const otp = String(body?.otp || '').trim();
+  if (!otp) return Response.json({ ok: false, error: 'Falta OTP' }, { status: 400 });
 
   const { data: tokenRow, error } = await supabaseAdmin
     .from('firma_tokens')
@@ -43,24 +45,44 @@ export async function POST(_req: Request, ctx: { params: Promise<{ token: string
   if (!documento?.id) return Response.json({ ok: false, error: 'Documento no encontrado' }, { status: 404 });
   if (!documento.storage_path) return Response.json({ ok: false, error: 'Documento sin PDF' }, { status: 400 });
 
-  // Exigimos OTP consumido recientemente (para evitar aceptar sin verificación).
-  // Como el challenge se marca consumed_at, validamos que haya uno en los últimos 30 minutos.
-  const sinceIso = new Date(Date.now() - 30 * 60 * 1000).toISOString();
-  const { data: consumed, error: otpErr } = await supabaseAdmin
+  const { ip, userAgent } = await getRequestInfo();
+
+  // Revalidamos el OTP en la aceptación para que poseer el enlace no baste para firmar.
+  const { data: challenges, error: challErr } = await supabaseAdmin
     .from('firma_otp_challenges')
-    .select('id, consumed_at')
+    .select('id, otp_hash, expires_at, attempts, consumed_at, created_at')
     .eq('documento_id', documento.id)
-    .not('consumed_at', 'is', null)
-    .gte('consumed_at', sinceIso)
-    .order('consumed_at', { ascending: false })
+    .is('consumed_at', null)
+    .order('created_at', { ascending: false })
     .limit(1);
-  if (otpErr) return Response.json({ ok: false, error: otpErr.message }, { status: 500 });
-  if (!consumed?.length) {
-    return Response.json({ ok: false, error: 'Falta verificación OTP' }, { status: 401 });
+  if (challErr) return Response.json({ ok: false, error: challErr.message }, { status: 500 });
+  const challenge = challenges?.[0];
+  if (!challenge) return Response.json({ ok: false, error: 'No hay OTP activo. Solicita un código.' }, { status: 404 });
+
+  const challExpires = new Date(challenge.expires_at);
+  const challExpired = Number.isFinite(challExpires.getTime()) && challExpires.getTime() < Date.now();
+  if (challExpired) return Response.json({ ok: false, error: 'OTP caducado. Solicita uno nuevo.' }, { status: 410 });
+
+  const nextAttempts = Number(challenge.attempts || 0) + 1;
+  if (nextAttempts > 5) {
+    await supabaseAdmin.from('firma_otp_challenges').update({ attempts: nextAttempts }).eq('id', challenge.id);
+    return Response.json({ ok: false, error: 'Demasiados intentos. Solicita un nuevo código.' }, { status: 429 });
+  }
+
+  const otpOk = sha256Hex(otp) === challenge.otp_hash;
+  if (!otpOk) {
+    await supabaseAdmin.from('firma_otp_challenges').update({ attempts: nextAttempts }).eq('id', challenge.id);
+    await supabaseAdmin.from('firma_auditorias').insert({
+      documento_id: documento.id,
+      ip,
+      user_agent: userAgent,
+      resultado: 'otp_incorrecto',
+      detalle: { accion: 'otp_aceptacion', ok: false }
+    });
+    return Response.json({ ok: false, error: 'Código incorrecto' }, { status: 401 });
   }
 
   const nowIso = new Date().toISOString();
-  const { ip, userAgent } = await getRequestInfo();
 
   // 1) Descargar PDF original
   const { data: signedData, error: signedErr } = await supabaseAdmin.storage
@@ -118,6 +140,11 @@ export async function POST(_req: Request, ctx: { params: Promise<{ token: string
     .update({ used_at: nowIso })
     .eq('id', tokenRow.id);
   if (tokenErr) return Response.json({ ok: false, error: tokenErr.message }, { status: 500 });
+
+  await supabaseAdmin
+    .from('firma_otp_challenges')
+    .update({ consumed_at: nowIso, attempts: nextAttempts })
+    .eq('id', challenge.id);
 
   await supabaseAdmin.from('firma_auditorias').insert({
     documento_id: documento.id,
