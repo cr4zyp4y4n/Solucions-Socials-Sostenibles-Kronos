@@ -78,11 +78,6 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
     return Response.json({ ok: false, error: 'Código incorrecto' }, { status: 401 });
   }
 
-  await supabaseAdmin
-    .from('firma_otp_challenges')
-    .update({ consumed_at: new Date().toISOString(), attempts: nextAttempts })
-    .eq('id', challenge.id);
-
   return Response.json({ ok: true });
 }
 

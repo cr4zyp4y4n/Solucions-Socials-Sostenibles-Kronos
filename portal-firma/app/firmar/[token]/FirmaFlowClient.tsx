@@ -91,7 +91,7 @@ export default function FirmaFlowClient({ token, canAttempt, isUsed, isRevoked, 
       const res = await fetch(`/firmar/${encodeURIComponent(token)}/accept`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({})
+        body: JSON.stringify({ otp: otp.trim() })
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json.ok) throw new Error(json.error || 'No se pudo completar la firma');
