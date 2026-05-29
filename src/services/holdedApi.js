@@ -2148,7 +2148,7 @@ class HoldedApiService {
           }
         } catch (error) {
           console.error(`Error obteniendo productos en página ${page}:`, error);
-          hasMorePages = false;
+          throw error;
         }
       }
 
