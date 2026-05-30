@@ -5,7 +5,6 @@ const TABLE_TRABAJADORES = 'firma_trabajadores';
 const TABLE_DOCUMENTOS = 'firma_documentos';
 const TABLE_TOKENS = 'firma_tokens';
 const TABLE_AUDITORIAS = 'firma_auditorias';
-const TABLE_OTP_CHALLENGES = 'firma_otp_challenges';
 const BUCKET = 'firma-documentos';
 
 /** Cache por sesión: lectura IPC del proceso principal (.env en main). */
@@ -259,11 +258,9 @@ class FirmaService {
     let otpPrimeraPorDoc = new Map();
     if (docIds.length) {
       const { data: challRows, error: challError } = await supabase
-        .from(TABLE_OTP_CHALLENGES)
-        .select('documento_id, created_at')
-        .in('documento_id', docIds);
+        .rpc('firma_otp_primera_solicitud', { documento_ids: docIds });
       if (challError) {
-        console.warn('[firma] firma_otp_challenges (merge OTP):', challError.message);
+        console.warn('[firma] firma_otp_primera_solicitud (merge OTP):', challError.message);
       } else {
         for (const c of challRows || []) {
           const did = c.documento_id;
