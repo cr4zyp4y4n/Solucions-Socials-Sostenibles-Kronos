@@ -209,8 +209,8 @@ class HojaRutaSupabaseService {
       }
 
       // Equipamiento: A = ítem, B = cantidad, C = nota importante que hace referencia a A.
-      // Incluir toda fila que tenga nombre en col0 y no sea cabecera (Fecha, Cliente, etc.) ni nota "OJO!!".
-      if (parts[0] && parts[0].trim() !== '' && !this.isMetadataHeader(parts[0]) && !parts[0].toUpperCase().trim().startsWith('OJO!!')) {
+      // Solo importamos materiales conocidos para no duplicar bebidas/cabeceras como equipamiento.
+      if (this.isEquipamientoItem(parts[0])) {
         const itemName = parts[0].trim();
         const notaC = (parts[2] || '').trim();
         data.equipamiento.push({
@@ -358,6 +358,30 @@ class HojaRutaSupabaseService {
       'HORA ENTREGA IDONI', 'HORA COMIDA', 'HORA DE RECOGIDA'
     ];
     return headers.some(h => t === h || t.startsWith(h + ' ') || t.startsWith(h + ',') || t.startsWith(h));
+  }
+
+  isEquipamientoItem(item) {
+    if (!item) return false;
+    const equipamientoItems = [
+      'Mesas rectangulares', 'Mesas redondas altas', 'Mesas emplatar',
+      'BIOMBOS', 'Mantel rectangular', 'Mantel redondo', 'Camino BONCOR',
+      'HORNO PARA BROCHETAS', 'LLEVAR BANDEJAS HORNO', 'LLEVAR GUANTES PARA PAELLA',
+      'COPAS DE AGUA/VINO', 'VASOS BLANCOS CARTON', 'VASOS CAFÉ CON LECHE CERAMICA',
+      'VASOS CAFÉ CERAMICA', 'Servilletas', 'SERVILLETEROS JOSE',
+      'PLATAFORMAS JOSE PARA PLATO RECTANGULAR', 'AZUCAREROS PARA AZUCAR BLANCO',
+      'VASOS CAFÉ CERAMICA CAFÉ', 'VASOS CAFÉ CON LECHE CERAMICA',
+      'CUCHARILLAS METAL CAFÉ', 'CESTAS PARA PONER CUCHARITAS CAFÉ',
+      'Infusiones y té PARA 100', 'PINCHO MOCHIS', 'VASOS VIDRIO FRUTA + IOGURT',
+      'TOPINS PARA IOGURT', 'CUCHARAS IOGURT', 'TENEDORES VASO FRUTA',
+      'CAFETERAS', 'Café en polvo + garrafa de agua', 'CALIENTA LECHES',
+      'CALIENTA AGUA PEQUEÑO', 'TERMOS VACIOS LIMPIOS', 'Guantes de latex',
+      'Papelera', 'Papel de manos', 'DISPLAY BONCOR', 'PLATAFORMAS MADERA PARA PLATOS',
+      'ROLL UP BONCOR', 'DECORACION PLANTAS JOSE', 'Bolsas de basura',
+      'Cubitera', 'Pinzas', 'Abridores', 'Bandeja de camarero', 'Litos',
+      'Ginebra y lito', 'JABON LAVAVAJILLAS + PAÑO SECAR COPAS'
+    ];
+    const normalized = item.trim();
+    return equipamientoItems.includes(normalized);
   }
 
   isBebidaItem(item) {

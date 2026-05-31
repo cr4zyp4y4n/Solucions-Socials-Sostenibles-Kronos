@@ -158,7 +158,6 @@ function setupIpcHandlers() {
   /** Firma (portal): API SMS + base de enlaces /firmar desde .env (todas las máquinas, sin localStorage). */
   ipcMain.handle('get-firma-sms-config', () => ({
     apiBase: String(process.env.FIRMA_SMS_API_BASE || '').trim(),
-    apiSecret: String(process.env.FIRMA_SMS_API_SECRET || '').trim(),
     portalBaseUrl: String(process.env.FIRMA_PORTAL_BASE_URL || '').trim(),
     // Debug/experimentos: forzar que el SMS de enlace NO incluya URL (para aislar filtros de operadora).
     linkTextOnly: String(process.env.FIRMA_SMS_LINK_TEXT_ONLY || '').trim(),
@@ -168,6 +167,33 @@ function setupIpcHandlers() {
     // - none: no incluir ninguna URL (equivalente a linkTextOnly=1)
     linkUrlMode: String(process.env.FIRMA_SMS_LINK_URL_MODE || '').trim()
   }));
+
+  ipcMain.handle('send-firma-sms', async (_event, payload = {}) => {
+    const base = String(process.env.FIRMA_SMS_API_BASE || '').trim().replace(/\/$/, '');
+    const secret = String(process.env.FIRMA_SMS_API_SECRET || '').trim();
+    const to = String(payload?.to || '').trim();
+    const body = String(payload?.body || '').trim();
+
+    if (!base) throw new Error('Falta FIRMA_SMS_API_BASE');
+    if (!secret) throw new Error('Falta FIRMA_SMS_API_SECRET');
+    if (!/^https?:\/\//i.test(base)) throw new Error('FIRMA_SMS_API_BASE debe ser http/https');
+    if (!to) throw new Error('Falta destinatario SMS');
+    if (!body) throw new Error('Falta cuerpo SMS');
+
+    const res = await fetch(`${base}/api/firma/sms`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${secret}`
+      },
+      body: JSON.stringify({ to, body })
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || !json.ok) {
+      throw new Error(json.error || `Error enviando SMS (${res.status})`);
+    }
+    return json;
+  });
 
   // Handlers IPC para el auto-updater
   ipcMain.handle('check-for-updates', () => {
