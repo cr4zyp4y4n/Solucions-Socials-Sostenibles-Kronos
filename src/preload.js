@@ -32,6 +32,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   /** Firma (portal): IPC al main — FIRMA_SMS_* y FIRMA_PORTAL_BASE_URL desde .env. */
   getFirmaSmsConfig: () => ipcRenderer.invoke('get-firma-sms-config'),
+  sendFirmaSms: (payload) => ipcRenderer.invoke('send-firma-sms', payload),
   
   // Listeners para eventos del auto-updater
   onUpdateAvailable: (callback) => ipcRenderer.on('update-available', callback),

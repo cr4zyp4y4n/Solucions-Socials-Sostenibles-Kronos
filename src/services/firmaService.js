@@ -1,11 +1,10 @@
-/* global __FIRMA_SMS_API_BASE__, __FIRMA_SMS_API_SECRET__ */
+/* global __FIRMA_SMS_API_BASE__ */
 import { supabase } from '../config/supabase';
 
 const TABLE_TRABAJADORES = 'firma_trabajadores';
 const TABLE_DOCUMENTOS = 'firma_documentos';
 const TABLE_TOKENS = 'firma_tokens';
 const TABLE_AUDITORIAS = 'firma_auditorias';
-const TABLE_OTP_CHALLENGES = 'firma_otp_challenges';
 const BUCKET = 'firma-documentos';
 
 /** Cache por sesión: lectura IPC del proceso principal (.env en main). */
@@ -44,7 +43,6 @@ async function getFirmaMainConfig() {
     }
     firmaMainConfigCache = {
       apiBase: String(cfg.apiBase || '').trim(),
-      apiSecret: String(cfg.apiSecret || '').trim(),
       portalBaseUrl: String(cfg.portalBaseUrl || '').trim(),
       linkTextOnly: parseBool(cfg.linkTextOnly),
       linkUrlMode: normalizeLinkUrlMode(cfg.linkUrlMode)
@@ -91,25 +89,7 @@ function getSmsApiBase() {
   return '';
 }
 
-function getSmsApiSecret() {
-  const fromBundle =
-    typeof __FIRMA_SMS_API_SECRET__ !== 'undefined'
-      ? String(__FIRMA_SMS_API_SECRET__ || '').trim()
-      : '';
-  if (fromBundle) return fromBundle;
-
-  const fromEnv =
-    typeof process !== 'undefined' && process.env && process.env.FIRMA_SMS_API_SECRET
-      ? String(process.env.FIRMA_SMS_API_SECRET).trim()
-      : '';
-  if (fromEnv) return fromEnv;
-  if (typeof window !== 'undefined') {
-    return String(localStorage.getItem('FIRMA_SMS_API_SECRET') || '').trim();
-  }
-  return '';
-}
-
-function debugFirmaSmsConfig(mainCfg, base, hasSecret) {
+function debugFirmaSmsConfig(mainCfg, base) {
   const bundleBaseLen =
     typeof __FIRMA_SMS_API_BASE__ !== 'undefined' ? String(__FIRMA_SMS_API_BASE__ || '').length : -1;
   const nodeEnv =
@@ -124,7 +104,7 @@ function debugFirmaSmsConfig(mainCfg, base, hasSecret) {
         ? 'webpack'
         : 'sin-inyeccion-webpack',
     FIRMA_SMS_API_BASE: base || '(vacío)',
-    FIRMA_SMS_API_SECRET: hasSecret ? '(presente)' : '(vacío)',
+    FIRMA_SMS_API_SECRET: '(protegido en main)',
     mainBaseLen,
     bundleBaseLen,
     NODE_ENV: nodeEnv || '(n/a)',
@@ -255,24 +235,19 @@ class FirmaService {
     const rows = data || [];
     const docIds = rows.map((r) => r.id).filter(Boolean);
 
-    /** Si la columna otp_primera_solicitud_at no se rellenó en el portal, inferimos la primera solicitud desde firma_otp_challenges (mismo SMS OK). */
+    /** Si la columna otp_primera_solicitud_at no se rellenó en el portal, inferimos la primera solicitud con una RPC segura que no expone otp_hash. */
     let otpPrimeraPorDoc = new Map();
     if (docIds.length) {
       const { data: challRows, error: challError } = await supabase
-        .from(TABLE_OTP_CHALLENGES)
-        .select('documento_id, created_at')
-        .in('documento_id', docIds);
+        .rpc('firma_otp_primera_solicitud', { doc_ids: docIds });
       if (challError) {
-        console.warn('[firma] firma_otp_challenges (merge OTP):', challError.message);
+        console.warn('[firma] firma_otp_primera_solicitud (merge OTP):', challError.message);
       } else {
         for (const c of challRows || []) {
           const did = c.documento_id;
-          const ts = c.created_at;
+          const ts = c.primera_solicitud_at;
           if (!did || !ts) continue;
-          const prev = otpPrimeraPorDoc.get(did);
-          if (!prev || new Date(ts).getTime() < new Date(prev).getTime()) {
-            otpPrimeraPorDoc.set(did, ts);
-          }
+          otpPrimeraPorDoc.set(did, ts);
         }
       }
     }
@@ -336,12 +311,13 @@ class FirmaService {
   async createTokenFirma({ documentoId, expiresHours = 48 }) {
     await getFirmaMainConfig();
     const nowIso = new Date().toISOString();
-    await supabase
+    const { error: revokeError } = await supabase
       .from(TABLE_TOKENS)
       .update({ revoked_at: nowIso })
       .eq('documento_id', documentoId)
       .is('used_at', null)
       .is('revoked_at', null);
+    if (revokeError) throw revokeError;
 
     const expiresAt = new Date(Date.now() + expiresHours * 60 * 60 * 1000).toISOString();
     const token = randomToken();
@@ -409,12 +385,13 @@ class FirmaService {
       .eq('id', documentoId);
     if (error) throw error;
 
-    await supabase
+    const { error: revokeError } = await supabase
       .from(TABLE_TOKENS)
       .update({ revoked_at: new Date().toISOString() })
       .eq('documento_id', documentoId)
       .is('used_at', null)
       .is('revoked_at', null);
+    if (revokeError) throw revokeError;
 
     await supabase.from(TABLE_AUDITORIAS).insert({
       documento_id: documentoId,
@@ -426,16 +403,17 @@ class FirmaService {
 
   /**
    * Envía un SMS con el enlace de firma vía API del portal-firma (Twilio en servidor).
-   * Requiere FIRMA_SMS_API_BASE (ej. http://localhost:3001) y FIRMA_SMS_API_SECRET (mismo valor en portal .env.local).
+   * Requiere FIRMA_SMS_API_BASE (ej. http://localhost:3001) y FIRMA_SMS_API_SECRET en el proceso main.
    */
   async sendLinkSms({ documentoId, to, portalLink, trabajadorNombre }) {
     const mainCfg = await getFirmaMainConfig();
     const baseRaw = String(mainCfg?.apiBase || '').trim() || getSmsApiBase();
     const base = baseRaw ? baseRaw.replace(/\/$/, '') : '';
-    const secret = String(mainCfg?.apiSecret || '').trim() || getSmsApiSecret();
-    debugFirmaSmsConfig(mainCfg, base, !!secret);
+    debugFirmaSmsConfig(mainCfg, base);
     if (!base) throw new Error('Falta FIRMA_SMS_API_BASE (URL del portal, ej. http://localhost:3001)');
-    if (!secret) throw new Error('Falta FIRMA_SMS_API_SECRET (debe coincidir con portal-firma .env.local)');
+    if (typeof window === 'undefined' || !window.electronAPI?.sendFirmaSms) {
+      throw new Error('No está disponible el envío SMS seguro desde el proceso principal');
+    }
     if (!documentoId) throw new Error('Falta documentoId');
 
     const nombre = trabajadorNombre ? String(trabajadorNombre).trim() : '';
@@ -454,18 +432,7 @@ class FirmaService {
         ? `Kronos: documento pendiente de firma. Enlace: ${linkForSms}`
         : `Kronos: documento pendiente de firma. Enlace: ${linkForSms}`);
 
-    const res = await fetch(`${base}/api/firma/sms`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${secret}`
-      },
-      body: JSON.stringify({ to, body })
-    });
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok || !json.ok) {
-      throw new Error(json.error || `Error enviando SMS (${res.status})`);
-    }
+    const json = await window.electronAPI.sendFirmaSms({ to, body });
 
     const nowIso = new Date().toISOString();
     const { error: docErr } = await supabase

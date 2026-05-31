@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '@/lib/supabase';
 import { getRequestInfo } from '@/lib/requestInfo';
 import { stampPdfLastPage } from '@/lib/pdfSign';
+import { readOtpSession } from '@/lib/otpSession';
 
 export async function POST(_req: Request, ctx: { params: Promise<{ token: string }> }) {
   const { token } = await ctx.params;
@@ -41,14 +42,29 @@ export async function POST(_req: Request, ctx: { params: Promise<{ token: string
 
   const documento = Array.isArray(tokenRow.documento) ? tokenRow.documento[0] : tokenRow.documento;
   if (!documento?.id) return Response.json({ ok: false, error: 'Documento no encontrado' }, { status: 404 });
+  if (documento.estado === 'cancelado') {
+    return Response.json({ ok: false, error: 'Documento cancelado' }, { status: 410 });
+  }
+  if (documento.estado === 'firmado') {
+    return Response.json({ ok: false, error: 'Documento ya firmado' }, { status: 409 });
+  }
   if (!documento.storage_path) return Response.json({ ok: false, error: 'Documento sin PDF' }, { status: 400 });
 
-  // Exigimos OTP consumido recientemente (para evitar aceptar sin verificación).
-  // Como el challenge se marca consumed_at, validamos que haya uno en los últimos 30 minutos.
+  const otpSession = readOtpSession(_req.headers.get('cookie'));
+  if (
+    !otpSession ||
+    otpSession.tokenId !== tokenRow.id ||
+    otpSession.documentoId !== documento.id
+  ) {
+    return Response.json({ ok: false, error: 'Falta verificación OTP de esta sesión' }, { status: 401 });
+  }
+
+  // Exigimos OTP consumido recientemente y ligado a esta sesión de navegador.
   const sinceIso = new Date(Date.now() - 30 * 60 * 1000).toISOString();
   const { data: consumed, error: otpErr } = await supabaseAdmin
     .from('firma_otp_challenges')
     .select('id, consumed_at')
+    .eq('id', otpSession.challengeId)
     .eq('documento_id', documento.id)
     .not('consumed_at', 'is', null)
     .gte('consumed_at', sinceIso)
@@ -101,7 +117,7 @@ export async function POST(_req: Request, ctx: { params: Promise<{ token: string
     });
   if (uploadErr) return Response.json({ ok: false, error: `Error subiendo PDF firmado: ${uploadErr.message}` }, { status: 500 });
 
-  const { error: docErr } = await supabaseAdmin
+  const { data: updatedDoc, error: docErr } = await supabaseAdmin
     .from('firma_documentos')
     .update({
       estado: 'firmado',
@@ -110,13 +126,24 @@ export async function POST(_req: Request, ctx: { params: Promise<{ token: string
       storage_path_firmado: signedPath,
       file_name_firmado: `SIGNED-${baseName}`
     })
-    .eq('id', documento.id);
-  if (docErr) return Response.json({ ok: false, error: docErr.message }, { status: 500 });
+    .eq('id', documento.id)
+    .eq('estado', documento.estado)
+    .select('id')
+    .maybeSingle();
+  if (docErr) {
+    await supabaseAdmin.storage.from('firma-documentos').remove([signedPath]).catch(() => {});
+    return Response.json({ ok: false, error: docErr.message }, { status: 500 });
+  }
+  if (!updatedDoc) {
+    await supabaseAdmin.storage.from('firma-documentos').remove([signedPath]).catch(() => {});
+    return Response.json({ ok: false, error: 'El documento ya no está disponible para firmar' }, { status: 409 });
+  }
 
   const { error: tokenErr } = await supabaseAdmin
     .from('firma_tokens')
     .update({ used_at: nowIso })
-    .eq('id', tokenRow.id);
+    .eq('id', tokenRow.id)
+    .is('used_at', null);
   if (tokenErr) return Response.json({ ok: false, error: tokenErr.message }, { status: 500 });
 
   await supabaseAdmin.from('firma_auditorias').insert({
