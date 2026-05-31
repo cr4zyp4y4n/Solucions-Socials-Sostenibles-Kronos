@@ -67,7 +67,7 @@ export function readOtpSession(cookieHeader: string | null): OtpSessionPayload |
     if (!payload.tokenId || !payload.documentoId || !payload.challengeId || !payload.exp) return null;
     if (payload.exp < Math.floor(Date.now() / 1000)) return null;
     return payload;
-  } catch (_) {
+  } catch {
     return null;
   }
 }
