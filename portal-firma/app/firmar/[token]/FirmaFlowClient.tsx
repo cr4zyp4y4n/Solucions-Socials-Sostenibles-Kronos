@@ -8,9 +8,19 @@ type Props = {
   isUsed: boolean;
   isRevoked: boolean;
   isExpired: boolean;
+  acceptLabel?: string;
+  blockedHint?: string;
 };
 
-export default function FirmaFlowClient({ token, canAttempt, isUsed, isRevoked, isExpired }: Props) {
+export default function FirmaFlowClient({
+  token,
+  canAttempt,
+  isUsed,
+  isRevoked,
+  isExpired,
+  acceptLabel = 'Acepto y firmo',
+  blockedHint = ''
+}: Props) {
   // Asegura el UPDATE aunque el Server Component esté cacheado o falle silenciosamente en edge.
   useEffect(() => {
     if (isExpired || isRevoked) return;
@@ -26,12 +36,13 @@ export default function FirmaFlowClient({ token, canAttempt, isUsed, isRevoked, 
   const [debugOtp, setDebugOtp] = useState<string>('');
 
   const disabledReason = useMemo(() => {
+    if (blockedHint) return blockedHint;
     if (!canAttempt) return 'No disponible.';
     if (isExpired) return 'Este enlace ha caducado.';
     if (isRevoked) return 'Este enlace ha sido revocado.';
     if (isUsed) return 'Este enlace ya ha sido utilizado.';
     return '';
-  }, [canAttempt, isExpired, isRevoked, isUsed]);
+  }, [blockedHint, canAttempt, isExpired, isRevoked, isUsed]);
 
   const requestOtp = async () => {
     setLoading(true);
@@ -176,7 +187,7 @@ export default function FirmaFlowClient({ token, canAttempt, isUsed, isRevoked, 
           disabled={loading}
           className="w-full rounded-full bg-emerald-700 px-4 py-3 text-sm font-black text-white transition hover:bg-emerald-800 disabled:opacity-60"
         >
-          {loading ? 'Firmando...' : 'Acepto y firmo'}
+          {loading ? 'Firmando...' : acceptLabel}
         </button>
       ) : null}
 

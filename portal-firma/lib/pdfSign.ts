@@ -27,9 +27,9 @@ export async function stampPdfLastPage({ pdfBytes, stampLines }: StampArgs) {
   const boxWidth = Math.min(420, width - margin * 2);
   const boxX = margin;
   const boxY = margin;
-  const maxLines = 6;
+  const maxLines = 10;
   const lines = stampLines.slice(0, maxLines);
-  const boxHeight = 18 + lines.length * lineGap + 10;
+  const boxHeight = 20 + lines.length * lineGap + 12;
 
   // Caja semitransparente
   page.drawRectangle({

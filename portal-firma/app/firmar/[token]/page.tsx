@@ -1,10 +1,9 @@
 import { notFound } from 'next/navigation';
-import { supabaseAdmin } from '@/lib/supabase';
-import { asSingle } from '@/lib/relation';
+import { getFirmaDocumentoLabel } from '@/lib/firmaDocumentos';
 import { marcarPortalAbiertoSiCorresponde } from '@/lib/firmaPortalTracking';
-import FirmaFlowClient from './FirmaFlowClient';
+import { resolveFirmaToken } from '@/lib/resolveFirmaToken';
+import FirmaPackPortal from './FirmaPackPortal';
 
-/** Cada visita debe poder ejecutar el seguimiento de apertura (no cachear la página del token). */
 export const dynamic = 'force-dynamic';
 
 type TokenPageProps = {
@@ -21,58 +20,27 @@ function formatDate(value?: string | null) {
 export default async function FirmaTokenPage({ params }: TokenPageProps) {
   const { token } = await params;
 
-  const { data: tokenRow, error: tokenError } = await supabaseAdmin
-    .from('firma_tokens')
-    .select(`
-      id,
-      token,
-      expires_at,
-      used_at,
-      revoked_at,
-      documento:firma_documentos!firma_tokens_documento_id_fkey (
-        id,
-        tipo_documento,
-        estado,
-        fecha_inicio,
-        fecha_fin,
-        storage_path,
-        storage_path_firmado,
-        file_name,
-        firmado_at,
-        trabajador:firma_trabajadores!firma_documentos_trabajador_id_fkey (
-          id,
-          nombre,
-          dni,
-          telefono
-        )
-      )
-    `)
-    .eq('token', token)
-    .maybeSingle();
-
-  if (tokenError) {
+  let resolved;
+  try {
+    resolved = await resolveFirmaToken(token);
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
     return (
       <main className="min-h-screen bg-zinc-50 px-6 py-16 text-zinc-900">
         <div className="mx-auto max-w-3xl rounded-2xl border border-red-200 bg-white p-8 shadow-sm">
           <h1 className="mb-3 text-3xl font-black text-red-700">Error cargando la firma</h1>
-          <p className="text-zinc-600">{tokenError.message}</p>
+          <p className="text-zinc-600">{msg}</p>
         </div>
       </main>
     );
   }
 
-  if (!tokenRow) {
-    notFound();
-  }
+  if (!resolved) notFound();
 
-  const expiresAt = new Date(tokenRow.expires_at);
-  const isExpired = Number.isFinite(expiresAt.getTime()) && expiresAt.getTime() < Date.now();
-  const isRevoked = !!tokenRow.revoked_at;
-  const isUsed = !!tokenRow.used_at;
-  const documento = asSingle(tokenRow.documento);
-  const trabajador = documento ? asSingle(documento.trabajador) : undefined;
+  const { trabajador, documentos, envio, isExpired, isRevoked, isUsed, isPack } = resolved;
+  const documentoPrincipal = resolved.documentoPrincipal;
 
-  if (!documento) {
+  if (!documentos.length) {
     return (
       <main className="min-h-screen bg-zinc-50 px-6 py-16 text-zinc-900">
         <div className="mx-auto max-w-3xl rounded-2xl border border-zinc-200 bg-white p-8 shadow-sm">
@@ -83,7 +51,6 @@ export default async function FirmaTokenPage({ params }: TokenPageProps) {
     );
   }
 
-  // Primera visita al enlace (servidor). El cliente también llama a POST …/open por si el RSC quedara cacheado.
   try {
     const track = await marcarPortalAbiertoSiCorresponde(token);
     if (!track.ok) {
@@ -93,25 +60,26 @@ export default async function FirmaTokenPage({ params }: TokenPageProps) {
     console.warn('[firma portal] portal_abierto_at:', e);
   }
 
-  let signedUrl = '';
-  // Renderizamos el PDF vía misma-origin para evitar CSP bloqueando iframes/object
-  if ((documento.storage_path_firmado || documento.storage_path) && !isExpired && !isRevoked) {
-    signedUrl = `/firmar/${encodeURIComponent(token)}/pdf`;
-  }
+  const titulo = isPack
+    ? envio?.nombre || `Pack de contratación (${documentos.length} documentos)`
+    : getFirmaDocumentoLabel(documentoPrincipal?.tipo_documento);
+
+  const canAttempt = documentos.some((d) => d.storage_path) && !isExpired && !isRevoked;
 
   return (
     <main className="min-h-screen bg-zinc-50 px-4 py-8 text-zinc-900 sm:px-6">
-      <div className="mx-auto max-w-5xl">
+      <div className="mx-auto max-w-6xl">
         <div className="mb-6 rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
           <div className="mb-2 text-sm font-bold uppercase tracking-[0.2em] text-emerald-700">Portal de Firma</div>
-          <h1 className="mb-3 text-3xl font-black tracking-tight">Revisión del documento</h1>
+          <h1 className="mb-2 text-3xl font-black tracking-tight">{titulo}</h1>
           <p className="text-zinc-600">
-            Esta es la primera versión del portal. Ahora mismo valida el enlace y muestra el documento correcto.
-            El siguiente paso será añadir la verificación OTP.
+            {isPack
+              ? 'Revisa cada documento del pack y, al final, firma todos con una sola verificación.'
+              : 'Revisa el documento y completa la verificación para firmar.'}
           </p>
         </div>
 
-        <div className="grid gap-6 lg:grid-cols-[360px,1fr]">
+        <div className="mb-6 grid gap-6 lg:grid-cols-[360px,1fr]">
           <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
             <h2 className="mb-4 text-xl font-black">Datos del envío</h2>
             <dl className="space-y-3 text-sm">
@@ -127,29 +95,36 @@ export default async function FirmaTokenPage({ params }: TokenPageProps) {
                 <dt className="font-bold text-zinc-500">Teléfono</dt>
                 <dd className="text-zinc-900">{trabajador?.telefono || '—'}</dd>
               </div>
-              <div>
-                <dt className="font-bold text-zinc-500">Tipo documento</dt>
-                <dd className="text-zinc-900">{documento.tipo_documento}</dd>
-              </div>
+              {isPack ? (
+                <div>
+                  <dt className="font-bold text-zinc-500">Documentos</dt>
+                  <dd className="text-zinc-900">{documentos.length}</dd>
+                </div>
+              ) : (
+                <div>
+                  <dt className="font-bold text-zinc-500">Tipo documento</dt>
+                  <dd className="text-zinc-900">{getFirmaDocumentoLabel(documentoPrincipal?.tipo_documento)}</dd>
+                </div>
+              )}
               <div>
                 <dt className="font-bold text-zinc-500">Estado</dt>
-                <dd className="text-zinc-900">{documento.estado}</dd>
+                <dd className="text-zinc-900">{envio?.estado || documentoPrincipal?.estado || '—'}</dd>
               </div>
               <div>
                 <dt className="font-bold text-zinc-500">Fecha inicio</dt>
-                <dd className="text-zinc-900">{documento.fecha_inicio || '—'}</dd>
+                <dd className="text-zinc-900">{envio?.fecha_inicio || '—'}</dd>
               </div>
               <div>
                 <dt className="font-bold text-zinc-500">Fecha fin</dt>
-                <dd className="text-zinc-900">{documento.fecha_fin || '—'}</dd>
+                <dd className="text-zinc-900">{envio?.fecha_fin || '—'}</dd>
               </div>
               <div>
                 <dt className="font-bold text-zinc-500">Caduca el</dt>
-                <dd className="text-zinc-900">{formatDate(tokenRow.expires_at)}</dd>
+                <dd className="text-zinc-900">{formatDate(resolved.tokenRow.expires_at)}</dd>
               </div>
               <div>
                 <dt className="font-bold text-zinc-500">Firmado el</dt>
-                <dd className="text-zinc-900">{formatDate(documento.firmado_at)}</dd>
+                <dd className="text-zinc-900">{formatDate(envio?.firmado_at || documentoPrincipal?.firmado_at)}</dd>
               </div>
             </dl>
 
@@ -166,64 +141,29 @@ export default async function FirmaTokenPage({ params }: TokenPageProps) {
               ) : null}
               {isUsed ? (
                 <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-                  Este enlace ya ha sido utilizado.
+                  Este enlace ya ha sido utilizado. Todos los documentos han sido firmados.
                 </div>
               ) : null}
             </div>
-
-            <div className="mt-6">
-              <h3 className="mb-2 text-sm font-black uppercase tracking-[0.2em] text-zinc-500">
-                Verificación y firma
-              </h3>
-              <FirmaFlowClient
-                token={token}
-                canAttempt={!!documento.storage_path}
-                isExpired={isExpired}
-                isRevoked={isRevoked}
-                isUsed={isUsed}
-              />
-            </div>
           </section>
 
-          <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <h2 className="text-xl font-black">Documento</h2>
-              {signedUrl ? (
-                <a
-                  href={signedUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="rounded-full bg-emerald-700 px-4 py-2 text-sm font-bold text-white transition hover:bg-emerald-800"
-                >
-                  Abrir en nueva pestaña
-                </a>
-              ) : null}
-            </div>
-
-            {signedUrl ? (
-              <div className="space-y-3">
-                <object
-                  data={signedUrl}
-                  type="application/pdf"
-                  className="h-[75vh] w-full rounded-xl border border-zinc-200 bg-white"
-                >
-                  <iframe
-                    src={signedUrl}
-                    title={documento.file_name || 'Documento de firma'}
-                    className="h-[75vh] w-full rounded-xl border border-zinc-200"
-                  />
-                </object>
-
-                <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">
-                  Si el visor aparece en blanco, abre el PDF en una pestaña nueva o descárgalo desde el botón superior.
-                </div>
-              </div>
-            ) : (
-              <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-5 text-sm text-zinc-600">
-                No se ha podido generar la vista previa del PDF. El enlace puede estar caducado o revocado.
-              </div>
-            )}
-          </section>
+          <div>
+            <FirmaPackPortal
+              token={token}
+              documentos={documentos.map((d) => ({
+                id: d.id,
+                tipo_documento: d.tipo_documento,
+                file_name: d.file_name,
+                revisado_at: d.revisado_at,
+                firmado_at: d.firmado_at
+              }))}
+              isPack={isPack}
+              canAttempt={canAttempt}
+              isExpired={isExpired}
+              isRevoked={isRevoked}
+              isUsed={isUsed}
+            />
+          </div>
         </div>
       </div>
     </main>

@@ -1,6 +1,7 @@
-import { supabaseAdmin } from '@/lib/supabase';
+import { getOtpScopeIds, resolveFirmaToken } from '@/lib/resolveFirmaToken';
 import { sha256Hex } from '@/lib/otp';
 import { getRequestInfo } from '@/lib/requestInfo';
+import { supabaseAdmin } from '@/lib/supabase';
 
 export async function POST(req: Request, ctx: { params: Promise<{ token: string }> }) {
   const { token } = await ctx.params;
@@ -8,46 +9,29 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
   const otp = String(body?.otp || '').trim();
   if (!otp) return Response.json({ ok: false, error: 'Falta OTP' }, { status: 400 });
 
-  const { data: tokenRow, error } = await supabaseAdmin
-    .from('firma_tokens')
-    .select(
-      `
-      id,
-      token,
-      expires_at,
-      used_at,
-      revoked_at,
-      documento:firma_documentos!firma_tokens_documento_id_fkey (
-        id
-      )
-    `
-    )
-    .eq('token', token)
-    .maybeSingle();
-
-  if (error) return Response.json({ ok: false, error: error.message }, { status: 500 });
-  if (!tokenRow) return Response.json({ ok: false, error: 'Token no válido' }, { status: 404 });
-
-  const expiresAt = new Date(tokenRow.expires_at);
-  const isExpired = Number.isFinite(expiresAt.getTime()) && expiresAt.getTime() < Date.now();
-  const isRevoked = !!tokenRow.revoked_at;
-  const isUsed = !!tokenRow.used_at;
-  if (isExpired || isRevoked || isUsed) {
+  const resolved = await resolveFirmaToken(token);
+  if (!resolved) return Response.json({ ok: false, error: 'Token no válido' }, { status: 404 });
+  if (resolved.isExpired || resolved.isRevoked || resolved.isUsed) {
     return Response.json({ ok: false, error: 'Token caducado, revocado o usado' }, { status: 410 });
   }
 
-  const documento = Array.isArray(tokenRow.documento) ? tokenRow.documento[0] : tokenRow.documento;
-  if (!documento?.id) return Response.json({ ok: false, error: 'Documento no encontrado' }, { status: 404 });
+  const { documentoId, envioId } = getOtpScopeIds(resolved);
+  if (!documentoId) return Response.json({ ok: false, error: 'Documento no encontrado' }, { status: 404 });
 
-  // Cogemos el último challenge no consumido (si el usuario pidió varios, vale el último)
-  const { data: challenges, error: challErr } = await supabaseAdmin
+  let challQuery = supabaseAdmin
     .from('firma_otp_challenges')
     .select('id, otp_hash, expires_at, attempts, consumed_at, created_at')
-    .eq('documento_id', documento.id)
     .is('consumed_at', null)
     .order('created_at', { ascending: false })
     .limit(1);
 
+  if (envioId) {
+    challQuery = challQuery.eq('envio_id', envioId);
+  } else {
+    challQuery = challQuery.eq('documento_id', documentoId);
+  }
+
+  const { data: challenges, error: challErr } = await challQuery;
   if (challErr) return Response.json({ ok: false, error: challErr.message }, { status: 500 });
   const challenge = challenges?.[0];
   if (!challenge) return Response.json({ ok: false, error: 'No hay OTP activo. Solicita un código.' }, { status: 404 });
@@ -66,11 +50,11 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
 
   const { ip, userAgent } = await getRequestInfo();
   await supabaseAdmin.from('firma_auditorias').insert({
-    documento_id: documento.id,
+    documento_id: documentoId,
     ip,
     user_agent: userAgent,
     resultado: ok ? 'ok' : 'otp_incorrecto',
-    detalle: { accion: 'otp_verificado', ok }
+    detalle: { accion: 'otp_verificado', ok, envio_id: envioId }
   });
 
   if (!ok) {
@@ -85,4 +69,3 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
 
   return Response.json({ ok: true });
 }
-

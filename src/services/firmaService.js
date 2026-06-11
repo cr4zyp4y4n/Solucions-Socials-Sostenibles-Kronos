@@ -2,6 +2,7 @@
 import { supabase } from '../config/supabase';
 
 const TABLE_TRABAJADORES = 'firma_trabajadores';
+const TABLE_ENVIOS = 'firma_envios';
 const TABLE_DOCUMENTOS = 'firma_documentos';
 const TABLE_TOKENS = 'firma_tokens';
 const TABLE_AUDITORIAS = 'firma_auditorias';
@@ -63,12 +64,14 @@ function getPortalBaseForLinks() {
     const fromLs = String(localStorage.getItem('FIRMA_PORTAL_BASE_URL') || '').trim();
     if (fromLs) return fromLs.replace(/\/$/, '');
   }
-  return 'https://pendiente-configurar-portal.local/firmar'.replace(/\/$/, '');
+  return '';
 }
 
 function buildPortalLink(token) {
   const base = getPortalBaseForLinks();
-  return `${base}/${token}`;
+  const t = String(token || '').trim();
+  if (!base || !t) return '';
+  return `${base}/${t}`;
 }
 
 function getSmsApiBase() {
@@ -151,7 +154,55 @@ function randomToken() {
   return `${Date.now()}${Math.random().toString(16).slice(2)}`;
 }
 
+function isMissingFirmaPackSchema(err) {
+  const msg = String(err?.message || err || '').toLowerCase();
+  if (msg.includes('row-level security') || msg.includes('permission denied for')) return false;
+  return (
+    (msg.includes('does not exist') && (msg.includes('envio_id') || msg.includes('firma_envios'))) ||
+    (msg.includes('could not find') && msg.includes('envio_id'))
+  );
+}
+
+function formatFirmaEnviosRlsError(err) {
+  const msg = String(err?.message || err || '').toLowerCase();
+  if (!msg.includes('firma_envios') || !msg.includes('row-level security')) return null;
+  return (
+    'La tabla firma_envios ya existe pero faltan permisos (RLS) en Supabase. ' +
+    'Ejecuta database/alter_firma_envios_rls.sql en el SQL Editor y vuelve a crear el pack.'
+  );
+}
+
+function formatFirmaTipoDocumentoCheckError(err) {
+  const msg = String(err?.message || err || '');
+  if (!msg.includes('firma_documentos_tipo_documento_check')) return null;
+  return (
+    'El tipo de documento no está permitido en Supabase (check constraint antiguo). ' +
+    'Ejecuta database/alter_firma_documentos_tipo_documento.sql en el SQL Editor.'
+  );
+}
+
+function formatFirmaPackSchemaError(err) {
+  const tipoCheck = formatFirmaTipoDocumentoCheckError(err);
+  if (tipoCheck) return tipoCheck;
+  const rls = formatFirmaEnviosRlsError(err);
+  if (rls) return rls;
+  if (!isMissingFirmaPackSchema(err)) return null;
+  return (
+    'Falta la migración de packs de firma en Supabase. Ejecuta el SQL del archivo ' +
+    'database/create_firma_envios.sql (SQL Editor → Run). Luego recarga Firma en Kronos.'
+  );
+}
+
 class FirmaService {
+  /**
+   * Base pública del portal de firma (p. ej. https://firma.solucionssocials.org/firmar), sin barra final.
+   * Vacío si no hay FIRMA_PORTAL_BASE_URL en .env (main) ni FIRMA_PORTAL_BASE_URL en localStorage.
+   */
+  async resolvePortalBaseUrl() {
+    await getFirmaMainConfig();
+    return getPortalBaseForLinks();
+  }
+
   async loadTrabajadores() {
     const { data, error } = await supabase
       .from(TABLE_TRABAJADORES)
@@ -235,9 +286,123 @@ class FirmaService {
     return data;
   }
 
-  async loadDocumentos() {
+  async _enrichEnviosRows(rows) {
+    const envios = Array.isArray(rows) ? rows : [];
+    const envioIds = envios.map((r) => r.id).filter(Boolean);
+    const docIds = envios.flatMap((e) => (e.documentos || []).map((d) => d.id)).filter(Boolean);
+
+    let otpPrimeraPorEnvio = new Map();
+    let otpPrimeraPorDoc = new Map();
+    if (envioIds.length) {
+      const { data: challEnv, error: challEnvErr } = await supabase
+        .from(TABLE_OTP_CHALLENGES)
+        .select('envio_id, created_at')
+        .in('envio_id', envioIds);
+      if (!challEnvErr) {
+        for (const c of challEnv || []) {
+          if (!c.envio_id || !c.created_at) continue;
+          const prev = otpPrimeraPorEnvio.get(c.envio_id);
+          if (!prev || new Date(c.created_at).getTime() < new Date(prev).getTime()) {
+            otpPrimeraPorEnvio.set(c.envio_id, c.created_at);
+          }
+        }
+      }
+    }
+    if (docIds.length) {
+      const { data: challDoc, error: challDocErr } = await supabase
+        .from(TABLE_OTP_CHALLENGES)
+        .select('documento_id, created_at')
+        .in('documento_id', docIds);
+      if (!challDocErr) {
+        for (const c of challDoc || []) {
+          if (!c.documento_id || !c.created_at) continue;
+          const prev = otpPrimeraPorDoc.get(c.documento_id);
+          if (!prev || new Date(c.created_at).getTime() < new Date(prev).getTime()) {
+            otpPrimeraPorDoc.set(c.documento_id, c.created_at);
+          }
+        }
+      }
+    }
+
+    const tokenIds = envios.map((r) => r.token_actual_id).filter(Boolean);
+    let tokenMap = new Map();
+    if (tokenIds.length) {
+      const { data: tokens, error: tokenError } = await supabase
+        .from(TABLE_TOKENS)
+        .select('id, token, expires_at, used_at, revoked_at')
+        .in('id', tokenIds);
+      if (tokenError) throw tokenError;
+      tokenMap = new Map((tokens || []).map((t) => [t.id, t]));
+    }
+
+    return envios.map((row) => {
+      const documentos = [...(row.documentos || [])].sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0));
+      const otpDesdeEnvio = row.otp_primera_solicitud_at || otpPrimeraPorEnvio.get(row.id) || null;
+      const otpDesdeDoc = documentos.length === 1
+        ? documentos[0].otp_primera_solicitud_at || otpPrimeraPorDoc.get(documentos[0].id) || null
+        : null;
+      const token = row.token_actual_id ? tokenMap.get(row.token_actual_id) || null : null;
+      return {
+        ...row,
+        documentos,
+        otp_primera_solicitud_at: otpDesdeEnvio || otpDesdeDoc || null,
+        token_actual: token,
+        portal_link: token?.token ? buildPortalLink(token.token) : '',
+        es_pack: documentos.length > 1
+      };
+    });
+  }
+
+  _docOrphanAsEnvio(doc) {
+    return {
+      id: doc.id,
+      trabajador_id: doc.trabajador_id,
+      nombre: doc.file_name || doc.tipo_documento,
+      estado: doc.estado,
+      fecha_inicio: doc.fecha_inicio,
+      fecha_fin: doc.fecha_fin,
+      notas_internas: doc.notas_internas,
+      token_actual_id: doc.token_actual_id,
+      link_compartido_at: doc.link_compartido_at,
+      portal_abierto_at: doc.portal_abierto_at,
+      otp_primera_solicitud_at: doc.otp_primera_solicitud_at,
+      firmado_at: doc.firmado_at,
+      created_at: doc.created_at,
+      updated_at: doc.updated_at,
+      trabajador: doc.trabajador,
+      documentos: [doc],
+      es_legacy_suelto: true
+    };
+  }
+
+  /** Envíos de firma (packs multi-PDF + legacy sueltos sin envio_id). */
+  async loadEnvios() {
     await getFirmaMainConfig();
-    const { data, error } = await supabase
+
+    let envios = [];
+    const { data: envioRows, error: envErr } = await supabase
+      .from(TABLE_ENVIOS)
+      .select(`
+        *,
+        trabajador:firma_trabajadores (
+          id,
+          nombre,
+          dni,
+          telefono,
+          email
+        ),
+        documentos:firma_documentos (*)
+      `)
+      .order('created_at', { ascending: false });
+
+    if (envErr) {
+      if (!isMissingFirmaPackSchema(envErr)) throw envErr;
+    } else {
+      envios = await this._enrichEnviosRows(envioRows || []);
+    }
+
+    let orphanDocs = [];
+    const { data: orphans, error: orphanErr } = await supabase
       .from(TABLE_DOCUMENTOS)
       .select(`
         *,
@@ -249,58 +414,55 @@ class FirmaService {
           email
         )
       `)
+      .is('envio_id', null)
       .order('created_at', { ascending: false });
-    if (error) throw error;
-
-    const rows = data || [];
-    const docIds = rows.map((r) => r.id).filter(Boolean);
-
-    /** Si la columna otp_primera_solicitud_at no se rellenó en el portal, inferimos la primera solicitud desde firma_otp_challenges (mismo SMS OK). */
-    let otpPrimeraPorDoc = new Map();
-    if (docIds.length) {
-      const { data: challRows, error: challError } = await supabase
-        .from(TABLE_OTP_CHALLENGES)
-        .select('documento_id, created_at')
-        .in('documento_id', docIds);
-      if (challError) {
-        console.warn('[firma] firma_otp_challenges (merge OTP):', challError.message);
-      } else {
-        for (const c of challRows || []) {
-          const did = c.documento_id;
-          const ts = c.created_at;
-          if (!did || !ts) continue;
-          const prev = otpPrimeraPorDoc.get(did);
-          if (!prev || new Date(ts).getTime() < new Date(prev).getTime()) {
-            otpPrimeraPorDoc.set(did, ts);
-          }
-        }
+    if (orphanErr) {
+      if (!isMissingFirmaPackSchema(orphanErr)) throw orphanErr;
+      const { data: allDocs, error: allErr } = await supabase
+        .from(TABLE_DOCUMENTOS)
+        .select(`
+          *,
+          trabajador:firma_trabajadores (
+            id,
+            nombre,
+            dni,
+            telefono,
+            email
+          )
+        `)
+        .order('created_at', { ascending: false });
+      if (allErr) {
+        const hint = formatFirmaPackSchemaError(allErr);
+        throw new Error(hint || allErr.message || String(allErr));
       }
+      orphanDocs = allDocs || [];
+    } else {
+      orphanDocs = orphans || [];
     }
 
-    const tokenIds = rows.map((r) => r.token_actual_id).filter(Boolean);
-    let tokenMap = new Map();
-    if (tokenIds.length) {
-      const { data: tokens, error: tokenError } = await supabase
-        .from(TABLE_TOKENS)
-        .select('id, token, expires_at, used_at, revoked_at')
-        .in('id', tokenIds);
-      if (tokenError) throw tokenError;
-      tokenMap = new Map((tokens || []).map((t) => [t.id, t]));
-    }
+    const legacy = await this._enrichEnviosRows(
+      orphanDocs.map((doc) => this._docOrphanAsEnvio(doc))
+    );
 
-    return rows.map((row) => {
-      const desdeColumna = row.otp_primera_solicitud_at || null;
-      const desdeChallenge = otpPrimeraPorDoc.get(row.id) || null;
-      const otpPrimera = desdeColumna || desdeChallenge || null;
-      return {
-        ...row,
-        otp_primera_solicitud_at: otpPrimera,
-        token_actual: row.token_actual_id ? tokenMap.get(row.token_actual_id) || null : null,
-        portal_link: row.token_actual_id && tokenMap.get(row.token_actual_id)?.token
-          ? buildPortalLink(tokenMap.get(row.token_actual_id).token)
-          : ''
-      };
-    });
+    return [...envios, ...legacy].sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
+  }
+
+  /** @deprecated Usa loadEnvios. Mantiene compatibilidad con código antiguo. */
+  async loadDocumentos() {
+    const envios = await this.loadEnvios();
+    return envios.flatMap((e) =>
+      (e.documentos || []).map((d) => ({
+        ...d,
+        trabajador: e.trabajador,
+        portal_link: e.portal_link,
+        link_compartido_at: e.link_compartido_at || d.link_compartido_at,
+        portal_abierto_at: e.portal_abierto_at || d.portal_abierto_at,
+        otp_primera_solicitud_at: e.otp_primera_solicitud_at || d.otp_primera_solicitud_at,
+        envio: e
+      }))
+    );
   }
 
   async uploadPdf({ documentoId, file }) {
@@ -333,34 +495,53 @@ class FirmaService {
     return data;
   }
 
-  async createTokenFirma({ documentoId, expiresHours = 48 }) {
+  async createTokenFirma({ documentoId, envioId = null, expiresHours = 48 }) {
     await getFirmaMainConfig();
     const nowIso = new Date().toISOString();
-    await supabase
-      .from(TABLE_TOKENS)
-      .update({ revoked_at: nowIso })
-      .eq('documento_id', documentoId)
-      .is('used_at', null)
-      .is('revoked_at', null);
+
+    if (envioId) {
+      await supabase
+        .from(TABLE_TOKENS)
+        .update({ revoked_at: nowIso })
+        .eq('envio_id', envioId)
+        .is('used_at', null)
+        .is('revoked_at', null);
+    }
+    if (documentoId) {
+      await supabase
+        .from(TABLE_TOKENS)
+        .update({ revoked_at: nowIso })
+        .eq('documento_id', documentoId)
+        .is('used_at', null)
+        .is('revoked_at', null);
+    }
 
     const expiresAt = new Date(Date.now() + expiresHours * 60 * 60 * 1000).toISOString();
     const token = randomToken();
-    const { data, error } = await supabase
-      .from(TABLE_TOKENS)
-      .insert({
-        documento_id: documentoId,
-        token,
-        expires_at: expiresAt
-      })
-      .select()
-      .single();
+    const insertPayload = {
+      documento_id: documentoId,
+      token,
+      expires_at: expiresAt
+    };
+    if (envioId) insertPayload.envio_id = envioId;
+
+    const { data, error } = await supabase.from(TABLE_TOKENS).insert(insertPayload).select().single();
     if (error) throw error;
 
-    const { error: docError } = await supabase
-      .from(TABLE_DOCUMENTOS)
-      .update({ token_actual_id: data.id })
-      .eq('id', documentoId);
-    if (docError) throw docError;
+    if (envioId) {
+      const { error: envErr } = await supabase
+        .from(TABLE_ENVIOS)
+        .update({ token_actual_id: data.id })
+        .eq('id', envioId);
+      if (envErr) throw envErr;
+    }
+    if (documentoId) {
+      const { error: docError } = await supabase
+        .from(TABLE_DOCUMENTOS)
+        .update({ token_actual_id: data.id })
+        .eq('id', documentoId);
+      if (docError) throw docError;
+    }
 
     return {
       ...data,
@@ -368,38 +549,141 @@ class FirmaService {
     };
   }
 
-  async createDocumento({ trabajadorId, tipoDocumento, fechaInicio, fechaFin, notasInternas, file }) {
-    const { data, error } = await supabase
-      .from(TABLE_DOCUMENTOS)
+  async createEnvio({ trabajadorId, nombre, fechaInicio, fechaFin, notasInternas, items }) {
+    await getFirmaMainConfig();
+    if (!getPortalBaseForLinks()) {
+      throw new Error(
+        'Falta FIRMA_PORTAL_BASE_URL en el .env de Kronos (proceso principal). Ejemplo: FIRMA_PORTAL_BASE_URL=https://tu-dominio.com/firmar — sin barra al final. Reinicia la app tras guardar el .env.'
+      );
+    }
+
+    const list = (Array.isArray(items) ? items : []).filter((i) => i?.file);
+    if (!list.length) throw new Error('Añade al menos un PDF al pack.');
+
+    const tipos = list.map((i) => String(i.tipoDocumento || '').trim());
+    if (tipos.includes('vrp_consentimiento') && tipos.includes('vrp_renuncia')) {
+      throw new Error(
+        'No puedes incluir VRP consentimiento y VRP renuncia en el mismo pack. Usa solo uno según la decisión del trabajador.'
+      );
+    }
+
+    const packNombre =
+      String(nombre || '').trim() ||
+      (list.length === 1 ? null : `Pack contratación (${list.length} documentos)`);
+
+    const { data: envio, error: envErr } = await supabase
+      .from(TABLE_ENVIOS)
       .insert({
         trabajador_id: trabajadorId,
-        tipo_documento: tipoDocumento,
+        nombre: packNombre,
         fecha_inicio: fechaInicio || null,
         fecha_fin: fechaFin || null,
-        estado: 'pendiente',
-        storage_path: 'pending',
-        file_name: file?.name || null,
-        notas_internas: notasInternas || null
+        notas_internas: notasInternas || null,
+        estado: 'pendiente'
       })
       .select()
       .single();
-    if (error) throw error;
-
-    const documentoId = data.id;
-    if (file) {
-      await this.uploadPdf({ documentoId, file });
+    if (envErr) {
+      const hint = formatFirmaPackSchemaError(envErr);
+      throw new Error(hint || envErr.message || String(envErr));
     }
-    const tokenInfo = await this.createTokenFirma({ documentoId });
+
+    const createdDocs = [];
+    for (let i = 0; i < list.length; i += 1) {
+      const item = list[i];
+      const { data: doc, error: docErr } = await supabase
+        .from(TABLE_DOCUMENTOS)
+        .insert({
+          trabajador_id: trabajadorId,
+          envio_id: envio.id,
+          orden: i,
+          tipo_documento: item.tipoDocumento,
+          fecha_inicio: fechaInicio || null,
+          fecha_fin: fechaFin || null,
+          estado: 'pendiente',
+          storage_path: 'pending',
+          file_name: item.file?.name || null,
+          notas_internas: notasInternas || null
+        })
+        .select()
+        .single();
+      if (docErr) {
+        const hint = formatFirmaPackSchemaError(docErr);
+        throw new Error(hint || docErr.message || String(docErr));
+      }
+      await this.uploadPdf({ documentoId: doc.id, file: item.file });
+      createdDocs.push(doc);
+    }
+
+    const firstDocId = createdDocs[0].id;
+    let tokenInfo;
+    try {
+      tokenInfo = await this.createTokenFirma({ documentoId: firstDocId, envioId: envio.id });
+    } catch (tokenErr) {
+      const hint = formatFirmaPackSchemaError(tokenErr);
+      throw new Error(hint || tokenErr?.message || String(tokenErr));
+    }
     await supabase.from(TABLE_AUDITORIAS).insert({
-      documento_id: documentoId,
+      documento_id: firstDocId,
       resultado: 'ok',
-      detalle: { accion: 'creado_en_kronos', token_generado: true }
+      detalle: {
+        accion: 'envio_pack_creado',
+        envio_id: envio.id,
+        num_documentos: list.length,
+        token_generado: true
+      }
     });
 
     return {
-      documentoId,
+      envioId: envio.id,
+      documentoIds: createdDocs.map((d) => d.id),
       tokenInfo
     };
+  }
+
+  async createDocumento({ trabajadorId, tipoDocumento, fechaInicio, fechaFin, notasInternas, file }) {
+    return this.createEnvio({
+      trabajadorId,
+      nombre: null,
+      fechaInicio,
+      fechaFin,
+      notasInternas,
+      items: [{ tipoDocumento, file }]
+    });
+  }
+
+  async cancelarEnvio(envioId, { esLegacySuelto = false } = {}) {
+    const nowIso = new Date().toISOString();
+
+    if (esLegacySuelto) {
+      return this.cancelarDocumento(envioId);
+    }
+
+    const { error: envErr } = await supabase
+      .from(TABLE_ENVIOS)
+      .update({ estado: 'cancelado', updated_at: nowIso })
+      .eq('id', envioId);
+    if (envErr) throw envErr;
+
+    await supabase.from(TABLE_DOCUMENTOS).update({ estado: 'cancelado' }).eq('envio_id', envioId);
+
+    await supabase
+      .from(TABLE_TOKENS)
+      .update({ revoked_at: nowIso })
+      .eq('envio_id', envioId)
+      .is('used_at', null)
+      .is('revoked_at', null);
+
+    const { data: docs } = await supabase.from(TABLE_DOCUMENTOS).select('id').eq('envio_id', envioId).limit(1);
+    const docId = docs?.[0]?.id;
+    if (docId) {
+      await supabase.from(TABLE_AUDITORIAS).insert({
+        documento_id: docId,
+        resultado: 'cancelado',
+        detalle: { accion: 'envio_pack_cancelado', envio_id: envioId }
+      });
+    }
+    return true;
   }
 
   async cancelarDocumento(documentoId) {
@@ -499,6 +783,41 @@ class FirmaService {
    * Marca la primera vez que se compartió el enlace desde Kronos (WhatsApp, email, copiar mensaje, etc.).
    * Idempotente: no sobrescribe si ya había fecha.
    */
+  async marcarLinkCompartidoEnvio(envio, { esLegacySuelto = false } = {}) {
+    if (!envio?.id) throw new Error('Falta envío');
+    const nowIso = new Date().toISOString();
+
+    if (esLegacySuelto || envio.es_legacy_suelto) {
+      return this.marcarLinkCompartido(envio.id);
+    }
+
+    const { data: row, error: readErr } = await supabase
+      .from(TABLE_ENVIOS)
+      .select('id, link_compartido_at')
+      .eq('id', envio.id)
+      .maybeSingle();
+    if (readErr) throw readErr;
+    if (!row) throw new Error('Envío no encontrado');
+    if (row.link_compartido_at) return { ok: true, already: true };
+
+    const { error } = await supabase
+      .from(TABLE_ENVIOS)
+      .update({ link_compartido_at: nowIso, updated_at: nowIso })
+      .eq('id', envio.id)
+      .is('link_compartido_at', null);
+    if (error) throw error;
+
+    const docId = envio.documentos?.[0]?.id;
+    if (docId) {
+      await supabase.from(TABLE_AUDITORIAS).insert({
+        documento_id: docId,
+        resultado: 'ok',
+        detalle: { accion: 'link_compartido_desde_kronos', envio_id: envio.id }
+      });
+    }
+    return { ok: true };
+  }
+
   async marcarLinkCompartido(documentoId) {
     if (!documentoId) throw new Error('Falta documentoId');
     const nowIso = new Date().toISOString();

@@ -1,50 +1,28 @@
+import { resolveFirmaToken } from '@/lib/resolveFirmaToken';
 import { supabaseAdmin } from '@/lib/supabase';
 
-export async function GET(_req: Request, ctx: { params: Promise<{ token: string }> }) {
+export async function GET(req: Request, ctx: { params: Promise<{ token: string }> }) {
   const { token } = await ctx.params;
+  const url = new URL(req.url);
+  const docId = String(url.searchParams.get('doc') || '').trim();
 
-  const { data: tokenRow, error } = await supabaseAdmin
-    .from('firma_tokens')
-    .select(
-      `
-      id,
-      token,
-      expires_at,
-      used_at,
-      revoked_at,
-      documento:firma_documentos!firma_tokens_documento_id_fkey (
-        id,
-        storage_path,
-        storage_path_firmado,
-        file_name
-      )
-    `
-    )
-    .eq('token', token)
-    .maybeSingle();
-
-  if (error) {
-    return new Response(`Error: ${error.message}`, { status: 500 });
-  }
-  if (!tokenRow) {
+  const resolved = await resolveFirmaToken(token);
+  if (!resolved) {
     return new Response('Token no válido', { status: 404 });
   }
-
-  const expiresAt = new Date(tokenRow.expires_at);
-  const isExpired = Number.isFinite(expiresAt.getTime()) && expiresAt.getTime() < Date.now();
-  const isRevoked = !!tokenRow.revoked_at;
-
-  if (isExpired || isRevoked) {
+  if (resolved.isExpired || resolved.isRevoked) {
     return new Response('Token caducado o revocado', { status: 410 });
   }
 
-  const documento = Array.isArray(tokenRow.documento) ? tokenRow.documento[0] : tokenRow.documento;
+  const documento = docId
+    ? resolved.documentos.find((d) => d.id === docId)
+    : resolved.documentos[0];
+
   const storagePath = documento?.storage_path_firmado || documento?.storage_path;
-  if (!storagePath) {
+  if (!documento || !storagePath) {
     return new Response('Documento sin PDF', { status: 404 });
   }
 
-  // Signed URL corta y fetch server-side para servirlo same-origin (evita CSP de iframes)
   const { data: signedData, error: signedErr } = await supabaseAdmin.storage
     .from('firma-documentos')
     .createSignedUrl(storagePath, 60 * 5);
@@ -73,4 +51,3 @@ export async function GET(_req: Request, ctx: { params: Promise<{ token: string 
     }
   });
 }
-

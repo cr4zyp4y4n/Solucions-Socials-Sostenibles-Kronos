@@ -1,94 +1,80 @@
+import { buildStampLinesForDoc } from '@/lib/firmaDocumentosMeta';
+import type { DocOpciones } from '@/lib/firmaDocumentosMeta';
+import { getOtpScopeIds, resolveFirmaToken } from '@/lib/resolveFirmaToken';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getRequestInfo } from '@/lib/requestInfo';
 import { stampPdfLastPage } from '@/lib/pdfSign';
 
-export async function POST(_req: Request, ctx: { params: Promise<{ token: string }> }) {
-  const { token } = await ctx.params;
-  // aceptamos body vacío; el portal solo registra la aceptación y genera el PDF firmado con sello
-  await _req.json().catch(() => ({}));
+async function stampAndUploadDocument({
+  documento,
+  tokenRowId,
+  nowIso,
+  ip,
+  userAgent,
+  trabajadorNombre,
+  trabajadorDni
+}: {
+  documento: {
+    id: string;
+    tipo_documento: string;
+    storage_path: string | null;
+    file_name: string | null;
+    hash_pdf: string | null;
+    firmado_at: string | null;
+    storage_path_firmado: string | null;
+  };
+  tokenRowId: string;
+  nowIso: string;
+  ip: string;
+  userAgent: string;
+  trabajadorNombre?: string | null;
+  trabajadorDni?: string | null;
+}) {
+  if (documento.firmado_at && documento.storage_path_firmado) {
+    return { signedPath: documento.storage_path_firmado, skipped: true };
+  }
+  if (!documento.storage_path) {
+    throw new Error(`Documento ${documento.id} sin PDF`);
+  }
 
-  const { data: tokenRow, error } = await supabaseAdmin
-    .from('firma_tokens')
-    .select(
-      `
-      id,
-      token,
-      expires_at,
-      used_at,
-      revoked_at,
-      documento:firma_documentos!firma_tokens_documento_id_fkey (
-        id,
-        estado,
-        storage_path,
-        file_name,
-        hash_pdf
-      )
-    `
-    )
-    .eq('token', token)
+  const { data: docRow } = await supabaseAdmin
+    .from('firma_documentos')
+    .select('opciones_aceptacion, tipo_documento')
+    .eq('id', documento.id)
     .maybeSingle();
 
-  if (error) return Response.json({ ok: false, error: error.message }, { status: 500 });
-  if (!tokenRow) return Response.json({ ok: false, error: 'Token no válido' }, { status: 404 });
+  const opciones = (docRow?.opciones_aceptacion || null) as DocOpciones | null;
+  const tipo = docRow?.tipo_documento || documento.tipo_documento;
 
-  const expiresAt = new Date(tokenRow.expires_at);
-  const isExpired = Number.isFinite(expiresAt.getTime()) && expiresAt.getTime() < Date.now();
-  const isRevoked = !!tokenRow.revoked_at;
-  const isUsed = !!tokenRow.used_at;
-  if (isExpired || isRevoked || isUsed) {
-    return Response.json({ ok: false, error: 'Token caducado, revocado o usado' }, { status: 410 });
-  }
-
-  const documento = Array.isArray(tokenRow.documento) ? tokenRow.documento[0] : tokenRow.documento;
-  if (!documento?.id) return Response.json({ ok: false, error: 'Documento no encontrado' }, { status: 404 });
-  if (!documento.storage_path) return Response.json({ ok: false, error: 'Documento sin PDF' }, { status: 400 });
-
-  // Exigimos OTP consumido recientemente (para evitar aceptar sin verificación).
-  // Como el challenge se marca consumed_at, validamos que haya uno en los últimos 30 minutos.
-  const sinceIso = new Date(Date.now() - 30 * 60 * 1000).toISOString();
-  const { data: consumed, error: otpErr } = await supabaseAdmin
-    .from('firma_otp_challenges')
-    .select('id, consumed_at')
-    .eq('documento_id', documento.id)
-    .not('consumed_at', 'is', null)
-    .gte('consumed_at', sinceIso)
-    .order('consumed_at', { ascending: false })
-    .limit(1);
-  if (otpErr) return Response.json({ ok: false, error: otpErr.message }, { status: 500 });
-  if (!consumed?.length) {
-    return Response.json({ ok: false, error: 'Falta verificación OTP' }, { status: 401 });
-  }
-
-  const nowIso = new Date().toISOString();
-  const { ip, userAgent } = await getRequestInfo();
-
-  // 1) Descargar PDF original
   const { data: signedData, error: signedErr } = await supabaseAdmin.storage
     .from('firma-documentos')
     .createSignedUrl(documento.storage_path, 60 * 5);
-  if (signedErr) return Response.json({ ok: false, error: `Error firmando URL: ${signedErr.message}` }, { status: 500 });
+  if (signedErr) throw new Error(`Error firmando URL: ${signedErr.message}`);
   const signedUrl = signedData?.signedUrl;
-  if (!signedUrl) return Response.json({ ok: false, error: 'No se pudo firmar la URL del PDF' }, { status: 500 });
+  if (!signedUrl) throw new Error('No se pudo firmar la URL del PDF');
 
   const originalRes = await fetch(signedUrl);
   if (!originalRes.ok) {
     const txt = await originalRes.text().catch(() => '');
-    return Response.json({ ok: false, error: `Error descargando PDF (${originalRes.status}): ${txt}` }, { status: 502 });
+    throw new Error(`Error descargando PDF (${originalRes.status}): ${txt}`);
   }
   const originalBuf = new Uint8Array(await originalRes.arrayBuffer());
 
-  // 2) Estampar sello en última página con evidencias
-  const uaShort = userAgent ? `${userAgent.slice(0, 48)}${userAgent.length > 48 ? '…' : ''}` : '';
-  const stampLines = [
-    `Fecha/hora: ${new Date(nowIso).toLocaleString('es-ES')}`,
-    `Doc: ${documento.id.slice(0, 8)}…  Token: ${tokenRow.id.slice(0, 8)}…`,
-    documento.hash_pdf ? `SHA-256 (orig): ${String(documento.hash_pdf).slice(0, 16)}…` : '',
-    ip ? `IP: ${ip}` : '',
-    uaShort ? `UA: ${uaShort}` : ''
-  ].filter(Boolean);
+  const stampLines = buildStampLinesForDoc({
+    trabajadorNombre,
+    trabajadorDni,
+    tipoDocumento: tipo,
+    opciones,
+    nowIso,
+    documentoId: documento.id,
+    tokenRowId,
+    hashPdf: documento.hash_pdf,
+    ip,
+    userAgent
+  });
+
   const signedPdf = await stampPdfLastPage({ pdfBytes: originalBuf, stampLines });
 
-  // 3) Subir PDF firmado como archivo aparte
   const baseName = String(documento.file_name || 'documento.pdf').replace(/[^\w.-]/g, '_');
   const signedPath = `${documento.id}/SIGNED-${Date.now()}-${baseName.endsWith('.pdf') ? baseName : `${baseName}.pdf`}`;
 
@@ -99,34 +85,126 @@ export async function POST(_req: Request, ctx: { params: Promise<{ token: string
       cacheControl: '3600',
       upsert: true
     });
-  if (uploadErr) return Response.json({ ok: false, error: `Error subiendo PDF firmado: ${uploadErr.message}` }, { status: 500 });
+  if (uploadErr) throw new Error(`Error subiendo PDF firmado: ${uploadErr.message}`);
 
   const { error: docErr } = await supabaseAdmin
     .from('firma_documentos')
     .update({
       estado: 'firmado',
       firmado_at: nowIso,
-      // Requiere columnas nuevas en DB (ver SQL de migración)
       storage_path_firmado: signedPath,
       file_name_firmado: `SIGNED-${baseName}`
     })
     .eq('id', documento.id);
-  if (docErr) return Response.json({ ok: false, error: docErr.message }, { status: 500 });
+  if (docErr) throw new Error(docErr.message);
+
+  return { signedPath, skipped: false };
+}
+
+export async function POST(_req: Request, ctx: { params: Promise<{ token: string }> }) {
+  const { token } = await ctx.params;
+  await _req.json().catch(() => ({}));
+
+  const resolved = await resolveFirmaToken(token);
+  if (!resolved) return Response.json({ ok: false, error: 'Token no válido' }, { status: 404 });
+  if (resolved.isExpired || resolved.isRevoked || resolved.isUsed) {
+    return Response.json({ ok: false, error: 'Token caducado, revocado o usado' }, { status: 410 });
+  }
+
+  const pendingReview = resolved.documentos.filter((d) => !d.revisado_at && d.estado !== 'firmado');
+  if (pendingReview.length) {
+    return Response.json(
+      {
+        ok: false,
+        error: `Debes confirmar la lectura de todos los documentos antes de firmar (faltan ${pendingReview.length}).`
+      },
+      { status: 400 }
+    );
+  }
+
+  const vrpConsent = resolved.documentos.some((d) => d.tipo_documento === 'vrp_consentimiento');
+  const vrpRenuncia = resolved.documentos.some((d) => d.tipo_documento === 'vrp_renuncia');
+  if (vrpConsent && vrpRenuncia) {
+    return Response.json(
+      {
+        ok: false,
+        error: 'El pack no puede incluir a la vez VRP consentimiento y VRP renuncia. Usa solo uno.'
+      },
+      { status: 400 }
+    );
+  }
+
+  const { documentoId, envioId } = getOtpScopeIds(resolved);
+  if (!documentoId) return Response.json({ ok: false, error: 'Documento no encontrado' }, { status: 404 });
+
+  const sinceIso = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+  let otpQuery = supabaseAdmin
+    .from('firma_otp_challenges')
+    .select('id, consumed_at')
+    .not('consumed_at', 'is', null)
+    .gte('consumed_at', sinceIso)
+    .order('consumed_at', { ascending: false })
+    .limit(1);
+
+  if (envioId) {
+    otpQuery = otpQuery.eq('envio_id', envioId);
+  } else {
+    otpQuery = otpQuery.eq('documento_id', documentoId);
+  }
+
+  const { data: consumed, error: otpErr } = await otpQuery;
+  if (otpErr) return Response.json({ ok: false, error: otpErr.message }, { status: 500 });
+  if (!consumed?.length) {
+    return Response.json({ ok: false, error: 'Falta verificación OTP' }, { status: 401 });
+  }
+
+  const nowIso = new Date().toISOString();
+  const { ip, userAgent } = await getRequestInfo();
+  const trabajadorNombre = resolved.trabajador?.nombre || null;
+  const trabajadorDni = resolved.trabajador?.dni || null;
+
+  const signedPaths: string[] = [];
+  for (const doc of resolved.documentos) {
+    const result = await stampAndUploadDocument({
+      documento: doc,
+      tokenRowId: resolved.tokenRow.id,
+      nowIso,
+      ip,
+      userAgent,
+      trabajadorNombre,
+      trabajadorDni
+    });
+    signedPaths.push(result.signedPath);
+  }
+
+  if (envioId) {
+    await supabaseAdmin
+      .from('firma_envios')
+      .update({ estado: 'firmado', firmado_at: nowIso, updated_at: nowIso })
+      .eq('id', envioId);
+  }
 
   const { error: tokenErr } = await supabaseAdmin
     .from('firma_tokens')
     .update({ used_at: nowIso })
-    .eq('id', tokenRow.id);
+    .eq('id', resolved.tokenRow.id);
   if (tokenErr) return Response.json({ ok: false, error: tokenErr.message }, { status: 500 });
 
   await supabaseAdmin.from('firma_auditorias').insert({
-    documento_id: documento.id,
+    documento_id: documentoId,
     ip,
     user_agent: userAgent,
     resultado: 'ok',
-    detalle: { accion: 'aceptado_y_firmado', token_id: tokenRow.id, storage_path_firmado: signedPath }
+    detalle: {
+      accion: resolved.isPack ? 'pack_aceptado_y_firmado' : 'aceptado_y_firmado',
+      token_id: resolved.tokenRow.id,
+      envio_id: envioId,
+      trabajador: trabajadorNombre,
+      dni: trabajadorDni,
+      num_documentos: resolved.documentos.length,
+      storage_paths_firmados: signedPaths
+    }
   });
 
-  return Response.json({ ok: true });
+  return Response.json({ ok: true, firmados: resolved.documentos.length });
 }
-
