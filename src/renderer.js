@@ -38,6 +38,7 @@ import { DataProvider } from './components/DataContext';
 import { ThemeProvider } from './components/ThemeContext';
 import { CurrencyProvider } from './components/CurrencyContext';
 import { AuthProvider, useAuth } from './components/AuthContext';
+import licitacionsService from './services/licitacionsService';
 
 // Componente que maneja la lógica de autenticación
 const AppContent = () => {
@@ -120,6 +121,11 @@ function App() {
       </AuthProvider>
     </ThemeProvider>
   );
+}
+
+// Consola DevTools (després del login): await window.__kronosDev.licitacions.fetchAll({ page: 1, limit: 50 })
+if (typeof window !== 'undefined') {
+  window.__kronosDev = { ...(window.__kronosDev || {}), licitacions: licitacionsService };
 }
 
 const container = document.getElementById('root');

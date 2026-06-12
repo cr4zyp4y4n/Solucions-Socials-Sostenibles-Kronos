@@ -1,10 +1,7 @@
 // Servicio para obtener empleados desde la API de Holded
 import * as XLSX from 'xlsx';
 
-const HOLDED_API_KEYS = {
-  solucions: 'cfe50911f41fe8de885b167988773e09',
-  menjar: '44758c63e2fc4dc5dd37a3eedc1ae580'
-};
+import { HOLDED_API_KEYS } from './holdedHttpClient';
 
 const HOLDED_TEAM_BASE_URL = 'https://api.holded.com/api/team/v1';
 
@@ -13,7 +10,7 @@ class HoldedEmployeesService {
     this.baseUrl = HOLDED_TEAM_BASE_URL;
   }
 
-  // Método genérico para hacer peticiones a la API
+  // Método genérico para hacer peticiones a la API (IPC en Electron, fetch en web)
   async makeRequest(endpoint, options = {}, company = 'solucions') {
     try {
       const apiKey = HOLDED_API_KEYS[company];
@@ -21,28 +18,41 @@ class HoldedEmployeesService {
         throw new Error(`API key no encontrada para la empresa: ${company}`);
       }
 
-      const url = `${this.baseUrl}${endpoint}`;
-      const headers = {
-        'Content-Type': 'application/json',
-        'key': apiKey,
-        ...options.headers
-      };
-
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: headers,
-        ...options
-      });
-
-      if (!response.ok) {
-        // Manejo específico para error 402 (Payment Required)
-        if (response.status === 402) {
-          throw new Error(`Error 402: La cuenta de Holded para ${company} ha alcanzado el límite de uso gratuito. Es necesario actualizar la suscripción para continuar usando la API.`);
+      let data;
+      if (typeof window !== 'undefined' && window.electronAPI?.makeHoldedRequest) {
+        const path = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+        const res = await window.electronAPI.makeHoldedRequest({
+          url: `${this.baseUrl}${path}`,
+          options: {
+            method: options.method || 'GET',
+            headers: { 'Content-Type': 'application/json', key: apiKey, ...options.headers },
+            body: options.body
+          }
+        });
+        if (!res.ok) {
+          if (res.status === 402) {
+            throw new Error(`Error 402: La cuenta de Holded para ${company} ha alcanzado el límite de uso gratuito.`);
+          }
+          const detail = res.data?.message || res.statusText || `HTTP ${res.status}`;
+          throw new Error(`Error en la API de Holded (${company}): ${detail}`);
         }
-        throw new Error(`Error en la API de Holded (${company}): ${response.status} ${response.statusText}`);
+        data = res.data;
+      } else {
+        const url = `${this.baseUrl}${endpoint}`;
+        const response = await fetch(url, {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json', key: apiKey, ...options.headers },
+          ...options
+        });
+        if (!response.ok) {
+          if (response.status === 402) {
+            throw new Error(`Error 402: La cuenta de Holded para ${company} ha alcanzado el límite de uso gratuito.`);
+          }
+          throw new Error(`Error en la API de Holded (${company}): ${response.status} ${response.statusText}`);
+        }
+        data = await response.json();
       }
 
-      const data = await response.json();
       if (process.env.NODE_ENV === 'development') {
         console.log(`[Holded Employees] ${company} - ${endpoint} → OK`);
       }
@@ -115,13 +125,9 @@ class HoldedEmployeesService {
     }
   }
 
-  // Intentar obtener información sobre equipos/teams
-  async getTeams(company = 'solucions') {
-    try {
-      return await this.makeRequest('/teams', {}, company);
-    } catch (error) {
-      return [];
-    }
+  // Holded team/v1 no expone listado de equipos (GET /teams → 404 HTML). Usar holdedTeamIdLabels.
+  async getTeams() {
+    return [];
   }
 
   // Intentar obtener información sobre políticas de vacaciones
@@ -260,9 +266,14 @@ class HoldedEmployeesService {
       pais = toString(employee.country);
     }
 
-    const currentContract = employee.currentContract && typeof employee.currentContract === 'object'
-      ? employee.currentContract
-      : null;
+    const rawContract = employee.currentContract;
+    const currentContract = Array.isArray(rawContract)
+      ? rawContract.length
+        ? rawContract[rawContract.length - 1]
+        : null
+      : rawContract && typeof rawContract === 'object'
+        ? rawContract
+        : null;
 
     const contractStartIso = currentContract?.startDate
       ? new Date(currentContract.startDate * 1000).toISOString()

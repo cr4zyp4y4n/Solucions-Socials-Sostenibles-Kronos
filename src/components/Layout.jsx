@@ -50,6 +50,7 @@ import CateringApp from './catering/CateringApp';
 import SubvencionesPage from './SubvencionesPage';
 import EmpleadosPage from './EmpleadosPage';
 import PIGPage from './PIGPage';
+import BrechaSalarialPage from './BrechaSalarialPage';
 import HojaRutaPage from './HojaRutaPage';
 import HojaRutaEquipamientoLinkPage from './HojaRutaEquipamientoLinkPage';
 import SociosPage from './SociosPage';
@@ -61,6 +62,7 @@ import GestionTiendaPage from './GestionTiendaPage';
 import AlbaranOCRPage from './AlbaranOCRPage';
 import ObradorDashboardPage from './ObradorDashboardPage';
 import FirmaPage from './FirmaPage';
+import LicitacionsPage from './LicitacionsPage';
 
 
 // Componente visual de acceso denegado reutilizable
@@ -464,8 +466,10 @@ const Layout = () => {
     { key: 'sales-invoices', label: 'Resum Caterings', path: '/sales-invoices', icon: DollarSign, roles: ['admin', 'management', 'manager'] },
     { key: 'inventory', label: 'Inventario', path: '/inventory', icon: Package, roles: ['admin', 'manager', 'tienda'] },
     { key: 'innuva-converter', label: 'Conversor Innuva', path: '/innuva-converter', icon: UploadCloud, roles: ['admin', 'management', 'manager'] },
+    { key: 'licitacions', label: 'Licitaciones', path: '/licitacions', icon: FileText, roles: ['admin', 'management', 'manager'] },
     { key: 'subvenciones', label: 'Subvenciones', path: '/subvenciones', icon: FileText, roles: ['admin', 'management', 'manager'] },
     { key: 'pig', label: 'PIG', path: '/pig', icon: FileText, roles: ['admin', 'management', 'manager'] },
+    { key: 'brecha-salarial', label: 'Brecha salarial', path: '/brecha-salarial', icon: BarChart2, roles: ['admin', 'management', 'manager'] },
     { key: 'empleados', label: 'Empleados', path: '/empleados', icon: Users, roles: ['admin', 'management', 'manager'] },
     { key: 'firma', label: 'Firma', path: '/firma', icon: FileText, roles: ['admin', 'management', 'manager'] },
     { key: 'hoja-ruta', label: 'Hoja de Ruta', path: '/hoja-ruta', icon: Calendar, roles: ['admin', 'management', 'manager'] },
@@ -531,8 +535,12 @@ const Layout = () => {
         return <InnuvaConverterPage />;
       case 'subvenciones':
         return <SubvencionesPage />;
+      case 'licitacions':
+        return <LicitacionsPage />;
       case 'pig':
         return <PIGPage />;
+      case 'brecha-salarial':
+        return <BrechaSalarialPage />;
       case 'empleados':
         return <EmpleadosPage />;
       case 'firma':

@@ -1,8 +1,5 @@
 // Servicio para la API de Holded
-const HOLDED_API_KEYS = {
-  solucions: 'cfe50911f41fe8de885b167988773e09',
-  menjar: '44758c63e2fc4dc5dd37a3eedc1ae580'
-};
+import { HOLDED_API_KEYS } from './holdedHttpClient';
 const HOLDED_BASE_URL = 'https://api.holded.com/api/invoicing/v1';
 
 class HoldedApiService {

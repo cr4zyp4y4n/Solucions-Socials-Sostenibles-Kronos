@@ -17,10 +17,10 @@ const fs = require('node:fs');
   require('dotenv').config();
 })();
 
-const { app, BrowserWindow, dialog, shell } = require('electron');
-const { ipcMain } = require('electron');
+const { app, BrowserWindow, dialog, shell, ipcMain, clipboard } = require('electron');
 const https = require('https');
 const http = require('http');
+const zlib = require('node:zlib');
 const { autoUpdater } = require('electron-updater');
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
@@ -168,6 +168,11 @@ function setupIpcHandlers() {
     // - none: no incluir ninguna URL (equivalente a linkTextOnly=1)
     linkUrlMode: String(process.env.FIRMA_SMS_LINK_URL_MODE || '').trim()
   }));
+
+  ipcMain.handle('clipboard-write-text', (_event, text) => {
+    clipboard.writeText(String(text ?? ''));
+    return true;
+  });
 
   // Handlers IPC para el auto-updater
   ipcMain.handle('check-for-updates', () => {
@@ -548,6 +553,128 @@ ipcMain.handle('make-holded-request', async (event, { url, options }) => {
   });
 });
 
+const LICITACIONS_HTTP_HOSTS = new Set([
+  'api.ted.europa.eu',
+  'opendata.aoc.cat',
+  'analisi.transparenciacatalunya.cat',
+  'contrataciondelestado.es'
+]);
+
+function licitacionsHttpRequest({ url, method = 'GET', headers = {}, body = null }) {
+  return new Promise((resolve, reject) => {
+    const MAX_REDIRECTS = 5;
+
+    const doRequest = (currentUrl, redirectsLeft) => {
+      const urlObj = new URL(currentUrl);
+      if (!LICITACIONS_HTTP_HOSTS.has(urlObj.hostname)) {
+        reject(new Error(`Host no permès per a licitacions: ${urlObj.hostname}`));
+        return;
+      }
+
+      const lib = urlObj.protocol === 'http:' ? http : https;
+      const baseHeaders = {
+        // User-Agent ayuda mucho con endpoints que devuelven HTML/bloqueos si parece "bot"
+        'User-Agent': 'SSS-Kronos/licitacions (+electron)',
+        'Accept': headers.Accept || headers.accept || '*/*',
+        'Accept-Language': headers['Accept-Language'] || headers['accept-language'] || 'es-ES,es;q=0.9,ca;q=0.8,en;q=0.7',
+        // Muchos endpoints sirven gzip por defecto; lo soportamos para poder parsear XML/JSON
+        'Accept-Encoding': 'gzip,deflate',
+        ...headers
+      };
+
+      const requestOptions = {
+        hostname: urlObj.hostname,
+        port: urlObj.port || (urlObj.protocol === 'https:' ? 443 : 80),
+        path: urlObj.pathname + urlObj.search,
+        method: method || 'GET',
+        headers: baseHeaders
+      };
+
+      const req = lib.request(requestOptions, (res) => {
+        const sc = res.statusCode || 0;
+        const isRedirect = sc >= 300 && sc < 400 && !!res.headers.location;
+        if (isRedirect) {
+          if (redirectsLeft <= 0) {
+            res.resume();
+            reject(new Error('Demasiadas redirecciones en licitacions-http-request'));
+            return;
+          }
+          const nextUrl = res.headers.location.startsWith('http')
+            ? res.headers.location
+            : new URL(res.headers.location, currentUrl).toString();
+          res.resume();
+          doRequest(nextUrl, redirectsLeft - 1);
+          return;
+        }
+
+        const encoding = String(res.headers['content-encoding'] || '').toLowerCase();
+        const contentType = String(res.headers['content-type'] || '');
+
+        const chunks = [];
+        res.on('data', (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
+        res.on('end', () => {
+          const buffer = Buffer.concat(chunks);
+
+          const finish = (buf) => resolve({
+            ok: sc >= 200 && sc < 300,
+            status: sc,
+            statusText: res.statusMessage,
+            text: buf.toString('utf8'),
+            headers: {
+              'content-type': contentType,
+              'content-encoding': encoding
+            }
+          });
+
+          if (encoding === 'gzip') {
+            zlib.gunzip(buffer, (err, out) => {
+              if (err) {
+                finish(buffer); // fallback sin descomprimir
+                return;
+              }
+              finish(out);
+            });
+            return;
+          }
+
+          if (encoding === 'deflate') {
+            zlib.inflate(buffer, (err, out) => {
+              if (err) {
+                finish(buffer);
+                return;
+              }
+              finish(out);
+            });
+            return;
+          }
+
+          finish(buffer);
+        });
+      });
+
+      req.on('error', (error) => {
+        reject(new Error(`Request failed: ${error.message}`));
+      });
+
+      if (body != null && body !== '') {
+        req.write(typeof body === 'string' ? body : JSON.stringify(body));
+      }
+      req.end();
+    };
+
+    doRequest(url, MAX_REDIRECTS);
+  });
+}
+
+/** Peticions TED/PSCP/PLACSP des del main (evita CSP del renderer). */
+ipcMain.handle('licitacions-http-request', async (_event, payload) => {
+  const { url, method, headers, body } = payload || {};
+  if (!url || typeof url !== 'string') {
+    throw new Error('URL requerida');
+  }
+  return licitacionsHttpRequest({ url, method, headers, body });
+});
+
 const createWindow = () => {
   // Create the browser window.
   mainWindow = new BrowserWindow({
@@ -573,7 +700,7 @@ const createWindow = () => {
           "default-src 'self' 'unsafe-inline' data:; " +
           "script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +
           "style-src 'self' 'unsafe-inline'; " +
-          "connect-src 'self' http://127.0.0.1:* http://localhost:* https://*.netlify.app https://*.vercel.app https://*.solucionssocials.org https://v6.exchangerate-api.com https://api.exchangerate-api.com https://zalnsacawwekmibhoiba.supabase.co https://*.supabase.co wss://zalnsacawwekmibhoiba.supabase.co wss://*.supabase.co https://api.holded.com https://api.github.com https://ipapi.co; " +
+          "connect-src 'self' http://127.0.0.1:* http://localhost:* https://*.netlify.app https://*.vercel.app https://*.solucionssocials.org https://v6.exchangerate-api.com https://api.exchangerate-api.com https://zalnsacawwekmibhoiba.supabase.co https://*.supabase.co wss://zalnsacawwekmibhoiba.supabase.co wss://*.supabase.co https://api.holded.com https://api.github.com https://ipapi.co https://api.ted.europa.eu https://opendata.aoc.cat https://contrataciondelestado.es; " +
           "img-src 'self' data: blob: https://zalnsacawwekmibhoiba.supabase.co https://*.supabase.co;"
         ]
       }

@@ -1,0 +1,23 @@
+<div id="root-widget"></div>
+    <script crossorigin type="module" src="https://cdn.holded.com/frontend-next-gen/entry-widget.BvyDCRz7.js" nonce="f1adf50703d2c9961a5eb9ccefc1b355"></script>
+    <link crossorigin rel="modulepreload" href="https://cdn.holded.com/frontend-next-gen/platform-platform-domain-i18next.config.CB6mT5NF.js" nonce="f1adf50703d2c9961a5eb9ccefc1b355"><link crossorigin rel="modulepreload" href="https://cdn.holded.com/frontend-next-gen/vendor-datadog.Bo57wNMm.js" nonce="f1adf50703d2c9961a5eb9ccefc1b355"><link crossorigin rel="modulepreload" href="https://cdn.holded.com/frontend-next-gen/vendor-fortawesome.xeQnjucY.js" nonce="f1adf50703d2c9961a5eb9ccefc1b355"><link crossorigin rel="modulepreload" href="https://cdn.holded.com/frontend-next-gen/vendor-datefns.B_JSGfZ1.js" nonce="f1adf50703d2c9961a5eb9ccefc1b355"><link crossorigin rel="modulepreload" href="https://cdn.holded.com/frontend-next-gen/vendor-mathjs.D71C0HNi.js" nonce="f1adf50703d2c9961a5eb9ccefc1b355"><link crossorigin rel="modulepreload" href="https://cdn.holded.com/frontend-next-gen/platform-platform-domain-MaintenanceNotificationDialog.ewPUakts.js" nonce="f1adf50703d2c9961a5eb9ccefc1b355">
+<!DOCTYPE html>
+<html lang="">
+  <head>
+    <meta http-equiv="content-type" content="text/html;charset=UTF-8" />
+    <meta charset="utf-8" />
+    <title>404 · Holded</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="robots" content="noindex, nofollow">
+    <link rel="icon" type="image/png" href="https://cdn.holded.com/assets/img/brand/holded-logo.svg" />
+    <link rel="apple-touch-icon" href="https://cdn.holded.com/assets/img/brand/holded-logo.svg">
+    <link href="https://cdn.holded.com/assets/css/base.898c777d713c526d55e6230ef9bf175b.css" rel="stylesheet" type="text/css" />
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-touch-fullscreen" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta content="Holded" name="author"/>
+  </head>
+  <body>
+        <div data-react-module="ErrorPagesWidget" data-type="404" data-user-type="holded"></div>
+  </body>
+</html>

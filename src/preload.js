@@ -12,6 +12,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   
   // API para peticiones a Holded
   makeHoldedRequest: (requestData) => ipcRenderer.invoke('make-holded-request', requestData),
+
+  /** TED / PSCP / PLACSP — via main process (no afectado por CSP del renderer). */
+  licitacionsHttpRequest: (requestData) => ipcRenderer.invoke('licitacions-http-request', requestData),
   
   // API para auto-updater
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
@@ -32,6 +35,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   /** Firma (portal): IPC al main — FIRMA_SMS_* y FIRMA_PORTAL_BASE_URL desde .env. */
   getFirmaSmsConfig: () => ipcRenderer.invoke('get-firma-sms-config'),
+  /** Portapapeles del sistema (fallback si navigator.clipboard falla en Electron). */
+  writeClipboardText: (text) => ipcRenderer.invoke('clipboard-write-text', text),
   
   // Listeners para eventos del auto-updater
   onUpdateAvailable: (callback) => ipcRenderer.on('update-available', callback),
