@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { CheckCircle, Copy, Eye, FileText, Link2, Phone, Plus, RefreshCw, Send, Upload, Users, X, XCircle } from 'feather-icons-react';
+import { CheckCircle, Clock, Copy, Download, Eye, FileText, Link2, Phone, Plus, RefreshCw, Send, Upload, Users, X, XCircle } from 'feather-icons-react';
 import { useTheme } from './ThemeContext';
 import firmaService from '../services/firmaService';
 import holdedEmployeesService from '../services/holdedEmployeesService';
@@ -12,6 +12,7 @@ import {
 } from '../constants/firmaDocumentos';
 import { getFirmaEmpresaNombre } from '../constants/firmaEmpresas';
 import { generateFirmaPdfFile } from '../utils/firmaPdfGenerator';
+import { describeFirmaAuditoriaRow } from '../utils/firmaAuditoriaLabels';
 import SectionHeader from './SectionHeader';
 
 const initialEnvioForm = {
@@ -115,6 +116,16 @@ function envioLabel(envio) {
   return `Pack (${docs.length} documentos)`;
 }
 
+function envioTieneDocumentosFirmados(envio) {
+  if (!envio) return false;
+  if (envio.firmado_at || envio.estado === 'firmado') return true;
+  return (envio.documentos || []).some((d) => d.storage_path_firmado || d.firmado_at || d.estado === 'firmado');
+}
+
+function documentosPackOrdenados(envio) {
+  return [...(envio?.documentos || [])].sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0));
+}
+
 async function writeClipboardSafely(text) {
   const s = String(text ?? '');
   if (!s) throw new Error('Vacío');
@@ -152,6 +163,11 @@ export default function FirmaPage() {
   const [holdedSearch, setHoldedSearch] = useState('');
   const [selectedHoldedId, setSelectedHoldedId] = useState('');
   const [firmaTimelineDoc, setFirmaTimelineDoc] = useState(null);
+  const [firmaDocsEnvio, setFirmaDocsEnvio] = useState(null);
+  const [firmaDocsLoadingId, setFirmaDocsLoadingId] = useState('');
+  const [firmaAuditoriaEnvio, setFirmaAuditoriaEnvio] = useState(null);
+  const [firmaAuditoriaRows, setFirmaAuditoriaRows] = useState([]);
+  const [firmaAuditoriaLoading, setFirmaAuditoriaLoading] = useState(false);
   const [firmaPortalBaseUrl, setFirmaPortalBaseUrl] = useState('');
 
   const selectedHoldedEmployee = useMemo(
@@ -219,6 +235,24 @@ export default function FirmaPage() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [firmaTimelineDoc]);
+
+  useEffect(() => {
+    if (!firmaDocsEnvio) return;
+    const onKey = (e) => {
+      if (e.key === 'Escape') setFirmaDocsEnvio(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [firmaDocsEnvio]);
+
+  useEffect(() => {
+    if (!firmaAuditoriaEnvio) return;
+    const onKey = (e) => {
+      if (e.key === 'Escape') setFirmaAuditoriaEnvio(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [firmaAuditoriaEnvio]);
 
   const loadHoldedEmployees = useCallback(async () => {
     setHoldedLoading(true);
@@ -360,6 +394,49 @@ export default function FirmaPage() {
       console.warn('No se pudo abrir en navegador externo:', e);
     }
     window.open(url, '_blank', 'noreferrer');
+  };
+
+  const verDocumentoPdf = async (documento, { firmado = true } = {}) => {
+    const key = `${documento.id}:${firmado ? 'firmado' : 'original'}`;
+    setFirmaDocsLoadingId(key);
+    setError('');
+    try {
+      const url = await firmaService.getDocumentoPdfSignedUrl(documento, { firmado });
+      await openLink(url);
+    } catch (e) {
+      setError(e?.message || 'No se pudo abrir el PDF.');
+    } finally {
+      setFirmaDocsLoadingId('');
+    }
+  };
+
+  const descargarDocumentoPdf = async (documento, { firmado = true } = {}) => {
+    const key = `${documento.id}:dl:${firmado ? 'firmado' : 'original'}`;
+    setFirmaDocsLoadingId(key);
+    setError('');
+    try {
+      await firmaService.downloadDocumentoPdf(documento, { firmado });
+    } catch (e) {
+      setError(e?.message || 'No se pudo descargar el PDF.');
+    } finally {
+      setFirmaDocsLoadingId('');
+    }
+  };
+
+  const openFirmaAuditoria = async (envio) => {
+    setFirmaAuditoriaEnvio(envio);
+    setFirmaAuditoriaRows([]);
+    setFirmaAuditoriaLoading(true);
+    setError('');
+    try {
+      const rows = await firmaService.loadAuditoriasForEnvio(envio);
+      setFirmaAuditoriaRows(rows);
+    } catch (e) {
+      setError(e?.message || 'No se pudo cargar la auditoría del envío.');
+      setFirmaAuditoriaEnvio(null);
+    } finally {
+      setFirmaAuditoriaLoading(false);
+    }
   };
 
   const openWhatsApp = async (doc) => {
@@ -878,6 +955,24 @@ export default function FirmaPage() {
                             Email
                           </button>
                         ) : null}
+                        <button
+                          onClick={() => openFirmaAuditoria(envio)}
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 10px', borderRadius: 10, border: `1px solid ${colors.border}`, background: colors.background, color: colors.text, cursor: 'pointer', fontWeight: 700 }}
+                          title="Historial de pasos: DNI, SMS, firma, IP…"
+                        >
+                          <Clock size={14} />
+                          Auditoría
+                        </button>
+                        {envioTieneDocumentosFirmados(envio) ? (
+                          <button
+                            onClick={() => setFirmaDocsEnvio(envio)}
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 10px', borderRadius: 10, border: `1px solid ${colors.success}55`, background: `${colors.success}12`, color: colors.success, cursor: 'pointer', fontWeight: 800 }}
+                            title="Ver o descargar los PDF firmados del pack"
+                          >
+                            <FileText size={14} />
+                            Ver firmados
+                          </button>
+                        ) : null}
                         {envio.estado !== 'cancelado' ? (
                           <button
                             onClick={() => cancelEnvio(envio)}
@@ -1019,11 +1114,424 @@ export default function FirmaPage() {
                   </li>
                 ))}
               </ol>
+              {envioTieneDocumentosFirmados(firmaTimelineDoc) ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFirmaDocsEnvio(firmaTimelineDoc);
+                    setFirmaTimelineDoc(null);
+                  }}
+                  style={{
+                    marginTop: 14,
+                    width: '100%',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 8,
+                    padding: '10px 14px',
+                    borderRadius: 10,
+                    border: `1px solid ${colors.success}55`,
+                    background: `${colors.success}12`,
+                    color: colors.success,
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    fontFamily: 'inherit'
+                  }}
+                >
+                  <FileText size={16} />
+                  Ver documentos firmados
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => {
+                  const envio = firmaTimelineDoc;
+                  setFirmaTimelineDoc(null);
+                  openFirmaAuditoria(envio);
+                }}
+                style={{
+                  marginTop: 14,
+                  width: '100%',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 8,
+                  padding: '10px 14px',
+                  borderRadius: 10,
+                  border: `1px solid ${colors.border}`,
+                  background: colors.background,
+                  color: colors.text,
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  fontFamily: 'inherit'
+                }}
+              >
+                <Clock size={16} />
+                Ver auditoría completa
+              </button>
               <button
                 type="button"
                 onClick={() => setFirmaTimelineDoc(null)}
                 style={{
-                  marginTop: 18,
+                  marginTop: 10,
+                  width: '100%',
+                  padding: '10px 14px',
+                  borderRadius: 10,
+                  border: `1px solid ${colors.border}`,
+                  background: colors.background,
+                  color: colors.text,
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  fontFamily: 'inherit'
+                }}
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {firmaDocsEnvio ? (
+        <div
+          role="presentation"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 1000,
+            background: 'rgba(0,0,0,0.45)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 16
+          }}
+          onClick={() => setFirmaDocsEnvio(null)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="firma-docs-title"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: 'min(560px, 100%)',
+              maxHeight: 'min(85vh, 640px)',
+              overflow: 'auto',
+              borderRadius: 16,
+              background: colors.surface,
+              border: `1px solid ${colors.border}`,
+              boxShadow: '0 16px 48px rgba(0,0,0,0.18)',
+              color: colors.text
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, padding: '16px 18px', borderBottom: `1px solid ${colors.border}` }}>
+              <div>
+                <div id="firma-docs-title" style={{ fontSize: 17, fontWeight: 900 }}>
+                  Documentos del pack
+                </div>
+                <div style={{ marginTop: 4, fontSize: 13, color: colors.textSecondary, fontWeight: 600 }}>
+                  {firmaDocsEnvio.trabajador?.nombre || 'Trabajador'} · {envioLabel(firmaDocsEnvio)}
+                </div>
+                {firmaDocsEnvio.firmado_at ? (
+                  <div style={{ marginTop: 6, fontSize: 12, color: colors.success, fontWeight: 700 }}>
+                    Firmado el {formatFirmaDate(firmaDocsEnvio.firmado_at)}
+                  </div>
+                ) : null}
+              </div>
+              <button
+                type="button"
+                aria-label="Cerrar"
+                onClick={() => setFirmaDocsEnvio(null)}
+                style={{
+                  flexShrink: 0,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: 36,
+                  height: 36,
+                  borderRadius: 10,
+                  border: `1px solid ${colors.border}`,
+                  background: colors.background,
+                  color: colors.text,
+                  cursor: 'pointer'
+                }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div style={{ padding: '14px 18px 18px' }}>
+              <div style={{ display: 'grid', gap: 10 }}>
+                {documentosPackOrdenados(firmaDocsEnvio).map((doc, idx) => {
+                  const firmado = !!(doc.storage_path_firmado || doc.firmado_at || doc.estado === 'firmado');
+                  const verKey = `${doc.id}:firmado`;
+                  const dlKey = `${doc.id}:dl:firmado`;
+                  const loadingVer = firmaDocsLoadingId === verKey;
+                  const loadingDl = firmaDocsLoadingId === dlKey;
+                  return (
+                    <div
+                      key={doc.id}
+                      style={{
+                        padding: 12,
+                        borderRadius: 12,
+                        border: `1px solid ${colors.border}`,
+                        background: colors.background
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontSize: 11, fontWeight: 800, color: colors.textSecondary, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                            Documento {idx + 1}
+                          </div>
+                          <div style={{ marginTop: 4, fontWeight: 800, fontSize: 14, lineHeight: 1.35 }}>
+                            {getFirmaDocumentoLabel(doc.tipo_documento)}
+                          </div>
+                          <div style={{ marginTop: 6, fontSize: 12, color: firmado ? colors.success : colors.textSecondary, fontWeight: 700 }}>
+                            {firmado
+                              ? `Firmado${doc.firmado_at ? ` · ${formatFirmaDate(doc.firmado_at)}` : ''}`
+                              : 'Pendiente de firma'}
+                          </div>
+                        </div>
+                        {firmado ? (
+                          <CheckCircle size={20} color={colors.success} style={{ flexShrink: 0, marginTop: 2 }} />
+                        ) : null}
+                      </div>
+                      {firmado ? (
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
+                          <button
+                            type="button"
+                            disabled={!!firmaDocsLoadingId}
+                            onClick={() => verDocumentoPdf(doc, { firmado: true })}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 6,
+                              padding: '8px 10px',
+                              borderRadius: 10,
+                              border: `1px solid ${colors.border}`,
+                              background: colors.surface,
+                              color: colors.text,
+                              cursor: firmaDocsLoadingId ? 'wait' : 'pointer',
+                              fontWeight: 700,
+                              fontSize: 12,
+                              opacity: firmaDocsLoadingId && !loadingVer ? 0.6 : 1
+                            }}
+                          >
+                            <Eye size={14} />
+                            {loadingVer ? 'Abriendo…' : 'Ver PDF firmado'}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={!!firmaDocsLoadingId}
+                            onClick={() => descargarDocumentoPdf(doc, { firmado: true })}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 6,
+                              padding: '8px 10px',
+                              borderRadius: 10,
+                              border: `1px solid ${colors.border}`,
+                              background: colors.surface,
+                              color: colors.text,
+                              cursor: firmaDocsLoadingId ? 'wait' : 'pointer',
+                              fontWeight: 700,
+                              fontSize: 12,
+                              opacity: firmaDocsLoadingId && !loadingDl ? 0.6 : 1
+                            }}
+                          >
+                            <Download size={14} />
+                            {loadingDl ? 'Descargando…' : 'Descargar'}
+                          </button>
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+              {!documentosPackOrdenados(firmaDocsEnvio).length ? (
+                <div style={{ padding: 12, textAlign: 'center', color: colors.textSecondary, fontSize: 13 }}>
+                  No hay documentos en este envío.
+                </div>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => setFirmaDocsEnvio(null)}
+                style={{
+                  marginTop: 16,
+                  width: '100%',
+                  padding: '10px 14px',
+                  borderRadius: 10,
+                  border: `1px solid ${colors.border}`,
+                  background: colors.background,
+                  color: colors.text,
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  fontFamily: 'inherit'
+                }}
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {firmaAuditoriaEnvio ? (
+        <div
+          role="presentation"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 1000,
+            background: 'rgba(0,0,0,0.45)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 16
+          }}
+          onClick={() => setFirmaAuditoriaEnvio(null)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="firma-auditoria-title"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: 'min(620px, 100%)',
+              maxHeight: 'min(85vh, 680px)',
+              overflow: 'auto',
+              borderRadius: 16,
+              background: colors.surface,
+              border: `1px solid ${colors.border}`,
+              boxShadow: '0 16px 48px rgba(0,0,0,0.18)',
+              color: colors.text
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, padding: '16px 18px', borderBottom: `1px solid ${colors.border}` }}>
+              <div>
+                <div id="firma-auditoria-title" style={{ fontSize: 17, fontWeight: 900 }}>
+                  Auditoría del envío
+                </div>
+                <div style={{ marginTop: 4, fontSize: 13, color: colors.textSecondary, fontWeight: 600 }}>
+                  {firmaAuditoriaEnvio.trabajador?.nombre || 'Trabajador'} · {envioLabel(firmaAuditoriaEnvio)}
+                </div>
+                <div style={{ marginTop: 6, fontSize: 11, color: colors.textSecondary, lineHeight: 1.4 }}>
+                  Registro de pasos en el portal: DNI, SMS, firma, IP y navegador.
+                </div>
+              </div>
+              <button
+                type="button"
+                aria-label="Cerrar"
+                onClick={() => setFirmaAuditoriaEnvio(null)}
+                style={{
+                  flexShrink: 0,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: 36,
+                  height: 36,
+                  borderRadius: 10,
+                  border: `1px solid ${colors.border}`,
+                  background: colors.background,
+                  color: colors.text,
+                  cursor: 'pointer'
+                }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div style={{ padding: '14px 18px 18px' }}>
+              {firmaAuditoriaLoading ? (
+                <div style={{ padding: 16, color: colors.textSecondary, fontSize: 13 }}>Cargando auditoría…</div>
+              ) : (
+                <ol style={{ margin: 0, padding: 0, listStyle: 'none' }}>
+                  {firmaAuditoriaRows.map((row, idx) => {
+                    const item = describeFirmaAuditoriaRow(row);
+                    return (
+                      <li
+                        key={item.id || idx}
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: '14px 1fr',
+                          columnGap: 12,
+                          paddingBottom: idx < firmaAuditoriaRows.length - 1 ? 14 : 0
+                        }}
+                      >
+                        <div style={{ position: 'relative', width: 14 }}>
+                          <span
+                            style={{
+                              display: 'block',
+                              width: 10,
+                              height: 10,
+                              marginTop: 5,
+                              marginLeft: 2,
+                              borderRadius: '50%',
+                              background: item.ok ? colors.success : colors.error,
+                              boxShadow: item.ok ? `0 0 0 3px ${colors.success}22` : `0 0 0 3px ${colors.error}22`
+                            }}
+                          />
+                          {idx < firmaAuditoriaRows.length - 1 ? (
+                            <span
+                              style={{
+                                position: 'absolute',
+                                left: '6px',
+                                top: 18,
+                                bottom: -14,
+                                width: 2,
+                                background: colors.border,
+                                borderRadius: 1
+                              }}
+                            />
+                          ) : null}
+                        </div>
+                        <div style={{ paddingBottom: 4 }}>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
+                            <div style={{ fontWeight: 800, fontSize: 13, lineHeight: 1.35 }}>{item.title}</div>
+                            <span
+                              style={{
+                                fontSize: 10,
+                                fontWeight: 800,
+                                padding: '2px 8px',
+                                borderRadius: 999,
+                                background: item.ok ? `${colors.success}18` : `${colors.error}18`,
+                                color: item.ok ? colors.success : colors.error,
+                                textTransform: 'uppercase',
+                                letterSpacing: '0.04em'
+                              }}
+                            >
+                              {item.resultado}
+                            </span>
+                          </div>
+                          <div style={{ marginTop: 4, fontSize: 12, color: colors.textSecondary, fontWeight: 600 }}>
+                            {item.at}
+                          </div>
+                          {item.note ? (
+                            <div style={{ marginTop: 4, fontSize: 12, color: colors.text, lineHeight: 1.4 }}>{item.note}</div>
+                          ) : null}
+                          {item.ip ? (
+                            <div style={{ marginTop: 4, fontSize: 11, color: colors.textSecondary, fontFamily: 'ui-monospace, monospace' }}>
+                              IP: {item.ip}
+                            </div>
+                          ) : null}
+                          {item.userAgent ? (
+                            <div style={{ marginTop: 2, fontSize: 11, color: colors.textSecondary, lineHeight: 1.35 }}>
+                              UA: {item.userAgent}
+                            </div>
+                          ) : null}
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ol>
+              )}
+              {!firmaAuditoriaLoading && !firmaAuditoriaRows.length ? (
+                <div style={{ padding: 12, textAlign: 'center', color: colors.textSecondary, fontSize: 13 }}>
+                  Todavía no hay eventos de auditoría para este envío.
+                </div>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => setFirmaAuditoriaEnvio(null)}
+                style={{
+                  marginTop: 16,
                   width: '100%',
                   padding: '10px 14px',
                   borderRadius: 10,

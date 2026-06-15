@@ -4,3 +4,5 @@ alter table if exists public.firma_documentos
 
 comment on column public.firma_documentos.opciones_aceptacion is
   'Declaraciones del trabajador en el portal: lectura_confirmada, formacion_acoso, etc.';
+
+notify pgrst, 'reload schema';
