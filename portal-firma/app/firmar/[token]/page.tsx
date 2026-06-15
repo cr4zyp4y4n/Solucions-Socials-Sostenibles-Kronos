@@ -162,6 +162,7 @@ export default async function FirmaTokenPage({ params }: TokenPageProps) {
               isExpired={isExpired}
               isRevoked={isRevoked}
               isUsed={isUsed}
+              requiereConfirmacionDni={Boolean(trabajador?.dni?.trim())}
             />
           </div>
         </div>

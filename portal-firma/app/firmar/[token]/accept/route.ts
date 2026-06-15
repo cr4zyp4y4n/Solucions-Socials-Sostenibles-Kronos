@@ -4,6 +4,8 @@ import { getOtpScopeIds, resolveFirmaToken } from '@/lib/resolveFirmaToken';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getRequestInfo } from '@/lib/requestInfo';
 import { stampPdfLastPage } from '@/lib/pdfSign';
+import { hasRecentDniConfirmation } from '@/lib/dniVerification';
+import { normalizeDni } from '@/lib/normalizeDni';
 
 async function stampAndUploadDocument({
   documento,
@@ -12,7 +14,8 @@ async function stampAndUploadDocument({
   ip,
   userAgent,
   trabajadorNombre,
-  trabajadorDni
+  trabajadorDni,
+  dniConfirmadoEnPortal
 }: {
   documento: {
     id: string;
@@ -29,6 +32,7 @@ async function stampAndUploadDocument({
   userAgent: string;
   trabajadorNombre?: string | null;
   trabajadorDni?: string | null;
+  dniConfirmadoEnPortal?: boolean;
 }) {
   if (documento.firmado_at && documento.storage_path_firmado) {
     return { signedPath: documento.storage_path_firmado, skipped: true };
@@ -70,7 +74,8 @@ async function stampAndUploadDocument({
     tokenRowId,
     hashPdf: documento.hash_pdf,
     ip,
-    userAgent
+    userAgent,
+    dniConfirmadoEnPortal
   });
 
   const signedPdf = await stampPdfLastPage({ pdfBytes: originalBuf, stampLines });
@@ -158,10 +163,22 @@ export async function POST(_req: Request, ctx: { params: Promise<{ token: string
     return Response.json({ ok: false, error: 'Falta verificación OTP' }, { status: 401 });
   }
 
+  const requiereDni = Boolean(normalizeDni(resolved.trabajador?.dni));
+  if (requiereDni) {
+    const dniOk = await hasRecentDniConfirmation({ documentoId, envioId });
+    if (!dniOk) {
+      return Response.json(
+        { ok: false, error: 'Falta confirmación de DNI. Vuelve a solicitar el código SMS.' },
+        { status: 401 }
+      );
+    }
+  }
+
   const nowIso = new Date().toISOString();
   const { ip, userAgent } = await getRequestInfo();
   const trabajadorNombre = resolved.trabajador?.nombre || null;
   const trabajadorDni = resolved.trabajador?.dni || null;
+  const dniConfirmadoEnPortal = requiereDni;
 
   const signedPaths: string[] = [];
   for (const doc of resolved.documentos) {
@@ -172,7 +189,8 @@ export async function POST(_req: Request, ctx: { params: Promise<{ token: string
       ip,
       userAgent,
       trabajadorNombre,
-      trabajadorDni
+      trabajadorDni,
+      dniConfirmadoEnPortal
     });
     signedPaths.push(result.signedPath);
   }
@@ -201,6 +219,7 @@ export async function POST(_req: Request, ctx: { params: Promise<{ token: string
       envio_id: envioId,
       trabajador: trabajadorNombre,
       dni: trabajadorDni,
+      dni_confirmado_portal: dniConfirmadoEnPortal,
       num_documentos: resolved.documentos.length,
       storage_paths_firmados: signedPaths
     }

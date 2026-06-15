@@ -1,33 +1,18 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Home,
-  FileText,
-  Users,
-  Settings,
-  BarChart2,
-  Filter,
   Moon,
   Sun,
   LogOut,
   User,
   Shield,
-  Activity,
   Bell,
-  Zap,
-  CreditCard,
-  Calendar,
-  Coffee,
-  DollarSign,
-  ShoppingBag,
+  Settings,
   ExternalLink,
-  UploadCloud,
-  Package,
   Download,
   CheckCircle,
   X,
-  Clock,
-  Image
+  ChevronDown
 } from 'feather-icons-react';
 import { useTheme } from './ThemeContext';
 import { useAuth } from './AuthContext';
@@ -63,6 +48,9 @@ import AlbaranOCRPage from './AlbaranOCRPage';
 import ObradorDashboardPage from './ObradorDashboardPage';
 import FirmaPage from './FirmaPage';
 import LicitacionsPage from './LicitacionsPage';
+import { buildSidebarNavigation, findMenuItemLabel } from '../constants/sidebarNav';
+
+const SIDEBAR_GROUPS_STORAGE_KEY = 'kronos_sidebar_groups_expanded';
 
 
 // Componente visual de acceso denegado reutilizable
@@ -104,6 +92,15 @@ const Layout = () => {
   const [showUpdateTooltip, setShowUpdateTooltip] = useState(false);
   const [appVersion, setAppVersion] = useState('');
   const [showNoUpdateMessage, setShowNoUpdateMessage] = useState(false);
+  const [expandedGroups, setExpandedGroups] = useState(() => {
+    try {
+      const raw = localStorage.getItem(SIDEBAR_GROUPS_STORAGE_KEY);
+      if (raw) return JSON.parse(raw);
+    } catch (_) {
+      // ignore
+    }
+    return {};
+  });
   const { isDarkMode, toggleTheme, colors } = useTheme();
   const { user, signOut } = useAuth();
 
@@ -459,49 +456,156 @@ const Layout = () => {
     return showAllNotifications ? processedNotifications : processedNotifications.slice(0, 5);
   };
 
-  // Menú lateral según rol - Definir todos los items con sus roles permitidos
-  const allMenuItems = [
-    { key: 'home', label: 'Inicio', path: '/home', icon: Home, roles: ['admin', 'management', 'manager', 'user', 'tienda'] },
-    { key: 'analytics', label: 'Análisis', path: '/analytics', icon: BarChart2, roles: ['admin', 'management', 'manager'] },
-    { key: 'sales-invoices', label: 'Resum Caterings', path: '/sales-invoices', icon: DollarSign, roles: ['admin', 'management', 'manager'] },
-    { key: 'inventory', label: 'Inventario', path: '/inventory', icon: Package, roles: ['admin', 'manager', 'tienda'] },
-    { key: 'innuva-converter', label: 'Conversor Innuva', path: '/innuva-converter', icon: UploadCloud, roles: ['admin', 'management', 'manager'] },
-    { key: 'licitacions', label: 'Licitaciones', path: '/licitacions', icon: FileText, roles: ['admin', 'management', 'manager'] },
-    { key: 'subvenciones', label: 'Subvenciones', path: '/subvenciones', icon: FileText, roles: ['admin', 'management', 'manager'] },
-    { key: 'pig', label: 'PIG', path: '/pig', icon: FileText, roles: ['admin', 'management', 'manager'] },
-    { key: 'brecha-salarial', label: 'Brecha salarial', path: '/brecha-salarial', icon: BarChart2, roles: ['admin', 'management', 'manager'] },
-    { key: 'empleados', label: 'Empleados', path: '/empleados', icon: Users, roles: ['admin', 'management', 'manager'] },
-    { key: 'firma', label: 'Firma', path: '/firma', icon: FileText, roles: ['admin', 'management', 'manager'] },
-    { key: 'hoja-ruta', label: 'Hoja de Ruta', path: '/hoja-ruta', icon: Calendar, roles: ['admin', 'management', 'manager'] },
-    { key: 'fichaje', label: 'Fichaje', path: '/fichaje', icon: Clock, roles: ['admin', 'management', 'manager', 'user', 'tienda'] },
-    { key: 'panel-fichajes', label: 'Panel Fichajes', path: '/panel-fichajes', icon: Activity, roles: ['admin', 'management', 'manager'] },
-    { key: 'socios', label: 'Socios IDONI', path: '/socios', icon: Users, roles: ['admin', 'management', 'manager', 'tienda'] },
-    { key: 'gestion-tienda', label: 'Gestión Tienda', path: '/gestion-tienda', icon: ShoppingBag, roles: ['admin', 'manager', 'tienda'] },
-    { key: 'obrador', label: 'Dashboard Obrador', path: '/obrador', icon: Zap, roles: ['admin', 'management', 'manager'] },
-    { key: 'contacts', label: 'Contactos', path: '/contacts', icon: CreditCard, roles: ['admin', 'management', 'manager'] },
-    { key: 'settings', label: 'Configuración', path: '/settings', icon: Settings, roles: ['admin', 'management', 'manager', 'user', 'tienda'] },
-  ];
+  // Menú lateral agrupado según rol
+  const sidebarNav = useMemo(
+    () => buildSidebarNavigation(userProfile?.role || user?.user_metadata?.role || 'user'),
+    [userProfile?.role, user?.user_metadata?.role]
+  );
 
-  // Filtrar items según el rol del usuario
-  // Rol "user": Inicio (vista mínima sin datos sensibles), Fichaje y Configuración
-  const menuItems = allMenuItems.filter(item => {
-    const role = userProfile?.role || 'user';
-    if ((role || '').toLowerCase() === 'user') {
-      return item.key === 'home' || item.key === 'fichaje' || item.key === 'settings';
-    }
-    return item.roles.includes(role);
-  });
+  const toggleSidebarGroup = (groupKey) => {
+    setExpandedGroups((prev) => {
+      const next = { ...prev, [groupKey]: !prev[groupKey] };
+      try {
+        localStorage.setItem(SIDEBAR_GROUPS_STORAGE_KEY, JSON.stringify(next));
+      } catch (_) {
+        // ignore
+      }
+      return next;
+    });
+  };
 
-  // Agregar items especiales para admin
-  if (isAdmin) {
-    menuItems.splice(1, 0, { key: 'catering', label: 'Catering', path: '/catering', icon: Coffee });
-    menuItems.push(
-      { key: 'users', label: 'Usuarios', path: '/users', icon: Shield },
-      { key: 'audit', label: 'Auditoría', path: '/audit', icon: Activity }
+  useEffect(() => {
+    if (sidebarNav.useFlat) return;
+    const activeGroup = sidebarNav.groups.find((g) => g.items.some((item) => item.key === activeSection));
+    if (!activeGroup) return;
+    setExpandedGroups((prev) => {
+      if (prev[activeGroup.key]) return prev;
+      const next = { ...prev, [activeGroup.key]: true };
+      try {
+        localStorage.setItem(SIDEBAR_GROUPS_STORAGE_KEY, JSON.stringify(next));
+      } catch (_) {
+        // ignore
+      }
+      return next;
+    });
+  }, [activeSection, sidebarNav]);
+
+  const sidebarNavText = {
+    fontSize: '14px',
+    fontWeight: 400,
+    letterSpacing: 'normal',
+    textTransform: 'none',
+    fontFamily: 'inherit'
+  };
+
+  const renderNavItem = (item, { nested = false } = {}) => {
+    const Icon = item.icon;
+    const isActive = activeSection === item.key;
+    return (
+      <motion.div
+        key={item.key}
+        whileHover={{ backgroundColor: colors.hover || 'rgba(64,64,64,0.7)' }}
+        whileTap={{ scale: 0.98 }}
+        onClick={() => navigateTo(item.key)}
+        style={{
+          padding: nested ? '12px 20px 12px 36px' : '12px 20px',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '12px',
+          borderLeft: isActive ? `3px solid ${colors.primary}` : '3px solid transparent',
+          backgroundColor: isActive ? (colors.hover || 'rgba(64,64,64,0.7)') : 'transparent'
+        }}
+      >
+        <Icon size={18} color={isActive ? colors.primary : colors.textSecondary} />
+        <span
+          style={{
+            ...sidebarNavText,
+            color: isActive ? colors.primary : colors.textSecondary
+          }}
+        >
+          {item.label}
+        </span>
+      </motion.div>
     );
-  }
+  };
 
+  const renderSidebarNav = () => {
+    if (sidebarNav.useFlat) {
+      return sidebarNav.flatItems.map((item) => renderNavItem(item));
+    }
 
+    const defaultExpanded = (groupKey) => expandedGroups[groupKey] ?? false;
+
+    return (
+      <>
+        {sidebarNav.top.map((item) => renderNavItem(item))}
+        {sidebarNav.groups.map((group) => {
+          const isOpen = defaultExpanded(group.key);
+          const hasActive = group.items.some((item) => item.key === activeSection);
+          const GroupIcon = group.icon;
+          const groupColor = hasActive ? colors.primary : colors.textSecondary;
+          return (
+            <div key={group.key} style={{ marginTop: 4 }}>
+              <motion.button
+                type="button"
+                whileTap={{ scale: 0.99 }}
+                onClick={() => toggleSidebarGroup(group.key)}
+                style={{
+                  width: '100%',
+                  padding: '12px 20px',
+                  border: 'none',
+                  background: hasActive ? `${colors.primary}12` : 'transparent',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 8,
+                  color: groupColor,
+                  textAlign: 'left',
+                  ...sidebarNavText
+                }}
+              >
+                <span style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: 0 }}>
+                  {GroupIcon ? <GroupIcon size={18} color={groupColor} /> : null}
+                  <span>{group.label}</span>
+                </span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 6, opacity: 0.75, flexShrink: 0 }}>
+                  <span style={sidebarNavText}>{group.items.length}</span>
+                  <motion.span
+                    style={{ display: 'flex', alignItems: 'center' }}
+                    animate={{ rotate: isOpen ? 0 : -90 }}
+                    transition={{ duration: 0.2, ease: 'easeInOut' }}
+                  >
+                    <ChevronDown size={16} />
+                  </motion.span>
+                </span>
+              </motion.button>
+              <AnimatePresence initial={false}>
+                {isOpen ? (
+                  <motion.div
+                    key={`${group.key}-items`}
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.22, ease: 'easeInOut' }}
+                    style={{ overflow: 'hidden' }}
+                  >
+                    {group.items.map((item) => renderNavItem(item, { nested: true }))}
+                  </motion.div>
+                ) : null}
+              </AnimatePresence>
+            </div>
+          );
+        })}
+        {sidebarNav.bottom.length ? (
+          <div style={{ marginTop: 8, borderTop: `1px solid ${colors.border}`, paddingTop: 4 }}>
+            {sidebarNav.bottom.map((item) => renderNavItem(item))}
+          </div>
+        ) : null}
+      </>
+    );
+  };
 
   const handleSignOut = async () => {
     await signOut();
@@ -642,41 +746,8 @@ const Layout = () => {
           </div>
 
           {/* Menu Items */}
-          <nav className="sidebar-scroll" style={{ flex: 1, overflowY: 'auto', paddingBottom: '16px' }}>
-            {menuItems.map((item) => {
-              const Icon = item.icon;
-              const isActive = activeSection === item.key;
-
-              return (
-                <motion.div
-                  key={item.key}
-                  whileHover={{ backgroundColor: colors.hover || 'rgba(64,64,64,0.7)' }}
-                  whileTap={{ scale: 0.98 }}
-                  onClick={() => navigateTo(item.key)}
-                  style={{
-                    padding: '12px 20px',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '12px',
-                    borderLeft: isActive ? `3px solid ${colors.primary}` : '3px solid transparent',
-                    backgroundColor: isActive ? (colors.hover || 'rgba(64,64,64,0.7)') : colors.sidebar
-                  }}
-                >
-                  <Icon
-                    size={18}
-                    color={isActive ? colors.primary : colors.textSecondary}
-                  />
-                  <span style={{
-                    color: isActive ? colors.primary : colors.textSecondary,
-                    fontSize: '14px',
-                    fontWeight: isActive ? '500' : '400',
-                  }}>
-                    {item.label}
-                  </span>
-                </motion.div>
-              );
-            })}
+          <nav className="sidebar-scroll" style={{ flex: 1, overflowY: 'auto', paddingBottom: '16px', fontFamily: 'inherit' }}>
+            {renderSidebarNav()}
           </nav>
 
           {/* User Info y Logout */}
@@ -768,7 +839,7 @@ const Layout = () => {
               margin: 0,
               lineHeight: 1.2
             }}>
-              {menuItems.find(item => item.key === activeSection)?.label}
+              {findMenuItemLabel(sidebarNav.flatItems, activeSection)}
             </h1>
 
             <div style={{

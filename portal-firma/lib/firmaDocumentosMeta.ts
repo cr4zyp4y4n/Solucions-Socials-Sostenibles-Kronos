@@ -112,7 +112,8 @@ export function buildStampLinesForDoc({
   tokenRowId,
   hashPdf,
   ip,
-  userAgent
+  userAgent,
+  dniConfirmadoEnPortal
 }: {
   trabajadorNombre?: string | null;
   trabajadorDni?: string | null;
@@ -124,6 +125,7 @@ export function buildStampLinesForDoc({
   hashPdf?: string | null;
   ip?: string;
   userAgent?: string;
+  dniConfirmadoEnPortal?: boolean;
 }) {
   const meta = getFirmaDocMeta(tipoDocumento);
   const uaShort = userAgent ? `${userAgent.slice(0, 40)}${userAgent.length > 40 ? '…' : ''}` : '';
@@ -131,6 +133,7 @@ export function buildStampLinesForDoc({
     meta.stampDeclaration,
     trabajadorNombre ? `Trabajador: ${trabajadorNombre}` : '',
     trabajadorDni ? `DNI: ${trabajadorDni}` : '',
+    dniConfirmadoEnPortal ? 'DNI confirmado en portal antes del SMS: Sí' : '',
     `Fecha/hora: ${new Date(nowIso).toLocaleString('es-ES')}`,
     hashPdf ? `SHA-256 (orig): ${String(hashPdf).slice(0, 16)}…` : '',
     ip ? `IP: ${ip}` : '',
