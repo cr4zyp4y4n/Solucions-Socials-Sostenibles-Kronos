@@ -21,6 +21,7 @@ type Props = {
   isUsed: boolean;
   isRevoked: boolean;
   isExpired: boolean;
+  requiereConfirmacionDni?: boolean;
 };
 
 export default function FirmaPackPortal({
@@ -30,7 +31,8 @@ export default function FirmaPackPortal({
   canAttempt,
   isUsed,
   isRevoked,
-  isExpired
+  isExpired,
+  requiereConfirmacionDni = false
 }: Props) {
   const [activeId, setActiveId] = useState(documentos[0]?.id || '');
   const [revisados, setRevisados] = useState<Record<string, boolean>>(() => {
@@ -256,6 +258,7 @@ export default function FirmaPackPortal({
             isExpired={isExpired}
             isRevoked={isRevoked}
             isUsed={isUsed}
+            requiereConfirmacionDni={requiereConfirmacionDni}
             acceptLabel={isPack ? 'Acepto y firmo todos los documentos' : 'Acepto y firmo'}
             blockedHint={
               !allReviewed

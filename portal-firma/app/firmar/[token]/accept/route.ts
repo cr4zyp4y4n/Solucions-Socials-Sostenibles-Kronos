@@ -1,9 +1,11 @@
 import { buildStampLinesForDoc } from '@/lib/firmaDocumentosMeta';
-import type { DocOpciones } from '@/lib/firmaDocumentosMeta';
 import { getOtpScopeIds, resolveFirmaToken } from '@/lib/resolveFirmaToken';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getRequestInfo } from '@/lib/requestInfo';
 import { stampPdfLastPage } from '@/lib/pdfSign';
+import { hasRecentDniConfirmation } from '@/lib/dniVerification';
+import { normalizeDni } from '@/lib/normalizeDni';
+import { loadDocumentoOpciones } from '@/lib/firmaDocumentoOpciones';
 
 async function stampAndUploadDocument({
   documento,
@@ -12,7 +14,9 @@ async function stampAndUploadDocument({
   ip,
   userAgent,
   trabajadorNombre,
-  trabajadorDni
+  trabajadorDni,
+  dniConfirmadoEnPortal,
+  smsVerificadoAt
 }: {
   documento: {
     id: string;
@@ -29,6 +33,8 @@ async function stampAndUploadDocument({
   userAgent: string;
   trabajadorNombre?: string | null;
   trabajadorDni?: string | null;
+  dniConfirmadoEnPortal?: boolean;
+  smsVerificadoAt?: string | null;
 }) {
   if (documento.firmado_at && documento.storage_path_firmado) {
     return { signedPath: documento.storage_path_firmado, skipped: true };
@@ -37,14 +43,8 @@ async function stampAndUploadDocument({
     throw new Error(`Documento ${documento.id} sin PDF`);
   }
 
-  const { data: docRow } = await supabaseAdmin
-    .from('firma_documentos')
-    .select('opciones_aceptacion, tipo_documento')
-    .eq('id', documento.id)
-    .maybeSingle();
-
-  const opciones = (docRow?.opciones_aceptacion || null) as DocOpciones | null;
-  const tipo = docRow?.tipo_documento || documento.tipo_documento;
+  const { tipoDocumento: tipoFromDb, opciones } = await loadDocumentoOpciones(documento.id);
+  const tipo = tipoFromDb || documento.tipo_documento;
 
   const { data: signedData, error: signedErr } = await supabaseAdmin.storage
     .from('firma-documentos')
@@ -70,7 +70,10 @@ async function stampAndUploadDocument({
     tokenRowId,
     hashPdf: documento.hash_pdf,
     ip,
-    userAgent
+    userAgent,
+    dniConfirmadoEnPortal,
+    smsVerificado: true,
+    smsVerificadoAt: smsVerificadoAt || null
   });
 
   const signedPdf = await stampPdfLastPage({ pdfBytes: originalBuf, stampLines });
@@ -158,10 +161,23 @@ export async function POST(_req: Request, ctx: { params: Promise<{ token: string
     return Response.json({ ok: false, error: 'Falta verificación OTP' }, { status: 401 });
   }
 
+  const requiereDni = Boolean(normalizeDni(resolved.trabajador?.dni));
+  if (requiereDni) {
+    const dniOk = await hasRecentDniConfirmation({ documentoId, envioId });
+    if (!dniOk) {
+      return Response.json(
+        { ok: false, error: 'Falta confirmación de DNI. Vuelve a solicitar el código SMS.' },
+        { status: 401 }
+      );
+    }
+  }
+
   const nowIso = new Date().toISOString();
   const { ip, userAgent } = await getRequestInfo();
   const trabajadorNombre = resolved.trabajador?.nombre || null;
   const trabajadorDni = resolved.trabajador?.dni || null;
+  const dniConfirmadoEnPortal = requiereDni;
+  const smsVerificadoAt = consumed[0]?.consumed_at || null;
 
   const signedPaths: string[] = [];
   for (const doc of resolved.documentos) {
@@ -172,7 +188,9 @@ export async function POST(_req: Request, ctx: { params: Promise<{ token: string
       ip,
       userAgent,
       trabajadorNombre,
-      trabajadorDni
+      trabajadorDni,
+      dniConfirmadoEnPortal,
+      smsVerificadoAt
     });
     signedPaths.push(result.signedPath);
   }
@@ -201,6 +219,8 @@ export async function POST(_req: Request, ctx: { params: Promise<{ token: string
       envio_id: envioId,
       trabajador: trabajadorNombre,
       dni: trabajadorDni,
+      dni_confirmado_portal: dniConfirmadoEnPortal,
+      sms_verificado_at: smsVerificadoAt,
       num_documentos: resolved.documentos.length,
       storage_paths_firmados: signedPaths
     }

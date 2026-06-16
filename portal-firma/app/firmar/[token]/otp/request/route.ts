@@ -3,11 +3,14 @@ import { generateOtpCode, sha256Hex } from '@/lib/otp';
 import { sendSms } from '@/lib/sms';
 import { getRequestInfo } from '@/lib/requestInfo';
 import { supabaseAdmin } from '@/lib/supabase';
+import { checkProvidedDni } from '@/lib/dniVerification';
 
 export const runtime = 'nodejs';
 
-export async function POST(_req: Request, ctx: { params: Promise<{ token: string }> }) {
+export async function POST(req: Request, ctx: { params: Promise<{ token: string }> }) {
   const { token } = await ctx.params;
+  const body = await req.json().catch(() => ({}));
+  const dniProvided = String(body?.dni || '').trim();
 
   const resolved = await resolveFirmaToken(token);
   if (!resolved) return Response.json({ ok: false, error: 'Token no válido' }, { status: 404 });
@@ -19,6 +22,37 @@ export async function POST(_req: Request, ctx: { params: Promise<{ token: string
   const { documentoId, envioId } = getOtpScopeIds(resolved);
   if (!documentoId || !telefono) {
     return Response.json({ ok: false, error: 'Documento o teléfono no disponible' }, { status: 400 });
+  }
+
+  const dniCheck = checkProvidedDni(resolved.trabajador?.dni, dniProvided);
+  if (dniCheck.required && !dniCheck.ok) {
+    const { ip, userAgent } = await getRequestInfo();
+    await supabaseAdmin.from('firma_auditorias').insert({
+      documento_id: documentoId,
+      ip,
+      user_agent: userAgent,
+      resultado: 'dni_incorrecto',
+      detalle: { accion: 'dni_confirmacion_fallida', envio_id: envioId }
+    });
+    return Response.json(
+      { ok: false, error: 'El DNI o NIE no coincide con nuestros registros. Revísalo e inténtalo de nuevo.' },
+      { status: 403 }
+    );
+  }
+
+  const { ip, userAgent } = await getRequestInfo();
+  if (dniCheck.required && dniCheck.ok) {
+    await supabaseAdmin.from('firma_auditorias').insert({
+      documento_id: documentoId,
+      ip,
+      user_agent: userAgent,
+      resultado: 'ok',
+      detalle: {
+        accion: 'dni_confirmado',
+        envio_id: envioId,
+        dni_hash: dniCheck.dniHash
+      }
+    });
   }
 
   const otp = generateOtpCode(6);
@@ -68,7 +102,6 @@ export async function POST(_req: Request, ctx: { params: Promise<{ token: string
     }
   }
 
-  const { ip, userAgent } = await getRequestInfo();
   await supabaseAdmin.from('firma_auditorias').insert({
     documento_id: documentoId,
     ip,

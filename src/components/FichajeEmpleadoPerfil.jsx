@@ -1,17 +1,13 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { motion } from 'framer-motion';
 import {
   ChevronLeft,
   ChevronRight,
-  User,
-  Clock,
-  Calendar as CalendarIcon,
   ArrowLeft,
   Coffee,
-  CheckCircle,
   AlertCircle,
   Umbrella,
-  Pencil
+  Pencil,
+  User
 } from 'lucide-react';
 import {
   startOfMonth,
@@ -33,15 +29,25 @@ import { formatTimeMadrid, formatDateShortMadrid, formatearHorasDecimal } from '
 import { useTheme } from './ThemeContext';
 import { useAuth } from './AuthContext';
 import { supabase } from '../config/supabase';
+import { KronosButton, KronosCard, KronosFieldLabel, KronosInput, KronosSelect } from './kronos';
+import { empleadoEstadoFlow, estadoPanelColor } from './panelFichajes/panelFichajesHelpers';
 import FichajeDetailsModal from './FichajeDetailsModal';
 import FichajeEditModal from './FichajeEditModal';
 
 const WEEKDAYS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 
-const FichajeEmpleadoPerfil = ({ empleado, onBack }) => {
+const LEGEND_ITEMS = [
+  { key: 'hoy', label: 'Hoy' },
+  { key: 'fichaje', label: 'Fichaje' },
+  { key: 'curso', label: 'En curso' },
+  { key: 'vacaciones', label: 'Vacaciones' },
+  { key: 'baja', label: 'Baja' }
+];
+
+const FichajeEmpleadoPerfil = ({ empleado, onBack, resumen, mesInicial }) => {
   const { colors } = useTheme();
   const { user } = useAuth();
-  const [calendarMonth, setCalendarMonth] = useState(new Date());
+  const [calendarMonth, setCalendarMonth] = useState(() => mesInicial || new Date());
   const [fichajes, setFichajes] = useState([]);
   const [vacaciones, setVacaciones] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -58,6 +64,10 @@ const FichajeEmpleadoPerfil = ({ empleado, onBack }) => {
   const [savingBaja, setSavingBaja] = useState(false);
 
   const empleadoId = empleado?.id;
+
+  useEffect(() => {
+    if (mesInicial) setCalendarMonth(mesInicial);
+  }, [empleadoId, mesInicial]);
 
   // Rol del usuario: admin, manager, management pueden marcar vacaciones
   useEffect(() => {
@@ -263,238 +273,177 @@ const FichajeEmpleadoPerfil = ({ empleado, onBack }) => {
   };
 
   const nombreEmpleado = empleado?.nombreCompleto || empleado?.name || 'Empleado';
+  const esMesActual = isSameMonth(calendarMonth, new Date());
+  const mesLabel = format(calendarMonth, 'MMMM yyyy', { locale: es });
+
+  const resumenVivo = useMemo(() => ({
+    ...(resumen || {}),
+    trabajandoAhora: resumenMes.trabajandoAhora || resumen?.trabajandoAhora,
+    diasTrabajados: resumenMes.diasTrabajados,
+    horasTotales: resumenMes.horasTotales
+  }), [resumen, resumenMes]);
+
+  const estadoFlow = useMemo(() => empleadoEstadoFlow(resumenVivo), [resumenVivo]);
+  const estadoTone = estadoPanelColor(estadoFlow.key, colors);
+
+  const legendTone = (key) => {
+    switch (key) {
+      case 'hoy': return colors.primary;
+      case 'fichaje': return colors.success;
+      case 'curso': return colors.warning;
+      case 'vacaciones': return colors.info || '#2196F3';
+      case 'baja': return colors.error || colors.warning;
+      default: return colors.textSecondary;
+    }
+  };
 
   return (
-    <motion.div
-      initial={{ opacity: 0, x: 20 }}
-      animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, x: -20 }}
-      transition={{ duration: 0.25 }}
-      style={{ padding: '0 4px' }}
-    >
-      {/* Cabecera: volver + nombre */}
+    <div>
+      <KronosButton variant="ghost" size="sm" onClick={onBack} style={{ marginBottom: 14, paddingLeft: 0 }}>
+        <ArrowLeft size={15} />
+        Volver al listado
+      </KronosButton>
+
       <div
         style={{
           display: 'flex',
-          alignItems: 'center',
-          gap: '16px',
-          marginBottom: '24px',
+          alignItems: 'flex-start',
+          gap: 14,
+          marginBottom: 18,
           flexWrap: 'wrap'
         }}
       >
-        <button
-          onClick={onBack}
+        <div
           style={{
+            width: 44,
+            height: 44,
+            borderRadius: 10,
+            background: `${colors.primary}14`,
             display: 'flex',
             alignItems: 'center',
-            gap: '8px',
-            padding: '10px 16px',
-            backgroundColor: colors.surface,
-            border: `1px solid ${colors.border}`,
-            borderRadius: '8px',
-            color: colors.text,
-            fontSize: '14px',
-            fontWeight: '500',
-            cursor: 'pointer'
+            justifyContent: 'center',
+            flexShrink: 0
           }}
         >
-          <ArrowLeft size={18} />
-          Volver al listado
-        </button>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div
-            style={{
-              width: '44px',
-              height: '44px',
-              borderRadius: '50%',
-              backgroundColor: colors.primary + '22',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center'
-            }}
-          >
-            <User size={24} color={colors.primary} />
+          <User size={22} color={colors.primary} />
+        </div>
+        <div style={{ minWidth: 0 }}>
+          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: colors.text }}>
+            {nombreEmpleado}
+          </h2>
+          <div style={{ marginTop: 5, fontSize: 13, color: colors.textSecondary }}>
+            {empleado?.email || 'Sin email'}
           </div>
-          <div>
-            <h2 style={{ margin: 0, fontSize: '22px', fontWeight: '700', color: colors.text }}>
-              {nombreEmpleado}
-            </h2>
-            {empleado?.email && (
-              <p style={{ margin: '4px 0 0', fontSize: '14px', color: colors.textSecondary }}>
-                {empleado.email}
-              </p>
-            )}
+          <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+            <span
+              style={{
+                fontSize: 11,
+                fontWeight: 600,
+                padding: '3px 8px',
+                borderRadius: 6,
+                background: `${estadoTone}14`,
+                color: estadoTone
+              }}
+            >
+              {estadoFlow.label}
+            </span>
+            {resumenMes.trabajandoAhora ? (
+              <span style={{ fontSize: 12, color: colors.warning, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                <Coffee size={13} />
+                Fichaje en curso
+              </span>
+            ) : null}
           </div>
         </div>
       </div>
 
-      {/* Tarjetas de resumen */}
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
-          gap: '16px',
-          marginBottom: '24px'
+          gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
+          gap: 10,
+          marginBottom: 18
         }}
       >
-        <div
-          style={{
-            backgroundColor: colors.card,
-            border: `1px solid ${colors.border}`,
-            borderRadius: '12px',
-            padding: '16px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '12px'
-          }}
-        >
-          <div style={{ backgroundColor: colors.primary + '20', padding: '10px', borderRadius: '8px' }}>
-            <Clock size={22} color={colors.primary} />
-          </div>
-          <div>
-            <div style={{ fontSize: '12px', color: colors.textSecondary, fontWeight: '500' }}>
-              Horas este mes
-            </div>
-            <div style={{ fontSize: '20px', fontWeight: '700', color: colors.text }}>
-              {resumenMes.horasTotales}h
-            </div>
-          </div>
-        </div>
-        <div
-          style={{
-            backgroundColor: colors.card,
-            border: `1px solid ${colors.border}`,
-            borderRadius: '12px',
-            padding: '16px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '12px'
-          }}
-        >
-          <div style={{ backgroundColor: colors.success + '20', padding: '10px', borderRadius: '8px' }}>
-            <CalendarIcon size={22} color={colors.success} />
-          </div>
-          <div>
-            <div style={{ fontSize: '12px', color: colors.textSecondary, fontWeight: '500' }}>
-              Días trabajados
-            </div>
-            <div style={{ fontSize: '20px', fontWeight: '700', color: colors.text }}>
-              {resumenMes.diasTrabajados}
-            </div>
-          </div>
-        </div>
-        {resumenMes.trabajandoAhora && (
-          <div
-            style={{
-              backgroundColor: colors.warning + '15',
-              border: `1px solid ${colors.warning}`,
-              borderRadius: '12px',
-              padding: '16px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '12px'
-            }}
-          >
-            <div style={{ backgroundColor: colors.warning + '30', padding: '10px', borderRadius: '8px' }}>
-              <Coffee size={22} color={colors.warning} />
-            </div>
-            <div>
-              <div style={{ fontSize: '12px', color: colors.textSecondary, fontWeight: '500' }}>
-                Estado
-              </div>
-              <div style={{ fontSize: '16px', fontWeight: '600', color: colors.warning }}>
-                Trabajando ahora
-              </div>
-            </div>
-          </div>
-        )}
+        {[
+          { label: 'Horas mes', value: `${resumenMes.horasTotales}h`, tone: colors.primary },
+          { label: 'Días trabajados', value: resumenMes.diasTrabajados, tone: colors.success },
+          { label: 'Vac. restantes', value: resumen?.diasVacacionesRestantes ?? '—', tone: colors.text }
+        ].map((kpi) => (
+          <KronosCard key={kpi.label} style={{ padding: '12px 14px' }}>
+            <div style={{ fontSize: 12, color: colors.textSecondary }}>{kpi.label}</div>
+            <div style={{ marginTop: 4, fontSize: 20, fontWeight: 700, color: kpi.tone }}>{kpi.value}</div>
+          </KronosCard>
+        ))}
       </div>
 
-      {/* Navegación mes + calendario */}
-      <div
-        style={{
-          backgroundColor: colors.card,
-          border: `1px solid ${colors.border}`,
-          borderRadius: '12px',
-          padding: '20px',
-          marginBottom: '24px'
-        }}
-      >
+      <KronosCard style={{ marginBottom: 18 }}>
         <div
           style={{
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            marginBottom: '16px',
+            marginBottom: 16,
             flexWrap: 'wrap',
-            gap: '8px'
+            gap: 12
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <button
-              onClick={() => setCalendarMonth((m) => subMonths(m, 1))}
-              style={{
-                padding: '8px 12px',
-                backgroundColor: colors.surface,
-                border: `1px solid ${colors.border}`,
-                borderRadius: '8px',
-                color: colors.text,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center'
-              }}
-            >
-              <ChevronLeft size={20} />
-            </button>
-            <span style={{ fontSize: '18px', fontWeight: '700', color: colors.text, textTransform: 'capitalize' }}>
-              {format(calendarMonth, 'MMMM yyyy', { locale: es })}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <KronosButton size="sm" onClick={() => setCalendarMonth((m) => subMonths(m, 1))}>
+              <ChevronLeft size={16} />
+            </KronosButton>
+            <span style={{ fontWeight: 600, fontSize: 15, textTransform: 'capitalize', minWidth: 140, textAlign: 'center' }}>
+              {mesLabel}
             </span>
-            <button
-              onClick={() => setCalendarMonth((m) => addMonths(m, 1))}
-              style={{
-                padding: '8px 12px',
-                backgroundColor: colors.surface,
-                border: `1px solid ${colors.border}`,
-                borderRadius: '8px',
-                color: colors.text,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center'
-              }}
-            >
-              <ChevronRight size={20} />
-            </button>
+            <KronosButton size="sm" onClick={() => setCalendarMonth((m) => addMonths(m, 1))}>
+              <ChevronRight size={16} />
+            </KronosButton>
+            {!esMesActual ? (
+              <KronosButton size="sm" variant="ghost" onClick={() => setCalendarMonth(new Date())}>
+                Hoy
+              </KronosButton>
+            ) : null}
           </div>
-          {userCanEditVacaciones && (
-            <button
-              type="button"
+          {userCanEditVacaciones ? (
+            <KronosButton
+              size="sm"
+              variant={modoPeriodoVacaciones ? 'ghost' : 'secondary'}
               onClick={() => {
                 setModoPeriodoVacaciones((v) => !v);
                 setPeriodoPrimerDia(null);
               }}
-              style={{
-                padding: '8px 14px',
-                backgroundColor: modoPeriodoVacaciones ? colors.warning : (colors.info || '#2196F3'),
-                color: '#fff',
-                border: 'none',
-                borderRadius: '8px',
-                fontSize: '13px',
-                fontWeight: '600',
-                cursor: 'pointer'
-              }}
             >
-              {modoPeriodoVacaciones ? 'Cancelar' : 'Seleccionar periodo'}
-            </button>
-          )}
+              {modoPeriodoVacaciones ? 'Cancelar periodo' : 'Marcar periodo vacaciones'}
+            </KronosButton>
+          ) : null}
         </div>
-        {modoPeriodoVacaciones && userCanEditVacaciones && (
-          <p style={{ margin: '0 0 12px 0', fontSize: '13px', color: colors.textSecondary }}>
-            {periodoPrimerDia ? 'Ahora clic en el último día del periodo.' : 'Clic en el primer día del periodo, luego en el último.'}
+
+        {modoPeriodoVacaciones && userCanEditVacaciones ? (
+          <p style={{ margin: '0 0 12px 0', fontSize: 13, color: colors.textSecondary }}>
+            {periodoPrimerDia ? 'Clic en el último día del periodo.' : 'Clic en el primer y último día del periodo.'}
           </p>
-        )}
+        ) : null}
+
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, marginBottom: 14, fontSize: 12, color: colors.textSecondary }}>
+          {LEGEND_ITEMS.map((item) => (
+            <span key={item.key} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+              <span
+                style={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: 2,
+                  background: item.key === 'hoy' ? 'transparent' : `${legendTone(item.key)}66`,
+                  border: item.key === 'hoy' ? `2px solid ${legendTone(item.key)}` : 'none',
+                  boxSizing: 'border-box'
+                }}
+              />
+              {item.label}
+            </span>
+          ))}
+        </div>
 
         {loading ? (
-          <div style={{ textAlign: 'center', padding: '40px', color: colors.textSecondary }}>
+          <div style={{ textAlign: 'center', padding: 40, color: colors.textSecondary }}>
             Cargando calendario...
           </div>
         ) : (
@@ -689,78 +638,64 @@ const FichajeEmpleadoPerfil = ({ empleado, onBack }) => {
             </div>
           </>
         )}
-      </div>
+      </KronosCard>
 
-      {/* Lista de fichajes del mes */}
-      <div
-        style={{
-          backgroundColor: colors.card,
-          border: `1px solid ${colors.border}`,
-          borderRadius: '12px',
-          padding: '20px'
-        }}
-      >
-        <h3 style={{ margin: '0 0 16px', fontSize: '16px', fontWeight: '600', color: colors.text }}>
+      <KronosCard style={{ marginBottom: 16 }}>
+        <h3 style={{ margin: '0 0 12px', fontSize: 14, fontWeight: 600, color: colors.text }}>
           Registros del mes
         </h3>
         {fichajes.length === 0 ? (
-          <p style={{ color: colors.textSecondary, fontSize: '14px', margin: 0 }}>
+          <p style={{ color: colors.textSecondary, fontSize: 14, margin: 0 }}>
             No hay fichajes en este mes.
           </p>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {fichajes.map((f) => (
-              <div
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {[...fichajes]
+              .sort((a, b) => new Date(b.fecha) - new Date(a.fecha) || String(b.hora_entrada).localeCompare(String(a.hora_entrada)))
+              .map((f) => (
+              <button
                 key={f.id}
+                type="button"
                 onClick={() => openFichaje(f)}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
-                  padding: '12px 16px',
-                  backgroundColor: colors.surface,
+                  gap: 12,
+                  padding: '10px 12px',
+                  background: colors.background,
                   border: `1px solid ${colors.border}`,
-                  borderRadius: '8px',
-                  cursor: 'pointer'
+                  borderRadius: 8,
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                  color: colors.text,
+                  textAlign: 'left',
+                  width: '100%'
                 }}
               >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  {f.hora_salida ? (
-                    <CheckCircle size={18} color={colors.success} />
-                  ) : (
-                    <AlertCircle size={18} color={colors.warning} />
-                  )}
-                  {f.es_modificado && <Pencil size={14} color={colors.warning || '#ed6c02'} style={{ flexShrink: 0 }} title="Modificado" />}
-                  <span style={{ fontWeight: '500', color: colors.text }}>{formatDateShortMadrid(f.fecha)}</span>
-                  <span style={{ color: colors.textSecondary, fontSize: '14px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, fontSize: 13 }}>
+                  <span style={{ fontWeight: 600, minWidth: 72 }}>{formatDateShortMadrid(f.fecha)}</span>
+                  <span style={{ color: colors.textSecondary }}>
                     {formatTimeMadrid(f.hora_entrada)} – {f.hora_salida ? formatTimeMadrid(f.hora_salida) : 'En curso'}
                   </span>
+                  {f.es_modificado ? <Pencil size={12} color={colors.warning || '#ed6c02'} title="Modificado" /> : null}
                 </div>
-                <span style={{ fontWeight: '600', color: colors.text }}>
-                  {f.horas_trabajadas != null ? formatearHorasDecimal(f.horas_trabajadas) : '-'}
+                <span style={{ fontWeight: 600, flexShrink: 0, fontSize: 13 }}>
+                  {f.horas_trabajadas != null ? formatearHorasDecimal(f.horas_trabajadas) : '—'}
                 </span>
-              </div>
+              </button>
             ))}
           </div>
         )}
-      </div>
+      </KronosCard>
 
-      {/* Bajas: solo para admin/manager/management */}
-      {userCanEditVacaciones && (
-        <div
-          style={{
-            backgroundColor: colors.card,
-            border: `1px solid ${colors.border}`,
-            borderRadius: '12px',
-            padding: '20px',
-            marginTop: '16px'
-          }}
-        >
-          <h3 style={{ margin: '0 0 16px', fontSize: '16px', fontWeight: '600', color: colors.text }}>
+      {userCanEditVacaciones ? (
+        <KronosCard>
+          <h3 style={{ margin: '0 0 8px', fontSize: 14, fontWeight: 600, color: colors.text }}>
             Bajas
           </h3>
-          <p style={{ color: colors.textSecondary, fontSize: '13px', margin: '0 0 12px' }}>
-            Periodos en los que el empleado no ficha (enfermedad, accidente, etc.). Puedes añadir nuevos periodos o <strong>quitar una baja</strong> con el botón «Quitar baja».
+          <p style={{ color: colors.textSecondary, fontSize: 13, margin: '0 0 12px' }}>
+            Periodos de baja médica u otros. Los días de vacaciones se marcan en el calendario.
           </p>
           {bajas.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px' }}>
@@ -782,103 +717,81 @@ const FichajeEmpleadoPerfil = ({ empleado, onBack }) => {
                     {b.tipo && <span style={{ color: colors.textSecondary, marginLeft: 8 }}>({b.tipo})</span>}
                     {b.notas && <span style={{ color: colors.textSecondary, marginLeft: 8, fontSize: '12px' }}> — {b.notas}</span>}
                   </span>
-                  <button
-                    type="button"
+                  <KronosButton
+                    size="sm"
+                    variant="ghost"
                     onClick={async () => {
                       if (!window.confirm('¿Quitar esta baja? Se borrará el periodo de baja.')) return;
                       const res = await fichajeSupabaseService.eliminarBaja(b.id);
                       if (res.success) setBajas((prev) => prev.filter((x) => x.id !== b.id));
                     }}
-                    
-                    style={{
-                      padding: '6px 12px',
-                      fontSize: '13px',
-                      border: `1px solid ${colors.warning || '#ed6c02'}`,
-                      borderRadius: '6px',
-                      backgroundColor: (colors.warning || '#ed6c02') + '15',
-                      color: colors.warning || '#ed6c02',
-                      cursor: 'pointer',
-                      fontWeight: 500
-                    }}
+                    style={{ borderColor: `${colors.warning || '#ed6c02'}66`, color: colors.warning || '#ed6c02' }}
                   >
                     Quitar baja
-                  </button>
+                  </KronosButton>
                 </div>
               ))}
             </div>
           )}
           {!showBajaForm ? (
-            <button
-              type="button"
-              onClick={() => setShowBajaForm(true)}
-              style={{
-                padding: '8px 16px',
-                fontSize: '14px',
-                fontWeight: '500',
-                border: `1px solid ${colors.primary}`,
-                borderRadius: '8px',
-                backgroundColor: colors.primary + '15',
-                color: colors.primary,
-                cursor: 'pointer'
-              }}
-            >
+            <KronosButton size="sm" onClick={() => setShowBajaForm(true)}>
               Añadir baja
-            </button>
+            </KronosButton>
           ) : (
             <div
               style={{
                 display: 'flex',
                 flexDirection: 'column',
-                gap: '12px',
-                padding: '12px',
-                backgroundColor: colors.surface,
-                borderRadius: '8px',
+                gap: 12,
+                padding: 14,
+                background: colors.background,
+                borderRadius: 12,
                 border: `1px solid ${colors.border}`
               }}
             >
-              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
-                <label style={{ fontSize: '13px', color: colors.text }}>
-                  Desde: <input
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
+                <div>
+                  <KronosFieldLabel>Desde</KronosFieldLabel>
+                  <KronosInput
                     type="date"
                     value={bajaForm.fecha_inicio}
                     onChange={(e) => setBajaForm((f) => ({ ...f, fecha_inicio: e.target.value }))}
-                    style={{ padding: '6px 8px', borderRadius: '6px', border: `1px solid ${colors.border}` }}
                   />
-                </label>
-                <label style={{ fontSize: '13px', color: colors.text }}>
-                  Hasta: <input
+                </div>
+                <div>
+                  <KronosFieldLabel>Hasta</KronosFieldLabel>
+                  <KronosInput
                     type="date"
                     value={bajaForm.fecha_fin}
                     onChange={(e) => setBajaForm((f) => ({ ...f, fecha_fin: e.target.value }))}
-                    style={{ padding: '6px 8px', borderRadius: '6px', border: `1px solid ${colors.border}` }}
                   />
-                </label>
-                <label style={{ fontSize: '13px', color: colors.text }}>
-                  Tipo: <select
+                </div>
+                <div>
+                  <KronosFieldLabel>Tipo</KronosFieldLabel>
+                  <KronosSelect
                     value={bajaForm.tipo}
                     onChange={(e) => setBajaForm((f) => ({ ...f, tipo: e.target.value }))}
-                    style={{ padding: '6px 8px', borderRadius: '6px', border: `1px solid ${colors.border}` }}
                   >
                     <option value="">—</option>
                     <option value="enfermedad">Enfermedad</option>
                     <option value="accidente">Accidente</option>
                     <option value="maternidad">Maternidad</option>
                     <option value="otro">Otro</option>
-                  </select>
-                </label>
+                  </KronosSelect>
+                </div>
               </div>
-              <label style={{ fontSize: '13px', color: colors.text, display: 'block' }}>
-                Notas: <input
+              <div>
+                <KronosFieldLabel>Notas</KronosFieldLabel>
+                <KronosInput
                   type="text"
                   placeholder="Opcional"
                   value={bajaForm.notas}
                   onChange={(e) => setBajaForm((f) => ({ ...f, notas: e.target.value }))}
-                  style={{ width: '100%', maxWidth: 300, padding: '6px 8px', borderRadius: '6px', border: `1px solid ${colors.border}`, marginTop: 4 }}
                 />
-              </label>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <button
-                  type="button"
+              </div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <KronosButton
+                  variant="primary"
                   disabled={savingBaja || !bajaForm.fecha_inicio || !bajaForm.fecha_fin}
                   onClick={async () => {
                     setSavingBaja(true);
@@ -905,39 +818,20 @@ const FichajeEmpleadoPerfil = ({ empleado, onBack }) => {
                       setSavingBaja(false);
                     }
                   }}
-                  style={{
-                    padding: '8px 16px',
-                    fontSize: '14px',
-                    fontWeight: '500',
-                    border: 'none',
-                    borderRadius: '8px',
-                    backgroundColor: colors.primary,
-                    color: '#fff',
-                    cursor: savingBaja ? 'not-allowed' : 'pointer'
-                  }}
                 >
                   {savingBaja ? 'Guardando…' : 'Guardar'}
-                </button>
-                <button
-                  type="button"
+                </KronosButton>
+                <KronosButton
+                  variant="ghost"
                   onClick={() => { setShowBajaForm(false); setBajaForm({ fecha_inicio: '', fecha_fin: '', tipo: '', notas: '' }); }}
-                  style={{
-                    padding: '8px 16px',
-                    fontSize: '14px',
-                    border: `1px solid ${colors.border}`,
-                    borderRadius: '8px',
-                    backgroundColor: colors.surface,
-                    color: colors.text,
-                    cursor: 'pointer'
-                  }}
                 >
                   Cancelar
-                </button>
+                </KronosButton>
               </div>
             </div>
           )}
-        </div>
-      )}
+        </KronosCard>
+      ) : null}
 
       {showDetailsModal && selectedFichaje && (
         <FichajeDetailsModal
@@ -958,7 +852,7 @@ const FichajeEmpleadoPerfil = ({ empleado, onBack }) => {
           onSave={handleCloseModals}
         />
       )}
-    </motion.div>
+    </div>
   );
 };
 

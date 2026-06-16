@@ -844,6 +844,69 @@ class FirmaService {
     });
     return { ok: true };
   }
+
+  /**
+   * URL firmada temporal para ver/descargar un PDF del bucket (original o con sello de firma).
+   */
+  async getDocumentoPdfSignedUrl(documento, { firmado = true, expiresIn = 600 } = {}) {
+    if (!documento) throw new Error('Falta documento');
+    const path = firmado ? documento.storage_path_firmado : documento.storage_path;
+    if (!path || path === 'pending') {
+      throw new Error(firmado ? 'Este documento aún no está firmado' : 'PDF original no disponible');
+    }
+    const { data, error } = await supabase.storage
+      .from(BUCKET)
+      .createSignedUrl(path, expiresIn);
+    if (error) throw error;
+    if (!data?.signedUrl) throw new Error('No se pudo obtener el enlace del PDF');
+    return data.signedUrl;
+  }
+
+  async downloadDocumentoPdf(documento, { firmado = true } = {}) {
+    const url = await this.getDocumentoPdfSignedUrl(documento, { firmado });
+    const fallbackName = `${documento.tipo_documento || 'documento'}.pdf`;
+    const fileName = firmado
+      ? documento.file_name_firmado || `SIGNED-${fallbackName}`
+      : documento.file_name || fallbackName;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Error descargando PDF (${res.status})`);
+    const blob = await res.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = blobUrl;
+    anchor.download = fileName.endsWith('.pdf') ? fileName : `${fileName}.pdf`;
+    anchor.rel = 'noopener';
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(blobUrl);
+  }
+
+  /** Historial de auditoría de un envío (portal + Kronos). */
+  async loadAuditoriasForEnvio(envio) {
+    if (!envio?.id) return [];
+
+    const docIds = [...new Set((envio.documentos || []).map((d) => d.id).filter(Boolean))];
+    if (!docIds.length && envio.es_legacy_suelto) {
+      docIds.push(envio.id);
+    }
+    if (!docIds.length) return [];
+
+    const { data, error } = await supabase
+      .from(TABLE_AUDITORIAS)
+      .select('id, documento_id, ip, user_agent, resultado, detalle, created_at')
+      .in('documento_id', docIds)
+      .order('created_at', { ascending: true });
+    if (error) throw error;
+
+    const envioId = envio.es_legacy_suelto ? null : envio.id;
+    return (data || []).filter((row) => {
+      const det = row.detalle && typeof row.detalle === 'object' ? row.detalle : {};
+      const detEnvio = det.envio_id || null;
+      if (envioId && detEnvio && detEnvio !== envioId) return false;
+      return true;
+    });
+  }
 }
 
 export default new FirmaService();

@@ -8,6 +8,7 @@ type Props = {
   isUsed: boolean;
   isRevoked: boolean;
   isExpired: boolean;
+  requiereConfirmacionDni?: boolean;
   acceptLabel?: string;
   blockedHint?: string;
 };
@@ -18,10 +19,10 @@ export default function FirmaFlowClient({
   isUsed,
   isRevoked,
   isExpired,
+  requiereConfirmacionDni = false,
   acceptLabel = 'Acepto y firmo',
   blockedHint = ''
 }: Props) {
-  // Asegura el UPDATE aunque el Server Component esté cacheado o falle silenciosamente en edge.
   useEffect(() => {
     if (isExpired || isRevoked) return;
     const url = `/firmar/${encodeURIComponent(token)}/open`;
@@ -29,6 +30,7 @@ export default function FirmaFlowClient({
   }, [token, isExpired, isRevoked]);
 
   const [step, setStep] = useState<'idle' | 'requested' | 'verified' | 'done'>('idle');
+  const [dni, setDni] = useState('');
   const [otp, setOtp] = useState('');
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState<string>('');
@@ -45,12 +47,20 @@ export default function FirmaFlowClient({
   }, [blockedHint, canAttempt, isExpired, isRevoked, isUsed]);
 
   const requestOtp = async () => {
+    if (requiereConfirmacionDni && !dni.trim()) {
+      setErr('Introduce tu DNI o NIE para continuar.');
+      return;
+    }
     setLoading(true);
     setErr('');
     setMsg('');
     setDebugOtp('');
     try {
-      const res = await fetch(`/firmar/${encodeURIComponent(token)}/otp/request`, { method: 'POST' });
+      const res = await fetch(`/firmar/${encodeURIComponent(token)}/otp/request`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requiereConfirmacionDni ? { dni: dni.trim() } : {})
+      });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json.ok) throw new Error(json.error || 'No se pudo enviar el código');
       setStep('requested');
@@ -141,13 +151,34 @@ export default function FirmaFlowClient({
       ) : null}
 
       {step === 'idle' ? (
-        <button
-          onClick={requestOtp}
-          disabled={loading}
-          className="w-full rounded-full bg-emerald-700 px-4 py-3 text-sm font-black text-white transition hover:bg-emerald-800 disabled:opacity-60"
-        >
-          {loading ? 'Enviando código...' : 'Enviar código por SMS'}
-        </button>
+        <div className="space-y-3">
+          {requiereConfirmacionDni ? (
+            <div>
+              <div className="mb-2 text-sm text-zinc-700">
+                Para verificar tu identidad, introduce tu <b>DNI o NIE</b> (debe coincidir con el de la empresa).
+              </div>
+              <input
+                value={dni}
+                onChange={(e) => setDni(e.target.value)}
+                autoComplete="off"
+                spellCheck={false}
+                className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-3 text-base uppercase tracking-wide"
+                placeholder="12345678A"
+              />
+            </div>
+          ) : null}
+          <button
+            onClick={requestOtp}
+            disabled={loading || (requiereConfirmacionDni && !dni.trim())}
+            className="w-full rounded-full bg-emerald-700 px-4 py-3 text-sm font-black text-white transition hover:bg-emerald-800 disabled:opacity-60"
+          >
+            {loading
+              ? 'Enviando código...'
+              : requiereConfirmacionDni
+                ? 'Confirmar DNI y enviar código por SMS'
+                : 'Enviar código por SMS'}
+          </button>
+        </div>
       ) : null}
 
       {step === 'requested' ? (
@@ -172,7 +203,7 @@ export default function FirmaFlowClient({
             </button>
             <button
               onClick={requestOtp}
-              disabled={loading}
+              disabled={loading || (requiereConfirmacionDni && !dni.trim())}
               className="rounded-full border border-zinc-200 bg-white px-4 py-3 text-sm font-black text-zinc-900 transition hover:bg-zinc-50 disabled:opacity-60"
             >
               Reenviar código
@@ -199,4 +230,3 @@ export default function FirmaFlowClient({
     </div>
   );
 }
-

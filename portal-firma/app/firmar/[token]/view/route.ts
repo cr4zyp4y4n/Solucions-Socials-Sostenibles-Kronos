@@ -1,5 +1,5 @@
 import { resolveFirmaToken } from '@/lib/resolveFirmaToken';
-import { supabaseAdmin } from '@/lib/supabase';
+import { updateDocumentoLecturaConfirmada } from '@/lib/firmaDocumentoOpciones';
 
 export async function POST(req: Request, ctx: { params: Promise<{ token: string }> }) {
   const { token } = await ctx.params;
@@ -27,15 +27,13 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
     ...(confirmacion.formacion_acoso ? { formacion_acoso: true } : {})
   };
 
-  const { error } = await supabaseAdmin
-    .from('firma_documentos')
-    .update({
-      revisado_at: nowIso,
-      opciones_aceptacion: opciones
-    })
-    .eq('id', documentoId);
+  const result = await updateDocumentoLecturaConfirmada(documentoId, opciones, nowIso);
+  if (!result.ok) return Response.json({ ok: false, error: result.error }, { status: 500 });
 
-  if (error) return Response.json({ ok: false, error: error.message }, { status: 500 });
-
-  return Response.json({ ok: true, revisado_at: nowIso, opciones });
+  return Response.json({
+    ok: true,
+    revisado_at: nowIso,
+    opciones,
+    opciones_guardadas: result.opcionesGuardadas
+  });
 }
