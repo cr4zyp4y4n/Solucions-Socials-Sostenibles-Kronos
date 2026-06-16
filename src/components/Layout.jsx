@@ -60,7 +60,7 @@ import FichajePage from './FichajePage';
 import PanelFichajesPage from './PanelFichajesPage';
 import GestionTiendaPage from './GestionTiendaPage';
 import AlbaranOCRPage from './AlbaranOCRPage';
-import ObradorDashboardPage from './ObradorDashboardPage';
+import ObradorApp from './obrador/ObradorApp';
 import FirmaPage from './FirmaPage';
 import LicitacionsPage from './LicitacionsPage';
 
@@ -477,7 +477,7 @@ const Layout = () => {
     { key: 'panel-fichajes', label: 'Panel Fichajes', path: '/panel-fichajes', icon: Activity, roles: ['admin', 'management', 'manager'] },
     { key: 'socios', label: 'Socios IDONI', path: '/socios', icon: Users, roles: ['admin', 'management', 'manager', 'tienda'] },
     { key: 'gestion-tienda', label: 'Gestión Tienda', path: '/gestion-tienda', icon: ShoppingBag, roles: ['admin', 'manager', 'tienda'] },
-    { key: 'obrador', label: 'Dashboard Obrador', path: '/obrador', icon: Zap, roles: ['admin', 'management', 'manager'] },
+    { key: 'obrador', label: 'Obrador', path: '/obrador', icon: Zap, roles: ['admin', 'management', 'manager'] },
     { key: 'contacts', label: 'Contactos', path: '/contacts', icon: CreditCard, roles: ['admin', 'management', 'manager'] },
     { key: 'settings', label: 'Configuración', path: '/settings', icon: Settings, roles: ['admin', 'management', 'manager', 'user', 'tienda'] },
   ];
@@ -566,7 +566,7 @@ const Layout = () => {
       case 'albaran-ocr':
         return <AlbaranOCRPage />;
       case 'obrador':
-        return <ObradorDashboardPage />;
+        return <ObradorApp />;
       case 'settings':
         return <SettingsPage />;
       case 'users':
