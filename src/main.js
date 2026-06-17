@@ -752,6 +752,23 @@ const createWindow = () => {
 app.whenReady().then(() => {
   createWindow();
 
+  try {
+    const cron = require('node-cron');
+    cron.schedule(
+      '0 8 * * 1',
+      () => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('licitacions-cron-sync');
+          console.log('[licitacions] Cron semanal: sync solicitada al renderer');
+        }
+      },
+      { timezone: 'Europe/Madrid' }
+    );
+    console.log('[licitacions] Cron semanal programado (lunes 08:00 Europe/Madrid)');
+  } catch (err) {
+    console.warn('[licitacions] No se pudo programar cron:', err?.message || err);
+  }
+
   // Verificar actualizaciones automáticamente al iniciar
   setTimeout(() => {
     autoUpdater.checkForUpdates();

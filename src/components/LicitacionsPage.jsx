@@ -1,11 +1,23 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { FileText, RefreshCw, ExternalLink, Save, Search } from 'feather-icons-react';
 import { motion } from 'framer-motion';
 import { useTheme } from './ThemeContext';
 import SectionHeader from './SectionHeader';
 import LicitacioDetailModal from './LicitacioDetailModal';
+import LicitacionsStats from './licitacions/LicitacionsStats';
 import licitacionsService from '../services/licitacionsService';
 import { getEstatContractacioMeta } from '../constants/licitacionsEstat';
+import { KronosButton } from './kronos';
+import {
+  computeLicitacionsStats,
+  countNewSince,
+  daysUntil,
+  formatLastSyncLabel,
+  getLastSync,
+  getLastVisit,
+  setLastSync,
+  setLastVisit
+} from './licitacions/licitacionsHelpers';
 
 const ESTATS = ['Pendent', 'Interessant', 'Descartada', 'Contactat'];
 const SOURCES = ['', 'TED', 'PSCP', 'PLACSP'];
@@ -40,16 +52,6 @@ function formatDateInput(value) {
   const s = String(value);
   const iso = s.match(/^(\d{4}-\d{2}-\d{2})/);
   return iso ? iso[1] : '';
-}
-
-function daysUntil(dateStr) {
-  if (!dateStr) return null;
-  const iso = String(dateStr).match(/^(\d{4}-\d{2}-\d{2})/);
-  if (!iso) return null;
-  const target = new Date(`${iso[1]}T12:00:00`);
-  const today = new Date();
-  today.setHours(12, 0, 0, 0);
-  return Math.ceil((target - today) / (1000 * 60 * 60 * 24));
 }
 
 function FieldLabel({ children, colors }) {
@@ -107,7 +109,7 @@ function SourceBadge({ source, colors }) {
   );
 }
 
-function LicitacioRow({ row, colors, onUpdate, onSave, onOpen, onSelect }) {
+function LicitacioRow({ row, colors, onUpdate, onSave, onOpen, onSelect, isNew }) {
   const inputStyle = {
     width: '100%',
     background: colors.background,
@@ -156,8 +158,21 @@ function LicitacioRow({ row, colors, onUpdate, onSave, onOpen, onSelect }) {
         title="Ver detalle"
       >
         <div>
-          <div style={{ color: colors.text, fontWeight: 700, fontSize: 14, lineHeight: 1.35, marginBottom: 4 }}>
-            {row.title}
+          <div style={{ color: colors.text, fontWeight: 700, fontSize: 14, lineHeight: 1.35, marginBottom: 4, display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+            <span style={{ flex: 1 }}>{row.title}</span>
+            {isNew ? (
+              <span style={{
+                fontSize: 10,
+                fontWeight: 700,
+                padding: '2px 6px',
+                borderRadius: 6,
+                background: `${colors.primary}18`,
+                color: colors.primary,
+                flexShrink: 0
+              }}>
+                Nueva
+              </span>
+            ) : null}
           </div>
           <div style={{ color: colors.textSecondary, fontSize: 12 }}>{row.external_id}</div>
         </div>
@@ -333,15 +348,19 @@ export default function LicitacionsPage() {
   const [error, setError] = useState('');
   const [selectedId, setSelectedId] = useState(null);
   const [savingId, setSavingId] = useState(null);
+  const [lastVisit] = useState(() => getLastVisit());
+  const [lastSyncAt, setLastSyncAt] = useState(() => getLastSync());
 
   const [filters, setFilters] = useState({
     source: '',
     sector: '',
     estat_jc: '',
-    q: ''
+    q: '',
+    vencenSetmana: false,
+    soloActivas: false
   });
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
@@ -356,12 +375,44 @@ export default function LicitacionsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [filters.source, filters.sector, filters.estat_jc]);
 
   useEffect(() => {
     load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.source, filters.sector, filters.estat_jc]);
+  }, [load]);
+
+  useEffect(() => {
+    return () => setLastVisit();
+  }, []);
+
+  const syncNow = useCallback(async () => {
+    setSyncing(true);
+    setError('');
+    try {
+      await licitacionsService.fetchAll({ page: 1, limit: 100 });
+      const now = new Date();
+      setLastSync(now);
+      setLastSyncAt(now);
+      await load();
+    } catch (e) {
+      setError(e?.message || String(e));
+    } finally {
+      setSyncing(false);
+    }
+  }, [load]);
+
+  useEffect(() => {
+    const api = window.electronAPI;
+    if (!api?.onLicitacionsCronSync) return undefined;
+    const handler = () => {
+      syncNow();
+    };
+    const unsub = api.onLicitacionsCronSync(handler);
+    return () => {
+      if (typeof unsub === 'function') unsub();
+      else api.removeAllListeners?.('licitacions-cron-sync');
+    };
+  }, [syncNow]);
 
   const sectors = useMemo(() => {
     const set = new Set();
@@ -372,13 +423,61 @@ export default function LicitacionsPage() {
   }, [rows]);
 
   const filteredRows = useMemo(() => {
+    let list = rows;
+    if (filters.vencenSetmana) {
+      list = list.filter((r) => {
+        const d = daysUntil(r.termini_oferta);
+        return d != null && d >= 0 && d <= 7;
+      });
+    }
+    if (filters.soloActivas) {
+      list = list.filter((r) => r.estat_jc !== 'Descartada');
+    }
     const q = String(filters.q || '').trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter((r) => {
+    if (!q) return list;
+    return list.filter((r) => {
       const hay = `${r?.title || ''} ${r?.organismo || ''} ${r?.sector || ''} ${r?.external_id || ''}`.toLowerCase();
       return hay.includes(q);
     });
-  }, [rows, filters.q]);
+  }, [rows, filters.q, filters.vencenSetmana, filters.soloActivas]);
+
+  const stats = useMemo(() => computeLicitacionsStats(rows), [rows]);
+  const nuevasCount = useMemo(() => countNewSince(rows, lastVisit), [rows, lastVisit]);
+  const lastSyncLabel = formatLastSyncLabel(lastSyncAt);
+
+  const isRowNew = useCallback((row) => {
+    if (!lastVisit || !row?.detected_at) return false;
+    return new Date(row.detected_at).getTime() > lastVisit.getTime();
+  }, [lastVisit]);
+
+  const applyKpiFilter = (patch) => {
+    if (patch.estat_jc) {
+      setFilters((f) => ({
+        ...f,
+        estat_jc: patch.estat_jc,
+        vencenSetmana: false,
+        soloActivas: false
+      }));
+      return;
+    }
+    if (patch.vencenSetmana) {
+      setFilters((f) => ({
+        ...f,
+        estat_jc: '',
+        vencenSetmana: true,
+        soloActivas: false
+      }));
+      return;
+    }
+    if (patch.actives) {
+      setFilters((f) => ({
+        ...f,
+        estat_jc: '',
+        vencenSetmana: false,
+        soloActivas: true
+      }));
+    }
+  };
 
   const updateRowLocal = (id, patch) => {
     setRows((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
@@ -409,19 +508,6 @@ export default function LicitacionsPage() {
     [rows, selectedId]
   );
 
-  const syncNow = async () => {
-    setSyncing(true);
-    setError('');
-    try {
-      await licitacionsService.fetchAll({ page: 1, limit: 100 });
-      await load();
-    } catch (e) {
-      setError(e?.message || String(e));
-    } finally {
-      setSyncing(false);
-    }
-  };
-
   const openUrl = async (url) => {
     if (!url) return;
     try {
@@ -439,57 +525,67 @@ export default function LicitacionsPage() {
     <div style={{ padding: 28, maxWidth: 1500, margin: '0 auto' }}>
       <SectionHeader
         icon={FileText}
-        title="Licitaciones"
-        subtitle="Sincroniza TED/PSCP/PLACSP y gestiona seguimiento comercial (estado, contacto y notas)."
+        title={(
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            Licitaciones
+            {nuevasCount > 0 ? (
+              <span style={{
+                fontSize: 12,
+                fontWeight: 700,
+                padding: '4px 10px',
+                borderRadius: 999,
+                background: `${colors.primary}18`,
+                color: colors.primary
+              }}>
+                {nuevasCount} nueva{nuevasCount === 1 ? '' : 's'}
+              </span>
+            ) : null}
+          </span>
+        )}
+        subtitle={(
+          <span>
+            TED · PSCP · PLACSP
+            {lastSyncLabel ? ` · Última sync: ${lastSyncLabel}` : ' · Aún no has sincronizado'}
+          </span>
+        )}
         actions={(
           <>
-            <motion.button
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={syncNow}
-              disabled={syncing}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                padding: '10px 14px',
-                borderRadius: 10,
-                border: `1px solid ${colors.border}`,
-                background: colors.surface,
-                color: colors.text,
-                cursor: syncing ? 'not-allowed' : 'pointer',
-                opacity: syncing ? 0.7 : 1
-              }}
-              title="Sincronizar y guardar en Supabase"
-            >
-              <RefreshCw size={16} />
+            <KronosButton onClick={syncNow} disabled={syncing}>
+              <RefreshCw size={15} />
               {syncing ? 'Sincronizando…' : 'Sincronizar'}
-            </motion.button>
-            <motion.button
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={load}
-              disabled={loading}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                padding: '10px 14px',
-                borderRadius: 10,
-                border: `1px solid ${colors.border}`,
-                background: colors.background,
-                color: colors.textSecondary,
-                cursor: loading ? 'not-allowed' : 'pointer',
-                opacity: loading ? 0.7 : 1
-              }}
-              title="Recargar"
-            >
-              <RefreshCw size={16} />
+            </KronosButton>
+            <KronosButton variant="ghost" onClick={load} disabled={loading}>
+              <RefreshCw size={15} />
               Recargar
-            </motion.button>
+            </KronosButton>
           </>
         )}
       />
+
+      <LicitacionsStats stats={stats} onFilter={applyKpiFilter} />
+
+      {(filters.vencenSetmana || filters.soloActivas) ? (
+        <div style={{ marginBottom: 12, fontSize: 13, color: colors.textSecondary }}>
+          Filtro KPI activo
+          {' · '}
+          <button
+            type="button"
+            onClick={() => setFilters((f) => ({ ...f, vencenSetmana: false, soloActivas: false }))}
+            style={{
+              border: 'none',
+              background: 'none',
+              color: colors.primary,
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+              fontSize: 13,
+              padding: 0,
+              textDecoration: 'underline'
+            }}
+          >
+            Quitar filtro
+          </button>
+        </div>
+      ) : null}
 
       <div style={{
         display: 'grid',
@@ -634,6 +730,7 @@ export default function LicitacionsPage() {
               onSave={saveRow}
               onOpen={openUrl}
               onSelect={(row) => setSelectedId(row.id)}
+              isNew={isRowNew(r)}
             />
           ))
         )}
