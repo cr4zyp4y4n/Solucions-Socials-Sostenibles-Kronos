@@ -28,7 +28,7 @@ export const ALL_MENU_ITEMS = [
   { key: 'sales-invoices', label: 'Resum Caterings', icon: DollarSign, roles: ['admin', 'management', 'manager'] },
   { key: 'hoja-ruta', label: 'Hoja de Ruta', icon: Calendar, roles: ['admin', 'management', 'manager'] },
   { key: 'inventory', label: 'Inventario', icon: Package, roles: ['admin', 'manager', 'tienda'] },
-  { key: 'obrador', label: 'Dashboard Obrador', icon: Zap, roles: ['admin', 'management', 'manager'] },
+  { key: 'obrador', label: 'Obrador', icon: Zap, roles: ['admin', 'management', 'manager'] },
   { key: 'gestion-tienda', label: 'Gestión Tienda', icon: ShoppingBag, roles: ['admin', 'manager', 'tienda'] },
   { key: 'empleados', label: 'Empleados', icon: Users, roles: ['admin', 'management', 'manager'] },
   { key: 'firma', label: 'Firma', icon: FileText, roles: ['admin', 'management', 'manager'] },

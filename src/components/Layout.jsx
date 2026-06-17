@@ -45,7 +45,7 @@ import FichajePage from './FichajePage';
 import PanelFichajesPage from './PanelFichajesPage';
 import GestionTiendaPage from './GestionTiendaPage';
 import AlbaranOCRPage from './AlbaranOCRPage';
-import ObradorDashboardPage from './ObradorDashboardPage';
+import ObradorApp from './obrador/ObradorApp';
 import FirmaPage from './FirmaPage';
 import LicitacionsPage from './LicitacionsPage';
 import { buildSidebarNavigation, findMenuItemLabel } from '../constants/sidebarNav';
@@ -670,7 +670,7 @@ const Layout = () => {
       case 'albaran-ocr':
         return <AlbaranOCRPage />;
       case 'obrador':
-        return <ObradorDashboardPage />;
+        return <ObradorApp />;
       case 'settings':
         return <SettingsPage />;
       case 'users':
