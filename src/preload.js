@@ -44,7 +44,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onDownloadProgress: (callback) => ipcRenderer.on('download-progress', callback),
   onUpdateDownloaded: (callback) => ipcRenderer.on('update-downloaded', callback),
   onUpdateError: (callback) => ipcRenderer.on('update-error', callback),
-  
+
+  onLicitacionsCronSync: (callback) => {
+    const wrapped = (_event, ...args) => callback(...args);
+    ipcRenderer.on('licitacions-cron-sync', wrapped);
+    return () => ipcRenderer.removeListener('licitacions-cron-sync', wrapped);
+  },
+
   // Remover listeners
   removeAllListeners: (channel) => ipcRenderer.removeAllListeners(channel),
 });

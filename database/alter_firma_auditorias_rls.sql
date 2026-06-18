@@ -7,7 +7,7 @@ drop policy if exists "read firma auditorias" on public.firma_auditorias;
 create policy "read firma auditorias"
   on public.firma_auditorias
   for select
-  to authenticated
+  to authenticated  
   using (true);
 
 notify pgrst, 'reload schema';

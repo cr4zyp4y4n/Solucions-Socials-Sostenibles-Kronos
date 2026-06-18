@@ -1150,12 +1150,14 @@ function stylePigLineaObradorSheet({ ws, aoa }) {
   }
 }
 
-function buildComparativaAnualAoa({ mensualParsed, objetivos, basesPrevYear }) {
+function buildComparativaAnualAoa({ mensualParsed, objetivos, basesPrevYear, basesPrev2Year }) {
   const months = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
   const aoa = [];
   const yearCurrent = Number(mensualParsed?.yearGuess || 2025) || 2025;
   const yy = String(yearCurrent).slice(2);
   const yearPrev = yearCurrent - 1;
+  const yearPrev2 = yearCurrent - 2;
+  const showBaseYearPrev2 = yearPrev2 > 2023;
 
   const sumArray = (arrA, arrB) => arrA.map((v, i) => (Number(v) || 0) + (Number(arrB[i]) || 0));
 
@@ -1203,25 +1205,29 @@ function buildComparativaAnualAoa({ mensualParsed, objetivos, basesPrevYear }) {
   const KOIKI_BASE_2024 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 146.00, 1108.15];
   const KOIKI_NOVDIC_REFERENCIA = { nov: 580.68, dic: 651.89 };
 
-  const prevBases = basesPrevYear || {};
-  const cateringPrev = (Array.isArray(prevBases.CATERING) && prevBases.CATERING.length === 12)
-    ? prevBases.CATERING
-    : (yearPrev === 2024 ? CATERING_BASE_2024 : new Array(12).fill(0));
-  const idoniPrev = (Array.isArray(prevBases.IDONI) && prevBases.IDONI.length === 12)
-    ? prevBases.IDONI
-    : (yearPrev === 2024 ? IDONI_BASE_2024 : new Array(12).fill(0));
-  const koikiPrev = (Array.isArray(prevBases.KOIKI) && prevBases.KOIKI.length === 12)
-    ? prevBases.KOIKI
-    : (yearPrev === 2024 ? KOIKI_BASE_2024 : new Array(12).fill(0));
+  const pickBaseMonths = (fromDb, year, fallback2024) => {
+    if (Array.isArray(fromDb) && fromDb.length === 12) return fromDb;
+    if (year === 2024 && fallback2024) return fallback2024;
+    return new Array(12).fill(0);
+  };
 
-  // ===== Bases 2025 calculadas desde el CSV mensual (ingresos sin subvenciones) =====
-  const catering2025 = computeIngresosSinSubv({ contains: 'catering' });
-  const idoni2025 = computeIngresosSinSubv({ contains: 'idoni' });
-  const koiki2025Raw = computeIngresosSinSubv({ contains: 'koiki' });
+  const prevBases = basesPrevYear || {};
+  const prev2Bases = basesPrev2Year || {};
+  const cateringBase2024 = pickBaseMonths(prev2Bases.CATERING, yearPrev2, CATERING_BASE_2024);
+  const idoniBase2024 = pickBaseMonths(prev2Bases.IDONI, yearPrev2, IDONI_BASE_2024);
+  const koikiBase2024 = pickBaseMonths(prev2Bases.KOIKI, yearPrev2, KOIKI_BASE_2024);
+  const cateringPrev = pickBaseMonths(prevBases.CATERING, yearPrev, yearPrev === 2024 ? CATERING_BASE_2024 : null);
+  const idoniPrev = pickBaseMonths(prevBases.IDONI, yearPrev, yearPrev === 2024 ? IDONI_BASE_2024 : null);
+  const koikiPrev = pickBaseMonths(prevBases.KOIKI, yearPrev, yearPrev === 2024 ? KOIKI_BASE_2024 : null);
+
+  // ===== Bases del año actual calculadas desde el CSV mensual (ingresos sin subvenciones) =====
+  const cateringCurrent = computeIngresosSinSubv({ contains: 'catering' });
+  const idoniCurrent = computeIngresosSinSubv({ contains: 'idoni' });
+  const koikiCurrentRaw = computeIngresosSinSubv({ contains: 'koiki' });
 
   // KOIKI: el “+ NOV/DIC” era un caso concreto del Excel 2025 (facturado en 2026).
   // Solo lo aplicamos cuando el año actual es 2025.
-  const koikiCurrent = koiki2025Raw.slice();
+  const koikiCurrent = koikiCurrentRaw.slice();
   const koikiCurrentPlusNovDic = koikiCurrent.slice();
   if (yearCurrent === 2025) {
     koikiCurrent[10] = 0;
@@ -1239,138 +1245,188 @@ function buildComparativaAnualAoa({ mensualParsed, objetivos, basesPrevYear }) {
   const koikiObjNormal = Number(obj?.koiki?.normal ?? 20207.0) || 0;
   const koikiObjOptim = Number(obj?.koiki?.optim ?? 23881.0) || 0;
 
-  const cateringObjNormalRest = buildObjetivoRestante(cateringObjNormal, catering2025);
-  const cateringObjOptimRest = buildObjetivoRestante(cateringObjOptim, catering2025);
-  const idoniObjNormalRest = buildObjetivoRestante(idoniObjNormal, idoni2025);
-  const idoniObjOptimRest = buildObjetivoRestante(idoniObjOptim, idoni2025);
+  const cateringObjNormalRest = buildObjetivoRestante(cateringObjNormal, cateringCurrent);
+  const cateringObjOptimRest = buildObjetivoRestante(cateringObjOptim, cateringCurrent);
+  const idoniObjNormalRest = buildObjetivoRestante(idoniObjNormal, idoniCurrent);
+  const idoniObjOptimRest = buildObjetivoRestante(idoniObjOptim, idoniCurrent);
   const koikiObjNormalRest = buildObjetivoRestante(koikiObjNormal, koikiCurrent);
   const koikiObjOptimRest = buildObjetivoRestante(koikiObjOptim, koikiCurrent);
+
+  const cateringDiffMid = showBaseYearPrev2
+    ? cateringPrev.map((v, i) => (Number(v) || 0) - (Number(cateringBase2024[i]) || 0))
+    : cateringPrev.map((v, i) => (Number(v) || 0) - (Number(CATERING_BASE_2023[i]) || 0));
+  const cateringDiffMidLabel = showBaseYearPrev2
+    ? `DIFERENCIA ${String(yearPrev2).slice(2)} - ${String(yearPrev).slice(2)}`
+    : `DIFERENCIA 23 - ${String(yearPrev).slice(2)}`;
+
+  const idoniDiffMid = showBaseYearPrev2
+    ? idoniPrev.map((v, i) => (Number(v) || 0) - (Number(idoniBase2024[i]) || 0))
+    : null;
+  const idoniDiffMidLabel = showBaseYearPrev2
+    ? `DIFERENCIA ${String(yearPrev2).slice(2)} - ${String(yearPrev).slice(2)}`
+    : null;
+
+  const koikiDiffMid = showBaseYearPrev2
+    ? koikiPrev.map((v, i) => (Number(v) || 0) - (Number(koikiBase2024[i]) || 0))
+    : null;
+  const koikiDiffMidLabel = showBaseYearPrev2
+    ? `DIFERENCIA ${String(yearPrev2).slice(2)} - ${String(yearPrev).slice(2)}`
+    : null;
 
   // ===== Construcción AOA =====
   const blank = () => [];
   aoa.push(['CATERING']);
-  aoa.push([
+  const cateringHeader = [
     'MES',
     'Base 2022',
-    'Base 2023',
+    'Base 2023'
+  ];
+  if (showBaseYearPrev2) cateringHeader.push(`BASE ${yearPrev2}`);
+  cateringHeader.push(
     `BASE ${yearPrev}`,
-    `DIFERENCIA 23 - ${String(yearPrev).slice(2)}`,
+    cateringDiffMidLabel,
     `BASE ${yearCurrent}`,
     `DIFERENCIA ${String(yearPrev).slice(2)} - ${yy}`,
     `OBJECTIU ${yy} ESCENARI NORMAL`,
     `OBJECTIU ${yy} ESCENARI ÒPTIM`
-  ]);
-  aoa.push(['', '', '', '', '', '', '', cateringObjNormal, cateringObjOptim]); // objetivo inicial
+  );
+  aoa.push(cateringHeader);
+  const cateringObjRow = showBaseYearPrev2
+    ? ['', '', '', '', '', '', '', '', cateringObjNormal, cateringObjOptim]
+    : ['', '', '', '', '', '', '', cateringObjNormal, cateringObjOptim];
+  aoa.push(cateringObjRow);
   for (let i = 0; i < 12; i++) {
-    aoa.push([
+    const row = [
       months[i],
       CATERING_BASE_2022[i],
-      CATERING_BASE_2023[i],
+      CATERING_BASE_2023[i]
+    ];
+    if (showBaseYearPrev2) row.push(cateringBase2024[i]);
+    row.push(
       cateringPrev[i],
-      (cateringPrev[i] - CATERING_BASE_2023[i]),
-      catering2025[i],
-      (catering2025[i] - cateringPrev[i]),
+      cateringDiffMid[i],
+      cateringCurrent[i],
+      (cateringCurrent[i] - cateringPrev[i]),
       cateringObjNormalRest[i],
       cateringObjOptimRest[i]
-    ]);
+    );
+    aoa.push(row);
   }
   aoa.push(blank());
-  aoa.push([
+  const cateringTotal = [
     'TOTAL ACUMULADO',
     sum(CATERING_BASE_2022),
-    sum(CATERING_BASE_2023),
+    sum(CATERING_BASE_2023)
+  ];
+  if (showBaseYearPrev2) cateringTotal.push(sum(cateringBase2024));
+  cateringTotal.push(
     sum(cateringPrev),
-    sum(cateringPrev) - sum(CATERING_BASE_2023),
-    sum(catering2025),
-    sum(catering2025) - sum(cateringPrev),
-    (sum(catering2025) - cateringObjNormal),
-    (sum(catering2025) - cateringObjOptim)
-  ]);
+    sum(cateringDiffMid),
+    sum(cateringCurrent),
+    sum(cateringCurrent) - sum(cateringPrev),
+    (sum(cateringCurrent) - cateringObjNormal),
+    (sum(cateringCurrent) - cateringObjOptim)
+  );
+  aoa.push(cateringTotal);
 
   aoa.push(blank());
   aoa.push(blank());
   aoa.push(['IDONI']);
-  aoa.push([
-    'MES',
-    `BASE ${yearPrev}`,
+  const idoniHeader = ['MES'];
+  if (showBaseYearPrev2) idoniHeader.push(`BASE ${yearPrev2}`, `BASE ${yearPrev}`, idoniDiffMidLabel);
+  else idoniHeader.push(`BASE ${yearPrev}`);
+  idoniHeader.push(
     `BASE ${yearCurrent}`,
     `DIFERENCIA ${String(yearPrev).slice(2)} - ${yy}`,
     `OBJECTIU ${yy} ESCENARI NORMAL`,
     `OBJECTIU ${yy} ESCENARI ÒPTIM`
-  ]);
-  aoa.push(['', '', '', '', idoniObjNormal, idoniObjOptim]); // objetivo inicial
+  );
+  aoa.push(idoniHeader);
+  const idoniObjRow = showBaseYearPrev2
+    ? ['', '', '', '', '', '', idoniObjNormal, idoniObjOptim]
+    : ['', '', '', '', idoniObjNormal, idoniObjOptim];
+  aoa.push(idoniObjRow);
   for (let i = 0; i < 12; i++) {
-    aoa.push([months[i], idoniPrev[i], idoni2025[i], (idoni2025[i] - idoniPrev[i]), idoniObjNormalRest[i], idoniObjOptimRest[i]]);
+    const row = [months[i]];
+    if (showBaseYearPrev2) row.push(idoniBase2024[i], idoniPrev[i], idoniDiffMid[i]);
+    else row.push(idoniPrev[i]);
+    row.push(
+      idoniCurrent[i],
+      (idoniCurrent[i] - idoniPrev[i]),
+      idoniObjNormalRest[i],
+      idoniObjOptimRest[i]
+    );
+    aoa.push(row);
   }
   aoa.push(blank());
-  aoa.push([
-    'TOTAL ACUMULADO',
-    sum(idoniPrev),
-    sum(idoni2025),
-    sum(idoni2025) - sum(idoniPrev),
-    (sum(idoni2025) - idoniObjNormal),
-    (sum(idoni2025) - idoniObjOptim)
-  ]);
+  const idoniTotal = ['TOTAL ACUMULADO'];
+  if (showBaseYearPrev2) idoniTotal.push(sum(idoniBase2024), sum(idoniPrev), sum(idoniDiffMid));
+  else idoniTotal.push(sum(idoniPrev));
+  idoniTotal.push(
+    sum(idoniCurrent),
+    sum(idoniCurrent) - sum(idoniPrev),
+    (sum(idoniCurrent) - idoniObjNormal),
+    (sum(idoniCurrent) - idoniObjOptim)
+  );
+  aoa.push(idoniTotal);
 
   aoa.push(blank());
   aoa.push(blank());
   aoa.push(['KOIKI']);
-  aoa.push([
-    'MES',
-    `BASE ${yearPrev}`,
+  const koikiHeader = ['MES'];
+  if (showBaseYearPrev2) koikiHeader.push(`BASE ${yearPrev2}`, `BASE ${yearPrev}`, koikiDiffMidLabel);
+  else koikiHeader.push(`BASE ${yearPrev}`);
+  koikiHeader.push(
     `BASE ${yearCurrent}`,
     `BASE ${yearCurrent} + NOV/DIC`,
     `DIFERENCIA ${String(yearPrev).slice(2)} - ${yy}`,
     `OBJECTIU ${yy} ESCENARI NORMAL`,
     `OBJECTIU ${yy} ESCENARI ÒPTIM`
-  ]);
-  aoa.push(['', '', '', '', '', koikiObjNormal, koikiObjOptim]); // objetivo inicial
+  );
+  aoa.push(koikiHeader);
+  const koikiObjRow = showBaseYearPrev2
+    ? ['', '', '', '', '', '', '', '', koikiObjNormal, koikiObjOptim]
+    : ['', '', '', '', '', koikiObjNormal, koikiObjOptim];
+  aoa.push(koikiObjRow);
   const koikiDiff = new Array(12).fill(0);
   for (let i = 0; i < 12; i++) {
-    // Regla general: diferencia = 2025 - 2024
-    // Caso especial KOIKI (en el Excel de referencia): Nov/Dic 2025 se dejaron a 0 (facturado en 2026),
-    // pero 2024 sí tiene base; en ese caso mostramos 2024 - 2025 para que no salga negativo.
     const bPrev = Number(koikiPrev[i]) || 0;
     const bCur = Number(koikiCurrent[i]) || 0;
-    // Caso especial KOIKI 2025 (facturado en 2026): evitar negativo cuando el mes está a 0 por ese motivo
     koikiDiff[i] = (yearCurrent === 2025 && bCur === 0 && bPrev > 0) ? (bPrev - bCur) : (bCur - bPrev);
-    aoa.push([
-      months[i],
-      koikiPrev[i],
+    const row = [months[i]];
+    if (showBaseYearPrev2) row.push(koikiBase2024[i], koikiPrev[i], koikiDiffMid[i]);
+    else row.push(koikiPrev[i]);
+    row.push(
       koikiCurrent[i],
       koikiCurrentPlusNovDic[i],
       koikiDiff[i],
       koikiObjNormalRest[i],
       koikiObjOptimRest[i]
-    ]);
+    );
+    aoa.push(row);
   }
   aoa.push(blank());
-  aoa.push([
-    'TOTAL ACUMULADO',
-    sum(koikiPrev),
+  const koikiTotal = ['TOTAL ACUMULADO'];
+  if (showBaseYearPrev2) koikiTotal.push(sum(koikiBase2024), sum(koikiPrev), sum(koikiDiffMid));
+  else koikiTotal.push(sum(koikiPrev));
+  koikiTotal.push(
     sum(koikiCurrent),
     sum(koikiCurrentPlusNovDic),
     sum(koikiDiff),
     (sum(koikiCurrent) - koikiObjNormal),
     (sum(koikiCurrent) - koikiObjOptim)
-  ]);
+  );
+  aoa.push(koikiTotal);
 
   return aoa;
 }
 
 function styleComparativaAnualSheet({ ws, aoa }) {
   ws['!sheetView'] = [{ showGridLines: false }];
-  ws['!cols'] = [
-    { wch: 18 },
-    { wch: 14 },
-    { wch: 14 },
-    { wch: 14 },
-    { wch: 16 },
-    { wch: 14 },
-    { wch: 16 },
-    { wch: 22 },
-    { wch: 22 }
-  ];
+  const maxCol = Math.max(8, ...aoa.map((row) => Math.max(0, (row?.length || 0) - 1)));
+  ws['!cols'] = Array.from({ length: maxCol + 1 }, (_, i) => ({
+    wch: i === 0 ? 18 : i >= maxCol - 1 ? 22 : 14
+  }));
 
   const borderThin = {
     top: { style: 'thin', color: { rgb: '000000' } },
@@ -1393,29 +1449,29 @@ function styleComparativaAnualSheet({ ws, aoa }) {
           : String(v0).toUpperCase() === 'IDONI'
             ? makeFill('#FCE4D6')
             : makeFill('#DDEBF7');
-      setRangeStyle(ws, r, 0, r, 8, { fill, border: borderThin, font: { bold: true, name: 'Calibri' } });
+      setRangeStyle(ws, r, 0, r, maxCol, { fill, border: borderThin, font: { bold: true, name: 'Calibri' } });
       // Merge título a lo ancho
       ws['!merges'] = ws['!merges'] || [];
-      ws['!merges'].push({ s: { r, c: 0 }, e: { r, c: 8 } });
+      ws['!merges'].push({ s: { r, c: 0 }, e: { r, c: maxCol } });
       continue;
     }
 
     // Cabeceras (MES, BASE..., etc.)
     if (v0 && String(v0).trim().toUpperCase() === 'MES') {
-      setRangeStyle(ws, r, 0, r, 8, { fill: makeFill('#E7E6E6'), border: borderThin, font: { bold: true, name: 'Calibri' }, alignment: { horizontal: 'center', vertical: 'center', wrapText: true } });
+      setRangeStyle(ws, r, 0, r, maxCol, { fill: makeFill('#E7E6E6'), border: borderThin, font: { bold: true, name: 'Calibri' }, alignment: { horizontal: 'center', vertical: 'center', wrapText: true } });
       continue;
     }
 
     // Total acumulado
     if (v0 && String(v0).toUpperCase().includes('TOTAL ACUMULADO')) {
-      setRangeStyle(ws, r, 0, r, 8, { fill: makeFill('#F8CBAD'), border: borderThin, font: { bold: true, name: 'Calibri' } });
+      setRangeStyle(ws, r, 0, r, maxCol, { fill: makeFill('#F8CBAD'), border: borderThin, font: { bold: true, name: 'Calibri' } });
     }
 
     // Bordes/formatos por defecto en filas con datos (si hay números en B)
     const v1 = ws[XLSX.utils.encode_cell({ r, c: 1 })]?.v;
     if (v0 && (typeof v1 === 'number' || v0 === 'TOTAL ACUMULADO')) {
       setCellStyle(ws, r, 0, labelStyle);
-      for (let c = 1; c <= 8; c++) {
+      for (let c = 1; c <= maxCol; c++) {
         const cell = ws[XLSX.utils.encode_cell({ r, c })];
         if (!cell) continue;
         if (typeof cell.v === 'number') setCellStyle(ws, r, c, numStyle);
@@ -2151,13 +2207,19 @@ export default function PIGPage() {
           };
           const yearCurrent = Number(mensualParsed.yearGuess || 0) || 0;
           const yearPrev = yearCurrent ? yearCurrent - 1 : 0;
-          const [cPrev, iPrev, kPrev] = await Promise.all([
-            yearPrev ? loadPigBaseMensual({ linea: 'CATERING', year: yearPrev }) : Promise.resolve({ months: null, error: null }),
-            yearPrev ? loadPigBaseMensual({ linea: 'IDONI', year: yearPrev }) : Promise.resolve({ months: null, error: null }),
-            yearPrev ? loadPigBaseMensual({ linea: 'KOIKI', year: yearPrev }) : Promise.resolve({ months: null, error: null })
+          const yearPrev2 = yearCurrent ? yearCurrent - 2 : 0;
+          const emptyBase = Promise.resolve({ months: null, error: null });
+          const [cPrev2, iPrev2, kPrev2, cPrev, iPrev, kPrev] = await Promise.all([
+            yearPrev2 > 2023 ? loadPigBaseMensual({ linea: 'CATERING', year: yearPrev2 }) : emptyBase,
+            yearPrev2 > 2023 ? loadPigBaseMensual({ linea: 'IDONI', year: yearPrev2 }) : emptyBase,
+            yearPrev2 > 2023 ? loadPigBaseMensual({ linea: 'KOIKI', year: yearPrev2 }) : emptyBase,
+            yearPrev ? loadPigBaseMensual({ linea: 'CATERING', year: yearPrev }) : emptyBase,
+            yearPrev ? loadPigBaseMensual({ linea: 'IDONI', year: yearPrev }) : emptyBase,
+            yearPrev ? loadPigBaseMensual({ linea: 'KOIKI', year: yearPrev }) : emptyBase
           ]);
+          const basesPrev2Year = { CATERING: cPrev2.months, IDONI: iPrev2.months, KOIKI: kPrev2.months };
           const basesPrevYear = { CATERING: cPrev.months, IDONI: iPrev.months, KOIKI: kPrev.months };
-          const aoaComp = buildComparativaAnualAoa({ mensualParsed, objetivos, basesPrevYear });
+          const aoaComp = buildComparativaAnualAoa({ mensualParsed, objetivos, basesPrevYear, basesPrev2Year });
           const wsComp = XLSX.utils.aoa_to_sheet(aoaComp);
           styleComparativaAnualSheet({ ws: wsComp, aoa: aoaComp });
           XLSX.utils.book_append_sheet(wb, wsComp, 'COMPARATIVA ANUAL');
