@@ -1,6 +1,11 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useTheme } from '../ThemeContext';
 import { getProveidors, getRecepcions, crearRecepcio } from '../../services/obradorSupabaseService';
+import {
+  parseAlbaranText,
+  buildRecepcioDraftFromParsed
+} from '../../services/obradorAlbaranParser';
+import { ocrTextFromAlbaranFile } from '../../utils/obradorOcrFromFile';
 
 const ESTATS = [
   { value: 'bo', label: 'Bo' },
@@ -19,18 +24,12 @@ function formatData(iso) {
   });
 }
 
-function demaIso() {
-  const d = new Date();
-  d.setDate(d.getDate() + 1);
-  return d.toISOString().slice(0, 10);
-}
-
 const formInicial = () => ({
   id_proveidor: '',
   lot_proveidor: '',
   temperatura_arribada: '',
   estat: 'bo',
-  caducitat: demaIso(),
+  caducitat: '',
   congelat: false,
   observacions: '',
   operari: ''
@@ -50,6 +49,10 @@ export default function ObradorRecepcionsPage() {
   const [enviant, setEnviant] = useState(false);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const [ocrProcessing, setOcrProcessing] = useState(false);
+  const [ocrProgress, setOcrProgress] = useState(0);
+  const [ocrDraft, setOcrDraft] = useState(null);
+  const fileInputRef = useRef(null);
 
   const inputStyle = {
     width: '100%',
@@ -106,6 +109,61 @@ export default function ObradorRecepcionsPage() {
     setError('');
   }
 
+  function obrirSelectorFoto() {
+    fileInputRef.current?.click();
+  }
+
+  async function handleFotoAlbara(e) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+
+    const ok =
+      file.type.startsWith('image/') ||
+      file.type === 'application/pdf' ||
+      /\.pdf$/i.test(file.name || '');
+    if (!ok) {
+      setError('Selecciona una imatge (JPG, PNG) o un PDF de l\'albarà.');
+      return;
+    }
+
+    setMode('formulari');
+    setError('');
+    setSuccessMsg('');
+    setOcrProcessing(true);
+    setOcrProgress(0);
+    setOcrDraft(null);
+
+    try {
+      const text = await ocrTextFromAlbaranFile(file, {
+        onProgress: setOcrProgress
+      });
+
+      const parsed = parseAlbaranText(text);
+      const draft = buildRecepcioDraftFromParsed(parsed, proveidors);
+      setOcrDraft(draft);
+
+      setForm((prev) => ({
+        ...formInicial(),
+        id_proveidor: draft.id_proveidor || '',
+        lot_proveidor: draft.lot_proveidor || '',
+        caducitat: draft.caducitat || '',
+        observacions: draft.observacions || '',
+        operari: prev.operari
+      }));
+
+      if (!draft.id_proveidor && parsed.proveidorNom) {
+        setError(`Selecciona el proveïdor manualment (detectat: "${parsed.proveidorNom}").`);
+      }
+    } catch (err) {
+      console.error(err);
+      setError(err.message || 'Error processant el document amb OCR.');
+    } finally {
+      setOcrProcessing(false);
+      setOcrProgress(0);
+    }
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
     setError('');
@@ -113,10 +171,6 @@ export default function ObradorRecepcionsPage() {
 
     if (!form.id_proveidor) {
       setError('Selecciona un proveïdor.');
-      return;
-    }
-    if (!form.caducitat) {
-      setError('La caducitat és obligatòria.');
       return;
     }
     if (form.estat === 'rebutjat' && !form.observacions.trim()) {
@@ -131,7 +185,7 @@ export default function ObradorRecepcionsPage() {
         lot_proveidor: form.lot_proveidor || null,
         temperatura_arribada: tempNum,
         estat: form.estat,
-        caducitat: form.caducitat,
+        caducitat: form.caducitat || null,
         congelat: form.congelat,
         observacions: form.observacions || null,
         operari: form.operari || null
@@ -160,27 +214,58 @@ export default function ObradorRecepcionsPage() {
     <div style={{ padding: '32px', maxWidth: 1100, margin: '0 auto', color: colors.text }}>
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24, flexWrap: 'wrap', gap: 12 }}>
         <h1 style={{ margin: 0, fontSize: 28, fontWeight: 700 }}>Recepcions</h1>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         {mode === 'llistat' ? (
-          <button
-            type="button"
-            onClick={() => { setMode('formulari'); setError(''); setSuccessMsg(''); }}
-            style={{
-              padding: '10px 20px',
-              fontSize: 14,
-              fontWeight: 600,
-              borderRadius: 8,
-              border: 'none',
-              cursor: 'pointer',
-              background: colors.primary,
-              color: '#fff'
-            }}
-          >
-            Nova recepció
-          </button>
+          <>
+            <button
+              type="button"
+              onClick={() => {
+                setMode('formulari');
+                setError('');
+                setSuccessMsg('');
+                setOcrDraft(null);
+              }}
+              style={{
+                padding: '10px 20px',
+                fontSize: 14,
+                fontWeight: 600,
+                borderRadius: 8,
+                border: 'none',
+                cursor: 'pointer',
+                background: colors.primary,
+                color: '#fff'
+              }}
+            >
+              Nova recepció
+            </button>
+            <button
+              type="button"
+              onClick={obrirSelectorFoto}
+              disabled={ocrProcessing}
+              style={{
+                padding: '10px 20px',
+                fontSize: 14,
+                fontWeight: 600,
+                borderRadius: 8,
+                cursor: ocrProcessing ? 'not-allowed' : 'pointer',
+                background: colors.surface,
+                color: colors.text,
+                border: `0.5px solid ${colors.border}`,
+                opacity: ocrProcessing ? 0.7 : 1
+              }}
+            >
+              {ocrProcessing ? `OCR ${ocrProgress}%...` : 'Foto / PDF albarà (OCR)'}
+            </button>
+          </>
         ) : (
           <button
             type="button"
-            onClick={() => { setMode('llistat'); setError(''); setForm(formInicial()); }}
+            onClick={() => {
+              setMode('llistat');
+              setError('');
+              setForm(formInicial());
+              setOcrDraft(null);
+            }}
             style={{
               padding: '10px 20px',
               fontSize: 14,
@@ -195,7 +280,53 @@ export default function ObradorRecepcionsPage() {
             Tornar al llistat
           </button>
         )}
+        </div>
       </header>
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp,application/pdf,.pdf"
+        style={{ display: 'none' }}
+        onChange={handleFotoAlbara}
+      />
+
+      {ocrProcessing && (
+        <div style={{
+          padding: '12px 16px',
+          marginBottom: 16,
+          borderRadius: 8,
+          background: `${colors.primary}15`,
+          color: colors.text,
+          fontSize: 14
+        }}>
+          Llegint albarà amb OCR… {ocrProgress}%
+        </div>
+      )}
+
+      {ocrDraft?._parsed && mode === 'formulari' && (
+        <div style={{
+          padding: '14px 16px',
+          marginBottom: 16,
+          borderRadius: 10,
+          background: `${warning}18`,
+          border: `1px solid ${warning}55`,
+          fontSize: 13,
+          lineHeight: 1.5
+        }}>
+          <strong>Borrador OCR</strong> — revisa abans de confirmar.
+          {ocrDraft._parsed.proveidorNom && (
+            <div>Proveïdor detectat: {ocrDraft._parsed.proveidorNom}</div>
+          )}
+          {ocrDraft._parsed.lotProveidor && (
+            <div>Lot / albarà: {ocrDraft._parsed.lotProveidor}</div>
+          )}
+          <div style={{ marginTop: 6, color: colors.textSecondary }}>
+            Parser: {ocrDraft._parsed.parserId} · confiança {ocrDraft._parsed.confiança}
+            {ocrDraft._parsed.linies?.length ? ` · ${ocrDraft._parsed.linies.length} línies` : ''}
+          </div>
+        </div>
+      )}
 
       {successMsg && (
         <div style={{
@@ -278,6 +409,26 @@ export default function ObradorRecepcionsPage() {
             gap: 18
           }}
         >
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 4 }}>
+            <button
+              type="button"
+              onClick={obrirSelectorFoto}
+              disabled={ocrProcessing}
+              style={{
+                padding: '8px 14px',
+                fontSize: 13,
+                fontWeight: 600,
+                borderRadius: 8,
+                cursor: ocrProcessing ? 'not-allowed' : 'pointer',
+                background: colors.surface,
+                color: colors.text,
+                border: `0.5px solid ${colors.border}`
+              }}
+            >
+              Canviar foto / tornar a escanejar
+            </button>
+          </div>
+
           <div>
             <label style={labelStyle} htmlFor="id_proveidor">Proveïdor *</label>
             <select
@@ -341,14 +492,13 @@ export default function ObradorRecepcionsPage() {
           </div>
 
           <div>
-            <label style={labelStyle} htmlFor="caducitat">Caducitat *</label>
+            <label style={labelStyle} htmlFor="caducitat">Caducitat (si aplica)</label>
             <input
               id="caducitat"
               type="date"
               value={form.caducitat}
               onChange={(e) => actualitzar('caducitat', e.target.value)}
               style={inputStyle}
-              required
             />
           </div>
 

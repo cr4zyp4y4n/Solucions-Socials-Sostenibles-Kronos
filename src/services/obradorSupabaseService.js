@@ -64,7 +64,7 @@ async function countEnRang(table, column, daysAgo = 0) {
 export async function getProveidors() {
   const { data, error } = await supabase
     .from('obrador_proveidors')
-    .select('id, nom')
+    .select('id, nom, cif')
     .order('nom');
   if (error) throw error;
   return data || [];

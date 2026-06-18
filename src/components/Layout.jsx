@@ -504,7 +504,7 @@ const Layout = () => {
     return (
       <motion.div
         key={item.key}
-        whileHover={{ backgroundColor: colors.hover || 'rgba(64,64,64,0.7)' }}
+        whileHover={{ backgroundColor: colors.hoverFill }}
         whileTap={{ scale: 0.98 }}
         onClick={() => navigateTo(item.key)}
         style={{
@@ -514,7 +514,7 @@ const Layout = () => {
           alignItems: 'center',
           gap: '12px',
           borderLeft: isActive ? `3px solid ${colors.primary}` : '3px solid transparent',
-          backgroundColor: isActive ? (colors.hover || 'rgba(64,64,64,0.7)') : 'transparent'
+          backgroundColor: isActive ? colors.hoverFill : colors.hoverClear
         }}
       >
         <Icon size={18} color={isActive ? colors.primary : colors.textSecondary} />
@@ -969,14 +969,14 @@ const Layout = () => {
                             <motion.div
                               key={notification.id}
                               className="notification-item"
-                              whileHover={!notification.read_at ? { backgroundColor: colors.hover } : {}}
+                              whileHover={!notification.read_at ? { backgroundColor: colors.hoverFill } : {}}
                               whileTap={{ scale: 0.98 }}
                               onClick={() => markNotificationAsRead(notification.id)}
                               style={{
                                 padding: '12px 20px',
                                 borderBottom: `1px solid ${colors.border}`,
                                 cursor: !notification.read_at ? 'pointer' : 'default',
-                                background: 'transparent',
+                                backgroundColor: colors.hoverClear,
                                 userSelect: 'none',
                                 WebkitUserSelect: 'none',
                                 MozUserSelect: 'none',
