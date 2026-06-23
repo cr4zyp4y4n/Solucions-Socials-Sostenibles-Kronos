@@ -10,6 +10,17 @@
 
 const BEGUDES_MARKERS = [/BEGUDES\s+DEL\s+VALLES/i, /\bA59801696\b/i];
 
+const MULTIEMBALAJES_MARKERS = [
+  /MULTIEMBALAJES/i,
+  /multiivalles\.com/i,
+  /SANTA\s+PERPETUA\s+DE\s+MOGODA/i,
+  /GUIFRE\s+EL\s+PILOS/i,
+  /\bB[-\s]?62835723\b/i,
+  /\bESB62835723\b/i
+];
+
+const SSS_CLIENT_CIF = 'F67499186';
+
 const CIF_PATTERN = /\b([A-Z]\d{8})\b/g;
 
 const DATE_PATTERN = /\b(\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4})\b/;
@@ -76,6 +87,30 @@ function isBegudesFormat(text) {
 
 
 
+function isMultiembalajesFormat(text) {
+
+  return MULTIEMBALAJES_MARKERS.some((re) => re.test(text));
+
+}
+
+
+
+function normalizeProveidorCif(raw) {
+
+  const c = String(raw || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+  if (/^ESB\d{8}$/.test(c)) return `B${c.slice(3)}`;
+
+  if (/^B\d{8}$/.test(c)) return c;
+
+  if (/^[A-Z]\d{8}$/.test(c)) return c;
+
+  return '';
+
+}
+
+
+
 /** Extracció genèrica (fallback per qualsevol proveïdor). */
 
 export function parseGenericAlbaran(text) {
@@ -110,7 +145,11 @@ export function parseGenericAlbaran(text) {
 
   if (cifs.length) {
 
-    result.proveidorCif = cifs.find((c) => c.startsWith('A') || c.startsWith('B')) || cifs[0];
+    result.proveidorCif = cifs.find((c) =>
+
+      c !== SSS_CLIENT_CIF && (c.startsWith('A') || c.startsWith('B'))
+
+    ) || cifs.find((c) => c !== SSS_CLIENT_CIF) || cifs[0];
 
   }
 
@@ -471,6 +510,284 @@ export function parseBegudesAlbaran(text) {
 
 
 
+const MULTIEMBALAJES_CODI_RE = /^(?=[A-Z0-9]*\d)(?=[A-Z0-9]*[A-Z])([A-Z0-9]{8,12})\b/i;
+
+
+
+function parseMultiembalajesTrailing(rest) {
+
+  let tail = String(rest || '')
+
+    .replace(/\|/g, ' ')
+
+    .replace(/\]/g, ' ')
+
+    .replace(/%/g, ' ')
+
+    .replace(/\s+/g, ' ')
+
+    .trim();
+
+
+
+  const amounts = tail.match(/\d+[.,]\d{2}/g) || [];
+
+  if (!amounts.length) return { descripcio: tail, quantitat: '', unitat: '', importe: '' };
+
+
+
+  const importe = amounts[amounts.length - 1];
+
+  let before = tail.slice(0, tail.lastIndexOf(importe)).trim();
+
+
+
+  before = before.replace(/(?:\d{3,}\s*){1,3}$/, '').trim();
+
+
+
+  const weirdPair = before.match(/(\d{3,})\s+(\d+[.,]\d{2})\s*$/);
+
+  if (weirdPair) {
+
+    return {
+
+      descripcio: before.slice(0, weirdPair.index).trim(),
+
+      quantitat: weirdPair[2].replace(',', '.'),
+
+      importe
+
+    };
+
+  }
+
+
+
+  const amounts2 = before.match(/\d+[.,]\d{2}/g) || [];
+
+  if (amounts2.length) {
+
+    const precio = amounts2[amounts2.length - 1];
+
+    before = before.slice(0, before.lastIndexOf(precio)).trim();
+
+  }
+
+
+
+  const pair = before.match(/(\d+(?:[.,]\d+)?)\s+(\d+(?:[.,]\d+)?)\s*$/);
+
+  if (pair) {
+
+    return {
+
+      descripcio: before.slice(0, pair.index).trim(),
+
+      quantitat: pair[1].replace(',', '.'),
+
+      unitat: pair[2],
+
+      importe
+
+    };
+
+  }
+
+
+
+  const single = before.match(/(\d+(?:[.,]\d+)?)\s*$/);
+
+  if (single) {
+
+    return {
+
+      descripcio: before.slice(0, single.index).trim(),
+
+      quantitat: single[1].replace(',', '.'),
+
+      importe
+
+    };
+
+  }
+
+
+
+  return { descripcio: before, importe };
+
+}
+
+
+
+function parseMultiembalajesLinia(line) {
+
+  if (/^(NUMERO|FECHA|CANT|TOTAL|CAJAS|PALLETS|REGISTRO|HORARI|e-Mail|Tel[eé]fono|\[|Rikg)/i.test(line)) {
+
+    return null;
+
+  }
+
+  if (/^[\d.,\s|]+$/.test(line)) return null;
+
+
+
+  const m = line.match(MULTIEMBALAJES_CODI_RE);
+
+  if (!m) return null;
+
+
+
+  const trailing = parseMultiembalajesTrailing(line.slice(m[0].length).trim());
+
+  if (!trailing.descripcio && !trailing.quantitat) return null;
+
+
+
+  return {
+
+    codi: m[1],
+
+    ...trailing
+
+  };
+
+}
+
+
+
+/** Parser Multiembalajes (format escanejat, OCR tolerant). */
+
+export function parseMultiembalajesAlbaran(text) {
+
+  const lines = linesOf(text);
+
+  const normalized = normalizeText(text);
+
+  const result = {
+
+    parserId: 'multiembalajes',
+
+    confiança: 'alta',
+
+    proveidorNom: 'Multiembalajes',
+
+    proveidorCif: 'B62835723',
+
+    lotProveidor: '',
+
+    dataDocument: '',
+
+    linies: [],
+
+    notes: []
+
+  };
+
+
+
+  const cifFooter = normalized.match(/F\.?\s*B[-\s]?(\d{8})/i);
+
+  const cifHeader = normalized.match(/CIF[:\s-]*(?:ES)?B?(\d{8})/i);
+
+  const cifRaw = cifFooter?.[1] || cifHeader?.[1];
+
+  if (cifRaw) result.proveidorCif = normalizeProveidorCif(`B${cifRaw}`) || result.proveidorCif;
+
+
+
+  const headerRow = lines.find((l) =>
+
+    /\d{3}[.\-]\d{3}/.test(l) && /\d{1,2}[-\/]\d{1,2}[-\/]\d{2,4}/.test(l)
+
+  );
+
+  if (headerRow) {
+
+    const hm = headerRow.match(/(\d{3}[.\-]\d{3})\s+(\d{1,2}[-\/]\d{1,2}[-\/]\d{2,4})/);
+
+    if (hm) {
+
+      result.lotProveidor = hm[1].replace(/\./g, '');
+
+      result.dataDocument = hm[2];
+
+    }
+
+  }
+
+
+
+  if (!result.lotProveidor) {
+
+    const alba = normalized.match(/\b(\d{3}[.\-]\d{3})\b/);
+
+    if (alba) result.lotProveidor = alba[1].replace(/\./g, '');
+
+  }
+
+
+
+  if (!result.dataDocument) {
+
+    const dm = normalized.match(/\b(\d{2}[-\/]\d{2}[-\/]\d{4})\b/);
+
+    if (dm) result.dataDocument = dm[1];
+
+  }
+
+
+
+  let lastLine = null;
+
+  const startIdx = lines.findIndex((l) => /CANT\s+UNIDADES/i.test(l));
+
+  const endIdx = lines.findIndex((l) => /TOTAL\s+PAQUETES/i.test(l));
+
+  const productLines = startIdx >= 0
+
+    ? lines.slice(startIdx + 1, endIdx >= 0 ? endIdx : undefined)
+
+    : lines.filter((l) => MULTIEMBALAJES_CODI_RE.test(l));
+
+
+
+  for (const line of productLines) {
+
+    const parsed = parseMultiembalajesLinia(line);
+
+    if (parsed) {
+
+      result.linies.push(parsed);
+
+      lastLine = parsed;
+
+      continue;
+
+    }
+
+
+
+    if (lastLine && line.length > 2 && line.length < 60 && !MULTIEMBALAJES_CODI_RE.test(line)) {
+
+      lastLine.descripcio = `${lastLine.descripcio} ${line}`.trim();
+
+    }
+
+  }
+
+
+
+  if (!result.linies.length) result.confiança = 'mitjana';
+
+
+
+  return result;
+
+}
+
+
+
 export function parseAlbaranText(text) {
 
   const raw = normalizeText(text);
@@ -509,6 +826,14 @@ export function parseAlbaranText(text) {
 
 
 
+  if (isMultiembalajesFormat(raw)) {
+
+    return parseMultiembalajesAlbaran(raw);
+
+  }
+
+
+
   return parseGenericAlbaran(raw);
 
 }
@@ -523,7 +848,11 @@ export function formatLiniesObservacions(parsed) {
 
     ? 'Línies albarà (OCR Begudes):'
 
-    : 'Línies detectades (OCR):';
+    : parsed.parserId === 'multiembalajes'
+
+      ? 'Línies albarà (OCR Multiembalajes):'
+
+      : 'Línies detectades (OCR):';
 
   const body = parsed.linies
 

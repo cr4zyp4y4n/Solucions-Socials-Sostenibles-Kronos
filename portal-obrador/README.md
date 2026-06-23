@@ -18,7 +18,11 @@ Portal web per registrar **recepcions** fotografiant l'albarà en paper:
 2. Copia `.env.example` → `.env`
 3. Omple `VITE_SUPABASE_URL` i `VITE_SUPABASE_ANON_KEY`
 
-Opcional a Supabase: executar `database/alter_obrador_proveidors_cif.sql` per matching OCR per CIF.
+Opcional a Supabase: executar `database/alter_obrador_proveidors_holded.sql` (CIF + vincle Holded per import/sync).
+
+## Proveïdors (Holded)
+
+La llista de proveïdors es llegeix de Supabase (`obrador_proveidors`). Per omplir-la, a **Kronos → Obrador → Recepcions** fes clic a **Importar proveïdors (Holded)**. El portal mòbil veu els mateixos proveïdors automàticament.
 
 ## Desenvolupament
 

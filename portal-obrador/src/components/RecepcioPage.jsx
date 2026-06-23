@@ -52,8 +52,8 @@ export default function RecepcioPage({ userEmail }) {
 
   const carregar = useCallback(async () => {
     try {
-      const prov = await getProveidors();
-      setProveidors(prov);
+      const provResult = await getProveidors();
+      setProveidors(provResult.proveidors);
     } catch (err) {
       setError(err.message || 'Error carregant proveïdors');
     }

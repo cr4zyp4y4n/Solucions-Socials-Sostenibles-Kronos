@@ -61,13 +61,44 @@ async function countEnRang(table, column, daysAgo = 0) {
 
 // ── SELECTS (formularis) ───────────────────────────────────────
 
+export const PROVEIDORS_SCHEMA_SQL = 'database/alter_obrador_proveidors_holded.sql';
+
+export function isMissingColumnError(error) {
+  return error?.code === '42703' || /column .* does not exist/i.test(error?.message || '');
+}
+
+/**
+ * Llista proveïdors per als formularis.
+ * Si falten columnes cif/holded_* a Supabase, fa fallback a id+nom i marca schemaIncomplete.
+ */
 export async function getProveidors() {
   const { data, error } = await supabase
     .from('obrador_proveidors')
-    .select('id, nom, cif')
+    .select('id, nom, cif, holded_contact_id, holded_empresa')
     .order('nom');
-  if (error) throw error;
-  return data || [];
+
+  if (!error) {
+    return { proveidors: data || [], schemaIncomplete: false };
+  }
+
+  if (isMissingColumnError(error)) {
+    const fallback = await supabase
+      .from('obrador_proveidors')
+      .select('id, nom')
+      .order('nom');
+    if (fallback.error) throw fallback.error;
+    return {
+      proveidors: (fallback.data || []).map((p) => ({
+        ...p,
+        cif: null,
+        holded_contact_id: null,
+        holded_empresa: null
+      })),
+      schemaIncomplete: true
+    };
+  }
+
+  throw error;
 }
 
 export async function getProductes() {

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useTheme } from '../ThemeContext';
-import { getProveidors, getRecepcions, crearRecepcio } from '../../services/obradorSupabaseService';
+import { getProveidors, getRecepcions, crearRecepcio, PROVEIDORS_SCHEMA_SQL } from '../../services/obradorSupabaseService';
+import { syncProveidorsFromHolded, HOLDED_COMPANIES } from '../../services/obradorHoldedSyncService';
 import {
   parseAlbaranText,
   buildRecepcioDraftFromParsed
@@ -52,6 +53,9 @@ export default function ObradorRecepcionsPage() {
   const [ocrProcessing, setOcrProcessing] = useState(false);
   const [ocrProgress, setOcrProgress] = useState(0);
   const [ocrDraft, setOcrDraft] = useState(null);
+  const [importingHolded, setImportingHolded] = useState(false);
+  const [holdedCompany, setHoldedCompany] = useState('solucions');
+  const [schemaIncomplete, setSchemaIncomplete] = useState(false);
   const fileInputRef = useRef(null);
 
   const inputStyle = {
@@ -76,9 +80,10 @@ export default function ObradorRecepcionsPage() {
   const carregar = useCallback(async () => {
     setLoading(true);
     try {
-      const [rec, prov] = await Promise.all([getRecepcions(), getProveidors()]);
+      const [rec, provResult] = await Promise.all([getRecepcions(), getProveidors()]);
       setRecepcions(rec);
-      setProveidors(prov);
+      setProveidors(provResult.proveidors);
+      setSchemaIncomplete(provResult.schemaIncomplete);
     } catch (err) {
       console.error(err);
       setError(err.message);
@@ -111,6 +116,28 @@ export default function ObradorRecepcionsPage() {
 
   function obrirSelectorFoto() {
     fileInputRef.current?.click();
+  }
+
+  async function handleImportarHolded() {
+    setError('');
+    setSuccessMsg('');
+    setImportingHolded(true);
+    try {
+      const result = await syncProveidorsFromHolded(holdedCompany);
+      const provResult = await getProveidors();
+      setProveidors(provResult.proveidors);
+      setSchemaIncomplete(provResult.schemaIncomplete);
+      setSuccessMsg(
+        `Proveïdors importats des de Holded (${result.companyLabel}): ` +
+        `${result.inserted} nous, ${result.updated} actualitzats ` +
+        `(${result.suppliersFound} proveïdors de ${result.holdedContactsTotal} contactes).`
+      );
+    } catch (err) {
+      console.error(err);
+      setError(err.message || 'Error important proveïdors des de Holded');
+    } finally {
+      setImportingHolded(false);
+    }
   }
 
   async function handleFotoAlbara(e) {
@@ -214,9 +241,46 @@ export default function ObradorRecepcionsPage() {
     <div style={{ padding: '32px', maxWidth: 1100, margin: '0 auto', color: colors.text }}>
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24, flexWrap: 'wrap', gap: 12 }}>
         <h1 style={{ margin: 0, fontSize: 28, fontWeight: 700 }}>Recepcions</h1>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
         {mode === 'llistat' ? (
           <>
+            <select
+              value={holdedCompany}
+              onChange={(e) => setHoldedCompany(e.target.value)}
+              disabled={importingHolded}
+              title="Empresa Holded per importar proveïdors"
+              style={{
+                padding: '9px 12px',
+                fontSize: 13,
+                borderRadius: 8,
+                border: `0.5px solid ${colors.border}`,
+                background: colors.surface,
+                color: colors.text
+              }}
+            >
+              {Object.entries(HOLDED_COMPANIES).map(([key, label]) => (
+                <option key={key} value={key}>{label}</option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={handleImportarHolded}
+              disabled={importingHolded || schemaIncomplete}
+              title={schemaIncomplete ? `Executa ${PROVEIDORS_SCHEMA_SQL} a Supabase` : undefined}
+              style={{
+                padding: '10px 16px',
+                fontSize: 14,
+                fontWeight: 600,
+                borderRadius: 8,
+                cursor: importingHolded ? 'wait' : 'pointer',
+                background: colors.surface,
+                color: colors.text,
+                border: `0.5px solid ${colors.border}`,
+                opacity: importingHolded || schemaIncomplete ? 0.5 : 1
+              }}
+            >
+              {importingHolded ? 'Important…' : 'Importar proveïdors (Holded)'}
+            </button>
             <button
               type="button"
               onClick={() => {
@@ -328,6 +392,22 @@ export default function ObradorRecepcionsPage() {
         </div>
       )}
 
+      {schemaIncomplete && (
+        <div style={{
+          padding: '12px 16px',
+          marginBottom: 16,
+          borderRadius: 8,
+          background: `${warning}22`,
+          border: `1px solid ${warning}`,
+          color: colors.text,
+          fontSize: 14,
+          lineHeight: 1.5
+        }}>
+          Executa <strong>{PROVEIDORS_SCHEMA_SQL}</strong> al SQL Editor de Supabase per activar CIF,
+          importació Holded i matching OCR per proveïdor.
+        </div>
+      )}
+
       {successMsg && (
         <div style={{
           padding: '12px 16px',
@@ -430,7 +510,28 @@ export default function ObradorRecepcionsPage() {
           </div>
 
           <div>
-            <label style={labelStyle} htmlFor="id_proveidor">Proveïdor *</label>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
+              <label style={{ ...labelStyle, marginBottom: 0 }} htmlFor="id_proveidor">Proveïdor *</label>
+              <button
+                type="button"
+                onClick={handleImportarHolded}
+                disabled={importingHolded || schemaIncomplete}
+                title={schemaIncomplete ? `Executa ${PROVEIDORS_SCHEMA_SQL} a Supabase` : undefined}
+                style={{
+                  padding: '6px 10px',
+                  fontSize: 12,
+                  fontWeight: 600,
+                  borderRadius: 6,
+                  cursor: importingHolded || schemaIncomplete ? 'not-allowed' : 'pointer',
+                  background: colors.surface,
+                  color: colors.textSecondary,
+                  border: `0.5px solid ${colors.border}`,
+                  opacity: schemaIncomplete ? 0.5 : 1
+                }}
+              >
+                {importingHolded ? 'Important Holded…' : 'Actualitzar des de Holded'}
+              </button>
+            </div>
             <select
               id="id_proveidor"
               value={form.id_proveidor}
