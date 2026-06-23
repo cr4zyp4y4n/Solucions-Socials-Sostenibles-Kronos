@@ -48,20 +48,51 @@ async function extractPdfNativeText(pdf, maxPages) {
   return parts.join('\n\n').trim();
 }
 
+async function renderPageToCanvas(page, scale) {
+  const viewport = page.getViewport({ scale });
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  canvas.width = viewport.width;
+  canvas.height = viewport.height;
+  await page.render({ canvasContext: ctx, viewport }).promise;
+  return canvas;
+}
+
+async function ocrCanvasRegion(worker, sourceCanvas, { topRatio = 0, heightRatio = 1, psm = '6' }) {
+  const srcH = sourceCanvas.height;
+  const cropY = Math.floor(srcH * topRatio);
+  const cropH = Math.max(1, Math.floor(srcH * heightRatio));
+  const canvas = document.createElement('canvas');
+  canvas.width = sourceCanvas.width;
+  canvas.height = cropH;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(
+    sourceCanvas,
+    0, cropY, sourceCanvas.width, cropH,
+    0, 0, sourceCanvas.width, cropH
+  );
+  await worker.setParameters({ tessedit_pageseg_mode: psm });
+  const { data: { text } } = await worker.recognize(canvas);
+  return text;
+}
+
 async function ocrPdfPages(pdf, worker, maxPages) {
   const parts = [];
   for (let pageNum = 1; pageNum <= maxPages; pageNum += 1) {
     const page = await pdf.getPage(pageNum);
-    const viewport = page.getViewport({ scale: 2 });
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    canvas.width = viewport.width;
-    canvas.height = viewport.height;
-    await page.render({ canvasContext: ctx, viewport }).promise;
-    const { data: { text } } = await worker.recognize(canvas);
-    parts.push(text);
+    const canvas = await renderPageToCanvas(page, 4);
+    const metaBlock = await ocrCanvasRegion(worker, canvas, { topRatio: 0, heightRatio: 0.45, psm: '11' });
+    const metaRow = await ocrCanvasRegion(worker, canvas, { topRatio: 0.14, heightRatio: 0.32, psm: '7' });
+    const body = await ocrCanvasRegion(worker, canvas, { topRatio: 0.36, heightRatio: 0.64, psm: '6' });
+    parts.push(
+      '###JOTRI_META###',
+      metaBlock.trim(),
+      metaRow.trim(),
+      '###JOTRI_BODY###',
+      body.trim()
+    );
   }
-  return parts.join('\n\n');
+  return parts.filter(Boolean).join('\n');
 }
 
 async function textFromPdf(file, worker, onProgress) {

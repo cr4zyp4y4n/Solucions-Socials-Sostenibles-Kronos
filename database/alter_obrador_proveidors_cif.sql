@@ -8,3 +8,8 @@ CREATE INDEX IF NOT EXISTS idx_obrador_proveidors_cif ON obrador_proveidors(cif)
 UPDATE obrador_proveidors
 SET cif = 'A59801696'
 WHERE nom ILIKE '%Begudes%' OR nom ILIKE '%BGRUP%';
+
+-- Cuinats JOTRI S.L.U.
+UPDATE obrador_proveidors
+SET cif = 'B17209693'
+WHERE nom ILIKE '%JOTRI%' OR nom ILIKE '%Cuinats Jotri%';
