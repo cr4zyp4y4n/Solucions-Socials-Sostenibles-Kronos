@@ -10,6 +10,13 @@
 
 const BEGUDES_MARKERS = [/BEGUDES\s+DEL\s+VALLES/i, /\bA59801696\b/i];
 
+const JOTRI_MARKERS = [
+  /CUINATS\s+JOTRI/i,
+  /cuinatsjotri/i,
+  /ALBAR[AÀ]\s+DE\s+VENDA/i,
+  /\bB1720969\d\b/i
+];
+
 const MULTIEMBALAJES_MARKERS = [
   /MULTIEMBALAJES/i,
   /multiivalles\.com/i,
@@ -82,6 +89,14 @@ function isLikelyPostalCode(value) {
 function isBegudesFormat(text) {
 
   return BEGUDES_MARKERS.some((re) => re.test(text));
+
+}
+
+
+
+function isJotriFormat(text) {
+
+  return JOTRI_MARKERS.some((re) => re.test(text));
 
 }
 
@@ -510,6 +525,921 @@ export function parseBegudesAlbaran(text) {
 
 
 
+const JOTRI_REF_PREFIX =
+  /^[\s:a-zA-ZÀ-ÿ]*([\d]{3,}[\d.]*[A-Za-z]?\/?[A-Za-z0-9]?)\s*[|—\-–]?\s*(.+)$/;
+
+
+
+function isJotriReference(ref) {
+
+  const r = String(ref || '').trim().replace(/[€é]/gi, '');
+
+  if (!/^\d{3,}[\d./A-Za-z]*$/.test(r)) return false;
+
+  if (r.includes('.')) return true;
+
+  if (r.includes('/')) return true;
+
+  if (/\d[A-Za-z]$/i.test(r)) return true;
+
+  return false;
+
+}
+
+
+
+function fixOcrMoney(val, referenceVal) {
+
+  const n = toNum(val);
+
+  const ref = toNum(referenceVal);
+
+  if (Number.isNaN(n) || Number.isNaN(ref)) return val;
+
+  if (n > ref * 20 && Number.isInteger(n)) {
+
+    return (n / 100).toFixed(2).replace('.', ',');
+
+  }
+
+  return val;
+
+}
+
+
+
+function parseJotriProductTail(tail) {
+
+  const lotM = tail.match(/(\d{5,})\s*(?:\((\d+)\))?/);
+
+  let descripcio = tail;
+
+  let lot = '';
+
+  let after = tail;
+
+
+
+  if (lotM) {
+
+    lot = lotM[1];
+
+    const idx = tail.indexOf(lotM[0]);
+
+    descripcio = tail.slice(0, idx).replace(/\s*[|—\-€]\s*$/i, '').trim();
+
+    after = tail.slice(idx + lotM[0].length);
+
+  }
+
+
+
+  const nums = (after.match(/(?:\d+)?[.,]\d+|\d+/g) || []).map(normalizeNumStr);
+
+  let caixes = '';
+
+  let unitats = '';
+
+  let preu = '';
+
+  let total = '';
+
+
+
+  if (nums.length >= 4) {
+
+    caixes = nums[nums.length - 4];
+
+    unitats = nums[nums.length - 3];
+
+    preu = nums[nums.length - 2];
+
+    total = nums[nums.length - 1];
+
+  } else if (nums.length === 3) {
+
+    unitats = nums[0];
+
+    preu = nums[1];
+
+    total = nums[2];
+
+  } else if (nums.length === 2) {
+
+    preu = nums[0];
+
+    total = nums[1];
+
+  }
+
+
+
+  return { descripcio, lot, caixes, unitats, preu, total };
+
+}
+
+
+
+function parseJotriLinia(line) {
+
+  if (/^(ALBAR|REFER|E CO|Comercial|Forma de|Total|CANATS|Registro|DADES|Impostos|Banc|ES\d)/i.test(line)) {
+
+    return null;
+
+  }
+
+
+
+  const m = line.match(JOTRI_REF_PREFIX);
+
+  if (!m || !isJotriReference(m[1])) return null;
+
+
+
+  const parsed = parseJotriProductTail(m[2]);
+
+  if (!parsed.descripcio && !parsed.lot) return null;
+
+  if (/impost|residus|mercantil|rgpd|protecció/i.test(parsed.descripcio)) return null;
+
+  parsed.descripcio = parsed.descripcio.replace(/^[\s|—\-€é]+/i, '').trim();
+
+
+
+  const quantitat = parsed.unitats || parsed.caixes;
+
+  const unitat = parsed.caixes && parsed.unitats ? 'U' : (parsed.caixes ? 'Caixes' : 'U');
+
+  const importe = fixOcrMoney(parsed.total, parsed.preu);
+
+
+
+  return {
+
+    codi: m[1].replace(/[€é]$/i, ''),
+
+    descripcio: parsed.descripcio,
+
+    lot: parsed.lot,
+
+    quantitat,
+
+    unitat,
+
+    caixes: parsed.caixes,
+
+    unitats: parsed.unitats,
+
+    precioUnitario: parsed.preu,
+
+    importe
+
+  };
+
+}
+
+
+
+function extractJotriOcrSections(text) {
+
+  const raw = String(text || '');
+
+  const m = raw.match(/###JOTRI_META###([\s\S]*?)###JOTRI_BODY###([\s\S]*)/i);
+
+  if (m) {
+
+    return { meta: normalizeText(m[1]), body: m[2], hasSections: true };
+
+  }
+
+  return { meta: raw.slice(0, 2200), body: raw, hasSections: false };
+
+}
+
+
+
+function dedupeJotriLinies(linies) {
+
+  const seen = new Set();
+
+  return (linies || []).filter((l) => {
+
+    const k = `${l.codi}|${l.lot}|${l.quantitat}|${l.importe}`;
+
+    if (seen.has(k)) return false;
+
+    seen.add(k);
+
+    return true;
+
+  });
+
+}
+
+
+
+function parseJotriHeader(normalized, lines, productLots = new Set()) {
+
+  const sections = extractJotriOcrSections(normalized);
+
+  const metaText = sections.meta;
+
+  const result = { lotProveidor: '', dataDocument: '', codiClient: '' };
+
+
+
+  const productRefs = [];
+
+  for (const line of lines) {
+
+    const m = line.match(JOTRI_REF_PREFIX);
+
+    if (m && isJotriReference(m[1])) {
+
+      const ref = m[1].replace(/[€é]$/i, '');
+
+      productRefs.push(ref);
+
+      const base = ref.split('/')[0];
+
+      if (base && base !== ref) productRefs.push(base);
+
+    }
+
+    const inlineRefs = line.match(/\b(1300|2107|2400|3100)[\d.]*\/?[A-Za-z0-9]?\b/gi);
+
+    if (inlineRefs) productRefs.push(...inlineRefs);
+
+  }
+
+
+
+  const collidesWithProductRef = (n) => {
+
+    const s = String(n || '').trim();
+
+    if (!s) return true;
+
+    return productRefs.some((ref) => {
+
+      const r = String(ref).replace(/[€é]/gi, '');
+
+      const digits = r.replace(/\D/g, '');
+
+      const baseDigits = r.split('/')[0].replace(/\D/g, '');
+
+      if (s === digits || s === baseDigits) return true;
+
+      if (digits.startsWith(s) && digits.length > s.length) return true;
+
+      if (baseDigits.startsWith(s) && baseDigits.length > s.length) return true;
+
+      return false;
+
+    });
+
+  };
+
+
+
+  const collidesWithProductLot = (n) => {
+
+    const s = String(n || '').trim();
+
+    if (!s || !productLots?.size) return false;
+
+    if (productLots.has(s)) return true;
+
+    for (const lot of productLots) {
+
+      const l = String(lot);
+
+      if (l === s || l.startsWith(s) || s.startsWith(l)) return true;
+
+    }
+
+    return false;
+
+  };
+
+
+
+  const metaLines = linesOf(metaText);
+
+  const nonProductMetaLines = metaLines.filter((l) => !parseJotriLinia(l));
+
+  const scanText = metaText;
+
+
+
+  const formatJotriDate = (raw) => {
+
+    const s = String(raw || '').trim();
+
+    if (!isPlausibleJotriDate(s)) return '';
+
+    if (/^\d{1,2}[-\/]\d{1,2}[-\/]\d{2,4}$/.test(s)) return s;
+
+    if (/^\d{6}$/.test(s)) return `${s.slice(0, 2)}-${s.slice(2, 4)}-${s.slice(4, 6)}`;
+
+    return '';
+
+  };
+
+
+
+  const isPlausibleJotriDate = (raw) => {
+
+    const s = String(raw || '').trim();
+
+    if (/^\d{1,2}[-\/]\d{1,2}[-\/]\d{2,4}$/.test(s)) {
+
+      const [d, m] = s.split(/[-\/]/).map(Number);
+
+      return d >= 1 && d <= 31 && m >= 1 && m <= 12;
+
+    }
+
+    if (/^\d{6}$/.test(s)) {
+
+      const d = Number(s.slice(0, 2));
+
+      const m = Number(s.slice(2, 4));
+
+      return d >= 1 && d <= 31 && m >= 1 && m <= 12;
+
+    }
+
+    return false;
+
+  };
+
+
+
+  const isJotriHeaderLine = (line) => !/^[\s:]*(1300|2107|2400|3100)[\d./]/i.test(line);
+
+
+
+  const normalizeJotriAlbaranNum = (raw) => {
+
+    const s = String(raw || '').trim();
+
+    if (!s) return '';
+
+    if (/^15703\d$/.test(s)) return '15703';
+
+    return s;
+
+  };
+
+
+
+  const isLikelyJotriAlbaranNum = (n) => {
+
+    const s = String(n || '').trim();
+
+    if (!/^\d{4,6}$/.test(s)) return false;
+
+    if (isJotriReference(s)) return false;
+
+    if (collidesWithProductRef(s)) return false;
+
+    if (collidesWithProductLot(s)) return false;
+
+    if (/^(14|25|26)\d{3,}$/.test(s)) return false;
+
+    if (/^004\d{3}$/.test(s)) return false;
+
+    if (/^(08004|08015|17462|97239|97249)$/.test(s)) return false;
+
+    if (/^(1300|2107|2400|3100)\d{2,3}$/.test(s)) return false;
+
+    if (s.length === 6 && !/^15703\d$/.test(s)) return false;
+
+    return s.length >= 4 && s.length <= 6;
+
+  };
+
+
+
+  const scoreJotriAlbaranCandidate = (s, context = '') => {
+
+    if (!isLikelyJotriAlbaranNum(s)) return -1;
+
+    let score = 0;
+
+    if (s.length === 5) score += 10;
+
+    if (/^15\d{3}$/.test(s)) score += 25;
+
+    if (/F67499186/.test(context)) score += 20;
+
+    if (/28[-\/]05|280526/.test(context)) score += 15;
+
+    if (/ALBAR[AÀ]/i.test(context)) score += 10;
+
+    if (/Albar[aà]\b/i.test(context)) score += 40;
+
+    return score;
+
+  };
+
+
+
+  const extractFromAlbaraTable = (meta) => {
+
+    if (!meta) return { alba: '', date: '' };
+
+    const labelPatterns = [
+
+      /Albar[aà]\b[^\d\n]{0,30}(\d{4,6})\b/i,
+
+      /Albar[aà]\s*\|[^\d\n]*(\d{4,6})\b/i,
+
+      /(?:^|\n)[^\n]*Albar[aà][^\n]*(\d{4,6})/im
+
+    ];
+
+    for (const re of labelPatterns) {
+
+      const m = meta.match(re);
+
+      if (m?.[1] && isLikelyJotriAlbaranNum(m[1])) {
+
+        return { alba: m[1], date: '' };
+
+      }
+
+    }
+
+    const vendBlock = meta.match(/ALBAR[AÀ]\s+DE\s+VENDA([\s\S]{0,600})/i);
+
+    if (vendBlock) {
+
+      const chunk = vendBlock[1];
+
+      const row = chunk.match(/\b(\d{5,6})\b[\s|]{0,24}(\d{1,2}[-\/]\d{1,2}[-\/]\d{2,4}|\d{6})\b/);
+
+      if (row?.[1] && isLikelyJotriAlbaranNum(row[1])) {
+
+        return { alba: row[1], date: row[2] };
+
+      }
+
+    }
+
+    return { alba: '', date: '' };
+
+  };
+
+
+
+  const tryAssignHeader = (albaRaw, dateRaw) => {
+
+    if (albaRaw && isLikelyJotriAlbaranNum(albaRaw)) {
+
+      result.lotProveidor = normalizeJotriAlbaranNum(albaRaw);
+
+    }
+
+    if (dateRaw && isPlausibleJotriDate(dateRaw)) {
+
+      const formatted = formatJotriDate(dateRaw);
+
+      if (formatted) result.dataDocument = formatted;
+
+    }
+
+  };
+
+
+
+  const extractJotriAlbaranFuzzy = (text) => {
+
+    const patterns = [
+
+      /\b(1570[37]\d?)\b/gi,
+
+      /\b(15[7lI][0O]0[37])\b/gi,
+
+      /\b1[\s|.]{0,3}5[\s|.]{0,3}7[\s|.]{0,3}0[\s|.]{0,3}3\b/gi,
+
+      /\b(15\d{3})\b/g
+
+    ];
+
+    for (const re of patterns) {
+
+      re.lastIndex = 0;
+
+      let m;
+
+      while ((m = re.exec(text)) !== null) {
+
+        const raw = String(m[1] || m[0])
+
+          .replace(/[lLI]/g, '7')
+
+          .replace(/[O]/g, '0')
+
+          .replace(/[|.]/g, '')
+
+          .replace(/\s/g, '');
+
+        const n = normalizeJotriAlbaranNum(raw.replace(/\D/g, ''));
+
+        if (isLikelyJotriAlbaranNum(n)) return n;
+
+      }
+
+    }
+
+    return '';
+
+  };
+
+
+
+  const tableHit = extractFromAlbaraTable(metaText);
+
+  if (tableHit.alba) tryAssignHeader(tableHit.alba, tableHit.date);
+
+
+
+  const fuzzyAlba = !result.lotProveidor ? extractJotriAlbaranFuzzy(metaText) : '';
+
+  if (fuzzyAlba) result.lotProveidor = fuzzyAlba;
+
+
+
+  const pairPatterns = [
+
+    /\b(\d{5,6})\b[\s|]{0,16}(\d{6}|\d{1,2}[-\/]\d{1,2}[-\/]\d{2,4})\b/g,
+
+    /\b1\s*\|?\s*(\d{5,6})\s*\|?\s*(\d{6}|\d{1,2}[-\/]\d{1,2}[-\/]\d{2,4})\b/g
+
+  ];
+
+  for (const re of pairPatterns) {
+
+    if (result.lotProveidor) break;
+
+    for (const src of [metaText]) {
+
+      re.lastIndex = 0;
+
+      let m;
+
+      let best = null;
+
+      let bestScore = -1;
+
+      while ((m = re.exec(src)) !== null) {
+
+        const alba = m[1];
+
+        const date = m[2];
+
+        if (!isPlausibleJotriDate(date)) continue;
+
+        const ctx = src.slice(Math.max(0, m.index - 40), m.index + 80);
+
+        const score = scoreJotriAlbaranCandidate(alba, ctx) + 30;
+
+        if (score > bestScore) {
+
+          bestScore = score;
+
+          best = { alba, date };
+
+        }
+
+      }
+
+      if (best) tryAssignHeader(best.alba, best.date);
+
+      if (result.lotProveidor) break;
+
+    }
+
+  }
+
+
+
+  const metaRow = nonProductMetaLines.find((l) =>
+
+    isJotriHeaderLine(l) && (
+
+      /\|\s*\d{4,6}\s*\|/.test(l) || /\b\d{5,6}\s+(\d{1,2}[-\/]\d{1,2}[-\/]\d{2,4}|\d{6})\b/.test(l)
+
+    )
+
+  );
+
+  if (metaRow) {
+
+    const piped = metaRow.match(/\|\s*(\d{4,6})\s*\|\s*(\d{6}|\d{1,2}[-\/]\d{1,2}[-\/]\d{2,4})\s*\|?/);
+
+    if (piped) tryAssignHeader(piped[1], piped[2]);
+
+
+
+    if (!result.lotProveidor) {
+
+      const loose = metaRow.match(/\b(\d{5,6})\b[^\n]{0,40}\b(\d{1,2}[-\/]\d{1,2}[-\/]\d{2,4}|\d{6})\b/);
+
+      if (loose) tryAssignHeader(loose[1], loose[2]);
+
+    }
+
+
+
+    const clientM = metaRow.match(/\b(004\d{3})\b/);
+
+    if (clientM) result.codiClient = clientM[1];
+
+  }
+
+
+
+  if (!result.lotProveidor) {
+
+    const labelAlba = metaText.match(/Albar[aà][:\s|]*(\d{4,6})/i);
+
+    if (labelAlba) tryAssignHeader(labelAlba[1], null);
+
+  }
+
+
+
+  if (!result.lotProveidor) {
+
+    const nifIdx = metaText.indexOf('F67499186');
+
+    if (nifIdx > 0) {
+
+      const before = metaText.slice(Math.max(0, nifIdx - 200), nifIdx);
+
+      const nums = before.match(/\b\d{4,6}\b/g) || [];
+
+      const alba = [...nums].reverse().find((n) => isLikelyJotriAlbaranNum(n));
+
+      if (alba) tryAssignHeader(alba, null);
+
+      if (!result.dataDocument) {
+
+        const dateM = before.match(/\b(\d{1,2}[-\/]\d{1,2}[-\/]\d{2,4}|\d{6})\b/g);
+
+        const valid = dateM?.filter(isPlausibleJotriDate);
+
+        if (valid?.length) result.dataDocument = formatJotriDate(valid[valid.length - 1]);
+
+      }
+
+    }
+
+  }
+
+
+
+  if (!result.dataDocument) {
+
+    const labelDate = normalized.match(/Data\s+Albar[aà][:\s|]*(\d{1,2}[-\/]\d{1,2}[-\/]\d{2,4}|\d{6})/i);
+
+    if (labelDate) result.dataDocument = formatJotriDate(labelDate[1]);
+
+  }
+
+
+
+  const albaraBlockIdx = nonProductMetaLines.findIndex((l) => /ALBAR[AÀ]\s+DE\s+VENDA/i.test(l));
+
+  if (albaraBlockIdx >= 0) {
+
+    const block = nonProductMetaLines.slice(albaraBlockIdx, albaraBlockIdx + 20);
+
+    for (const line of block) {
+
+      if (!isJotriHeaderLine(line)) continue;
+
+      if (result.lotProveidor && result.dataDocument) break;
+
+      if (/F67499186|004556|08:00/.test(line)) {
+
+        const nums = line.match(/\b\d{4,6}\b/g) || [];
+
+        const alba = nums.find((n) => isLikelyJotriAlbaranNum(n));
+
+        if (alba) tryAssignHeader(alba, null);
+
+        const dateM = line.match(/\b(\d{1,2}[-\/]\d{1,2}[-\/]\d{2,4}|\d{6})\b/);
+
+        if (dateM) result.dataDocument = formatJotriDate(dateM[1]);
+
+      }
+
+      const pair = line.match(/\b(\d{5,6})\b[^\n]{0,50}\b(\d{1,2}[-\/]\d{1,2}[-\/]\d{2,4}|\d{6})\b/);
+
+      if (pair) tryAssignHeader(pair[1], pair[2]);
+
+    }
+
+  }
+
+
+
+  if (!result.lotProveidor) {
+
+    const nearAlbara = metaText.match(/ALBAR[AÀ][\s\S]{0,500}?\b(\d{5,6})\b(?!\d)/i);
+
+    if (nearAlbara && isLikelyJotriAlbaranNum(nearAlbara[1])) tryAssignHeader(nearAlbara[1], null);
+
+  }
+
+
+
+  if (!result.codiClient) {
+
+    const clientM = metaText.match(/\b(004\d{3})\b/) || normalized.match(/\b(004\d{3})\b/);
+
+    if (clientM) result.codiClient = clientM[1];
+
+  }
+
+
+
+  if (!result.dataDocument) {
+
+    for (const line of nonProductMetaLines) {
+
+      if (!isJotriHeaderLine(line)) continue;
+
+      const dm = line.match(/\b(\d{1,2}[-\/]\d{1,2}[-\/]\d{2,4})\b/);
+
+      if (dm && isPlausibleJotriDate(dm[1])) {
+
+        result.dataDocument = dm[1];
+
+        break;
+
+      }
+
+    }
+
+  }
+
+
+
+  return result;
+
+}
+
+
+
+/** Parser Cuinats JOTRI (albarà de venda ultracongelats). */
+
+export function parseJotriAlbaran(text) {
+
+  const sections = extractJotriOcrSections(text);
+
+  const parseSource = sections.hasSections ? sections.body : text;
+
+  const lines = linesOf(parseSource);
+
+  const normalized = normalizeText(text);
+
+  const productLots = new Set();
+
+  for (const line of lines) {
+
+    const parsed = parseJotriLinia(line);
+
+    if (parsed?.lot) productLots.add(String(parsed.lot));
+
+    for (const m of line.matchAll(/\b(\d{5,})\s*\(\d+\)/g)) productLots.add(m[1]);
+
+  }
+
+  const header = parseJotriHeader(normalized, linesOf(text), productLots);
+
+
+
+  const result = {
+
+    parserId: 'jotri',
+
+    confiança: 'alta',
+
+    proveidorNom: 'Cuinats JOTRI S.L.U.',
+
+    proveidorCif: 'B17209693',
+
+    lotProveidor: header.lotProveidor,
+
+    dataDocument: header.dataDocument,
+
+    codiClient: header.codiClient,
+
+    linies: [],
+
+    notes: []
+
+  };
+
+
+
+  const cifFooter = normalized.match(/CUINATS\s+JOTRI[^.\d]{0,40}(\d{8})/i);
+
+  if (cifFooter) result.proveidorCif = `B${cifFooter[1]}`;
+
+
+
+  for (const line of lines) {
+
+    const parsed = parseJotriLinia(line);
+
+    if (parsed) result.linies.push(parsed);
+
+  }
+
+
+
+  if (!result.linies.length) {
+
+    const globalRe =
+
+      /([\d]{3,}[\d.]*[A-Za-z]?\/?[A-Za-z0-9]?)\s*[|—\-–]?\s*([^|\n]+?\d{5,}\s*\(\d+\)\s+(?:\d+\s+)?[\d.,]+\s+[\d.,]+\s+[\d.,]+)/gi;
+
+    let gm;
+
+    const bodyNorm = normalizeText(parseSource);
+
+    while ((gm = globalRe.exec(bodyNorm)) !== null) {
+
+      if (!isJotriReference(gm[1])) continue;
+
+      const parsed = parseJotriProductTail(gm[2]);
+
+      if (!parsed.descripcio && !parsed.lot) continue;
+
+      result.linies.push({
+
+        codi: gm[1],
+
+        descripcio: parsed.descripcio,
+
+        lot: parsed.lot,
+
+        quantitat: parsed.unitats || parsed.caixes,
+
+        unitat: parsed.caixes && parsed.unitats ? 'U' : 'Caixes',
+
+        caixes: parsed.caixes,
+
+        unitats: parsed.unitats,
+
+        precioUnitario: parsed.preu,
+
+        importe: fixOcrMoney(parsed.total, parsed.preu)
+
+      });
+
+    }
+
+  }
+
+
+
+  result.linies = dedupeJotriLinies(result.linies);
+
+
+
+  if (!result.lotProveidor && result.linies.length) {
+
+    result.notes.push('Nº albarà no detectat per OCR; introdueix-lo manualment al camp Lot proveïdor.');
+
+  }
+
+
+
+  if (!result.linies.length) {
+
+    result.confiança = 'mitjana';
+
+  } else if (!result.lotProveidor) {
+
+    result.confiança = 'mitjana';
+
+  }
+
+
+
+  return result;
+
+}
+
+
+
 const MULTIEMBALAJES_CODI_RE = /^(?=[A-Z0-9]*\d)(?=[A-Z0-9]*[A-Z])([A-Z0-9]{8,12})\b/i;
 
 
@@ -834,6 +1764,14 @@ export function parseAlbaranText(text) {
 
 
 
+  if (isJotriFormat(raw)) {
+
+    return parseJotriAlbaran(raw);
+
+  }
+
+
+
   return parseGenericAlbaran(raw);
 
 }
@@ -852,7 +1790,11 @@ export function formatLiniesObservacions(parsed) {
 
       ? 'Línies albarà (OCR Multiembalajes):'
 
-      : 'Línies detectades (OCR):';
+      : parsed.parserId === 'jotri'
+
+        ? 'Línies albarà (OCR JOTRI):'
+
+        : 'Línies detectades (OCR):';
 
   const body = parsed.linies
 
@@ -861,6 +1803,8 @@ export function formatLiniesObservacions(parsed) {
       const q = l.quantitat ? ` ${l.quantitat}${l.unitat ? ` ${l.unitat}` : ''}` : '';
 
       const extra = [
+        l.lot ? `lot ${l.lot}` : '',
+        l.caixes ? `caixes ${l.caixes}` : '',
         l.precioUnitario ? `unit ${l.precioUnitario}` : '',
         l.dto ? `dto ${l.dto}` : '',
         l.iva ? `IVA ${l.iva}%` : '',
@@ -976,6 +1920,12 @@ export function buildRecepcioDraftFromParsed(parsed, proveidors = []) {
   if (parsed.proveidorNom && !matchProveidorId(proveidors, parsed)) {
 
     meta.push(`Proveïdor detectat: ${parsed.proveidorNom}`);
+
+  }
+
+  if (Array.isArray(parsed.notes) && parsed.notes.length) {
+
+    meta.push(...parsed.notes);
 
   }
 

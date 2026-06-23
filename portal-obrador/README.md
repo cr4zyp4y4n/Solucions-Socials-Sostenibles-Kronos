@@ -3,7 +3,7 @@
 Portal web per registrar **recepcions** fotografiant l'albarà en paper:
 
 1. Fer foto de l'albarà
-2. OCR (Tesseract) + parser (genèric + Begudes)
+2. OCR (Tesseract) + parser (genèric + Begudes + JOTRI)
 3. Revisar i confirmar (temperatura, estat, operari…)
 
 ## Requisits
@@ -42,6 +42,7 @@ Com `portal-fichajes`: base directory `portal-obrador`, variables `VITE_SUPABASE
 
 - **Genèric**: qualsevol albarà (CIF, data, nº document si es detecten).
 - **Begudes**: format tipus BGRUP (es activa si el text conté "Begudes del Vallès" o CIF A59801696).
+- **JOTRI**: albarà Cuinats JOTRI S.L.U. (text "Cuinats JOTRI", "ALBARÀ DE VENDA" o CIF B17209693).
 - Més proveïdors: afegir parsers a `src/services/obradorAlbaranParser.js` (sincronitzar amb Kronos).
 
 ## Kronos
