@@ -536,6 +536,8 @@ function isJotriReference(ref) {
 
   if (!/^\d{3,}[\d./A-Za-z]*$/.test(r)) return false;
 
+  if (/^(1300|2107|2400|3100)\d{2,5}$/i.test(r)) return true;
+
   if (r.includes('.')) return true;
 
   if (r.includes('/')) return true;
@@ -996,13 +998,13 @@ function parseJotriHeader(normalized, lines, productLots = new Set()) {
 
   const tryAssignHeader = (albaRaw, dateRaw) => {
 
-    if (albaRaw && isLikelyJotriAlbaranNum(albaRaw)) {
+    if (!result.lotProveidor && albaRaw && isLikelyJotriAlbaranNum(albaRaw)) {
 
       result.lotProveidor = normalizeJotriAlbaranNum(albaRaw);
 
     }
 
-    if (dateRaw && isPlausibleJotriDate(dateRaw)) {
+    if (!result.dataDocument && dateRaw && isPlausibleJotriDate(dateRaw)) {
 
       const formatted = formatJotriDate(dateRaw);
 
