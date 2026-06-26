@@ -103,6 +103,33 @@ export function getFirmaDocMeta(tipo?: string | null): FirmaDocMeta {
   return META[key] || DEFAULT_META;
 }
 
+/** Línea explícita «Sí» en el sello del PDF, según lo que el trabajador marca en el portal. */
+export function buildAceptacionSiLine(tipoDocumento: string): string {
+  const tipo = String(tipoDocumento || '').trim();
+  switch (tipo) {
+    case 'vrp_consentimiento':
+      return 'Consentimiento para reconocimiento médico (art. 22 LPRL): Sí';
+    case 'vrp_renuncia':
+      return 'Renuncia expresa al reconocimiento médico (art. 22 LPRL): Sí';
+    case 'baja':
+      return 'Acuse de recibo de la notificación de fin de relación: Sí';
+    case 'acoso':
+      return 'Protocolo de acoso recibido y aceptado (art. 18 LPRL): Sí';
+    case 'riesgos_laborales':
+      return 'Información RPT recibida y aceptada (art. 18 LPRL): Sí';
+    case 'epis':
+      return 'Recibo e información de EPIS confirmados: Sí';
+    case 'contrato':
+      return 'Contrato de trabajo leído y aceptado: Sí';
+    case 'pdp':
+      return 'Información RGPD leída y aceptada: Sí';
+    case 'confidencialidad':
+      return 'Compromiso de confidencialidad aceptado: Sí';
+    default:
+      return 'Declaración del documento aceptada en portal: Sí';
+  }
+}
+
 export function buildStampLinesForDoc({
   trabajadorNombre,
   trabajadorDni,
@@ -139,8 +166,10 @@ export function buildStampLinesForDoc({
     : smsVerificado
       ? 'Verificación SMS (OTP): completada'
       : '';
+  const lecturaConfirmada = opciones?.lectura_confirmada !== false;
   const lines = [
     meta.stampDeclaration,
+    lecturaConfirmada ? buildAceptacionSiLine(tipoDocumento) : '',
     trabajadorNombre ? `Trabajador: ${trabajadorNombre}` : '',
     trabajadorDni ? `DNI: ${trabajadorDni}` : '',
     dniConfirmadoEnPortal ? 'DNI confirmado en portal antes del SMS: Sí' : '',
@@ -152,7 +181,9 @@ export function buildStampLinesForDoc({
   ].filter(Boolean);
 
   if (tipoDocumento === 'acoso' && opciones?.formacion_acoso) {
-    lines.splice(3, 0, 'Solicita formación PREVENCION DEL ACOSO: Sí');
+    const idx = lines.findIndex((l) => l.includes('Protocolo de acoso'));
+    const insertAt = idx >= 0 ? idx + 1 : 2;
+    lines.splice(insertAt, 0, 'Solicita formación PREVENCION DEL ACOSO: Sí');
   }
 
   return lines;

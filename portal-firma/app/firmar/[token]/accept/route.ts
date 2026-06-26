@@ -1,4 +1,4 @@
-import { buildStampLinesForDoc } from '@/lib/firmaDocumentosMeta';
+import { buildStampLinesForDoc, getFirmaDocMeta } from '@/lib/firmaDocumentosMeta';
 import { getOtpScopeIds, resolveFirmaToken } from '@/lib/resolveFirmaToken';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getRequestInfo } from '@/lib/requestInfo';
@@ -125,6 +125,19 @@ export async function POST(_req: Request, ctx: { params: Promise<{ token: string
     );
   }
 
+  for (const doc of resolved.documentos) {
+    const { opciones } = await loadDocumentoOpciones(doc.id);
+    if (opciones && opciones.lectura_confirmada === false) {
+      return Response.json(
+        {
+          ok: false,
+          error: `El documento «${doc.tipo_documento}» no tiene la declaración aceptada en portal.`
+        },
+        { status: 400 }
+      );
+    }
+  }
+
   const vrpConsent = resolved.documentos.some((d) => d.tipo_documento === 'vrp_consentimiento');
   const vrpRenuncia = resolved.documentos.some((d) => d.tipo_documento === 'vrp_renuncia');
   if (vrpConsent && vrpRenuncia) {
@@ -222,7 +235,13 @@ export async function POST(_req: Request, ctx: { params: Promise<{ token: string
       dni_confirmado_portal: dniConfirmadoEnPortal,
       sms_verificado_at: smsVerificadoAt,
       num_documentos: resolved.documentos.length,
-      storage_paths_firmados: signedPaths
+      storage_paths_firmados: signedPaths,
+      declaraciones_aceptadas: resolved.documentos.map((d) => ({
+        documento_id: d.id,
+        tipo_documento: d.tipo_documento,
+        declaracion: getFirmaDocMeta(d.tipo_documento).readStatement,
+        lectura_confirmada: true
+      }))
     }
   });
 

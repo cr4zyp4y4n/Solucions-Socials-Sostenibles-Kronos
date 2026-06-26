@@ -27,7 +27,7 @@ export async function stampPdfLastPage({ pdfBytes, stampLines }: StampArgs) {
   const boxWidth = Math.min(420, width - margin * 2);
   const boxX = margin;
   const boxY = margin;
-  const maxLines = 12;
+  const maxLines = 14;
   const lines = stampLines.slice(0, maxLines);
   const boxHeight = 20 + lines.length * lineGap + 12;
 

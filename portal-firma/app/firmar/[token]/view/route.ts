@@ -1,5 +1,9 @@
-import { resolveFirmaToken } from '@/lib/resolveFirmaToken';
+import { getFirmaDocumentoLabel } from '@/lib/firmaDocumentos';
+import { buildAceptacionSiLine, getFirmaDocMeta } from '@/lib/firmaDocumentosMeta';
 import { updateDocumentoLecturaConfirmada } from '@/lib/firmaDocumentoOpciones';
+import { getOtpScopeIds, resolveFirmaToken } from '@/lib/resolveFirmaToken';
+import { getRequestInfo } from '@/lib/requestInfo';
+import { supabaseAdmin } from '@/lib/supabase';
 
 export async function POST(req: Request, ctx: { params: Promise<{ token: string }> }) {
   const { token } = await ctx.params;
@@ -29,6 +33,29 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
 
   const result = await updateDocumentoLecturaConfirmada(documentoId, opciones, nowIso);
   if (!result.ok) return Response.json({ ok: false, error: result.error }, { status: 500 });
+
+  const meta = getFirmaDocMeta(doc.tipo_documento);
+  const { ip, userAgent } = await getRequestInfo();
+  const { envioId } = getOtpScopeIds(resolved);
+
+  await supabaseAdmin.from('firma_auditorias').insert({
+    documento_id: documentoId,
+    ip: ip || null,
+    user_agent: userAgent || null,
+    resultado: 'ok',
+    detalle: {
+      accion: 'documento_lectura_confirmada',
+      envio_id: envioId,
+      tipo_documento: doc.tipo_documento,
+      tipo_label: getFirmaDocumentoLabel(doc.tipo_documento),
+      lectura_confirmada: true,
+      aceptacion_si: buildAceptacionSiLine(doc.tipo_documento),
+      declaracion: meta.readStatement,
+      formacion_acoso: !!confirmacion.formacion_acoso,
+      confirmado_at: nowIso,
+      opciones_guardadas: result.opcionesGuardadas
+    }
+  });
 
   return Response.json({
     ok: true,
