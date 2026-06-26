@@ -204,6 +204,11 @@ DO $$
 DECLARE
   t text;
   pol text;
+  privileged_check text := '(auth.role() = ''authenticated'' AND (EXISTS (
+        SELECT 1 FROM public.user_profiles up
+        WHERE up.id = auth.uid()
+          AND lower(coalesce(up.role, '''')) IN (''admin'', ''management'', ''manager'', ''jefe'', ''administrador'', ''gestion'', ''gestión'')
+      ) OR lower(coalesce(auth.jwt() -> ''user_metadata'' ->> ''role'', '''')) IN (''admin'', ''management'', ''manager'', ''jefe'', ''administrador'', ''gestion'', ''gestión'')))';
 BEGIN
   FOREACH t IN ARRAY ARRAY[
     'obrador_proveidors', 'obrador_recepcions', 'obrador_productes', 'obrador_operaris',
@@ -226,13 +231,13 @@ BEGIN
         );
       ELSIF pol = 'update' THEN
         EXECUTE format(
-          'CREATE POLICY %I ON %I FOR UPDATE TO authenticated USING (true) WITH CHECK (true)',
-          t || '_' || pol, t
+          'CREATE POLICY %I ON %I FOR UPDATE TO authenticated USING (%s) WITH CHECK (%s)',
+          t || '_' || pol, t, privileged_check, privileged_check
         );
       ELSE
         EXECUTE format(
-          'CREATE POLICY %I ON %I FOR DELETE TO authenticated USING (true)',
-          t || '_' || pol, t
+          'CREATE POLICY %I ON %I FOR DELETE TO authenticated USING (%s)',
+          t || '_' || pol, t, privileged_check
         );
       END IF;
     END LOOP;
