@@ -12,6 +12,7 @@ export type FirmaDocumentoResolved = {
   orden: number;
   revisado_at: string | null;
   firmado_at: string | null;
+  opciones_aceptacion?: { respuesta?: 'si' | 'no'; lectura_confirmada?: boolean; formacion_acoso?: boolean } | null;
 };
 
 export type FirmaTrabajadorResolved = {
@@ -91,7 +92,8 @@ export async function resolveFirmaToken(token: string): Promise<ResolvedFirmaCon
           hash_pdf,
           orden,
           revisado_at,
-          firmado_at
+          firmado_at,
+          opciones_aceptacion
         )
       ),
       documento:firma_documentos!firma_tokens_documento_id_fkey (
@@ -105,6 +107,7 @@ export async function resolveFirmaToken(token: string): Promise<ResolvedFirmaCon
         orden,
         revisado_at,
         firmado_at,
+        opciones_aceptacion,
         trabajador:firma_trabajadores (
           id,
           nombre,
@@ -143,6 +146,7 @@ export async function resolveFirmaToken(token: string): Promise<ResolvedFirmaCon
     orden?: number | null;
     revisado_at?: string | null;
     firmado_at?: string | null;
+    opciones_aceptacion?: FirmaDocumentoResolved['opciones_aceptacion'];
   }): FirmaDocumentoResolved => ({
     id: d.id,
     tipo_documento: d.tipo_documento,
@@ -153,7 +157,8 @@ export async function resolveFirmaToken(token: string): Promise<ResolvedFirmaCon
     hash_pdf: d.hash_pdf ?? null,
     orden: d.orden ?? 0,
     revisado_at: d.revisado_at ?? null,
-    firmado_at: d.firmado_at ?? null
+    firmado_at: d.firmado_at ?? null,
+    opciones_aceptacion: d.opciones_aceptacion ?? null
   });
 
   if (envioRaw?.id) {
@@ -168,7 +173,7 @@ export async function resolveFirmaToken(token: string): Promise<ResolvedFirmaCon
     const { data: docsByEnvio, error: docsErr } = await supabaseAdmin
       .from('firma_documentos')
       .select(
-        'id, tipo_documento, estado, storage_path, storage_path_firmado, file_name, hash_pdf, orden, revisado_at, firmado_at'
+        'id, tipo_documento, estado, storage_path, storage_path_firmado, file_name, hash_pdf, orden, revisado_at, firmado_at, opciones_aceptacion'
       )
       .eq('envio_id', envioRaw.id)
       .order('orden', { ascending: true });
@@ -208,7 +213,7 @@ export async function resolveFirmaToken(token: string): Promise<ResolvedFirmaCon
       const { data: docsByEnvio, error: docsErr } = await supabaseAdmin
         .from('firma_documentos')
         .select(
-          'id, tipo_documento, estado, storage_path, storage_path_firmado, file_name, hash_pdf, orden, revisado_at, firmado_at'
+          'id, tipo_documento, estado, storage_path, storage_path_firmado, file_name, hash_pdf, orden, revisado_at, firmado_at, opciones_aceptacion'
         )
         .eq('envio_id', envioRow.id)
         .order('orden', { ascending: true });

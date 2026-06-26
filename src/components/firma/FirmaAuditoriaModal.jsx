@@ -26,8 +26,8 @@ export default function FirmaAuditoriaModal({ envio, rows, loading, onClose }) {
       )}
     >
       <p style={{ margin: '0 0 16px', fontSize: 12, color: colors.textSecondary, lineHeight: 1.45 }}>
-        Registro de declaraciones aceptadas, DNI, SMS, firma, IP y navegador en el portal.
-        El trabajador no puede solicitar el SMS ni firmar sin marcar cada declaración y pulsar «Confirmar lectura».
+        Registro de respuestas Sí/No, DNI, SMS, firma, IP y navegador en el portal.
+        El trabajador debe elegir Sí o No en cada documento; puede firmar con cualquiera de las dos respuestas.
       </p>
 
       {docsAceptacion.length ? (
@@ -60,7 +60,11 @@ export default function FirmaAuditoriaModal({ envio, rows, loading, onClose }) {
                 <span
                   style={{
                     fontWeight: 800,
-                    color: item.ok ? colors.success : colors.error,
+                    color: item.ok
+                      ? item.esNo
+                        ? colors.warning
+                        : colors.success
+                      : colors.error,
                     fontSize: 11
                   }}
                 >

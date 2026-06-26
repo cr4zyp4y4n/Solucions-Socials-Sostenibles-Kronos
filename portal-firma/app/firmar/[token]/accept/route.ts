@@ -1,4 +1,5 @@
-import { buildStampLinesForDoc, getFirmaDocMeta } from '@/lib/firmaDocumentosMeta';
+import { getFirmaDocumentoLabel } from '@/lib/firmaDocumentos';
+import { buildAceptacionRespuestaLine, buildStampLinesForDoc, getFirmaDocMeta, normalizeRespuestaAceptacion } from '@/lib/firmaDocumentosMeta';
 import { getOtpScopeIds, resolveFirmaToken } from '@/lib/resolveFirmaToken';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getRequestInfo } from '@/lib/requestInfo';
@@ -119,23 +120,10 @@ export async function POST(_req: Request, ctx: { params: Promise<{ token: string
     return Response.json(
       {
         ok: false,
-        error: `Debes confirmar la lectura de todos los documentos antes de firmar (faltan ${pendingReview.length}).`
+        error: `Debes indicar Sí o No en todos los documentos antes de firmar (faltan ${pendingReview.length}).`
       },
       { status: 400 }
     );
-  }
-
-  for (const doc of resolved.documentos) {
-    const { opciones } = await loadDocumentoOpciones(doc.id);
-    if (opciones && opciones.lectura_confirmada === false) {
-      return Response.json(
-        {
-          ok: false,
-          error: `El documento «${doc.tipo_documento}» no tiene la declaración aceptada en portal.`
-        },
-        { status: 400 }
-      );
-    }
   }
 
   const vrpConsent = resolved.documentos.some((d) => d.tipo_documento === 'vrp_consentimiento');
@@ -236,12 +224,20 @@ export async function POST(_req: Request, ctx: { params: Promise<{ token: string
       sms_verificado_at: smsVerificadoAt,
       num_documentos: resolved.documentos.length,
       storage_paths_firmados: signedPaths,
-      declaraciones_aceptadas: resolved.documentos.map((d) => ({
-        documento_id: d.id,
-        tipo_documento: d.tipo_documento,
-        declaracion: getFirmaDocMeta(d.tipo_documento).readStatement,
-        lectura_confirmada: true
-      }))
+      declaraciones_aceptadas: await Promise.all(
+        resolved.documentos.map(async (d) => {
+          const { opciones } = await loadDocumentoOpciones(d.id);
+          const respuesta = normalizeRespuestaAceptacion(opciones) || 'si';
+          return {
+            documento_id: d.id,
+            tipo_documento: d.tipo_documento,
+            respuesta,
+            lectura_confirmada: respuesta === 'si',
+            declaracion: getFirmaDocMeta(d.tipo_documento).readStatement,
+            aceptacion_linea: buildAceptacionRespuestaLine(d.tipo_documento, respuesta)
+          };
+        })
+      )
     }
   });
 

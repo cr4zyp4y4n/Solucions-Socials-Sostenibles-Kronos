@@ -155,7 +155,8 @@ export default async function FirmaTokenPage({ params }: TokenPageProps) {
                 tipo_documento: d.tipo_documento,
                 file_name: d.file_name,
                 revisado_at: d.revisado_at,
-                firmado_at: d.firmado_at
+                firmado_at: d.firmado_at,
+                opciones_aceptacion: d.opciones_aceptacion ?? null
               }))}
               isPack={isPack}
               canAttempt={canAttempt}

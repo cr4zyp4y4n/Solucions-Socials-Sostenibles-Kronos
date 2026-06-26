@@ -2,6 +2,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 
 export type DocumentoOpcionesAceptacion = {
   lectura_confirmada?: boolean;
+  respuesta?: 'si' | 'no';
   confirmado_at?: string;
   formacion_acoso?: boolean;
 };

@@ -33,35 +33,55 @@ export function describeDocumentoAceptacion(doc) {
     ? doc.opciones_aceptacion
     : null;
 
-  if (doc?.firmado_at) {
+  let respuesta = null;
+  if (op?.respuesta === 'si' || op?.respuesta === 'no') {
+    respuesta = op.respuesta;
+  } else if (op?.lectura_confirmada === true) {
+    respuesta = 'si';
+  } else if (op?.lectura_confirmada === false) {
+    respuesta = 'no';
+  }
+
+  if (doc?.firmado_at && respuesta) {
     return {
       tipo,
       estado: 'firmado',
-      label: 'Aceptada y firmada',
+      label: respuesta === 'no' ? 'Firmado · respuesta: No' : 'Firmado · respuesta: Sí',
       ok: true,
-      declaracion: op?.declaracion || null,
+      esNo: respuesta === 'no',
       formacionAcoso: op?.formacion_acoso ? 'Sí' : null
     };
   }
 
-  if (op?.lectura_confirmada === true) {
+  if (doc?.firmado_at) {
     return {
       tipo,
-      estado: 'aceptada',
-      label: 'Aceptada en portal: Sí',
+      estado: 'firmado',
+      label: 'Firmado (sin detalle Sí/No)',
       ok: true,
-      declaracion: null,
-      formacionAcoso: op.formacion_acoso ? 'Sí' : 'No'
+      esNo: false,
+      formacionAcoso: null
     };
   }
 
-  if (op?.lectura_confirmada === false) {
+  if (respuesta === 'si') {
+    return {
+      tipo,
+      estado: 'aceptada',
+      label: 'Respuesta en portal: Sí',
+      ok: true,
+      esNo: false,
+      formacionAcoso: op?.formacion_acoso ? 'Sí' : 'No'
+    };
+  }
+
+  if (respuesta === 'no') {
     return {
       tipo,
       estado: 'rechazada',
-      label: 'Aceptada en portal: No',
-      ok: false,
-      declaracion: null,
+      label: 'Respuesta en portal: No',
+      ok: true,
+      esNo: true,
       formacionAcoso: null
     };
   }
@@ -70,9 +90,9 @@ export function describeDocumentoAceptacion(doc) {
     return {
       tipo,
       estado: 'revisado_sin_detalle',
-      label: 'Lectura confirmada (sin detalle de declaración)',
+      label: 'Respondido (sin detalle Sí/No)',
       ok: true,
-      declaracion: null,
+      esNo: false,
       formacionAcoso: null
     };
   }
@@ -80,9 +100,9 @@ export function describeDocumentoAceptacion(doc) {
   return {
     tipo,
     estado: 'pendiente',
-    label: 'Pendiente — no aceptada',
+    label: 'Pendiente — sin respuesta',
     ok: false,
-    declaracion: null,
+    esNo: false,
     formacionAcoso: null
   };
 }
@@ -102,12 +122,15 @@ export function describeFirmaAuditoriaRow(row) {
     if (det.tipo_label || det.tipo_documento) {
       notes.push(det.tipo_label || det.tipo_documento);
     }
-    if (det.aceptacion_si) notes.push(det.aceptacion_si);
+    if (det.respuesta === 'si' || det.respuesta === 'no') {
+      notes.push(`Respuesta: ${det.respuesta === 'si' ? 'Sí' : 'No'}`);
+    }
+    if (det.aceptacion_linea) notes.push(det.aceptacion_linea);
     else if (det.lectura_confirmada) notes.push('Aceptada: Sí');
     if (det.declaracion) notes.push(truncate(det.declaracion, 140));
     if (det.formacion_acoso) notes.push('Formación acoso solicitada: Sí');
     if (det.opciones_guardadas === false) {
-      notes.push('Aviso: declaración no persistida en BD (falta migración opciones_aceptacion)');
+      notes.push('Aviso: respuesta no persistida en BD (falta migración opciones_aceptacion)');
     }
   }
 
@@ -131,7 +154,8 @@ export function describeFirmaAuditoriaRow(row) {
     if (Array.isArray(det.declaraciones_aceptadas) && det.declaraciones_aceptadas.length) {
       for (const d of det.declaraciones_aceptadas) {
         const lbl = d.tipo_documento ? getFirmaDocumentoLabel(d.tipo_documento) : 'Documento';
-        notes.push(`${lbl}: aceptada`);
+        const r = d.respuesta === 'no' ? 'No' : d.respuesta === 'si' ? 'Sí' : '—';
+        notes.push(`${lbl}: ${r}`);
       }
     }
   }
