@@ -83,8 +83,9 @@ const META: Record<string, FirmaDocMeta> = {
     stampDeclaration: 'Acuse de recibo formación PRL'
   },
   baja: {
-    readStatement: 'He leído el documento y acepto su contenido.',
-    stampDeclaration: 'Aceptación documento fin de relación laboral'
+    readStatement:
+      'He recibido la notificación de fin de relación laboral, he leído su contenido y doy acuse de recibo mediante este procedimiento verificado por SMS.',
+    stampDeclaration: 'Acuse de recibo — fin de relación laboral'
   },
   otro: {
     readStatement: 'He leído el documento y acepto su contenido.',

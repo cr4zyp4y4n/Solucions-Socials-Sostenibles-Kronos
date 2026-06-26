@@ -112,13 +112,28 @@ export const FIRMA_DOC_PREP_HINTS = {
 
   vrp_renuncia: 'Solo si renuncia al VRP. No incluir junto al de consentimiento.',
 
-  contrato: 'Sube el contrato PDF propio; no se genera automáticamente.'
+  contrato: 'Sube el contrato PDF propio; no se genera automáticamente.',
+
+  baja:
+    'Se genera desde Holded con fecha de efecto. Sube PDF propio si la asesoría te envía la carta firmada por la empresa.'
 
 };
 
 
 
 export const FIRMA_DOCUMENTO_DEFAULT = 'contrato';
+
+
+
+/** Tipos de pack en Kronos (contratación vs fin de relación). */
+
+export const FIRMA_PACK_KINDS = [
+
+  { id: 'contratacion', label: 'Contratación', shortLabel: 'Alta' },
+
+  { id: 'baja', label: 'Baja / fin de relación', shortLabel: 'Baja' }
+
+];
 
 
 
@@ -135,6 +150,40 @@ export const FIRMA_DEFAULT_CONTRATACION_PACK = [
   'vrp_consentimiento'
 
 ];
+
+
+
+/** Pack estándar de baja: notificación + acuse en portal. */
+
+export const FIRMA_DEFAULT_BAJA_PACK = ['baja'];
+
+
+
+export function getFirmaDefaultPack(kind) {
+
+  return kind === 'baja' ? [...FIRMA_DEFAULT_BAJA_PACK] : [...FIRMA_DEFAULT_CONTRATACION_PACK];
+
+}
+
+
+
+export function getFirmaPackKindLabel(kind) {
+
+  return FIRMA_PACK_KINDS.find((k) => k.id === kind)?.label || kind;
+
+}
+
+
+
+export function envioEsPackBaja(envio) {
+
+  const docs = envio?.documentos || [];
+
+  if (!docs.length) return false;
+
+  return docs.some((d) => d.tipo_documento === 'baja');
+
+}
 
 
 

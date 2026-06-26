@@ -32,6 +32,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Abrir enlaces en el navegador del sistema
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
+  /** Cliente de correo del sistema (mailto:). */
+  openMailto: (url) => ipcRenderer.invoke('open-mailto', url),
+  /** Borrador de email (para, asunto, cuerpo) → cliente del sistema. */
+  openEmailDraft: (draft) => ipcRenderer.invoke('open-email-draft', draft),
 
   /** Firma (portal): IPC al main — FIRMA_SMS_* y FIRMA_PORTAL_BASE_URL desde .env. */
   getFirmaSmsConfig: () => ipcRenderer.invoke('get-firma-sms-config'),

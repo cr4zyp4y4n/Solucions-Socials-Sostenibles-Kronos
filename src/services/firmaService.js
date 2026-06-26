@@ -780,6 +780,73 @@ class FirmaService {
   }
 
   /**
+   * Marca notificación por canal (WhatsApp o email) para packs de baja.
+   * Idempotente por canal: no sobrescribe la primera fecha de cada vía.
+   */
+  async marcarCanalNotificacionEnvio(envio, canal, { esLegacySuelto = false } = {}) {
+    if (!envio?.id) throw new Error('Falta envío');
+    const c = String(canal || '').trim().toLowerCase();
+    if (c !== 'whatsapp' && c !== 'email') throw new Error('Canal no válido');
+
+    const nowIso = new Date().toISOString();
+    const field = c === 'whatsapp' ? 'link_whatsapp_at' : 'link_email_at';
+
+    if (esLegacySuelto || envio.es_legacy_suelto) {
+      await this.marcarLinkCompartido(envio.id);
+      return { ok: true, canal: c, legacy: true };
+    }
+
+    const { data: row, error: readErr } = await supabase
+      .from(TABLE_ENVIOS)
+      .select(`id, link_compartido_at, ${field}`)
+      .eq('id', envio.id)
+      .maybeSingle();
+    if (readErr) throw readErr;
+    if (!row) throw new Error('Envío no encontrado');
+
+    const yaMarcado = Boolean(row[field]);
+    if (!yaMarcado) {
+      const patch = { updated_at: nowIso, [field]: nowIso };
+      if (!row.link_compartido_at) patch.link_compartido_at = nowIso;
+      const { error: updErr } = await supabase
+        .from(TABLE_ENVIOS)
+        .update(patch)
+        .eq('id', envio.id)
+        .is(field, null);
+      if (updErr) {
+        const msg = String(updErr.message || '').toLowerCase();
+        if (msg.includes(field) || msg.includes('column')) {
+          await this.marcarLinkCompartidoEnvio(envio, { esLegacySuelto: false });
+        } else {
+          throw updErr;
+        }
+      }
+    } else if (!row.link_compartido_at) {
+      await supabase
+        .from(TABLE_ENVIOS)
+        .update({ link_compartido_at: nowIso, updated_at: nowIso })
+        .eq('id', envio.id)
+        .is('link_compartido_at', null);
+    }
+
+    const docId = envio.documentos?.[0]?.id;
+    if (docId) {
+      await supabase.from(TABLE_AUDITORIAS).insert({
+        documento_id: docId,
+        resultado: 'ok',
+        detalle: {
+          accion: 'notificacion_canal',
+          canal: c,
+          envio_id: envio.id,
+          primera_vez: !yaMarcado
+        }
+      });
+    }
+
+    return { ok: true, canal: c, already: yaMarcado };
+  }
+
+  /**
    * Marca la primera vez que se compartió el enlace desde Kronos (WhatsApp, email, copiar mensaje, etc.).
    * Idempotente: no sobrescribe si ya había fecha.
    */

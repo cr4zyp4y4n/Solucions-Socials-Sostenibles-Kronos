@@ -148,10 +148,50 @@ function setupIpcHandlers() {
     if (typeof url !== 'string' || !url) {
       throw new Error('URL inválida');
     }
-    if (!/^https?:\/\//i.test(url)) {
-      throw new Error('Solo se permiten URLs http/https');
+    const trimmed = url.trim();
+    const isHttp = /^https?:\/\//i.test(trimmed);
+    const isMailto = /^mailto:/i.test(trimmed);
+    if (!isHttp && !isMailto) {
+      throw new Error('Solo se permiten URLs http/https o mailto');
     }
-    await shell.openExternal(url);
+    if (trimmed.length > 12000) {
+      throw new Error('URL demasiado larga');
+    }
+    await shell.openExternal(trimmed);
+    return true;
+  });
+
+  ipcMain.handle('open-mailto', async (_event, url) => {
+    if (typeof url !== 'string' || !url.trim()) {
+      throw new Error('URL mailto inválida');
+    }
+    const trimmed = url.trim();
+    if (!/^mailto:/i.test(trimmed)) {
+      throw new Error('URL mailto inválida');
+    }
+    if (trimmed.length > 12000) {
+      throw new Error('URL demasiado larga');
+    }
+    await shell.openExternal(trimmed);
+    return true;
+  });
+
+  ipcMain.handle('open-email-draft', async (_event, draft) => {
+    const to = String(draft?.to || '').trim();
+    const subject = String(draft?.subject || '').trim();
+    const body = String(draft?.body || '').trim();
+    if (!to || !to.includes('@')) {
+      throw new Error('Email inválido');
+    }
+    const params = new URLSearchParams();
+    if (subject) params.set('subject', subject);
+    if (body) params.set('body', body);
+    const qs = params.toString();
+    const mailtoUrl = qs ? `mailto:${to}?${qs}` : `mailto:${to}`;
+    if (mailtoUrl.length > 2000) {
+      throw new Error('MAILTO_TOO_LONG');
+    }
+    await shell.openExternal(mailtoUrl);
     return true;
   });
 
@@ -688,6 +728,27 @@ const createWindow = () => {
       nodeIntegration: false,
       contextIsolation: true,
     },
+  });
+
+  // mailto: y http(s) deben abrirse en apps del sistema, no en pestañas de Chrome dentro de Electron
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    const u = String(url || '');
+    if (/^mailto:/i.test(u)) {
+      shell.openExternal(u).catch((err) => console.warn('openExternal mailto:', err?.message || err));
+      return { action: 'deny' };
+    }
+    if (/^https?:\/\//i.test(u)) {
+      shell.openExternal(u).catch((err) => console.warn('openExternal http:', err?.message || err));
+      return { action: 'deny' };
+    }
+    return { action: 'deny' };
+  });
+
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    if (/^mailto:/i.test(url)) {
+      event.preventDefault();
+      shell.openExternal(url).catch((err) => console.warn('will-navigate mailto:', err?.message || err));
+    }
   });
 
   // Configurar Content Security Policy (muy permisiva para permitir Tesseract workers)

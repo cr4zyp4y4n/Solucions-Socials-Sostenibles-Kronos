@@ -5,18 +5,20 @@ import { useTheme } from './ThemeContext';
 import SectionHeader from './SectionHeader';
 import firmaService from '../services/firmaService';
 import holdedEmployeesService from '../services/holdedEmployeesService';
-import { FIRMA_DEFAULT_CONTRATACION_PACK } from '../constants/firmaDocumentos';
+import { envioEsPackBaja } from '../constants/firmaDocumentos';
 import { generateFirmaPdfFile } from '../utils/firmaPdfGenerator';
+import { openEmailDraft } from '../utils/openMailto';
 import FirmaNewPackForm from './firma/FirmaNewPackForm';
 import FirmaEnviosPanel from './firma/FirmaEnviosPanel';
 import FirmaTimelineModal from './firma/FirmaTimelineModal';
 import FirmaDocumentosModal from './firma/FirmaDocumentosModal';
 import FirmaAuditoriaModal from './firma/FirmaAuditoriaModal';
+import FirmaNotificarBajaModal from './firma/FirmaNotificarBajaModal';
 import { FirmaButton, FirmaTabs } from './firma/FirmaUi';
 import {
+  defaultPackItemsForKind,
   envioLabel,
-  initialEnvioForm,
-  newPackItem,
+  initialEnvioFormForPack,
   writeClipboardSafely
 } from './firma/firmaPageHelpers';
 
@@ -28,13 +30,12 @@ const TABS = [
 export default function FirmaPage() {
   const { colors } = useTheme();
   const [activeTab, setActiveTab] = useState('envios');
+  const [packKind, setPackKind] = useState('contratacion');
   const [loading, setLoading] = useState(true);
   const [savingDocumento, setSavingDocumento] = useState(false);
   const [envios, setEnvios] = useState([]);
-  const [envioForm, setEnvioForm] = useState(initialEnvioForm);
-  const [packItems, setPackItems] = useState(() =>
-    FIRMA_DEFAULT_CONTRATACION_PACK.map((tipo) => newPackItem(tipo))
-  );
+  const [envioForm, setEnvioForm] = useState(() => initialEnvioFormForPack('contratacion'));
+  const [packItems, setPackItems] = useState(() => defaultPackItemsForKind('contratacion'));
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [selectedEntity, setSelectedEntity] = useState('EI_SSS');
@@ -50,6 +51,12 @@ export default function FirmaPage() {
   const [auditoriaEnvio, setAuditoriaEnvio] = useState(null);
   const [auditoriaRows, setAuditoriaRows] = useState([]);
   const [auditoriaLoading, setAuditoriaLoading] = useState(false);
+  const [notificarBajaEnvioId, setNotificarBajaEnvioId] = useState(null);
+
+  const notificarBajaEnvio = useMemo(
+    () => envios.find((e) => e.id === notificarBajaEnvioId) || null,
+    [envios, notificarBajaEnvioId]
+  );
 
   const selectedHoldedEmployee = useMemo(
     () => holdedEmployees.find((e) => String(e.id) === String(selectedHoldedId)) || null,
@@ -124,27 +131,91 @@ export default function FirmaPage() {
     }
   }, []);
 
+  const handlePackKindChange = useCallback((kind) => {
+    setPackKind(kind);
+    setEnvioForm(initialEnvioFormForPack(kind));
+    setPackItems(defaultPackItemsForKind(kind));
+    setError('');
+  }, []);
+
   const buildShareText = (envio) => {
     const trabajador = String(envio?.trabajador?.nombre || '').trim();
     const label = envioLabel(envio);
+    const esBaja = envioEsPackBaja(envio);
     const prefix = trabajador
-      ? `Kronos: ${trabajador}. ${label} pendiente de firma.`
-      : `Kronos: ${label} pendiente de firma.`;
+      ? esBaja
+        ? `Kronos: ${trabajador}. Notificación de fin de relación laboral (fin de contrato, periodo de prueba u otra causa). Acuse de recibo pendiente en el portal.`
+        : `Kronos: ${trabajador}. ${label} pendiente de firma.`
+      : esBaja
+        ? 'Kronos: Notificación de fin de relación laboral. Acuse de recibo pendiente en el portal.'
+        : `Kronos: ${label} pendiente de firma.`;
     const link = String(envio?.portal_link || '').trim();
     return link ? `${prefix} Enlace: ${link}` : prefix;
   };
 
+  const buildEmailSubject = (envio) => {
+    if (envioEsPackBaja(envio)) {
+      return 'Notificación de fin de relación laboral — acuse en portal (Kronos)';
+    }
+    return 'Documento pendiente de firma (Kronos)';
+  };
+
+  const buildEmailBody = (envio) => {
+    const trabajador = String(envio?.trabajador?.nombre || '').trim();
+    const link = String(envio?.portal_link || '').trim();
+    if (envioEsPackBaja(envio)) {
+      const saludo = trabajador ? `Estimado/a ${trabajador},` : 'Estimado/a,';
+      return [
+        saludo,
+        '',
+        'Le comunicamos la finalización de su relación laboral con nuestra organización.',
+        'Para dar acuse de recibo de esta notificación, acceda al portal seguro mediante el enlace siguiente (verificación por SMS):',
+        '',
+        link,
+        '',
+        'Si tiene alguna duda, contacte con Recursos Humanos.',
+        '',
+        'Atentamente,',
+        'Recursos Humanos — Kronos'
+      ].join('\n');
+    }
+    return buildShareText(envio);
+  };
+
+  const marcarCompartido = useCallback(async (envio, canal) => {
+    if (!envio?.id) return;
+    try {
+      if (envioEsPackBaja(envio) && (canal === 'whatsapp' || canal === 'email')) {
+        await firmaService.marcarCanalNotificacionEnvio(envio, canal, {
+          esLegacySuelto: !!envio.es_legacy_suelto
+        });
+        await loadAll();
+      } else {
+        await firmaService.marcarLinkCompartidoEnvio(envio, {
+          esLegacySuelto: !!envio.es_legacy_suelto
+        });
+      }
+    } catch (e) {
+      console.warn('marcarCompartido:', e?.message || e);
+    }
+  }, [loadAll]);
+
   const openLink = async (url) => {
     if (!url) return;
+    const target = String(url).trim();
+    if (/^mailto:/i.test(target)) {
+      setError('Reinicia Kronos para enviar correos desde Firma.');
+      return;
+    }
     try {
       if (window.electronAPI?.openExternal) {
-        await window.electronAPI.openExternal(url);
+        await window.electronAPI.openExternal(target);
         return;
       }
     } catch (e) {
       console.warn('No se pudo abrir en navegador externo:', e);
     }
-    window.open(url, '_blank', 'noreferrer');
+    window.open(target, '_blank', 'noreferrer');
   };
 
   const copyLink = async (envio) => {
@@ -191,7 +262,11 @@ export default function FirmaPage() {
     }
     const url = `https://wa.me/${to}?text=${encodeURIComponent(buildShareText(envio))}`;
     await openLink(url);
-    await marcarEnlaceCompartido(envio);
+    await marcarCompartido(envio, 'whatsapp');
+    setError('');
+    if (envioEsPackBaja(envio)) {
+      setMessage('WhatsApp abierto. Envía también por email para completar la doble vía.');
+    }
   };
 
   const openEmail = async (envio) => {
@@ -200,9 +275,30 @@ export default function FirmaPage() {
       setError('El trabajador no tiene email.');
       return;
     }
-    const url = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent('Documento pendiente de firma (Kronos)')}&body=${encodeURIComponent(buildShareText(envio))}`;
-    await openLink(url);
-    await marcarEnlaceCompartido(envio);
+    const subject = buildEmailSubject(envio);
+    const body = buildEmailBody(envio);
+    try {
+      const via = await openEmailDraft({ to, subject, body });
+      setError('');
+      if (via === 'clipboard') {
+        setMessage(
+          'No se pudo abrir el correo automáticamente. Mensaje copiado al portapapeles: abre Outlook o Gmail, pega y envía.'
+        );
+      } else if (envioEsPackBaja(envio)) {
+        setMessage('Cliente de email abierto. Comprueba que el mensaje se envió.');
+      } else {
+        setMessage('Cliente de email abierto.');
+      }
+    } catch (e) {
+      setError(e?.message || 'No se pudo preparar el email.');
+      return;
+    }
+    await marcarCompartido(envio, 'email');
+  };
+
+  const openNotificarBaja = (envio) => {
+    if (!envio?.id) return;
+    setNotificarBajaEnvioId(envio.id);
   };
 
   const openFirmaAuditoria = async (envio) => {
@@ -267,7 +363,14 @@ export default function FirmaPage() {
       setActiveTab('nuevo');
       return;
     }
-    const contratoSinPdf = packItems.find((i) => i.tipoDocumento === 'contrato' && !i.file);
+    if (packKind === 'baja' && !envioForm.fechaFin) {
+      setError('Indica la fecha efecto de la baja.');
+      setActiveTab('nuevo');
+      return;
+    }
+    const contratoSinPdf = packKind === 'contratacion'
+      ? packItems.find((i) => i.tipoDocumento === 'contrato' && !i.file)
+      : null;
     if (contratoSinPdf) {
       setError('El contrato laboral requiere subir el PDF.');
       return;
@@ -284,7 +387,10 @@ export default function FirmaPage() {
               tipoDocumento: item.tipoDocumento,
               employee: selectedHoldedEmployee,
               entityKey: selectedEntity,
-              episRows: item.episRows || []
+              episRows: item.episRows || [],
+              fechaFin: envioForm.fechaFin,
+              fechaInicio: envioForm.fechaInicio,
+              motivoBaja: packKind === 'baja' ? envioForm.notasInternas : ''
             });
           }
           return { tipoDocumento: item.tipoDocumento, file };
@@ -300,11 +406,16 @@ export default function FirmaPage() {
         items
       });
       await loadAll();
-      setEnvioForm(initialEnvioForm);
-      setPackItems(FIRMA_DEFAULT_CONTRATACION_PACK.map((tipo) => newPackItem(tipo)));
+      setEnvioForm(initialEnvioFormForPack(packKind));
+      setPackItems(defaultPackItemsForKind(packKind));
       setSelectedHoldedId('');
       setActiveTab('envios');
-      setMessage(`Pack creado. Enlace: ${result.tokenInfo.portalLink}`);
+      if (packKind === 'baja') {
+        setNotificarBajaEnvioId(result.envioId);
+        setMessage('Notificación creada. Envía el enlace por WhatsApp y por email.');
+      } else {
+        setMessage(`Pack creado. Enlace: ${result.tokenInfo.portalLink}`);
+      }
     } catch (e) {
       setError(e?.message || 'Error creando el envío.');
     } finally {
@@ -317,7 +428,7 @@ export default function FirmaPage() {
       <SectionHeader
         icon={FileText}
         title="Firma"
-        subtitle="Pack de contratación con un solo enlace. PDFs desde Holded; el trabajador firma en el portal."
+        subtitle="Packs de contratación y de baja con un solo enlace. PDFs desde Holded; el trabajador firma o da acuse en el portal."
         actions={(
           <FirmaButton onClick={loadAll} disabled={loading}>
             <motion.span
@@ -415,6 +526,7 @@ export default function FirmaPage() {
               onOpenLink={openLink}
               onWhatsApp={openWhatsApp}
               onEmail={openEmail}
+              onNotificarBaja={openNotificarBaja}
               onAuditoria={openFirmaAuditoria}
               onVerFirmados={setDocsEnvio}
               onCancelar={cancelEnvio}
@@ -429,6 +541,8 @@ export default function FirmaPage() {
             transition={{ duration: 0.22 }}
           >
             <FirmaNewPackForm
+              packKind={packKind}
+              onPackKindChange={handlePackKindChange}
               selectedEntity={selectedEntity}
               onEntityChange={setSelectedEntity}
               holdedEmployees={holdedEmployees}
@@ -474,6 +588,14 @@ export default function FirmaPage() {
         rows={auditoriaRows}
         loading={auditoriaLoading}
         onClose={() => setAuditoriaEnvio(null)}
+      />
+
+      <FirmaNotificarBajaModal
+        envio={notificarBajaEnvio}
+        onClose={() => setNotificarBajaEnvioId(null)}
+        onWhatsApp={openWhatsApp}
+        onEmail={openEmail}
+        onRefresh={loadAll}
       />
     </div>
   );
