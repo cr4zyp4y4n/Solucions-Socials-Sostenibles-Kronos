@@ -54,14 +54,20 @@ export type ResolvedFirmaContext = {
   documentoPrincipal: FirmaDocumentoResolved | null;
 };
 
-export async function resolveFirmaToken(token: string): Promise<ResolvedFirmaContext | null> {
-  const trimmed = String(token || '').trim();
-  if (!trimmed) return null;
+const DOC_SELECT_WITH_OPCIONES =
+  'id, tipo_documento, estado, storage_path, storage_path_firmado, file_name, hash_pdf, orden, revisado_at, firmado_at, opciones_aceptacion';
 
-  const { data: tokenRow, error } = await supabaseAdmin
-    .from('firma_tokens')
-    .select(
-      `
+const DOC_SELECT_FALLBACK =
+  'id, tipo_documento, estado, storage_path, storage_path_firmado, file_name, hash_pdf, orden, revisado_at, firmado_at';
+
+function isMissingOpcionesColumn(message: string): boolean {
+  return String(message || '').includes('opciones_aceptacion');
+}
+
+function buildTokenSelect(includeOpciones: boolean): string {
+  const docSelect = includeOpciones ? DOC_SELECT_WITH_OPCIONES : DOC_SELECT_FALLBACK;
+
+  return `
       id,
       token,
       expires_at,
@@ -83,31 +89,11 @@ export async function resolveFirmaToken(token: string): Promise<ResolvedFirmaCon
           telefono
         ),
         documentos:firma_documentos (
-          id,
-          tipo_documento,
-          estado,
-          storage_path,
-          storage_path_firmado,
-          file_name,
-          hash_pdf,
-          orden,
-          revisado_at,
-          firmado_at,
-          opciones_aceptacion
+          ${docSelect}
         )
       ),
       documento:firma_documentos!firma_tokens_documento_id_fkey (
-        id,
-        tipo_documento,
-        estado,
-        storage_path,
-        storage_path_firmado,
-        file_name,
-        hash_pdf,
-        orden,
-        revisado_at,
-        firmado_at,
-        opciones_aceptacion,
+        ${docSelect},
         trabajador:firma_trabajadores (
           id,
           nombre,
@@ -115,10 +101,46 @@ export async function resolveFirmaToken(token: string): Promise<ResolvedFirmaCon
           telefono
         )
       )
-    `
-    )
+    `;
+}
+
+async function loadDocumentosByEnvio(envioId: string) {
+  const withOpciones = await supabaseAdmin
+    .from('firma_documentos')
+    .select(DOC_SELECT_WITH_OPCIONES)
+    .eq('envio_id', envioId)
+    .order('orden', { ascending: true });
+
+  if (!withOpciones.error || !isMissingOpcionesColumn(withOpciones.error.message)) {
+    return withOpciones;
+  }
+
+  return supabaseAdmin
+    .from('firma_documentos')
+    .select(DOC_SELECT_FALLBACK)
+    .eq('envio_id', envioId)
+    .order('orden', { ascending: true });
+}
+
+export async function resolveFirmaToken(token: string): Promise<ResolvedFirmaContext | null> {
+  const trimmed = String(token || '').trim();
+  if (!trimmed) return null;
+
+  let { data: tokenRow, error } = await supabaseAdmin
+    .from('firma_tokens')
+    .select(buildTokenSelect(true))
     .eq('token', trimmed)
     .maybeSingle();
+
+  if (error && isMissingOpcionesColumn(error.message)) {
+    const fallback = await supabaseAdmin
+      .from('firma_tokens')
+      .select(buildTokenSelect(false))
+      .eq('token', trimmed)
+      .maybeSingle();
+    tokenRow = fallback.data;
+    error = fallback.error;
+  }
 
   if (error) throw new Error(error.message);
   if (!tokenRow) return null;
@@ -170,13 +192,7 @@ export async function resolveFirmaToken(token: string): Promise<ResolvedFirmaCon
       fecha_fin: envioRaw.fecha_fin ?? null,
       firmado_at: envioRaw.firmado_at ?? null
     };
-    const { data: docsByEnvio, error: docsErr } = await supabaseAdmin
-      .from('firma_documentos')
-      .select(
-        'id, tipo_documento, estado, storage_path, storage_path_firmado, file_name, hash_pdf, orden, revisado_at, firmado_at, opciones_aceptacion'
-      )
-      .eq('envio_id', envioRaw.id)
-      .order('orden', { ascending: true });
+    const { data: docsByEnvio, error: docsErr } = await loadDocumentosByEnvio(envioRaw.id);
     if (!docsErr && docsByEnvio?.length) {
       documentos = docsByEnvio.map(mapDocRow);
     }
@@ -210,13 +226,7 @@ export async function resolveFirmaToken(token: string): Promise<ResolvedFirmaCon
         fecha_fin: envioRow.fecha_fin ?? null,
         firmado_at: envioRow.firmado_at ?? null
       };
-      const { data: docsByEnvio, error: docsErr } = await supabaseAdmin
-        .from('firma_documentos')
-        .select(
-          'id, tipo_documento, estado, storage_path, storage_path_firmado, file_name, hash_pdf, orden, revisado_at, firmado_at, opciones_aceptacion'
-        )
-        .eq('envio_id', envioRow.id)
-        .order('orden', { ascending: true });
+      const { data: docsByEnvio, error: docsErr } = await loadDocumentosByEnvio(envioRow.id);
       if (!docsErr && docsByEnvio?.length) {
         documentos = docsByEnvio.map(mapDocRow);
       }

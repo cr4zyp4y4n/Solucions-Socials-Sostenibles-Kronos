@@ -180,6 +180,17 @@ export async function POST(_req: Request, ctx: { params: Promise<{ token: string
   const dniConfirmadoEnPortal = requiereDni;
   const smsVerificadoAt = consumed[0]?.consumed_at || null;
 
+  const docsSinPdf = resolved.documentos.filter((d) => !d.storage_path && !(d.firmado_at && d.storage_path_firmado));
+  if (docsSinPdf.length) {
+    return Response.json(
+      {
+        ok: false,
+        error: `No se puede firmar el pack: ${docsSinPdf.length} documento(s) no tienen PDF asociado.`
+      },
+      { status: 409 }
+    );
+  }
+
   const signedPaths: string[] = [];
   for (const doc of resolved.documentos) {
     const result = await stampAndUploadDocument({
