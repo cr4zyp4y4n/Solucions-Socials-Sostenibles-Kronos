@@ -1,4 +1,3 @@
-import { getFirmaDocumentoLabel } from '@/lib/firmaDocumentos';
 import { buildAceptacionRespuestaLine, buildStampLinesForDoc, getFirmaDocMeta, normalizeRespuestaAceptacion } from '@/lib/firmaDocumentosMeta';
 import { getOtpScopeIds, resolveFirmaToken } from '@/lib/resolveFirmaToken';
 import { supabaseAdmin } from '@/lib/supabase';
@@ -8,7 +7,21 @@ import { hasRecentDniConfirmation } from '@/lib/dniVerification';
 import { normalizeDni } from '@/lib/normalizeDni';
 import { loadDocumentoOpciones } from '@/lib/firmaDocumentoOpciones';
 
-async function stampAndUploadDocument({
+type PreparedSignedDocument =
+  | {
+      documentoId: string;
+      signedPath: string;
+      skipped: true;
+    }
+  | {
+      documentoId: string;
+      signedPath: string;
+      signedPdf: Uint8Array;
+      fileNameFirmado: string;
+      skipped: false;
+    };
+
+async function prepareSignedDocument({
   documento,
   tokenRowId,
   nowIso,
@@ -36,9 +49,9 @@ async function stampAndUploadDocument({
   trabajadorDni?: string | null;
   dniConfirmadoEnPortal?: boolean;
   smsVerificadoAt?: string | null;
-}) {
+}): Promise<PreparedSignedDocument> {
   if (documento.firmado_at && documento.storage_path_firmado) {
-    return { signedPath: documento.storage_path_firmado, skipped: true };
+    return { documentoId: documento.id, signedPath: documento.storage_path_firmado, skipped: true };
   }
   if (!documento.storage_path) {
     throw new Error(`Documento ${documento.id} sin PDF`);
@@ -82,9 +95,21 @@ async function stampAndUploadDocument({
   const baseName = String(documento.file_name || 'documento.pdf').replace(/[^\w.-]/g, '_');
   const signedPath = `${documento.id}/SIGNED-${Date.now()}-${baseName.endsWith('.pdf') ? baseName : `${baseName}.pdf`}`;
 
+  return {
+    documentoId: documento.id,
+    signedPath,
+    signedPdf,
+    fileNameFirmado: `SIGNED-${baseName}`,
+    skipped: false
+  };
+}
+
+async function uploadPreparedDocument(prepared: PreparedSignedDocument, nowIso: string) {
+  if (prepared.skipped) return;
+
   const { error: uploadErr } = await supabaseAdmin.storage
     .from('firma-documentos')
-    .upload(signedPath, signedPdf, {
+    .upload(prepared.signedPath, prepared.signedPdf, {
       contentType: 'application/pdf',
       cacheControl: '3600',
       upsert: true
@@ -96,13 +121,11 @@ async function stampAndUploadDocument({
     .update({
       estado: 'firmado',
       firmado_at: nowIso,
-      storage_path_firmado: signedPath,
-      file_name_firmado: `SIGNED-${baseName}`
+      storage_path_firmado: prepared.signedPath,
+      file_name_firmado: prepared.fileNameFirmado
     })
-    .eq('id', documento.id);
+    .eq('id', prepared.documentoId);
   if (docErr) throw new Error(docErr.message);
-
-  return { signedPath, skipped: false };
 }
 
 export async function POST(_req: Request, ctx: { params: Promise<{ token: string }> }) {
@@ -191,9 +214,9 @@ export async function POST(_req: Request, ctx: { params: Promise<{ token: string
     );
   }
 
-  const signedPaths: string[] = [];
+  const preparedDocs: PreparedSignedDocument[] = [];
   for (const doc of resolved.documentos) {
-    const result = await stampAndUploadDocument({
+    const result = await prepareSignedDocument({
       documento: doc,
       tokenRowId: resolved.tokenRow.id,
       nowIso,
@@ -204,8 +227,13 @@ export async function POST(_req: Request, ctx: { params: Promise<{ token: string
       dniConfirmadoEnPortal,
       smsVerificadoAt
     });
-    signedPaths.push(result.signedPath);
+    preparedDocs.push(result);
   }
+
+  for (const prepared of preparedDocs) {
+    await uploadPreparedDocument(prepared, nowIso);
+  }
+  const signedPaths = preparedDocs.map((d) => d.signedPath);
 
   if (envioId) {
     await supabaseAdmin
