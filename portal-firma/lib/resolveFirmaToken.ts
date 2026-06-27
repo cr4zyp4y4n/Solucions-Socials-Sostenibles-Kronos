@@ -54,6 +54,36 @@ export type ResolvedFirmaContext = {
   documentoPrincipal: FirmaDocumentoResolved | null;
 };
 
+type FirmaDocumentoDbRow = Omit<FirmaDocumentoResolved, 'storage_path' | 'storage_path_firmado' | 'file_name' | 'hash_pdf' | 'orden' | 'revisado_at' | 'firmado_at'> & {
+  storage_path?: string | null;
+  storage_path_firmado?: string | null;
+  file_name?: string | null;
+  hash_pdf?: string | null;
+  orden?: number | null;
+  revisado_at?: string | null;
+  firmado_at?: string | null;
+  opciones_aceptacion?: FirmaDocumentoResolved['opciones_aceptacion'];
+  trabajador?: FirmaTrabajadorResolved | FirmaTrabajadorResolved[] | null;
+};
+
+type FirmaEnvioDbRow = {
+  id: string;
+  nombre?: string | null;
+  estado: string;
+  fecha_inicio?: string | null;
+  fecha_fin?: string | null;
+  firmado_at?: string | null;
+  trabajador?: FirmaTrabajadorResolved | FirmaTrabajadorResolved[] | null;
+  documentos?: FirmaDocumentoDbRow | FirmaDocumentoDbRow[] | null;
+};
+
+type FirmaTokenDbRow = FirmaTokenResolved & {
+  envio?: FirmaEnvioDbRow | FirmaEnvioDbRow[] | null;
+  documento?: FirmaDocumentoDbRow | FirmaDocumentoDbRow[] | null;
+};
+
+type SupabaseErrorLike = { message: string } | null;
+
 const DOC_SELECT_WITH_OPCIONES =
   'id, tipo_documento, estado, storage_path, storage_path_firmado, file_name, hash_pdf, orden, revisado_at, firmado_at, opciones_aceptacion';
 
@@ -104,7 +134,9 @@ function buildTokenSelect(includeOpciones: boolean): string {
     `;
 }
 
-async function loadDocumentosByEnvio(envioId: string) {
+async function loadDocumentosByEnvio(
+  envioId: string
+): Promise<{ data: FirmaDocumentoDbRow[] | null; error: SupabaseErrorLike }> {
   const withOpciones = await supabaseAdmin
     .from('firma_documentos')
     .select(DOC_SELECT_WITH_OPCIONES)
@@ -112,25 +144,35 @@ async function loadDocumentosByEnvio(envioId: string) {
     .order('orden', { ascending: true });
 
   if (!withOpciones.error || !isMissingOpcionesColumn(withOpciones.error.message)) {
-    return withOpciones;
+    return {
+      data: withOpciones.data as unknown as FirmaDocumentoDbRow[] | null,
+      error: withOpciones.error
+    };
   }
 
-  return supabaseAdmin
+  const fallback = await supabaseAdmin
     .from('firma_documentos')
     .select(DOC_SELECT_FALLBACK)
     .eq('envio_id', envioId)
     .order('orden', { ascending: true });
+
+  return {
+    data: fallback.data as unknown as FirmaDocumentoDbRow[] | null,
+    error: fallback.error
+  };
 }
 
 export async function resolveFirmaToken(token: string): Promise<ResolvedFirmaContext | null> {
   const trimmed = String(token || '').trim();
   if (!trimmed) return null;
 
-  let { data: tokenRow, error } = await supabaseAdmin
+  const tokenResult = await supabaseAdmin
     .from('firma_tokens')
     .select(buildTokenSelect(true))
     .eq('token', trimmed)
     .maybeSingle();
+  let tokenRow = tokenResult.data as unknown as FirmaTokenDbRow | null;
+  let error = tokenResult.error;
 
   if (error && isMissingOpcionesColumn(error.message)) {
     const fallback = await supabaseAdmin
@@ -138,7 +180,7 @@ export async function resolveFirmaToken(token: string): Promise<ResolvedFirmaCon
       .select(buildTokenSelect(false))
       .eq('token', trimmed)
       .maybeSingle();
-    tokenRow = fallback.data;
+    tokenRow = fallback.data as unknown as FirmaTokenDbRow | null;
     error = fallback.error;
   }
 
@@ -157,19 +199,7 @@ export async function resolveFirmaToken(token: string): Promise<ResolvedFirmaCon
   let trabajador: FirmaTrabajadorResolved | null = null;
   let envio: FirmaEnvioResolved | null = null;
 
-  const mapDocRow = (d: {
-    id: string;
-    tipo_documento: string;
-    estado: string;
-    storage_path?: string | null;
-    storage_path_firmado?: string | null;
-    file_name?: string | null;
-    hash_pdf?: string | null;
-    orden?: number | null;
-    revisado_at?: string | null;
-    firmado_at?: string | null;
-    opciones_aceptacion?: FirmaDocumentoResolved['opciones_aceptacion'];
-  }): FirmaDocumentoResolved => ({
+  const mapDocRow = (d: FirmaDocumentoDbRow): FirmaDocumentoResolved => ({
     id: d.id,
     tipo_documento: d.tipo_documento,
     estado: d.estado,
