@@ -127,11 +127,13 @@ export async function resolveFirmaToken(token: string): Promise<ResolvedFirmaCon
   const trimmed = String(token || '').trim();
   if (!trimmed) return null;
 
-  let { data: tokenRow, error } = await supabaseAdmin
+  const tokenResult = await supabaseAdmin
     .from('firma_tokens')
     .select(TOKEN_SELECT_WITH_OPCIONES)
     .eq('token', trimmed)
     .maybeSingle();
+  let tokenRow: any = tokenResult.data;
+  let error: any = tokenResult.error;
 
   if (error && isMissingOpcionesColumn(error.message)) {
     const retry = await supabaseAdmin
@@ -185,11 +187,13 @@ export async function resolveFirmaToken(token: string): Promise<ResolvedFirmaCon
   });
 
   async function loadDocsByEnvio(envioId: string): Promise<FirmaDocumentoResolved[]> {
-    let { data, error: docsErr } = await supabaseAdmin
+    const docsResult = await supabaseAdmin
       .from('firma_documentos')
       .select(DOCS_SELECT_WITH_OPCIONES)
       .eq('envio_id', envioId)
       .order('orden', { ascending: true });
+    let data: any[] | null = docsResult.data;
+    let docsErr: any = docsResult.error;
 
     if (docsErr && isMissingOpcionesColumn(docsErr.message)) {
       const retry = await supabaseAdmin
