@@ -7,7 +7,7 @@ import firmaService from '../services/firmaService';
 import holdedEmployeesService from '../services/holdedEmployeesService';
 import { envioEsPackBaja } from '../constants/firmaDocumentos';
 import { generateFirmaPdfFile } from '../utils/firmaPdfGenerator';
-import { openEmailDraft } from '../utils/openMailto';
+import { openEmailDraft, formatEmailDebugLine } from '../utils/openMailto';
 import FirmaNewPackForm from './firma/FirmaNewPackForm';
 import FirmaEnviosPanel from './firma/FirmaEnviosPanel';
 import FirmaTimelineModal from './firma/FirmaTimelineModal';
@@ -16,6 +16,7 @@ import FirmaAuditoriaModal from './firma/FirmaAuditoriaModal';
 import FirmaNotificarBajaModal from './firma/FirmaNotificarBajaModal';
 import { FirmaButton, FirmaTabs } from './firma/FirmaUi';
 import {
+  buildFirmaEmailBody,
   defaultPackItemsForKind,
   envioLabel,
   initialEnvioFormForPack,
@@ -160,27 +161,8 @@ export default function FirmaPage() {
     return 'Documento pendiente de firma (Kronos)';
   };
 
-  const buildEmailBody = (envio) => {
-    const trabajador = String(envio?.trabajador?.nombre || '').trim();
-    const link = String(envio?.portal_link || '').trim();
-    if (envioEsPackBaja(envio)) {
-      const saludo = trabajador ? `Estimado/a ${trabajador},` : 'Estimado/a,';
-      return [
-        saludo,
-        '',
-        'Le comunicamos la finalización de su relación laboral con nuestra organización.',
-        'Para dar acuse de recibo de esta notificación, acceda al portal seguro mediante el enlace siguiente (verificación por SMS):',
-        '',
-        link,
-        '',
-        'Si tiene alguna duda, contacte con Recursos Humanos.',
-        '',
-        'Atentamente,',
-        'Recursos Humanos — Kronos'
-      ].join('\n');
-    }
-    return buildShareText(envio);
-  };
+  const buildEmailBody = (envio) =>
+    buildFirmaEmailBody(envio, { envioLabel: envioLabel(envio) });
 
   const marcarCompartido = useCallback(async (envio, canal) => {
     if (!envio?.id) return;
@@ -278,19 +260,33 @@ export default function FirmaPage() {
     const subject = buildEmailSubject(envio);
     const body = buildEmailBody(envio);
     try {
-      const via = await openEmailDraft({ to, subject, body });
+      const { via, debug } = await openEmailDraft({ to, subject, body });
+      const debugLine = formatEmailDebugLine(debug);
       setError('');
+      let msg = '';
       if (via === 'clipboard') {
-        setMessage(
-          'No se pudo abrir el correo automáticamente. Mensaje copiado al portapapeles: abre Outlook o Gmail, pega y envía.'
-        );
+        msg = 'No se pudo abrir el correo automáticamente. Mensaje copiado al portapapeles: abre tu webmail, pega y envía.';
+      } else if (via === 'gmail-compose') {
+        msg = 'Gmail abierto con el borrador. Revisa destinatario y envía.';
+      } else if (via === 'ionos-compose') {
+        msg = 'IONOS Webmail abierto con el borrador. Revisa destinatario y envía.';
+      } else if (via === 'outlook-compose') {
+        msg = 'Outlook web abierto con el borrador. Revisa destinatario y envía.';
+      } else if (via === 'custom-compose') {
+        msg = 'Webmail abierto con el borrador. Revisa destinatario y envía.';
       } else if (envioEsPackBaja(envio)) {
-        setMessage('Cliente de email abierto. Comprueba que el mensaje se envió.');
+        msg = 'Cliente de email abierto. Comprueba que el mensaje se envió.';
       } else {
-        setMessage('Cliente de email abierto.');
+        msg = 'Cliente de email abierto.';
       }
+      if (debug?.showInUi && debugLine) {
+        msg = `${msg} [debug: ${debugLine}]`;
+      }
+      setMessage(msg);
     } catch (e) {
-      setError(e?.message || 'No se pudo preparar el email.');
+      const errMsg = e?.message || 'No se pudo preparar el email.';
+      console.error('[firma-email] FirmaPage.openEmail:', errMsg);
+      setError(errMsg);
       return;
     }
     await marcarCompartido(envio, 'email');

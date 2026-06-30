@@ -10,7 +10,9 @@ const ACCION_LABELS = {
   otp_solicitado: 'Código SMS solicitado',
   otp_verificado: 'Verificación código SMS',
   aceptado_y_firmado: 'Documento firmado electrónicamente',
-  pack_aceptado_y_firmado: 'Pack firmado electrónicamente'
+  pack_aceptado_y_firmado: 'Pack firmado electrónicamente',
+  portal_primera_visita: 'Primera visita al portal (navegador)',
+  portal_visita_detectada: 'Petición al portal detectada',
 };
 
 function formatFirmaDateTime(iso) {
@@ -161,6 +163,16 @@ export function describeFirmaAuditoriaRow(row) {
   }
   if (accion === 'envio_pack_creado' && det.num_documentos) {
     notes.push(`${det.num_documentos} documento(s) en el pack`);
+  }
+
+  if (accion === 'portal_visita_detectada' || accion === 'portal_primera_visita') {
+    if (det.source) notes.push(`Origen: ${det.source}`);
+    if (det.cliente_label) notes.push(det.cliente_label);
+    else if (det.cliente_tipo) notes.push(`Cliente: ${det.cliente_tipo}`);
+    if (det.marco_portal_abierto_at) notes.push('Marcó primera visita en BD');
+    else if (det.skip_reason) notes.push(`Sin marcar: ${det.skip_reason}`);
+    if (det.referer) notes.push(`Referer: ${truncate(det.referer, 80)}`);
+    if (det.sec_fetch_site) notes.push(`Fetch: ${det.sec_fetch_site}`);
   }
 
   const ua = row?.user_agent ? String(row.user_agent) : '';

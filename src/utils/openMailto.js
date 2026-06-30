@@ -20,6 +20,19 @@ export function formatEmailDraftForClipboard({ to, subject = '', body = '' }) {
   return lines.join('\n').trim();
 }
 
+export function formatEmailDebugLine(debug) {
+  if (!debug || typeof debug !== 'object') return '';
+  const parts = [
+    `modo=${debug.mode || '?'}`,
+    `via=${debug.via || '?'}`,
+    `opener=${debug.opener || '?'}`,
+    `progId=${debug.progId || '?'}`,
+    debug.handlerIsBrowser ? 'handler=navegador' : 'handler=cliente-correo'
+  ];
+  if (debug.error) parts.push(`error=${debug.error}`);
+  return parts.join(' · ');
+}
+
 async function copyTextToClipboard(text) {
   const s = String(text ?? '');
   if (!s) throw new Error('Vacío');
@@ -37,7 +50,7 @@ async function copyTextToClipboard(text) {
 /**
  * Abre el borrador en el cliente de correo del sistema (vía proceso principal de Electron).
  * Si no puede, copia el mensaje al portapapeles. Nunca usa window.open ni <a> click (abre Chrome).
- * @returns {'ipc' | 'mailto-ipc' | 'clipboard'}
+ * @returns {Promise<{ via: 'ipc' | 'gmail-compose' | 'ionos-compose' | 'outlook-compose' | 'custom-compose' | 'mailto-ipc' | 'clipboard', debug?: object }>}
  */
 export async function openEmailDraft({ to, subject = '', body = '' }) {
   const email = String(to || '').trim();
@@ -47,28 +60,41 @@ export async function openEmailDraft({ to, subject = '', body = '' }) {
 
   if (typeof window !== 'undefined' && window.electronAPI?.openEmailDraft) {
     try {
-      await window.electronAPI.openEmailDraft(draft);
-      return 'ipc';
+      const result = await window.electronAPI.openEmailDraft(draft);
+      const debug = result?.debug || null;
+      if (debug) {
+        console.log('[firma-email] renderer ← main', debug);
+      }
+      const via = result?.via || 'ipc';
+      if (via === 'gmail-compose' || via === 'ionos-compose' || via === 'outlook-compose' || via === 'custom-compose') {
+        return { via, debug };
+      }
+      return { via: 'ipc', debug };
     } catch (e) {
       const msg = String(e?.message || e || '');
-      if (!msg.includes('MAILTO_TOO_LONG') && !msg.includes('No handler registered')) {
-        console.warn('openEmailDraft IPC:', msg);
+      console.warn('[firma-email] openEmailDraft IPC falló:', msg);
+      if (msg.includes('No handler registered')) {
+        console.warn('[firma-email] Reinicia Kronos por completo (cambios en main/preload).');
       }
     }
+  } else {
+    console.warn('[firma-email] electronAPI.openEmailDraft no disponible — ¿app sin reiniciar?');
   }
 
   if (typeof window !== 'undefined' && window.electronAPI?.openMailto) {
     try {
       const url = buildMailtoUrl(draft);
+      console.log('[firma-email] fallback openMailto:', url.slice(0, 200));
       await window.electronAPI.openMailto(url);
-      return 'mailto-ipc';
+      return { via: 'mailto-ipc' };
     } catch (e) {
-      console.warn('openMailto IPC:', e?.message || e);
+      console.warn('[firma-email] openMailto IPC:', e?.message || e);
     }
   }
 
+  console.warn('[firma-email] Copiando borrador al portapapeles (último recurso)');
   await copyTextToClipboard(formatEmailDraftForClipboard(draft));
-  return 'clipboard';
+  return { via: 'clipboard' };
 }
 
 /** @deprecated Usa openEmailDraft. */

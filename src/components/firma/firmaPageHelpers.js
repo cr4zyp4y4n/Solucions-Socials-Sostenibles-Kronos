@@ -4,6 +4,47 @@ import {
   getFirmaDefaultPack
 } from '../../constants/firmaDocumentos';
 
+/** Contacto y firma en emails/WhatsApp de Firma. */
+export const FIRMA_EMAIL_CONTACTO = 'administracio@solucionssocials.org';
+export const FIRMA_EMAIL_FIRMA = 'EI Solucions Socials Sostenibles';
+
+export function buildFirmaEmailBody(envio, { envioLabel }) {
+  const trabajador = String(envio?.trabajador?.nombre || '').trim();
+  const link = String(envio?.portal_link || '').trim();
+  const saludo = trabajador ? `Estimado/a ${trabajador},` : 'Estimado/a,';
+  const contacto = `Si tiene alguna duda, contacte con ${FIRMA_EMAIL_CONTACTO}.`;
+  const cierre = ['Atentamente,', FIRMA_EMAIL_FIRMA];
+
+  if (envioEsPackBaja(envio)) {
+    return [
+      saludo,
+      '',
+      'Le comunicamos la finalización de su relación laboral con nuestra organización.',
+      'Para dar acuse de recibo de esta notificación, acceda al portal seguro mediante el enlace siguiente (verificación por SMS):',
+      '',
+      link,
+      '',
+      contacto,
+      '',
+      ...cierre
+    ].join('\n');
+  }
+
+  const label = String(envioLabel || 'documentación').trim();
+  return [
+    saludo,
+    '',
+    `Tiene ${label} pendiente de firma en nuestro portal seguro.`,
+    'Acceda mediante el enlace siguiente (verificación por SMS):',
+    '',
+    link,
+    '',
+    contacto,
+    '',
+    ...cierre
+  ].join('\n');
+}
+
 export const initialEnvioForm = {
   nombre: 'Pack de contratación',
   fechaInicio: '',
@@ -121,7 +162,7 @@ export function buildFirmaTimeline(envio) {
   }
 
   rows.push(
-    { key: 'portal', title: 'Primera visita al portal', at: envio.portal_abierto_at || null },
+    { key: 'portal', title: 'Primera visita al portal', at: envio.portal_abierto_at || null, note: 'Solo cuando el navegador confirma la carga (no bots SSR). Detalle en Auditoría.' },
     {
       key: 'otp',
       title: 'SMS con código OTP',

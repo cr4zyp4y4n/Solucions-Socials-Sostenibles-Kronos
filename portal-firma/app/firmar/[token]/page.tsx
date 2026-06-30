@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import { getFirmaDocumentoLabel } from '@/lib/firmaDocumentos';
-import { marcarPortalAbiertoSiCorresponde } from '@/lib/firmaPortalTracking';
+import { registrarVisitaPortal } from '@/lib/firmaPortalTracking';
+import { getPortalRequestMeta } from '@/lib/portalRequestMeta';
 import { resolveFirmaToken } from '@/lib/resolveFirmaToken';
 import FirmaPackPortal from './FirmaPackPortal';
 
@@ -52,12 +53,13 @@ export default async function FirmaTokenPage({ params }: TokenPageProps) {
   }
 
   try {
-    const track = await marcarPortalAbiertoSiCorresponde(token);
+    const meta = await getPortalRequestMeta('ssr_get');
+    const track = await registrarVisitaPortal(token, { ...meta, marcaPrimeraVisita: false });
     if (!track.ok) {
-      console.warn('[firma portal] portal_abierto_at:', track.error);
+      console.warn('[firma portal] visita SSR:', track.error);
     }
   } catch (e) {
-    console.warn('[firma portal] portal_abierto_at:', e);
+    console.warn('[firma portal] visita SSR:', e);
   }
 
   const titulo = isPack

@@ -18,6 +18,11 @@ const fs = require('node:fs');
 })();
 
 const { app, BrowserWindow, dialog, shell, ipcMain, clipboard } = require('electron');
+const {
+  openEmailDraftInSystem,
+  openMailtoInSystem,
+  getEmailDebugInfo
+} = require('./main/openSystemEmail');
 const https = require('https');
 const http = require('http');
 const zlib = require('node:zlib');
@@ -157,43 +162,35 @@ function setupIpcHandlers() {
     if (trimmed.length > 12000) {
       throw new Error('URL demasiado larga');
     }
+    if (isMailto) {
+      await openMailtoInSystem(trimmed);
+      return true;
+    }
     await shell.openExternal(trimmed);
     return true;
   });
 
   ipcMain.handle('open-mailto', async (_event, url) => {
-    if (typeof url !== 'string' || !url.trim()) {
-      throw new Error('URL mailto inválida');
-    }
-    const trimmed = url.trim();
-    if (!/^mailto:/i.test(trimmed)) {
-      throw new Error('URL mailto inválida');
-    }
-    if (trimmed.length > 12000) {
-      throw new Error('URL demasiado larga');
-    }
-    await shell.openExternal(trimmed);
+    await openMailtoInSystem(url);
     return true;
   });
 
   ipcMain.handle('open-email-draft', async (_event, draft) => {
-    const to = String(draft?.to || '').trim();
-    const subject = String(draft?.subject || '').trim();
-    const body = String(draft?.body || '').trim();
-    if (!to || !to.includes('@')) {
-      throw new Error('Email inválido');
+    try {
+      const result = await openEmailDraftInSystem(draft);
+      return { ok: true, via: result.via, debug: result.debug };
+    } catch (err) {
+      const debug = {
+        ...getEmailDebugInfo(),
+        error: String(err?.message || err || 'Error desconocido'),
+        showInUi: String(process.env.FIRMA_EMAIL_DEBUG || '').trim() === '1'
+      };
+      console.error('[firma-email] Error open-email-draft:', debug);
+      throw err;
     }
-    const params = new URLSearchParams();
-    if (subject) params.set('subject', subject);
-    if (body) params.set('body', body);
-    const qs = params.toString();
-    const mailtoUrl = qs ? `mailto:${to}?${qs}` : `mailto:${to}`;
-    if (mailtoUrl.length > 2000) {
-      throw new Error('MAILTO_TOO_LONG');
-    }
-    await shell.openExternal(mailtoUrl);
-    return true;
   });
+
+  ipcMain.handle('get-firma-email-debug', () => getEmailDebugInfo());
 
   /** Firma (portal): API SMS + base de enlaces /firmar desde .env (todas las máquinas, sin localStorage). */
   ipcMain.handle('get-firma-sms-config', () => ({
@@ -734,7 +731,7 @@ const createWindow = () => {
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     const u = String(url || '');
     if (/^mailto:/i.test(u)) {
-      shell.openExternal(u).catch((err) => console.warn('openExternal mailto:', err?.message || err));
+      openMailtoInSystem(u).catch((err) => console.warn('openExternal mailto:', err?.message || err));
       return { action: 'deny' };
     }
     if (/^https?:\/\//i.test(u)) {
@@ -747,7 +744,7 @@ const createWindow = () => {
   mainWindow.webContents.on('will-navigate', (event, url) => {
     if (/^mailto:/i.test(url)) {
       event.preventDefault();
-      shell.openExternal(url).catch((err) => console.warn('will-navigate mailto:', err?.message || err));
+      openMailtoInSystem(url).catch((err) => console.warn('will-navigate mailto:', err?.message || err));
     }
   });
 
