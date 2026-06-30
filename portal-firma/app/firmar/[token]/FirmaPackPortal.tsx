@@ -131,7 +131,7 @@ export default function FirmaPackPortal({
   const reviewedCount = documentos.filter((d) => revisados[d.id] || d.revisado_at || d.firmado_at).length;
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[300px,1fr]">
+    <div className="grid gap-6 overflow-x-hidden lg:grid-cols-[300px,1fr]">
       {isPack ? (
         <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
           <h2 className="mb-1 text-lg font-black">Documentos del pack</h2>
@@ -160,7 +160,7 @@ export default function FirmaPackPortal({
                     }`}
                   >
                     <div className="flex items-start justify-between gap-2">
-                      <div>
+                      <div className="min-w-0">
                         <div className="font-black text-zinc-900">
                           {idx + 1}. {getFirmaDocumentoLabel(doc.tipo_documento)}
                         </div>
@@ -183,20 +183,20 @@ export default function FirmaPackPortal({
       ) : null}
 
       <section className="space-y-4">
-        <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <div>
+        <div className="overflow-hidden rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+          <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
               <h2 className="text-xl font-black">
                 {activeDoc ? getFirmaDocumentoLabel(activeDoc.tipo_documento) : 'Documento'}
               </h2>
-              <p className="text-sm text-zinc-500">{activeDoc?.file_name || ''}</p>
+              <p className="truncate text-sm text-zinc-500">{activeDoc?.file_name || ''}</p>
             </div>
             {pdfUrl ? (
               <a
                 href={pdfUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="rounded-full bg-emerald-700 px-4 py-2 text-sm font-bold text-white transition hover:bg-emerald-800"
+                className="inline-flex w-full items-center justify-center rounded-full bg-emerald-700 px-4 py-2 text-sm font-bold text-white transition hover:bg-emerald-800 sm:w-auto"
               >
                 Abrir en pestaña
               </a>
@@ -204,13 +204,22 @@ export default function FirmaPackPortal({
           </div>
 
           {pdfUrl ? (
-            <object
-              data={pdfUrl}
-              type="application/pdf"
-              className="h-[55vh] w-full rounded-xl border border-zinc-200 bg-white"
-            >
-              <iframe src={pdfUrl} title={activeDoc?.file_name || 'Documento'} className="h-[55vh] w-full rounded-xl border" />
-            </object>
+            <>
+              <div className="mb-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 md:hidden">
+                En móvil, abre el PDF en una pestaña para verlo correctamente antes de responder Sí o No.
+              </div>
+              <object
+                data={pdfUrl}
+                type="application/pdf"
+                className="hidden h-[55vh] w-full rounded-xl border border-zinc-200 bg-white md:block"
+              >
+                <iframe
+                  src={pdfUrl}
+                  title={activeDoc?.file_name || 'Documento'}
+                  className="h-[55vh] w-full rounded-xl border"
+                />
+              </object>
+            </>
           ) : (
             <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-5 text-sm text-zinc-600">
               No se ha podido cargar el PDF.
@@ -239,7 +248,7 @@ export default function FirmaPackPortal({
                     setRespuestaByDoc((prev) => ({ ...prev, [activeDoc.id]: 'si' }))
                   }
                 />
-                <span>
+                <span className="min-w-0">
                   <span className="font-black text-emerald-800">Sí — </span>
                   {activeMeta.readStatement}
                 </span>
@@ -261,7 +270,7 @@ export default function FirmaPackPortal({
                     setRespuestaByDoc((prev) => ({ ...prev, [activeDoc.id]: 'no' }))
                   }
                 />
-                <span>
+                <span className="min-w-0">
                   <span className="font-black text-amber-900">No — </span>
                   {getReadStatementNo(activeDoc.tipo_documento)}
                 </span>
@@ -277,7 +286,7 @@ export default function FirmaPackPortal({
                       setFormacionAcoso((prev) => ({ ...prev, [activeDoc.id]: e.target.checked }))
                     }
                   />
-                  <span>Solicito mi inscripción en la formación «Prevención del acoso».</span>
+                  <span className="min-w-0">Solicito mi inscripción en la formación «Prevención del acoso».</span>
                 </label>
               ) : null}
 
