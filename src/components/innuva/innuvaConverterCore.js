@@ -56,17 +56,6 @@ export const parseEsNumber = (value) => {
     return negative ? -Math.abs(n) : n;
   }
 
-  if (hasComma && /^-?\d{1,3},\d{5}$/.test(raw)) {
-    const digits = raw.replace(/[^0-9\-]/g, '').replace('-', '');
-    if (digits.length >= 3) {
-      const intPart = digits.slice(0, -2);
-      const decPart = digits.slice(-2);
-      const fixed = `${negative ? '-' : ''}${intPart}.${decPart}`;
-      const n = Number.parseFloat(fixed);
-      return Number.isFinite(n) ? n : 0;
-    }
-  }
-
   const looksLikeDotDecimal = !hasComma && /-?\d+\.\d{1,2}$/.test(raw);
   const cleaned = (hasComma
     ? raw.replace(/\./g, '').replace(',', '.')
@@ -142,19 +131,24 @@ export function parseInnuvaNominasCsv(csvText) {
   const idxSsEmp = colIndex('Total Seguridad Social de empresa');
   const idxLiquido = colIndex('Importe líquido');
   const idxIrpf = colIndex('Tributación IRPF total');
-  const idxCodigo = idxTrabajador >= 0 ? idxTrabajador - 1 : -1;
+  const idxCodigoHeader = headerRow.findIndex((c) => /^(c[oó]digo|cod\.?|codi)$/i.test(String(c || '').trim()));
+  const idxCodigo = idxCodigoHeader >= 0 ? idxCodigoHeader : idxTrabajador >= 0 ? idxTrabajador - 1 : -1;
 
   const out = [];
   for (let i = headerRowIndex + 1; i < rows.length; i++) {
     const r = rows[i] || [];
     const all = r.join('').trim();
     if (!all) continue;
-    if (String(r[0] || '').toLowerCase().includes('total') || String(r[2] || '').toLowerCase().includes('total')) {
-      break;
-    }
 
     const nif = idxNif >= 0 ? (r[idxNif] || '') : '';
     const trabajador = idxTrabajador >= 0 ? (r[idxTrabajador] || '') : '';
+    const isTotalsFooter =
+      !nif &&
+      !trabajador &&
+      (/^total\b/i.test(String(r[0] || '').trim()) || /^total\b/i.test(String(r[2] || '').trim()));
+    if (isTotalsFooter) {
+      break;
+    }
     if (!nif || !trabajador) continue;
     const codigo = idxCodigo >= 0 ? (r[idxCodigo] || '') : '';
 

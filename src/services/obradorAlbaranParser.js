@@ -339,7 +339,14 @@ function normalizeNumStr(raw) {
 
 function toNum(s) {
   if (!s) return NaN;
-  return Number(normalizeNumStr(s).replace(/\./g, '').replace(',', '.'));
+  const normalized = normalizeNumStr(s);
+  if (normalized.includes(',')) {
+    return Number(normalized.replace(/\./g, '').replace(',', '.'));
+  }
+  if (/^-?\d+\.\d{1,2}$/.test(normalized)) {
+    return Number(normalized);
+  }
+  return Number(normalized.replace(/\./g, ''));
 }
 
 function parseBegudesTrailingColumns(afterQty) {
@@ -2037,7 +2044,7 @@ function parseMultiembalajesTrailing(rest) {
 
       descripcio: before.slice(0, weirdPair.index).trim(),
 
-      quantitat: weirdPair[2].replace(',', '.'),
+      quantitat: weirdPair[1],
 
       importe
 
