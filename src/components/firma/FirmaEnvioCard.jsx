@@ -7,13 +7,15 @@ import {
   Eye,
   FileText,
   Link2,
+  Mail,
   Phone,
   Send,
   XCircle
 } from 'feather-icons-react';
 import { useTheme } from '../ThemeContext';
-import { getFirmaDocumentoLabel } from '../../constants/firmaDocumentos';
+import { getFirmaDocumentoLabel, envioEsPackBaja } from '../../constants/firmaDocumentos';
 import {
+  canalesNotificacionBaja,
   envioLabel,
   envioTieneDocumentosFirmados,
   flowEstadoFirma,
@@ -39,6 +41,7 @@ export default function FirmaEnvioCard({
   onOpenLink,
   onWhatsApp,
   onEmail,
+  onNotificarBaja,
   onAuditoria,
   onVerFirmados,
   onCancelar
@@ -49,6 +52,8 @@ export default function FirmaEnvioCard({
   const docs = envio.documentos || [];
   const firmados = envioTieneDocumentosFirmados(envio);
   const hasLink = !!envio.portal_link;
+  const esBaja = envioEsPackBaja(envio);
+  const canales = canalesNotificacionBaja(envio);
 
   const shareItems = [
     {
@@ -203,6 +208,7 @@ export default function FirmaEnvioCard({
             }}
           >
             {envio.trabajador?.telefono ? <div>{envio.trabajador.telefono}</div> : null}
+            {envio.trabajador?.email ? <div>{envio.trabajador.email}</div> : null}
             {envio.firmado_at ? (
               <div style={{ color: colors.success, fontWeight: 700 }}>
                 Firmado {formatFirmaDate(envio.firmado_at)}
@@ -228,7 +234,39 @@ export default function FirmaEnvioCard({
             <FlowIcon size={14} />
             Seguimiento
           </FirmaButton>
-          <FirmaDropdown label="Compartir" icon={Send} items={shareItems} disabled={!hasLink} />
+          {esBaja ? (
+            <>
+              <FirmaButton
+                size="sm"
+                variant={canales.whatsapp ? 'success' : 'secondary'}
+                disabled={!hasLink}
+                onClick={() => onWhatsApp(envio)}
+              >
+                <Phone size={14} />
+                WhatsApp{canales.whatsapp ? ' ✓' : ''}
+              </FirmaButton>
+              <FirmaButton
+                size="sm"
+                variant={canales.email ? 'success' : 'secondary'}
+                disabled={!hasLink}
+                onClick={() => onEmail(envio)}
+              >
+                <Mail size={14} />
+                Email{canales.email ? ' ✓' : ''}
+              </FirmaButton>
+              <FirmaButton
+                size="sm"
+                disabled={!hasLink}
+                onClick={() => onNotificarBaja?.(envio)}
+              >
+                <Send size={14} />
+                Notificar
+              </FirmaButton>
+              <FirmaDropdown label="Más" icon={Copy} items={shareItems} disabled={!hasLink} />
+            </>
+          ) : (
+            <FirmaDropdown label="Compartir" icon={Send} items={shareItems} disabled={!hasLink} />
+          )}
           {firmados ? (
             <FirmaButton size="sm" variant="success" onClick={() => onVerFirmados(envio)}>
               <FileText size={14} />

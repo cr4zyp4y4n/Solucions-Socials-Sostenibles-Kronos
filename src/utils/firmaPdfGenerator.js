@@ -270,6 +270,53 @@ function generateVrpRenuncia(ctx) {
   return docToBlob(doc);
 }
 
+function formatFechaCorta(iso) {
+  if (!iso) return null;
+  const d = new Date(`${iso}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return String(iso);
+  return d.toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' });
+}
+
+function generateBaja(ctx, { fechaFin, fechaInicio, motivo } = {}) {
+  const { doc, margin, maxW } = createDoc('baja');
+  let y = writeTitle(doc, 'NOTIFICACIÓN DE FIN DE RELACIÓN LABORAL', margin, 22);
+  y = writeParagraphs(doc, [`${ctx.localidad}, ${ctx.fechaLarga}`], margin, maxW, y);
+  y = writeFieldBlock(
+    doc,
+    [
+      ['EMPRESA', ctx.empresa],
+      ['TRABAJADOR/A', ctx.nombreCompleto],
+      ['DNI', ctx.dni],
+      ['PUESTO', ctx.puesto],
+      ['FECHA EFECTO BAJA', formatFechaCorta(fechaFin) || '—'],
+      ['FECHA INICIO (referencia)', formatFechaCorta(fechaInicio) || '—']
+    ],
+    margin,
+    y
+  );
+  const motivoTxt = String(motivo || '').trim();
+  y = writeParagraphs(
+    doc,
+    [
+      'Por la presente, la empresa comunica al/la trabajador/a identificado/a la finalización de la relación ' +
+        'laboral que les unía, con efectos en la fecha indicada como «fecha efecto baja».',
+      motivoTxt
+        ? `Motivo / observaciones: ${motivoTxt}`
+        : 'El motivo y las condiciones aplicables se detallan en la documentación laboral correspondiente ' +
+            'o en la comunicación interna de RRHH.',
+      'Se informa al/la trabajador/a de que la aceptación mediante el portal electrónico de la empresa ' +
+        '(verificación por SMS al teléfono registrado) tendrá efectos de acuse de recibo de esta notificación ' +
+        'a efectos de la normativa laboral aplicable.',
+      'El/la trabajador/a declara haber recibido y leído el contenido de esta notificación.'
+    ],
+    margin,
+    maxW,
+    y
+  );
+  addClausulaFooter(doc, margin, maxW);
+  return docToBlob(doc);
+}
+
 function generateGenerico(ctx, tipoDocumento) {
   const { doc, margin, maxW } = createDoc('otro');
   const titulo = getFirmaDocumentoLabel(tipoDocumento).toUpperCase();
@@ -306,7 +353,15 @@ function generateGenerico(ctx, tipoDocumento) {
  * Genera un PDF listo para el pack de firma a partir de datos Holded.
  * @returns {Promise<Blob>}
  */
-export async function generateFirmaPdfBlob({ tipoDocumento, employee, entityKey, episRows = [] }) {
+export async function generateFirmaPdfBlob({
+  tipoDocumento,
+  employee,
+  entityKey,
+  episRows = [],
+  fechaFin = '',
+  fechaInicio = '',
+  motivoBaja = ''
+}) {
   const ctx = buildWorkerContext(employee, entityKey);
   const tipo = String(tipoDocumento || '').trim();
 
@@ -321,6 +376,8 @@ export async function generateFirmaPdfBlob({ tipoDocumento, employee, entityKey,
       return generateVrpConsentimiento(ctx);
     case 'vrp_renuncia':
       return generateVrpRenuncia(ctx);
+    case 'baja':
+      return generateBaja(ctx, { fechaFin, fechaInicio, motivo: motivoBaja });
     default:
       return generateGenerico(ctx, tipo);
   }
@@ -332,8 +389,24 @@ export function blobToPdfFile(blob, fileName) {
   });
 }
 
-export async function generateFirmaPdfFile({ tipoDocumento, employee, entityKey, episRows = [] }) {
-  const blob = await generateFirmaPdfBlob({ tipoDocumento, employee, entityKey, episRows });
+export async function generateFirmaPdfFile({
+  tipoDocumento,
+  employee,
+  entityKey,
+  episRows = [],
+  fechaFin = '',
+  fechaInicio = '',
+  motivoBaja = ''
+}) {
+  const blob = await generateFirmaPdfBlob({
+    tipoDocumento,
+    employee,
+    entityKey,
+    episRows,
+    fechaFin,
+    fechaInicio,
+    motivoBaja
+  });
   const safeDni = String(employee?.dni || 'doc').replace(/[^\w-]/g, '');
   const base = getFirmaDocumentoLabel(tipoDocumento)
     .replace(/[^\w\s-áéíóúñ]/gi, '')

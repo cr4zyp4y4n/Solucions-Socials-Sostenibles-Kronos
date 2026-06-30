@@ -1,13 +1,15 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { useTheme } from '../ThemeContext';
-import { describeFirmaAuditoriaRow } from '../../utils/firmaAuditoriaLabels';
+import { describeFirmaAuditoriaRow, describeDocumentoAceptacion } from '../../utils/firmaAuditoriaLabels';
+import { documentosPackOrdenados } from './firmaPageHelpers';
 import FirmaModal from './FirmaModal';
 import { FirmaButton } from './FirmaUi';
 import { envioLabel } from './firmaPageHelpers';
 
 export default function FirmaAuditoriaModal({ envio, rows, loading, onClose }) {
   const { colors } = useTheme();
+  const docsAceptacion = envio ? documentosPackOrdenados(envio).map(describeDocumentoAceptacion) : [];
 
   return (
     <FirmaModal
@@ -24,8 +26,55 @@ export default function FirmaAuditoriaModal({ envio, rows, loading, onClose }) {
       )}
     >
       <p style={{ margin: '0 0 16px', fontSize: 12, color: colors.textSecondary, lineHeight: 1.45 }}>
-        Registro de DNI, SMS, firma, IP y navegador en el portal.
+        Registro de respuestas Sí/No, DNI, SMS, firma, IP y navegador en el portal.
+        El trabajador debe elegir Sí o No en cada documento; puede firmar con cualquiera de las dos respuestas.
       </p>
+
+      {docsAceptacion.length ? (
+        <div
+          style={{
+            marginBottom: 18,
+            padding: 14,
+            borderRadius: 12,
+            border: `1px solid ${colors.border}`,
+            background: colors.background
+          }}
+        >
+          <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 10, color: colors.textSecondary }}>
+            Declaraciones por documento
+          </div>
+          <div style={{ display: 'grid', gap: 8 }}>
+            {docsAceptacion.map((item, idx) => (
+              <div
+                key={`${item.tipo}-${idx}`}
+                style={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 8,
+                  fontSize: 12
+                }}
+              >
+                <span style={{ fontWeight: 700 }}>{item.tipo}</span>
+                <span
+                  style={{
+                    fontWeight: 800,
+                    color: item.ok
+                      ? item.esNo
+                        ? colors.warning
+                        : colors.success
+                      : colors.error,
+                    fontSize: 11
+                  }}
+                >
+                  {item.label}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
       {loading ? (
         <motion.div
           animate={{ opacity: [0.4, 1, 0.4] }}

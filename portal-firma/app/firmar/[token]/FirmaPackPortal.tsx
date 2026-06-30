@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo, useState } from 'react';
 import { getFirmaDocumentoLabel } from '@/lib/firmaDocumentos';
-import { getFirmaDocMeta } from '@/lib/firmaDocumentosMeta';
+import { getFirmaDocMeta, getReadStatementNo } from '@/lib/firmaDocumentosMeta';
 import FirmaFlowClient from './FirmaFlowClient';
 
 export type PackDocumento = {
@@ -11,7 +11,20 @@ export type PackDocumento = {
   file_name: string | null;
   revisado_at: string | null;
   firmado_at: string | null;
+  opciones_aceptacion?: {
+    respuesta?: 'si' | 'no';
+    lectura_confirmada?: boolean;
+    formacion_acoso?: boolean;
+  } | null;
 };
+
+function respuestaFromOpciones(op?: PackDocumento['opciones_aceptacion']): 'si' | 'no' | null {
+  if (!op) return null;
+  if (op.respuesta === 'si' || op.respuesta === 'no') return op.respuesta;
+  if (op.lectura_confirmada === true) return 'si';
+  if (op.lectura_confirmada === false) return 'no';
+  return null;
+}
 
 type Props = {
   token: string;
@@ -42,7 +55,15 @@ export default function FirmaPackPortal({
     }
     return init;
   });
-  const [readChecked, setReadChecked] = useState<Record<string, boolean>>({});
+  const [respuestaByDoc, setRespuestaByDoc] = useState<Record<string, 'si' | 'no' | ''>>({});
+  const [respuestaGuardada, setRespuestaGuardada] = useState<Record<string, 'si' | 'no'>>(() => {
+    const init: Record<string, 'si' | 'no'> = {};
+    for (const d of documentos) {
+      const r = respuestaFromOpciones(d.opciones_aceptacion);
+      if (r) init[d.id] = r;
+    }
+    return init;
+  });
   const [formacionAcoso, setFormacionAcoso] = useState<Record<string, boolean>>({});
   const [confirmErr, setConfirmErr] = useState('');
   const [confirming, setConfirming] = useState(false);
@@ -63,8 +84,9 @@ export default function FirmaPackPortal({
 
   const confirmarLectura = useCallback(async () => {
     if (!activeDoc?.id) return;
-    if (!readChecked[activeDoc.id]) {
-      setConfirmErr('Marca la casilla de confirmación antes de continuar.');
+    const respuesta = respuestaByDoc[activeDoc.id];
+    if (respuesta !== 'si' && respuesta !== 'no') {
+      setConfirmErr('Selecciona Sí o No antes de continuar.');
       return;
     }
     setConfirmErr('');
@@ -76,8 +98,9 @@ export default function FirmaPackPortal({
         body: JSON.stringify({
           documentoId: activeDoc.id,
           confirmacion: {
-            lectura_confirmada: true,
-            ...(activeDoc.tipo_documento === 'acoso' && formacionAcoso[activeDoc.id]
+            respuesta,
+            lectura_confirmada: respuesta === 'si',
+            ...(activeDoc.tipo_documento === 'acoso' && respuesta === 'si' && formacionAcoso[activeDoc.id]
               ? { formacion_acoso: true }
               : {})
           }
@@ -85,16 +108,20 @@ export default function FirmaPackPortal({
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json.ok) {
-        throw new Error(json.error || 'No se pudo registrar la confirmación');
+        throw new Error(json.error || 'No se pudo registrar la respuesta');
       }
+      const guardada = (json.opciones?.respuesta === 'si' || json.opciones?.respuesta === 'no'
+        ? json.opciones.respuesta
+        : respuesta) as 'si' | 'no';
+      setRespuestaGuardada((prev) => ({ ...prev, [activeDoc.id]: guardada }));
       setRevisados((prev) => ({ ...prev, [activeDoc.id]: true }));
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Error confirmando lectura';
+      const msg = e instanceof Error ? e.message : 'Error confirmando respuesta';
       setConfirmErr(msg);
     } finally {
       setConfirming(false);
     }
-  }, [activeDoc, formacionAcoso, readChecked, token]);
+  }, [activeDoc, formacionAcoso, respuestaByDoc, token]);
 
   const allReviewed = useMemo(
     () => documentos.every((d) => revisados[d.id] || d.revisado_at || d.firmado_at),
@@ -104,17 +131,19 @@ export default function FirmaPackPortal({
   const reviewedCount = documentos.filter((d) => revisados[d.id] || d.revisado_at || d.firmado_at).length;
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[300px,1fr]">
+    <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,300px)_minmax(0,1fr)]">
       {isPack ? (
-        <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+        <section className="min-w-0 rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
           <h2 className="mb-1 text-lg font-black">Documentos del pack</h2>
           <p className="mb-4 text-xs text-zinc-500">
-            Confirma la lectura de cada documento ({reviewedCount}/{documentos.length}). Después podrás firmar
-            todos de una vez.
+            Indica Sí o No en cada documento ({reviewedCount}/{documentos.length}). Después podrás firmar
+            todos de una vez (también si respondes No).
           </p>
           <ul className="space-y-2">
             {documentos.map((doc, idx) => {
               const done = revisados[doc.id] || !!doc.revisado_at || !!doc.firmado_at;
+              const respuesta =
+                respuestaGuardada[doc.id] || respuestaFromOpciones(doc.opciones_aceptacion);
               const active = doc.id === activeDoc?.id;
               return (
                 <li key={doc.id}>
@@ -131,7 +160,7 @@ export default function FirmaPackPortal({
                     }`}
                   >
                     <div className="flex items-start justify-between gap-2">
-                      <div>
+                      <div className="min-w-0">
                         <div className="font-black text-zinc-900">
                           {idx + 1}. {getFirmaDocumentoLabel(doc.tipo_documento)}
                         </div>
@@ -142,7 +171,7 @@ export default function FirmaPackPortal({
                           done ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
                         }`}
                       >
-                        {done ? 'Confirmado' : 'Pendiente'}
+                        {done ? (respuesta === 'no' ? 'No' : respuesta === 'si' ? 'Sí' : 'OK') : 'Pendiente'}
                       </span>
                     </div>
                   </button>
@@ -153,21 +182,21 @@ export default function FirmaPackPortal({
         </section>
       ) : null}
 
-      <section className="space-y-4">
-        <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <div>
+      <section className="min-w-0 space-y-4">
+        <div className="min-w-0 rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+          <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
               <h2 className="text-xl font-black">
                 {activeDoc ? getFirmaDocumentoLabel(activeDoc.tipo_documento) : 'Documento'}
               </h2>
-              <p className="text-sm text-zinc-500">{activeDoc?.file_name || ''}</p>
+              <p className="break-words text-sm text-zinc-500">{activeDoc?.file_name || ''}</p>
             </div>
             {pdfUrl ? (
               <a
                 href={pdfUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="rounded-full bg-emerald-700 px-4 py-2 text-sm font-bold text-white transition hover:bg-emerald-800"
+                className="inline-flex w-full items-center justify-center rounded-full bg-emerald-700 px-4 py-2 text-sm font-bold text-white transition hover:bg-emerald-800 sm:w-auto"
               >
                 Abrir en pestaña
               </a>
@@ -178,9 +207,13 @@ export default function FirmaPackPortal({
             <object
               data={pdfUrl}
               type="application/pdf"
-              className="h-[55vh] w-full rounded-xl border border-zinc-200 bg-white"
+              className="h-[55vh] min-w-0 w-full rounded-xl border border-zinc-200 bg-white"
             >
-              <iframe src={pdfUrl} title={activeDoc?.file_name || 'Documento'} className="h-[55vh] w-full rounded-xl border" />
+              <iframe
+                src={pdfUrl}
+                title={activeDoc?.file_name || 'Documento'}
+                className="h-[55vh] min-w-0 w-full rounded-xl border"
+              />
             </object>
           ) : (
             <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-5 text-sm text-zinc-600">
@@ -190,19 +223,55 @@ export default function FirmaPackPortal({
 
           {activeDoc && activeMeta && !(revisados[activeDoc.id] || activeDoc.revisado_at) ? (
             <div className="mt-4 space-y-3 rounded-xl border border-zinc-200 bg-zinc-50 p-4">
-              <label className="flex cursor-pointer items-start gap-3 text-sm text-zinc-800">
+              <p className="text-sm font-bold text-zinc-800">
+                Tras leer el documento, indica tu respuesta:
+              </p>
+
+              <label
+                className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 text-sm transition ${
+                  respuestaByDoc[activeDoc.id] === 'si'
+                    ? 'border-emerald-600 bg-emerald-50'
+                    : 'border-zinc-200 bg-white'
+                }`}
+              >
                 <input
-                  type="checkbox"
+                  type="radio"
+                  name={`respuesta-${activeDoc.id}`}
                   className="mt-1 h-4 w-4 shrink-0"
-                  checked={!!readChecked[activeDoc.id]}
-                  onChange={(e) =>
-                    setReadChecked((prev) => ({ ...prev, [activeDoc.id]: e.target.checked }))
+                  checked={respuestaByDoc[activeDoc.id] === 'si'}
+                  onChange={() =>
+                    setRespuestaByDoc((prev) => ({ ...prev, [activeDoc.id]: 'si' }))
                   }
                 />
-                <span>{activeMeta.readStatement}</span>
+                <span className="min-w-0">
+                  <span className="font-black text-emerald-800">Sí — </span>
+                  {activeMeta.readStatement}
+                </span>
               </label>
 
-              {activeMeta.optionalFormacionAcoso ? (
+              <label
+                className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 text-sm transition ${
+                  respuestaByDoc[activeDoc.id] === 'no'
+                    ? 'border-amber-600 bg-amber-50'
+                    : 'border-zinc-200 bg-white'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name={`respuesta-${activeDoc.id}`}
+                  className="mt-1 h-4 w-4 shrink-0"
+                  checked={respuestaByDoc[activeDoc.id] === 'no'}
+                  onChange={() =>
+                    setRespuestaByDoc((prev) => ({ ...prev, [activeDoc.id]: 'no' }))
+                  }
+                />
+                <span className="min-w-0">
+                  <span className="font-black text-amber-900">No — </span>
+                  {getReadStatementNo(activeDoc.tipo_documento)}
+                </span>
+              </label>
+
+              {activeMeta.optionalFormacionAcoso && respuestaByDoc[activeDoc.id] === 'si' ? (
                 <label className="flex cursor-pointer items-start gap-3 border-t border-zinc-200 pt-3 text-sm text-zinc-800">
                   <input
                     type="checkbox"
@@ -212,7 +281,7 @@ export default function FirmaPackPortal({
                       setFormacionAcoso((prev) => ({ ...prev, [activeDoc.id]: e.target.checked }))
                     }
                   />
-                  <span>Solicito mi inscripción en la formación «Prevención del acoso».</span>
+                  <span className="min-w-0">Solicito mi inscripción en la formación «Prevención del acoso».</span>
                 </label>
               ) : null}
 
@@ -228,16 +297,29 @@ export default function FirmaPackPortal({
                 disabled={confirming}
                 className="w-full rounded-full bg-zinc-900 px-4 py-2.5 text-sm font-black text-white transition hover:bg-zinc-800 disabled:opacity-60"
               >
-                {confirming ? 'Guardando...' : 'Confirmar lectura de este documento'}
+                {confirming ? 'Guardando...' : 'Guardar respuesta de este documento'}
               </button>
             </div>
           ) : null}
 
           {activeDoc && (revisados[activeDoc.id] || activeDoc.revisado_at) ? (
-            <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
-              Lectura confirmada para este documento.
+            <div
+              className={`mt-4 rounded-xl border px-4 py-3 text-sm ${
+                (respuestaGuardada[activeDoc.id] ||
+                  respuestaFromOpciones(activeDoc.opciones_aceptacion)) === 'no'
+                  ? 'border-amber-200 bg-amber-50 text-amber-900'
+                  : 'border-emerald-200 bg-emerald-50 text-emerald-900'
+              }`}
+            >
+              Respuesta registrada:{' '}
+              <strong>
+                {(respuestaGuardada[activeDoc.id] ||
+                  respuestaFromOpciones(activeDoc.opciones_aceptacion)) === 'no'
+                  ? 'No'
+                  : 'Sí'}
+              </strong>
               {activeDoc.tipo_documento === 'acoso' && formacionAcoso[activeDoc.id]
-                ? ' Has solicitado la formación en prevención del acoso.'
+                ? ' · Has solicitado la formación en prevención del acoso.'
                 : ''}
             </div>
           ) : null}
@@ -249,7 +331,7 @@ export default function FirmaPackPortal({
           </h3>
           {!allReviewed ? (
             <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-              Confirma la lectura de todos los documentos antes de solicitar el código SMS.
+              Indica Sí o No en todos los documentos antes de solicitar el código SMS.
             </div>
           ) : null}
           <FirmaFlowClient
@@ -263,8 +345,8 @@ export default function FirmaPackPortal({
             blockedHint={
               !allReviewed
                 ? isPack
-                  ? `Faltan ${documentos.length - reviewedCount} documento(s) por confirmar.`
-                  : 'Confirma la lectura del documento arriba.'
+                  ? `Faltan ${documentos.length - reviewedCount} documento(s) por responder (Sí o No).`
+                  : 'Indica Sí o No en el documento de arriba.'
                 : ''
             }
           />

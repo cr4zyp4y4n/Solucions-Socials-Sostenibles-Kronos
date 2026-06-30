@@ -1,0 +1,86 @@
+import { useCallback, useRef, useState } from 'react';
+import * as XLSX from 'xlsx';
+import { convertPlantillaFileToInnuva, incidenciasToExportRows } from './fdInnuvaConverter';
+import { parseCsvText } from './fdPlantillaParser';
+
+async function readPlantillaRows(file) {
+  const isCsv = /\.csv$/i.test(file.name) || file.type === 'text/csv';
+  if (isCsv) {
+    const text = await file.text();
+    return parseCsvText(text);
+  }
+  const data = await file.arrayBuffer();
+  const workbook = XLSX.read(data, { type: 'array' });
+  if (!workbook.SheetNames.length) throw new Error('El archivo no contiene hojas.');
+  const sheet = workbook.Sheets[workbook.SheetNames[0]];
+  const matrix = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+  return matrix.map((row) => (Array.isArray(row) ? row.map((c) => String(c ?? '')) : []));
+}
+
+export function useInnuvaPersonalConverter() {
+  const fileInputRef = useRef(null);
+  const [sourceFile, setSourceFile] = useState(null);
+  const [result, setResult] = useState(null);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [error, setError] = useState('');
+
+  const processFile = useCallback(async (file) => {
+    setIsProcessing(true);
+    setError('');
+    setResult(null);
+    setSourceFile(file);
+
+    try {
+      const rows = await readPlantillaRows(file);
+      const converted = convertPlantillaFileToInnuva(rows, file.name);
+      if (!converted.incidencias.length) {
+        setError('No se generaron filas. Revisa que la hoja tenga bloques de fijos discontinuos con importes Bruto.');
+      }
+      setResult(converted);
+    } catch (e) {
+      console.error(e);
+      setError(e?.message || 'No se pudo procesar la plantilla.');
+    } finally {
+      setIsProcessing(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  }, []);
+
+  const handleFileChange = useCallback(async (e) => {
+    const file = e.target.files?.[0];
+    if (file) await processFile(file);
+  }, [processFile]);
+
+  const handleSelectFile = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
+
+  const handleReset = useCallback(() => {
+    setSourceFile(null);
+    setResult(null);
+    setError('');
+  }, []);
+
+  const handleDownload = useCallback(() => {
+    if (!result?.incidencias?.length) return;
+    const exportRows = incidenciasToExportRows(result.incidencias);
+    const worksheet = XLSX.utils.json_to_sheet(exportRows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Incidencias');
+    const base = sourceFile?.name?.replace(/\.(xlsx?|csv)$/i, '') || 'plantilla_fd';
+    XLSX.writeFile(workbook, `${base}_INNUVA_INCIDENCIAS.xlsx`);
+  }, [result, sourceFile]);
+
+  return {
+    fileInputRef,
+    sourceFile,
+    result,
+    isProcessing,
+    error,
+    handleFileChange,
+    handleSelectFile,
+    handleReset,
+    handleDownload,
+    hasResult: !!result?.incidencias?.length
+  };
+}

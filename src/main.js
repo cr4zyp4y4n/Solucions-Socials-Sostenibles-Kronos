@@ -18,6 +18,11 @@ const fs = require('node:fs');
 })();
 
 const { app, BrowserWindow, dialog, shell, ipcMain, clipboard } = require('electron');
+const {
+  openEmailDraftInSystem,
+  openMailtoInSystem,
+  getEmailDebugInfo
+} = require('./main/openSystemEmail');
 const https = require('https');
 const http = require('http');
 const zlib = require('node:zlib');
@@ -148,12 +153,44 @@ function setupIpcHandlers() {
     if (typeof url !== 'string' || !url) {
       throw new Error('URL inválida');
     }
-    if (!/^https?:\/\//i.test(url)) {
-      throw new Error('Solo se permiten URLs http/https');
+    const trimmed = url.trim();
+    const isHttp = /^https?:\/\//i.test(trimmed);
+    const isMailto = /^mailto:/i.test(trimmed);
+    if (!isHttp && !isMailto) {
+      throw new Error('Solo se permiten URLs http/https o mailto');
     }
-    await shell.openExternal(url);
+    if (trimmed.length > 12000) {
+      throw new Error('URL demasiado larga');
+    }
+    if (isMailto) {
+      await openMailtoInSystem(trimmed);
+      return true;
+    }
+    await shell.openExternal(trimmed);
     return true;
   });
+
+  ipcMain.handle('open-mailto', async (_event, url) => {
+    await openMailtoInSystem(url);
+    return true;
+  });
+
+  ipcMain.handle('open-email-draft', async (_event, draft) => {
+    try {
+      const result = await openEmailDraftInSystem(draft);
+      return { ok: true, via: result.via, debug: result.debug };
+    } catch (err) {
+      const debug = {
+        ...getEmailDebugInfo(),
+        error: String(err?.message || err || 'Error desconocido'),
+        showInUi: String(process.env.FIRMA_EMAIL_DEBUG || '').trim() === '1'
+      };
+      console.error('[firma-email] Error open-email-draft:', debug);
+      throw err;
+    }
+  });
+
+  ipcMain.handle('get-firma-email-debug', () => getEmailDebugInfo());
 
   /** Firma (portal): API SMS + base de enlaces /firmar desde .env (todas las máquinas, sin localStorage). */
   ipcMain.handle('get-firma-sms-config', () => ({
@@ -688,6 +725,27 @@ const createWindow = () => {
       nodeIntegration: false,
       contextIsolation: true,
     },
+  });
+
+  // mailto: y http(s) deben abrirse en apps del sistema, no en pestañas de Chrome dentro de Electron
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    const u = String(url || '');
+    if (/^mailto:/i.test(u)) {
+      openMailtoInSystem(u).catch((err) => console.warn('openExternal mailto:', err?.message || err));
+      return { action: 'deny' };
+    }
+    if (/^https?:\/\//i.test(u)) {
+      shell.openExternal(u).catch((err) => console.warn('openExternal http:', err?.message || err));
+      return { action: 'deny' };
+    }
+    return { action: 'deny' };
+  });
+
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    if (/^mailto:/i.test(url)) {
+      event.preventDefault();
+      openMailtoInSystem(url).catch((err) => console.warn('will-navigate mailto:', err?.message || err));
+    }
   });
 
   // Configurar Content Security Policy (muy permisiva para permitir Tesseract workers)

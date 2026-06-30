@@ -13,6 +13,12 @@ const FILTERS = [
   { id: 'cancelado', label: 'Cancelados' }
 ];
 
+const PACK_FILTERS = [
+  { id: 'todos', label: 'Todos los packs' },
+  { id: 'contratacion', label: 'Contratación' },
+  { id: 'baja', label: 'Bajas' }
+];
+
 export default function FirmaEnviosPanel({
   envios,
   loading,
@@ -22,6 +28,7 @@ export default function FirmaEnviosPanel({
   onOpenLink,
   onWhatsApp,
   onEmail,
+  onNotificarBaja,
   onAuditoria,
   onVerFirmados,
   onCancelar
@@ -29,10 +36,11 @@ export default function FirmaEnviosPanel({
   const { colors } = useTheme();
   const [search, setSearch] = useState('');
   const [estadoFilter, setEstadoFilter] = useState('todos');
+  const [packFilter, setPackFilter] = useState('todos');
 
   const filtered = useMemo(
-    () => filterEnvios(envios, { search, estadoFilter }),
-    [envios, search, estadoFilter]
+    () => filterEnvios(envios, { search, estadoFilter, packFilter }),
+    [envios, search, estadoFilter, packFilter]
   );
 
   return (
@@ -74,6 +82,17 @@ export default function FirmaEnviosPanel({
             </FirmaChip>
           ))}
         </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          {PACK_FILTERS.map((f) => (
+            <FirmaChip
+              key={f.id}
+              active={packFilter === f.id}
+              onClick={() => setPackFilter(f.id)}
+            >
+              {f.label}
+            </FirmaChip>
+          ))}
+        </div>
       </div>
 
       {loading ? (
@@ -99,6 +118,7 @@ export default function FirmaEnviosPanel({
                 onOpenLink={onOpenLink}
                 onWhatsApp={onWhatsApp}
                 onEmail={onEmail}
+                onNotificarBaja={onNotificarBaja}
                 onAuditoria={onAuditoria}
                 onVerFirmados={onVerFirmados}
                 onCancelar={onCancelar}

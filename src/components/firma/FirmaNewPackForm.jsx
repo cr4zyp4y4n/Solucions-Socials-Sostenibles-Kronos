@@ -4,12 +4,15 @@ import { useTheme } from '../ThemeContext';
 import holdedEmployeesService from '../../services/holdedEmployeesService';
 import {
   FIRMA_DOCUMENTO_GRUPOS,
+  FIRMA_PACK_KINDS,
   getFirmaDocPrepHint
 } from '../../constants/firmaDocumentos';
 import { getFirmaEmpresaNombre } from '../../constants/firmaEmpresas';
 import { FirmaButton, FirmaCard, FirmaFieldLabel, FirmaInput, FirmaSelect, FirmaTextarea } from './FirmaUi';
 
 export default function FirmaNewPackForm({
+  packKind,
+  onPackKindChange,
   selectedEntity,
   onEntityChange,
   holdedEmployees,
@@ -29,9 +32,40 @@ export default function FirmaNewPackForm({
   saving
 }) {
   const { colors } = useTheme();
+  const esBaja = packKind === 'baja';
 
   return (
     <div style={{ display: 'grid', gap: 18, maxWidth: 720 }}>
+      <FirmaCard>
+        <div style={{ fontSize: 17, fontWeight: 800, marginBottom: 4 }}>Tipo de pack</div>
+        <p style={{ margin: '0 0 12px', fontSize: 13, color: colors.textSecondary, lineHeight: 1.45 }}>
+          {esBaja
+            ? 'Notificación de fin de relación laboral con acuse en el portal. Tras crear el envío, envía el enlace por WhatsApp y por email (doble vía registrada en auditoría).'
+            : 'Documentación de alta: PRL, protocolos y VRP con un solo enlace al portal.'}
+        </p>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          {FIRMA_PACK_KINDS.map((kind) => (
+            <button
+              key={kind.id}
+              type="button"
+              onClick={() => onPackKindChange(kind.id)}
+              style={{
+                padding: '10px 14px',
+                borderRadius: 10,
+                border: `2px solid ${packKind === kind.id ? colors.primary : colors.border}`,
+                background: packKind === kind.id ? `${colors.primary}12` : colors.surface,
+                color: packKind === kind.id ? colors.primary : colors.text,
+                fontWeight: 800,
+                fontSize: 13,
+                cursor: 'pointer'
+              }}
+            >
+              {kind.label}
+            </button>
+          ))}
+        </div>
+      </FirmaCard>
+
       <FirmaCard>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
           <Users size={20} color={colors.primary} />
@@ -101,7 +135,9 @@ export default function FirmaNewPackForm({
       <FirmaCard>
         <div style={{ fontSize: 17, fontWeight: 800, marginBottom: 4 }}>Documentos del pack</div>
         <p style={{ margin: '0 0 16px', fontSize: 13, color: colors.textSecondary, lineHeight: 1.45 }}>
-          Por defecto se generan desde Holded. Solo sube PDF propio si necesitas sustituir uno (p. ej. contrato de asesoría).
+          {esBaja
+            ? 'Por defecto se genera la carta de baja desde Holded. Sube PDF propio si la asesoría te envía el documento definitivo.'
+            : 'Por defecto se generan desde Holded. Solo sube PDF propio si necesitas sustituir uno (p. ej. contrato de asesoría).'}
         </p>
 
         <div style={{ display: 'grid', gap: 10, marginBottom: 14 }}>
@@ -110,20 +146,22 @@ export default function FirmaNewPackForm({
             <FirmaInput
               value={envioForm.nombre}
               onChange={(e) => onEnvioFormChange({ nombre: e.target.value })}
-              placeholder="Pack de contratación"
+              placeholder={esBaja ? 'Pack de baja / fin de relación' : 'Pack de contratación'}
             />
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 }}>
+            {!esBaja ? (
+              <div>
+                <FirmaFieldLabel>Fecha inicio</FirmaFieldLabel>
+                <FirmaInput
+                  type="date"
+                  value={envioForm.fechaInicio}
+                  onChange={(e) => onEnvioFormChange({ fechaInicio: e.target.value })}
+                />
+              </div>
+            ) : null}
             <div>
-              <FirmaFieldLabel>Fecha inicio</FirmaFieldLabel>
-              <FirmaInput
-                type="date"
-                value={envioForm.fechaInicio}
-                onChange={(e) => onEnvioFormChange({ fechaInicio: e.target.value })}
-              />
-            </div>
-            <div>
-              <FirmaFieldLabel>Fecha fin</FirmaFieldLabel>
+              <FirmaFieldLabel>{esBaja ? 'Fecha efecto baja' : 'Fecha fin'}</FirmaFieldLabel>
               <FirmaInput
                 type="date"
                 value={envioForm.fechaFin}
@@ -263,11 +301,14 @@ export default function FirmaNewPackForm({
         </div>
 
         <div style={{ marginTop: 14 }}>
-          <FirmaFieldLabel>Notas internas</FirmaFieldLabel>
+          <FirmaFieldLabel>
+            {esBaja ? 'Motivo u observaciones (opcional, en la carta)' : 'Notas internas'}
+          </FirmaFieldLabel>
           <FirmaTextarea
             rows={2}
             value={envioForm.notasInternas}
             onChange={(e) => onEnvioFormChange({ notasInternas: e.target.value })}
+            placeholder={esBaja ? 'Ej. fin de contrato temporal, dimisión, despido…' : ''}
           />
         </div>
 
@@ -278,7 +319,11 @@ export default function FirmaNewPackForm({
           style={{ width: '100%', marginTop: 18, padding: '12px 16px' }}
         >
           <Plus size={16} />
-          {saving ? 'Generando PDFs y enlace…' : 'Generar pack y enlace'}
+          {saving
+            ? 'Generando PDFs y enlace…'
+            : esBaja
+              ? 'Generar notificación de baja y enlace'
+              : 'Generar pack y enlace'}
         </FirmaButton>
       </FirmaCard>
     </div>

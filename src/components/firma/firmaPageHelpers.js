@@ -1,4 +1,49 @@
-import { getFirmaDocumentoLabel } from '../../constants/firmaDocumentos';
+import {
+  envioEsPackBaja,
+  getFirmaDocumentoLabel,
+  getFirmaDefaultPack
+} from '../../constants/firmaDocumentos';
+
+/** Contacto y firma en emails/WhatsApp de Firma. */
+export const FIRMA_EMAIL_CONTACTO = 'administracio@solucionssocials.org';
+export const FIRMA_EMAIL_FIRMA = 'EI Solucions Socials Sostenibles';
+
+export function buildFirmaEmailBody(envio, { envioLabel }) {
+  const trabajador = String(envio?.trabajador?.nombre || '').trim();
+  const link = String(envio?.portal_link || '').trim();
+  const saludo = trabajador ? `Estimado/a ${trabajador},` : 'Estimado/a,';
+  const contacto = `Si tiene alguna duda, contacte con ${FIRMA_EMAIL_CONTACTO}.`;
+  const cierre = ['Atentamente,', FIRMA_EMAIL_FIRMA];
+
+  if (envioEsPackBaja(envio)) {
+    return [
+      saludo,
+      '',
+      'Le comunicamos la finalización de su relación laboral con nuestra organización.',
+      'Para dar acuse de recibo de esta notificación, acceda al portal seguro mediante el enlace siguiente (verificación por SMS):',
+      '',
+      link,
+      '',
+      contacto,
+      '',
+      ...cierre
+    ].join('\n');
+  }
+
+  const label = String(envioLabel || 'documentación').trim();
+  return [
+    saludo,
+    '',
+    `Tiene ${label} pendiente de firma en nuestro portal seguro.`,
+    'Acceda mediante el enlace siguiente (verificación por SMS):',
+    '',
+    link,
+    '',
+    contacto,
+    '',
+    ...cierre
+  ].join('\n');
+}
 
 export const initialEnvioForm = {
   nombre: 'Pack de contratación',
@@ -6,6 +51,22 @@ export const initialEnvioForm = {
   fechaFin: '',
   notasInternas: ''
 };
+
+export function initialEnvioFormForPack(packKind = 'contratacion') {
+  if (packKind === 'baja') {
+    return {
+      nombre: 'Pack de baja / fin de relación',
+      fechaInicio: '',
+      fechaFin: '',
+      notasInternas: ''
+    };
+  }
+  return { ...initialEnvioForm };
+}
+
+export function defaultPackItemsForKind(packKind = 'contratacion') {
+  return getFirmaDefaultPack(packKind).map((tipo) => newPackItem(tipo));
+}
 
 export function newPackItem(tipoDocumento) {
   return {
@@ -46,17 +107,62 @@ export function formatFirmaDate(iso) {
   return d.toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' });
 }
 
+export function canalesNotificacionBaja(envio) {
+  const whatsapp = Boolean(envio?.link_whatsapp_at);
+  const email = Boolean(envio?.link_email_at);
+  return { whatsapp, email, completo: whatsapp && email };
+}
+
 export function buildFirmaTimeline(envio) {
   if (!envio) return [];
   const numDocs = envio.documentos?.length || 1;
+  const esBaja = envioEsPackBaja(envio);
+  const canales = canalesNotificacionBaja(envio);
+
   const rows = [
-    { key: 'creado', title: 'Envío creado en Kronos', at: envio.created_at || null },
-    {
+    { key: 'creado', title: 'Envío creado en Kronos', at: envio.created_at || null }
+  ];
+
+  if (esBaja) {
+    rows.push(
+      {
+        key: 'whatsapp',
+        title: 'Notificación enviada por WhatsApp',
+        at: envio.link_whatsapp_at || null,
+        note: 'Se registra al abrir WhatsApp desde Kronos con el enlace.'
+      },
+      {
+        key: 'email',
+        title: 'Notificación enviada por email',
+        at: envio.link_email_at || null,
+        note: 'Se registra al abrir el cliente de correo desde Kronos.'
+      }
+    );
+    if (canales.completo) {
+      rows.push({
+        key: 'notif_dual',
+        title: 'Doble vía de notificación completada',
+        at: envio.link_email_at && envio.link_whatsapp_at
+          ? new Date(
+            Math.max(
+              new Date(envio.link_email_at).getTime(),
+              new Date(envio.link_whatsapp_at).getTime()
+            )
+          ).toISOString()
+          : null,
+        note: 'WhatsApp y email registrados en auditoría.'
+      });
+    }
+  } else {
+    rows.push({
       key: 'compartido',
       title: 'Enlace compartido (WhatsApp, email, copiar…)',
       at: envio.link_compartido_at || null
-    },
-    { key: 'portal', title: 'Primera visita al portal', at: envio.portal_abierto_at || null },
+    });
+  }
+
+  rows.push(
+    { key: 'portal', title: 'Primera visita al portal', at: envio.portal_abierto_at || null, note: 'Solo cuando el navegador confirma la carga (no bots SSR). Detalle en Auditoría.' },
     {
       key: 'otp',
       title: 'SMS con código OTP',
@@ -65,10 +171,10 @@ export function buildFirmaTimeline(envio) {
     },
     {
       key: 'firmado',
-      title: numDocs > 1 ? `Pack firmado (${numDocs} documentos)` : 'Documento firmado',
+      title: numDocs > 1 ? `Pack firmado (${numDocs} documentos)` : 'Documento firmado / acuse',
       at: envio.firmado_at || null
     }
-  ];
+  );
   if (envio.estado === 'cancelado') {
     rows.push({
       key: 'cancel',
@@ -101,13 +207,15 @@ export function documentosPackOrdenados(envio) {
   return [...(envio?.documentos || [])].sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0));
 }
 
-export function filterEnvios(envios, { search = '', estadoFilter = 'todos' } = {}) {
+export function filterEnvios(envios, { search = '', estadoFilter = 'todos', packFilter = 'todos' } = {}) {
   const q = String(search || '').trim().toLowerCase();
   return (envios || []).filter((envio) => {
     const flow = flowEstadoFirma(envio);
     if (estadoFilter === 'firmado' && flow.key !== 'firmado') return false;
     if (estadoFilter === 'cancelado' && flow.key !== 'cancelado') return false;
     if (estadoFilter === 'activo' && (flow.key === 'firmado' || flow.key === 'cancelado')) return false;
+    if (packFilter === 'baja' && !envioEsPackBaja(envio)) return false;
+    if (packFilter === 'contratacion' && envioEsPackBaja(envio)) return false;
     if (!q) return true;
     const nombre = String(envio.trabajador?.nombre || '').toLowerCase();
     const dni = String(envio.trabajador?.dni || '').toLowerCase();

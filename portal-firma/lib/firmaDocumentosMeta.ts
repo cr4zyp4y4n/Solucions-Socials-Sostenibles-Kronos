@@ -2,7 +2,10 @@
 
 export type DocOpciones = {
   lectura_confirmada?: boolean;
+  /** Respuesta explícita del trabajador en el portal (sí o no). */
+  respuesta?: 'si' | 'no';
   formacion_acoso?: boolean;
+  confirmado_at?: string;
 };
 
 export type FirmaDocMeta = {
@@ -83,8 +86,9 @@ const META: Record<string, FirmaDocMeta> = {
     stampDeclaration: 'Acuse de recibo formación PRL'
   },
   baja: {
-    readStatement: 'He leído el documento y acepto su contenido.',
-    stampDeclaration: 'Aceptación documento fin de relación laboral'
+    readStatement:
+      'He recibido la notificación de fin de relación laboral, he leído su contenido y doy acuse de recibo mediante este procedimiento verificado por SMS.',
+    stampDeclaration: 'Acuse de recibo — fin de relación laboral'
   },
   otro: {
     readStatement: 'He leído el documento y acepto su contenido.',
@@ -100,6 +104,100 @@ const DEFAULT_META: FirmaDocMeta = {
 export function getFirmaDocMeta(tipo?: string | null): FirmaDocMeta {
   const key = String(tipo || '').trim();
   return META[key] || DEFAULT_META;
+}
+
+/** Texto mostrado en el portal si el trabajador marca «No». */
+export function getReadStatementNo(tipo?: string | null): string {
+  const key = String(tipo || '').trim();
+  switch (key) {
+    case 'vrp_consentimiento':
+      return 'No presto mi consentimiento para la realización del reconocimiento médico / vigilancia de la salud (art. 22 LPRL).';
+    case 'vrp_renuncia':
+      return 'No renuncio al reconocimiento médico (mantengo o deseo el VRP).';
+    case 'baja':
+      return 'He leído la notificación pero no doy acuse de recibo en los términos indicados.';
+    case 'acoso':
+      return 'No acepto / no me comprometo con el protocolo de acoso en los términos indicados.';
+    case 'riesgos_laborales':
+      return 'No confirmo haber recibido o aceptado la información RPT en los términos indicados.';
+    case 'epis':
+      return 'No confirmo el recibo o la información de EPIS en los términos indicados.';
+    case 'contrato':
+      return 'No acepto el contrato de trabajo en los términos indicados.';
+    default:
+      return 'No acepto la declaración del documento en los términos indicados.';
+  }
+}
+
+export function normalizeRespuestaAceptacion(opciones?: DocOpciones | null): 'si' | 'no' | null {
+  if (!opciones) return null;
+  if (opciones.respuesta === 'si' || opciones.respuesta === 'no') return opciones.respuesta;
+  if (opciones.lectura_confirmada === true) return 'si';
+  if (opciones.lectura_confirmada === false) return 'no';
+  return null;
+}
+
+/** Línea explícita «Sí» en el sello del PDF, según lo que el trabajador marca en el portal. */
+export function buildAceptacionSiLine(tipoDocumento: string): string {
+  const tipo = String(tipoDocumento || '').trim();
+  switch (tipo) {
+    case 'vrp_consentimiento':
+      return 'Consentimiento para reconocimiento médico (art. 22 LPRL): Sí';
+    case 'vrp_renuncia':
+      return 'Renuncia expresa al reconocimiento médico (art. 22 LPRL): Sí';
+    case 'baja':
+      return 'Acuse de recibo de la notificación de fin de relación: Sí';
+    case 'acoso':
+      return 'Protocolo de acoso recibido y aceptado (art. 18 LPRL): Sí';
+    case 'riesgos_laborales':
+      return 'Información RPT recibida y aceptada (art. 18 LPRL): Sí';
+    case 'epis':
+      return 'Recibo e información de EPIS confirmados: Sí';
+    case 'contrato':
+      return 'Contrato de trabajo leído y aceptado: Sí';
+    case 'pdp':
+      return 'Información RGPD leída y aceptada: Sí';
+    case 'confidencialidad':
+      return 'Compromiso de confidencialidad aceptado: Sí';
+    default:
+      return 'Declaración del documento aceptada en portal: Sí';
+  }
+}
+
+/** Línea explícita «No» en el sello del PDF. */
+export function buildAceptacionNoLine(tipoDocumento: string): string {
+  const tipo = String(tipoDocumento || '').trim();
+  switch (tipo) {
+    case 'vrp_consentimiento':
+      return 'Consentimiento para reconocimiento médico (art. 22 LPRL): No';
+    case 'vrp_renuncia':
+      return 'Renuncia expresa al reconocimiento médico (art. 22 LPRL): No';
+    case 'baja':
+      return 'Acuse de recibo de la notificación de fin de relación: No';
+    case 'acoso':
+      return 'Protocolo de acoso (art. 18 LPRL): No aceptado';
+    case 'riesgos_laborales':
+      return 'Información RPT (art. 18 LPRL): No aceptada';
+    case 'epis':
+      return 'Recibo e información de EPIS: No confirmado';
+    case 'contrato':
+      return 'Contrato de trabajo: No aceptado';
+    case 'pdp':
+      return 'Información RGPD: No aceptada';
+    case 'confidencialidad':
+      return 'Compromiso de confidencialidad: No aceptado';
+    default:
+      return 'Declaración del documento en portal: No';
+  }
+}
+
+export function buildAceptacionRespuestaLine(
+  tipoDocumento: string,
+  respuesta: 'si' | 'no'
+): string {
+  return respuesta === 'no'
+    ? buildAceptacionNoLine(tipoDocumento)
+    : buildAceptacionSiLine(tipoDocumento);
 }
 
 export function buildStampLinesForDoc({
@@ -138,8 +236,10 @@ export function buildStampLinesForDoc({
     : smsVerificado
       ? 'Verificación SMS (OTP): completada'
       : '';
+  const respuesta = normalizeRespuestaAceptacion(opciones);
   const lines = [
     meta.stampDeclaration,
+    respuesta ? buildAceptacionRespuestaLine(tipoDocumento, respuesta) : '',
     trabajadorNombre ? `Trabajador: ${trabajadorNombre}` : '',
     trabajadorDni ? `DNI: ${trabajadorDni}` : '',
     dniConfirmadoEnPortal ? 'DNI confirmado en portal antes del SMS: Sí' : '',
@@ -151,7 +251,9 @@ export function buildStampLinesForDoc({
   ].filter(Boolean);
 
   if (tipoDocumento === 'acoso' && opciones?.formacion_acoso) {
-    lines.splice(3, 0, 'Solicita formación PREVENCION DEL ACOSO: Sí');
+    const idx = lines.findIndex((l) => l.includes('Protocolo de acoso'));
+    const insertAt = idx >= 0 ? idx + 1 : 2;
+    lines.splice(insertAt, 0, 'Solicita formación PREVENCION DEL ACOSO: Sí');
   }
 
   return lines;
