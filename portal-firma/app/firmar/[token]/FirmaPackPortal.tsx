@@ -131,9 +131,9 @@ export default function FirmaPackPortal({
   const reviewedCount = documentos.filter((d) => revisados[d.id] || d.revisado_at || d.firmado_at).length;
 
   return (
-    <div className="grid gap-6 overflow-x-hidden lg:grid-cols-[300px,1fr]">
+    <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,300px)_minmax(0,1fr)]">
       {isPack ? (
-        <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+        <section className="min-w-0 rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
           <h2 className="mb-1 text-lg font-black">Documentos del pack</h2>
           <p className="mb-4 text-xs text-zinc-500">
             Indica Sí o No en cada documento ({reviewedCount}/{documentos.length}). Después podrás firmar
@@ -182,14 +182,14 @@ export default function FirmaPackPortal({
         </section>
       ) : null}
 
-      <section className="space-y-4">
-        <div className="overflow-hidden rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+      <section className="min-w-0 space-y-4">
+        <div className="min-w-0 rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
           <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0">
               <h2 className="text-xl font-black">
                 {activeDoc ? getFirmaDocumentoLabel(activeDoc.tipo_documento) : 'Documento'}
               </h2>
-              <p className="truncate text-sm text-zinc-500">{activeDoc?.file_name || ''}</p>
+              <p className="break-words text-sm text-zinc-500">{activeDoc?.file_name || ''}</p>
             </div>
             {pdfUrl ? (
               <a
@@ -204,22 +204,17 @@ export default function FirmaPackPortal({
           </div>
 
           {pdfUrl ? (
-            <>
-              <div className="mb-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 md:hidden">
-                En móvil, abre el PDF en una pestaña para verlo correctamente antes de responder Sí o No.
-              </div>
-              <object
-                data={pdfUrl}
-                type="application/pdf"
-                className="hidden h-[55vh] w-full rounded-xl border border-zinc-200 bg-white md:block"
-              >
-                <iframe
-                  src={pdfUrl}
-                  title={activeDoc?.file_name || 'Documento'}
-                  className="h-[55vh] w-full rounded-xl border"
-                />
-              </object>
-            </>
+            <object
+              data={pdfUrl}
+              type="application/pdf"
+              className="h-[55vh] min-w-0 w-full rounded-xl border border-zinc-200 bg-white"
+            >
+              <iframe
+                src={pdfUrl}
+                title={activeDoc?.file_name || 'Documento'}
+                className="h-[55vh] min-w-0 w-full rounded-xl border"
+              />
+            </object>
           ) : (
             <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-5 text-sm text-zinc-600">
               No se ha podido cargar el PDF.

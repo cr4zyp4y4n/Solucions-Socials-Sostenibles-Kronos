@@ -69,8 +69,8 @@ export default async function FirmaTokenPage({ params }: TokenPageProps) {
   const canAttempt = documentos.some((d) => d.storage_path) && !isExpired && !isRevoked;
 
   return (
-    <main className="min-h-screen bg-zinc-50 px-4 py-8 text-zinc-900 sm:px-6">
-      <div className="mx-auto max-w-6xl">
+    <main className="min-h-screen overflow-x-hidden bg-zinc-50 px-4 py-8 text-zinc-900 sm:px-6">
+      <div className="mx-auto max-w-6xl min-w-0">
         <div className="mb-6 rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
           <div className="mb-2 text-sm font-bold uppercase tracking-[0.2em] text-emerald-700">Portal de Firma</div>
           <h1 className="mb-2 text-3xl font-black tracking-tight">{titulo}</h1>
@@ -81,8 +81,8 @@ export default async function FirmaTokenPage({ params }: TokenPageProps) {
           </p>
         </div>
 
-        <div className="mb-6 grid gap-6 lg:grid-cols-[360px,1fr]">
-          <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
+        <div className="mb-6 grid min-w-0 gap-6 lg:grid-cols-[minmax(0,360px)_minmax(0,1fr)]">
+          <section className="min-w-0 rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
             <h2 className="mb-4 text-xl font-black">Datos del envío</h2>
             <dl className="space-y-3 text-sm">
               <div>
@@ -149,7 +149,7 @@ export default async function FirmaTokenPage({ params }: TokenPageProps) {
             </div>
           </section>
 
-          <div>
+          <div className="min-w-0">
             <FirmaPackPortal
               token={token}
               documentos={documentos.map((d) => ({
