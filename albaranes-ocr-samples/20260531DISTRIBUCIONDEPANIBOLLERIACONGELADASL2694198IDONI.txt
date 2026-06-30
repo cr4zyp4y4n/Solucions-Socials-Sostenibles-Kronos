@@ -1,0 +1,40 @@
+Distribución de pan i bolleria congelada S.L.
+Camí de les fabriques (Esquina C\ de la Farinera)
+08730 Santa Margarida i els Monjos (Barcelona), Spain
+Phone: +34 93-819-98-08, Fax: +34 93-817-33-10
+Nif: B62303201
+Nº Factura   2694198
+Fecha   31/05/2026
+Vencimiento   05/07/2026
+Ref. Cliente   23858
+Establecimiento   BOTIGA
+Cliente   EMPRESA D´INSERCIO SOLUCIONS SOCIALS SOS
+Dirección   C/ FONTHONRADA 2 BAIXOS
+Población   BARCELONA
+CIF   F67499186
+Forma de Pago   MENSUAL, TRANSFERENCIA
+Nº Cuenta   ES7501825424530201520926
+Nº Pedido   Nº Albarán   Fecha   BI 4%   BI 10%   IVA 4%   IVA 10%   TOTAL
+455737   29/05/2026   17,02   93,18   0,68   9,32   120,20 €
+455739   29/05/2026   0,00   36,94   0,00   3,69   40,63 €
+BI 4%   BI 10%   IVA 4%   IVA 10%   TOTAL
+17,02   130,12   0,68   13,01   160,83 €
+Inscrita en el Registro Mercantil de Barcelona, tomo 32770, folio 150, hoja B 216724, inscripción 1 .R.S.I.P.A.C. 20-09462/CAT
+
+Distribución de pan i bolleria congelada S.L.
+Camí de les fabriques (Esquina C\ de la Farinera)
+08730 Santa Margarida i els Monjos (Barcelona), Spain
+Phone: +34 93-819-98-08, Fax: +34 93-817-33-10
+Nif: B62303201
+Nº Albaran   455737
+Fecha   29/05/2026 17:13:22
+Ref. Cliente   23858
+Cliente   BOTIGA
+Dirección   AV MISTRAL , 20 BIS BXOS
+Población   08031 BARCELONA
+Nº Pedido
+Ref.   Concepto   P.U.   U.C.   Cajas   Base Imponible
+4352   PIRULETA GAMBA Y COCO-CILANTRO 18G 56U   0,4790   56   1   26,82 €
+5092   BROCHETAS YAKITORI 25G 70UD   0,4740   70   2   66,36 €
+5353   Focaccia Tradizionale 30x40 600g 4ud   4,2540   4   1   17,02 €
+Inscrita en el Registro Mercantil de Barcelona, tomo 32770, folio 150, hoja B 216724, inscripción 1 .R.S.I.P.A.C. 20-09462/CAT

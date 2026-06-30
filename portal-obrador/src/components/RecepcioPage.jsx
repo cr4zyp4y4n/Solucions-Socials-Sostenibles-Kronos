@@ -11,6 +11,7 @@ import {
   pdfFirstPagePreviewUrl,
   isPdfFile
 } from '../utils/obradorOcrFromFile';
+import OcrDebugPanel, { buildOcrDebugReport } from './OcrDebugPanel';
 
 const ESTATS = [
   { value: 'bo', label: 'Bo' },
@@ -33,6 +34,7 @@ export default function RecepcioPage({ userEmail }) {
   const [proveidors, setProveidors] = useState([]);
   const [form, setForm] = useState(formInicial);
   const [ocrDraft, setOcrDraft] = useState(null);
+  const [ocrDebug, setOcrDebug] = useState(null);
   const [ocrProcessing, setOcrProcessing] = useState(false);
   const [ocrProgress, setOcrProgress] = useState(0);
   const [previewUrl, setPreviewUrl] = useState('');
@@ -88,6 +90,7 @@ export default function RecepcioPage({ userEmail }) {
     setOcrProcessing(true);
     setOcrProgress(0);
     setOcrDraft(null);
+    setOcrDebug(null);
 
     try {
       if (isPdfFile(file)) {
@@ -97,13 +100,22 @@ export default function RecepcioPage({ userEmail }) {
         setPreviewUrl(URL.createObjectURL(file));
       }
 
-      const text = await ocrTextFromAlbaranFile(file, {
+      const ocrResult = await ocrTextFromAlbaranFile(file, {
         onProgress: setOcrProgress
       });
+      const text = ocrResult?.text ?? '';
+      const ocrMeta = ocrResult?.meta ?? {};
 
       const parsed = parseAlbaranText(text);
       const draft = buildRecepcioDraftFromParsed(parsed, proveidors);
+      const report = buildOcrDebugReport({
+        fileName: file.name,
+        ocrMeta,
+        ocrText: text,
+        parsed
+      });
       setOcrDraft(draft);
+      setOcrDebug({ report, text, meta: ocrMeta });
       setForm({
         ...formInicial(),
         id_proveidor: draft.id_proveidor || '',
@@ -224,8 +236,15 @@ export default function RecepcioPage({ userEmail }) {
         }}>
           <strong>Borrador OCR</strong> — confirma o corregeix.
           <div>Parser: {ocrDraft._parsed.parserId} · {ocrDraft._parsed.confiança}</div>
+          {ocrDraft._parsed.lotProveidor ? (
+            <div>Lot / albarà: {ocrDraft._parsed.lotProveidor}</div>
+          ) : (
+            <div style={{ color: colors.error }}>Lot / albarà: no detectat — obre el log OCR</div>
+          )}
         </div>
       )}
+
+      <OcrDebugPanel ocrDebug={ocrDebug} />
 
       {successMsg && (
         <div style={{ padding: 12, marginBottom: 16, borderRadius: 8, background: `${colors.success}20`, color: colors.success }}>

@@ -1,0 +1,29 @@
+BEGUDES   DEL   VALLES   S.A   EMP.D'INSER,SOL.SOC.SOT.   SCCL
+SOLUSOCSOSTENIBLES   MISTRAL
+CR   DE   LA   TERRA   0038   CL   FONT   HONRADA   0002
+08227   TERRASSA   08004   BARCELONA
+BARCELONA   BARCELONA   03/18
+Tel:   937/312000   Fax:   937/312422
+FECHA   FACTURA   CLI.   PRE   N.I.F
+16/06/26   07   2026016390   15322   ALI   F67499186
+ALBA.   F.ALBA.   CODIGO   Y   DESCRIPCION   CANT.   UN.   PESO/   PRECIO   DTO   TOTAL   %IVA   IMPORTE
+UNIDADES   UNITARIO
+-----   --------   -----   -------------------------------------------------   ----------   ---   ----------   -----------   ----------   ------   ----------
+037099   15/06/26   04602   *FONT   VELLA   1/3   RET   NEW   (24   U)   6   Caj   ,000   15,25700   37,532   10,00   54,01
+04602   *FONT   VELLA   1/3   RET   NEW   (24   U)   6   Env   ,000   6,18600   10,00   37,12
+42591   PATATA   DE   OLOT   RELLENA   DE   CARNE   50U   1   Caj   ,000   45,84600   4,126   10,00   41,72
+42996   PATATA   S.SALLENT   OLOT   RELL   QUES/CEB   1   Caj   ,000   46,85700   3,749   10,00   43,11
+45903   PATATA   S.SALLENT   OLOT   DE   ALCACHOFA   1   Caj   ,000   53,28600   4,263   10,00   49,02
+90200   SERVICIO   LOGISTICO   1   Caj   ,000   3,49000   21,00   3,49
+191,35   Liq.   37,12   Env.   0,00   Pza.
+TOTAL   PUNTO   VERDE   :   0,06   I.RECICLAJE   0,280
+Base   IVA%   Importe   %RE   Importe   TOTAL   FACTURA
+0,00   0,00
+0,00   2,00   0,00   0,00   0,00   252,07   eur
+0,00   4,00   0,00   0,00   0,00
+0,00   5,00   0,00   0,00   0,00
+0,00   7,50   0,00   0,00   0,00
+225,32   10,00   22,53   0,00   0,00
+3,49   21,00   0,73   0,00   0,00
+IBAN:   ES26   0049   1802   0821   1049   2260   BIC:   BSCHESMM
+R.M   BCN.TOM   21113,LLIBRE   7489,FULL   B17003,FOL154   RGS:40.035662/B   C.I.F.:   A59801696

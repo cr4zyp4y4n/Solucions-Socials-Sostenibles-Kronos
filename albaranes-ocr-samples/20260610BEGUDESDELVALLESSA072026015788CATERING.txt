@@ -1,0 +1,26 @@
+BEGUDES   DEL   VALLES   S.A   EMP.D'INSER,SOL.SOC.SOT.   SCCL
+SOLUCIONS   SOCIALS   SOSTENIBLES
+CR   DE   LA   TERRA   0038   CL   FONT   HONRADA   0002
+08227   TERRASSA   08004   Barcelona
+BARCELONA   BARCELONA   01/22
+Tel:   937/312000   Fax:   937/312422
+FECHA   FACTURA   CLI.   PRE   N.I.F
+10/06/26   07   2026015788   11956   ALI   F67499186
+ALBA.   F.ALBA.   CODIGO   Y   DESCRIPCION   CANT.   UN.   PESO/   PRECIO   DTO   TOTAL   %IVA   IMPORTE
+UNIDADES   UNITARIO
+-----   --------   -----   -------------------------------------------------   ----------   ---   ----------   -----------   ----------   ------   ----------
+035744   09/06/26   06823   *YOSOY   SOJA   0%   AZUCAR   BRIK   1LT   (6   U   8   Caj   ,000   8,79000   10,548   10,00   59,77
+16107   LECHE   CELTA   HOSTELERIA   PET   1,5LT   (6   4   Caj   ,000   12,76400   16,848   4,00   34,21
+90200   SERVICIO   LOGISTICO   3   Caj   ,000   3,49000   21,00   10,47
+104,45   Liq.   0,00   Env.   0,00   Pza.
+TOTAL   PUNTO   VERDE   :   0,98   I.RECICLAJE   0,320
+Base   IVA%   Importe   %RE   Importe   TOTAL   FACTURA
+0,00   0,00
+0,00   2,00   0,00   0,00   0,00   115,39   eur
+34,81   4,00   1,39   0,00   0,00
+0,00   5,00   0,00   0,00   0,00
+0,00   7,50   0,00   0,00   0,00
+60,47   10,00   6,05   0,00   0,00
+10,47   21,00   2,20   0,00   0,00
+IBAN:   ES26   0049   1802   0821   1049   2260   BIC:   BSCHESMM
+R.M   BCN.TOM   21113,LLIBRE   7489,FULL   B17003,FOL154   RGS:40.035662/B   C.I.F.:   A59801696

@@ -1,0 +1,31 @@
+BEGUDES   DEL   VALLES   S.A   EMP.D'INSER,SOL.SOC.SOT.   SCCL
+SOLUCIONS   SOCIALS   SOSTENIBLES
+CR   DE   LA   TERRA   0038   CL   FONT   HONRADA   0002
+08227   TERRASSA   08004   Barcelona
+BARCELONA   BARCELONA   01/22
+Tel:   937/312000   Fax:   937/312422
+FECHA   FACTURA   CLI.   PRE   N.I.F
+09/06/26   07   2026015649   11956   ALI   F67499186
+ALBA.   F.ALBA.   CODIGO   Y   DESCRIPCION   CANT.   UN.   PESO/   PRECIO   DTO   TOTAL   %IVA   IMPORTE
+UNIDADES   UNITARIO
+-----   --------   -----   -------------------------------------------------   ----------   ---   ----------   -----------   ----------   ------   ----------
+035178   08/06/26   00060   FONT   VELLA   1500   PACK   (6   U)   5   Caj   ,000   6,37000   19,747   10,00   12,10
+00205   S.   MIGUEL   LATA   33   CL.   (24   U)   8   Caj   ,000   28,39000   124,916   21,00   102,20
+02301   COCA   COLA   LATA   (24   U)   2   Caj   ,000   37,44000   48,672   21,00   26,21
+02307   *FANTA   LATA   LIMON   (24   U)   2   Caj   ,000   37,68000   46,723   21,00   28,64
+02308   *FANTA   LATA   NARANJA   (24   U)   2   Caj   ,000   37,68000   46,723   21,00   28,64
+02409   *JUVER   850ML   MELOCOTON   CRISTAL   SR   (   3   Caj   ,000   32,12800   40,481   21,00   55,90
+02426   *JUVER   850ML   NARANJA   CRISTAL   SR   (12   3   Caj   ,000   32,12800   40,481   21,00   55,90
+03145   *ESTRELLA   I   GARRAFA   5LT   PACK   (4   U)   2   Caj   ,000   6,66200   5,596   10,00   7,73
+317,32   Liq.   0,00   Env.   0,00   Pza.
+TOTAL   PUNTO   VERDE   :   2,34   TOTAL   IBEE:   2,37600   I.RECICLAJE:   1,402
+Base   IVA%   Importe   %RE   Importe   TOTAL   FACTURA
+0,00   0,00
+0,00   2,00   0,00   0,00   0,00   389,02   eur
+0,00   4,00   0,00   0,00   0,00
+0,00   5,00   0,00   0,00   0,00
+0,00   7,50   0,00   0,00   0,00
+21,20   10,00   2,12   0,00   0,00
+302,23   21,00   63,47   0,00   0,00
+IBAN:   ES26   0049   1802   0821   1049   2260   BIC:   BSCHESMM
+R.M   BCN.TOM   21113,LLIBRE   7489,FULL   B17003,FOL154   RGS:40.035662/B   C.I.F.:   A59801696

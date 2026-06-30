@@ -1,0 +1,39 @@
+Distribución de pan i bolleria congelada S.L.
+Camí de les fabriques (Esquina C\ de la Farinera)
+08730 Santa Margarida i els Monjos (Barcelona), Spain
+Phone: +34 93-819-98-08, Fax: +34 93-817-33-10
+Nif: B62303201
+Nº Factura   2694202
+Fecha   31/05/2026
+Vencimiento   05/07/2026
+Ref. Cliente   23858
+Establecimiento   1 CATERING BONCOR
+Cliente   EMPRESA D´INSERCIO SOLUCIONS SOCIALS SOS
+Dirección   C/ FONTHONRADA 2 BAIXOS
+Población   BARCELONA
+CIF   F67499186
+Forma de Pago   MENSUAL, TRANSFERENCIA
+Nº Cuenta   ES7501825424530201520926
+Nº Pedido   Nº Albarán   Fecha   BI 10%   IVA 10%   TOTAL
+PED2026051319194323858 450744   18/05/2026   297,50   29,75   327,25 €
+BI 10%   IVA 10%   TOTAL
+297,50   29,75   327,25 €
+Inscrita en el Registro Mercantil de Barcelona, tomo 32770, folio 150, hoja B 216724, inscripción 1 .R.S.I.P.A.C. 20-09462/CAT
+
+Distribución de pan i bolleria congelada S.L.
+Camí de les fabriques (Esquina C\ de la Farinera)
+08730 Santa Margarida i els Monjos (Barcelona), Spain
+Phone: +34 93-819-98-08, Fax: +34 93-817-33-10
+Nif: B62303201
+Nº Albaran   450744
+Fecha   18/05/2026 17:23:53
+Ref. Cliente   23858
+Cliente   1 CATERING BONCOR
+Dirección   C/ FONTHONRADA, 2 BAIXOS
+Población   08004 BARCELONA
+Nº Pedido   PED2026051319194323858
+Ref.   Concepto   P.U.   U.C.   Cajas   Base Imponible
+3073   Canapes Evasion 8g 1x63ud   0,6020   63   4   151,70 €
+5169   Brocheta Tomat Seco+Mozza+Pesto 17g 1x60   0,5530   60   2   66,36 €
+5806   Brocheta Mozzare,Salmon Ahumado 17g   0,6620   60   2   79,44 €
+Inscrita en el Registro Mercantil de Barcelona, tomo 32770, folio 150, hoja B 216724, inscripción 1 .R.S.I.P.A.C. 20-09462/CAT

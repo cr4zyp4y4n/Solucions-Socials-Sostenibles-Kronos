@@ -1,0 +1,40 @@
+Distribución de pan i bolleria congelada S.L.
+Camí de les fabriques (Esquina C\ de la Farinera)
+08730 Santa Margarida i els Monjos (Barcelona), Spain
+Phone: +34 93-819-98-08, Fax: +34 93-817-33-10
+Nif: B62303201
+Nº Factura   2674203
+Fecha   30/04/2026
+Vencimiento   05/06/2026
+Ref. Cliente   23858
+Establecimiento   BOTIGA
+Cliente   EMPRESA D´INSERCIO SOLUCIONS SOCIALS SOS
+Dirección   C/ FONTHONRADA 2 BAIXOS
+Población   BARCELONA
+CIF   F67499186
+Forma de Pago   MENSUAL, TRANSFERENCIA
+Nº Cuenta   ES7501825424530201520926
+Nº Pedido   Nº Albarán   Fecha   BI 4%   BI 10%   IVA 4%   IVA 10%   TOTAL
+441501   25/04/2026   126,72   35,59   5,07   3,56   170,94 €
+BI 4%   BI 10%   IVA 4%   IVA 10%   TOTAL
+126,72   35,59   5,07   3,56   170,94 €
+Inscrita en el Registro Mercantil de Barcelona, tomo 32770, folio 150, hoja B 216724, inscripción 1 .R.S.I.P.A.C. 20-09462/CAT
+
+Distribución de pan i bolleria congelada S.L.
+Camí de les fabriques (Esquina C\ de la Farinera)
+08730 Santa Margarida i els Monjos (Barcelona), Spain
+Phone: +34 93-819-98-08, Fax: +34 93-817-33-10
+Nif: B62303201
+Nº Albaran   441501
+Fecha   25/04/2026 17:06:19
+Ref. Cliente   23858
+Cliente   BOTIGA
+Dirección   AV MISTRAL , 20 BIS BXOS
+Población   08031 BARCELONA
+Nº Pedido
+Ref.   Concepto   P.U.   U.C.   Cajas   Base Imponible
+4192   Baguetina (SG) 105g 1x25ud   0,9790   25   1   24,48 €
+4498   Triangolo Provolone (Fina-Exp) 10g 1x3k   11,8640   3   1   35,59 €
+5779   BOCATIN RUSTICO EXPRESS   0,2130   60   8   102,24 €
+EE03   CATÁLOGO   0,0000   1   1   0,00 €
+Inscrita en el Registro Mercantil de Barcelona, tomo 32770, folio 150, hoja B 216724, inscripción 1 .R.S.I.P.A.C. 20-09462/CAT

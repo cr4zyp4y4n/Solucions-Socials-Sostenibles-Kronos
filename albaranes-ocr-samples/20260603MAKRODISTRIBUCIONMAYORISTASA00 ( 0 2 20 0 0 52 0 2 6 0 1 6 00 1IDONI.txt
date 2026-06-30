@@ -1,0 +1,56 @@
+Makro   Distribucion   Mayorista, S.A.   BARBERA   Página:   1
+PASEO   IMPERIAL   40   AVD SALVATELLA 113   Fecha de venta:   03/06/2026   19:02
+28005   MADRID   BARBERA DEL VALLES   Fecha impresión:   03/06/2026   19:03
+8210 BARCELONA   Fecha de entrega:   03/06/2026   19:02
+Telf.: 937297379   Fax: 937297383
+NIF:   A-28/647451
+Reg.   Merc.   de   Madrid,   T.   3.669 L. O. F. 86, Secc. 8.ª H. M-61.688
+Factura   0/0(022)0005/(2026)016001   (005-160010)   022/600   1490
+--------------------------------------------------------------------------------------------------------------------------------------
+Solucions Socials   Sccl   N.cliente: 7 119700 2 2   SC
+AV   MISTRAL   20   N.I.F.: F67499186
+IDONI   910
+ESP   08015 BARCELONA
+--------------------------------------------------------------------------------------------------------------------------------------
+MM   Num.   artículo   Descrip. artículo   Cont   Prec. Ud.   Cont P.   Precio   Cant.   Importe   Imp Prec.Ud.*   DT   AOO   RCD
+--------------------------------------------------------------------------------------------------------------------------------------
+4337182245728   MOZZ   FIOR DI LATTE BARRA MC 1K   SK   7,950   1   7,95   1   7,95   5
+8414892328548   AMONIACO PERFUMADO MPRO 1,5L   BT   1,050   1   1,05   2   2,10   2
+8414892818155   BAYETA   MF VERDE MPRO 40X36 6UD   BL   3,290   1   3,29   1   3,29   2
+8411660170477   RECARGA LIMP SANYTOL 750ML   UD   2,150   1   2,15   2   4,30   2
+--------------------------------------------------------------------------------------------------------------------------------------
+Número   de bultos:   6   Peso Total: 0,000 KG   Envases:   0   Importe   17,64
+Mercancía   % IMP   Total Imp.
+9,69   2=21,00%   2,03
+7,95   5= 4,00%   0,32
+-------------------------------
+17,64   2,35
+Total a pagar   19,99   EUR
+--------------------------------------------------------------------------------------------------------------------------------------
+C:   0022   ************0456   /   OP: 234 337776 CAIXABANK CREDI   Tarjeta   19,99   EUR
+DEVOLUCIONES:El   cliente   tiene un plazo de devoluciones de 15 días desde la fecha de la factura,siendo imprescindible   que   el   artículo
+no   haya   sido   usado   y   que   cumpla los restantes requisitos señalados en las recepciones de clientes de todos nuestros
+establecimientos,   y   sin   perjuicio de los derechos establecidos por la normativa de garantías.
+article,   seguint   els   procediments establerts per aquest efecte.
+No   s'admeten   les   devolucions de llibres, matalassos, coixins, programes informàtics, articles d'alimentació i begudes,   drogueria,
+combustibles   i   tampoc   els articles venuts per encàrrec o que estiguin fora del sortit de productes actual.
+* Sense   perjudici   dels   drets de garantia reconeguts a la llei.
+"En   el   precio   de   los   aparatos eléctricos/electrónicos está repercutido el coste de gestión medioambiental según R.D.208/2005"
+En   cumplimiento   de   los   requisitos establecidos en el Reglamento REACH tiene a su disposicion la informacion y datos de   seguridad
+de   los   productos   quimicos en: www.makro.es/FDS
+* Precio   unitario   aplicado descuento correspondiente. Carácter informativo.
+***************   Fin   de   factura **************
+
+Makro   Distribucion   Mayorista, S.A.   BARBERA   Página:   2
+PASEO   IMPERIAL   40   AVD SALVATELLA 113   Fecha de venta:   03/06/2026   19:02
+28005   MADRID   BARBERA DEL VALLES   Fecha impresión:   03/06/2026   19:03
+Factura   0/0(022)0005/(2026)016001   (005-160010)   022/600   1490
+--------------------------------------------------------------------------------------------------------------------------------------
+Solucions Socials   Sccl   N.cliente: 7 119700 2 2   SC
+--------------------------------------------------------------------------------------------------------------------------------------
+OPERACIÓN CONTACTLESS   TARJ.   : CAIXABANK CREDI   ENT. AUT   : CGP   Verificación titular:   *
+OPERACIÓN   :   Venta   NUM TARJ.: ************0456   AID Aplicación   :   A0000000031010
+HORA:   19:03:17   03/06/2026   NUM AUT. : 337776   Modo Autorización   : ON   Etiqueta aplicación   :   Visa   CaixaBank
+IMPORTE   :   19,99   EUR   DF Name   :   Introduccion datos : C   ARC   :   00
+Recibo   para   el   Cliente.
+Operación Contactless.   Firma no necesaria.

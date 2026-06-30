@@ -1,0 +1,197 @@
+=== ANÀLISI ALBARANS (26 PDFs) ===
+Carpeta: C:\Users\brian\Downloads\Albaranes
+
+
+## 20260223TRANSGOURMET260028016010113IDONI.pdf
+Font: ocr (2503 chars) | Nom → transgourmet?
+Parser → transgourmet (alta)
+Lot: 7760991 | Data: 23-02-2026 | CIF: A17371758
+Línies: 14 | Notes: —
+Mostra: Aas Aad oo atid — ——— — XxX —_— . Comercia Global Payments had / Es a (,loba ) 10 0288478 an 250108 ve 4 ue J SANT 80/06 11 af GAT 24/00/2078 134 TRANSGOURMET IBERICA SAU CLIENT — 2077759 NIF/CIF F674...
+
+## 20260228OSSISTEMESICOMUNICACIONSSL26882ESTRUCTURA.pdf
+Font: native (762 chars) | Nom → desconegut
+Parser → generic (mitjana)
+Lot: Descripci | Data: 28/02/2026 | CIF: B61527248
+Línies: 0 | Notes: —
+Mostra: OS SISTEMES I COMUNICACIONS, S.L. ESQUADRES, 12 08901 L'HOSPITALET DEL LLOBREGAT 934 512 338 B61527248 26 882 28/02/2026 01760 F67308437 MENJAR D'HORT S.C.C.L. CARDEDEU 33 08023 BARCELONA Barcelona Nº...
+⚠ CAP PARSER ESPECÍFIC — cal implementar
+
+## 20260313TRANSGOURMET260028018000683IDONI.pdf
+Font: ocr (1795 chars) | Nom → transgourmet?
+Parser → generic (mitjana)
+Lot: 260028018000683 | Data: 13-03-2026 | CIF: F67499186
+Línies: 0 | Notes: —
+Mostra: ha => eS “es in 3 w 10 028047/8 ) 40 25938/8 ) e UE UE “$ TRANSGOURMET it CLIENT 2077759 NIF/CIF F67499186 El i ATES PER VANESSA i _ i 25 | ADREGA FISCAL || ADREGA COMERCIAL | i SOLUCIONS SOCIALS SOST...
+⚠ CAP PARSER ESPECÍFIC — cal implementar
+
+## 20260430DISTRIBUCIONDEPANIBOLLERIACONGELADASL2674203IDONI.pdf
+Font: native (1664 chars) | Nom → alvilardan
+Parser → alvilardan (mitjana)
+Lot: 441501 | Data: 25/04/2026 | CIF: B62303201
+Línies: 0 | Notes: —
+Mostra: Distribución de pan i bolleria congelada S.L. Camí de les fabriques (Esquina C\ de la Farinera) 08730 Santa Margarida i els Monjos (Barcelona), Spain Phone: +34 93-819-98-08, Fax: +34 93-817-33-10 Nif...
+
+## 20260522CUINATSJOTRISLUA7109OBRADOR.pdf
+Font: native (2744 chars) | Nom → jotri
+Parser → jotri (mitjana)
+Lot: 4911 | Data: 22-05-26 | CIF: B17209693
+Línies: 0 | Notes: —
+Mostra: Descripció Unitats Preu Total Sèrie Jotri A7109 Factura 22-05-26 Data Factura F67308437 NIF Client 1 de 1 Pàgina Referència FACTURA DE VENDA Mostres Menjar d Hort Menjar d Hort, SL C. de la Font Honra...
+
+## 20260528TROSDORDALSLC260000677IDONI.pdf
+Font: ocr (2053 chars) | Nom → trosdordal?
+Parser → generic (mitjana)
+Lot: — | Data: — | CIF: B65790792
+Línies: 0 | Notes: —
+Mostra: va cr TROS D“ORDAL SL. h Te | AGRICULTURA ECOLÓGICA A «AN NIF: B65790792 i ig Operador CT/003281/P f \ C/Sarriera, 48 ag frac Controlat per ES-ECO-019-CT | | 08720 Vilafranca del Penedés \ 7 Tel.: 620...
+⚠ CAP PARSER ESPECÍFIC — cal implementar
+
+## 20260528TROSDORDALSLC260000680IDONI.pdf
+Font: ocr (1298 chars) | Nom → trosdordal?
+Parser → generic (mitjana)
+Lot: — | Data: 28/05/202 | CIF: —
+Línies: 0 | Notes: —
+Mostra: Dz TROS D “ORDAL S.L. . 179: AGRICULTURA ECOLÓGICA "a ÓN a. B-65790792 E de Operador CT/003281/P IS Sarriera, 48 feat Controlat per ES-ECO-019 MAD | 08720 Vilaranca del Penedes a Mi a. Tel.: 620580956...
+⚠ CAP PARSER ESPECÍFIC — cal implementar
+
+## 20260531DISTRIBUCIONDEPANIBOLLERIACONGELADASL2694198IDONI.pdf
+Font: native (1692 chars) | Nom → alvilardan
+Parser → alvilardan (mitjana)
+Lot: 455737 | Data: 29/05/2026 | CIF: B62303201
+Línies: 0 | Notes: —
+Mostra: Distribución de pan i bolleria congelada S.L. Camí de les fabriques (Esquina C\ de la Farinera) 08730 Santa Margarida i els Monjos (Barcelona), Spain Phone: +34 93-819-98-08, Fax: +34 93-817-33-10 Nif...
+
+## 20260531DISTRIBUCIONDEPANIBOLLERIACONGELADASL2694202CATERING.pdf
+Font: native (1642 chars) | Nom → alvilardan
+Parser → alvilardan (mitjana)
+Lot: 450744 | Data: 18/05/2026 | CIF: B62303201
+Línies: 0 | Notes: —
+Mostra: Distribución de pan i bolleria congelada S.L. Camí de les fabriques (Esquina C\ de la Farinera) 08730 Santa Margarida i els Monjos (Barcelona), Spain Phone: +34 93-819-98-08, Fax: +34 93-817-33-10 Nif...
+
+## 20260601KINTOESPAÑASLUC26M178112ESTRUCTURA.pdf
+Font: native (1143 chars) | Nom → kinto?
+Parser → generic (mitjana)
+Lot: — | Data: 01/06/2026 | CIF: B88456520
+Línies: 0 | Notes: —
+Mostra: EMPRESA D INSERCIO SOLUCIONS SOCIALS C/ FONT HONRADA, 2, 2-4 BAJOS 08004 BARCELONA (BARCELONA) SR. BRUNO LOPEZ Factura C26M178112 Fecha 01/06/2026 CIF/NIF Contrato 572631-RE-2 F67499186 Base % Impuest...
+⚠ CAP PARSER ESPECÍFIC — cal implementar
+
+## 20260603MAKRODISTRIBUCIONMAYORISTASA00 ( 0 2 20 0 0 52 0 2 6 0 1 6 00 1IDONI.pdf
+Font: native (4369 chars) | Nom → makro?
+Parser → makro (alta)
+Lot: 2026016001 | Data: 03/06/2026 | CIF: A28647451
+Línies: 4 | Notes: —
+Mostra: Makro Distribucion Mayorista, S.A. BARBERA Página: 1 PASEO IMPERIAL 40 AVD SALVATELLA 113 Fecha de venta: 03/06/2026 19:02 28005 MADRID BARBERA DEL VALLES Fecha impresión: 03/06/2026 19:03 8210 BARCEL...
+
+## 20260603MAKRODISTRIBUCIONMAYORISTASA0002200052026016001IDONI.pdf
+Font: native (4369 chars) | Nom → makro?
+Parser → makro (alta)
+Lot: 2026016001 | Data: 03/06/2026 | CIF: A28647451
+Línies: 4 | Notes: —
+Mostra: Makro Distribucion Mayorista, S.A. BARBERA Página: 1 PASEO IMPERIAL 40 AVD SALVATELLA 113 Fecha de venta: 03/06/2026 19:02 28005 MADRID BARBERA DEL VALLES Fecha impresión: 03/06/2026 19:03 8210 BARCEL...
+
+## 20260605ORANGEESPAGNESAUE100110344980626ESTRUCTURA.pdf
+Font: native (2245 chars) | Nom → no-alimentari
+Parser → generic (mitjana)
+Lot: — | Data: 01/05/2026 | CIF: F67499186
+Línies: 0 | Notes: —
+Mostra: Tu factura SOLUCIONS SOCIALS SOSTENIBLES SCCL CALLE VELIA 55 01 1 08349 BARCELONA BARCELONA Resumen de servicios Cantidad Cuotas (€) Adicional(€) Total sin Impuestos (€) Total con Impuestos (€) Pack L...
+⚠ CAP PARSER ESPECÍFIC — cal implementar
+
+## 20260609BEGUDESDELVALLESSA072026015649CATERING.pdf
+Font: native (2026 chars) | Nom → begudes
+Parser → begudes (alta)
+Lot: 2026015649 | Data: 09/06/26 | CIF: A59801696
+Línies: 8 | Notes: —
+Mostra: BEGUDES DEL VALLES S.A EMP.D'INSER,SOL.SOC.SOT. SCCL SOLUCIONS SOCIALS SOSTENIBLES CR DE LA TERRA 0038 CL FONT HONRADA 0002 08227 TERRASSA 08004 Barcelona BARCELONA BARCELONA 01/22 Tel: 937/312000 Fax...
+
+## 20260610BEGUDESDELVALLESSA072026015788CATERING.pdf
+Font: native (1485 chars) | Nom → begudes
+Parser → begudes (alta)
+Lot: 2026015788 | Data: 10/06/26 | CIF: A59801696
+Línies: 3 | Notes: —
+Mostra: BEGUDES DEL VALLES S.A EMP.D'INSER,SOL.SOC.SOT. SCCL SOLUCIONS SOCIALS SOSTENIBLES CR DE LA TERRA 0038 CL FONT HONRADA 0002 08227 TERRASSA 08004 Barcelona BARCELONA BARCELONA 01/22 Tel: 937/312000 Fax...
+
+## 20260610DESINFECCIONESCECSASLA23127AOBRADOR.pdf
+Font: native (1163 chars) | Nom → desinfecciones?
+Parser → generic (mitjana)
+Lot: — | Data: 10/06/2026 | CIF: B64287055
+Línies: 0 | Notes: —
+Mostra: DESRATIZACIONES - DESINSECTACIONES - DESINFECCIONES - CONTROL DE AVES - XILÓFAGOS REGISTRO OFICIAL DE ESTABLECIMIENTOS DE SERVICIOS PLAGUICIDAS 0246-CAT-SB Registro Mercantil de Barcelona, hoja BL 423...
+⚠ CAP PARSER ESPECÍFIC — cal implementar
+
+## 20260611CUINATSJOTRISLU17335IDONI.pdf
+Font: native (3082 chars) | Nom → jotri
+Parser → jotri (alta)
+Lot: 17335 | Data: 11-06-26 | CIF: B17209693
+Línies: 6 | Notes: —
+Mostra: Solucions Socials Sostenibles Solucions Socials Sostenibles, SCCL C. Font Honrada, 2 08004 Barcelona Barcelona DADES DE FACTURACIÓ CUINATS JOTRI S.L.U. CARRER MAS SAGUER, 1 Juià NIF : B17209693 Tel. 9...
+
+## 20260612CALVALLSECOSLUV2606768CATERING.pdf
+Font: native (1117 chars) | Nom → calvall?
+Parser → generic (mitjana)
+Lot: Client | Data: 12/06/2026 | CIF: F67499186
+Línies: 0 | Notes: —
+Mostra: FACTURA SOLUCIONS SOCIALS SOSTENIBLES SCCL C/ Font Honrada, 2 08004 BARCELONA BARCELONA 1 Pàg. Ref. % ENV/2023/000013802 Import contribució S.I.G., Llei 11/97 del 24 d'Abril 1,3800 € % R. Equiv. *****...
+⚠ CAP PARSER ESPECÍFIC — cal implementar
+
+## 20260615CUINATSJOTRISLUA8469IDONI.pdf
+Font: native (6172 chars) | Nom → jotri
+Parser → jotri (mitjana)
+Lot: 6102 | Data: 15-06-26 | CIF: B17209693
+Línies: 0 | Notes: —
+Mostra: Descripció Unitats Preu Total Sèrie Jotri A8469 Factura 15-06-26 Data Factura F67499186 NIF Client 1 de 2 Pàgina Referència FACTURA DE VENDA Mostres Solucions Socials Sostenibles Solucions Socials Sos...
+
+## 20260616BEGUDESDELVALLESSA072026016390IDONI.pdf
+Font: native (1777 chars) | Nom → begudes
+Parser → begudes (alta)
+Lot: 2026016390 | Data: 16/06/26 | CIF: A59801696
+Línies: 5 | Notes: —
+Mostra: BEGUDES DEL VALLES S.A EMP.D'INSER,SOL.SOC.SOT. SCCL SOLUSOCSOSTENIBLES MISTRAL CR DE LA TERRA 0038 CL FONT HONRADA 0002 08227 TERRASSA 08004 BARCELONA BARCELONA BARCELONA 03/18 Tel: 937/312000 Fax: 9...
+
+## 20260616HEINDEPOORTEREF2026045OBRADOR.pdf
+Font: native (418 chars) | Nom → heinde?
+Parser → generic (mitjana)
+Lot: — | Data: 16/06/2026 | CIF: F67308437
+Línies: 0 | Notes: —
+Mostra: Menjar d hort SCCL . C/font honrada 2 08004 Barcelona CIF F67308437 Date: 16/06/2026 numero factura :F2026-045 Descripcion precio 1 placa de zanahoria sin gluten con entrega 1 € 65,00 € 65,00 Total si...
+⚠ CAP PARSER ESPECÍFIC — cal implementar
+
+## 20260616PARKINGMONTERREYSAA26001339IDONI.pdf
+Font: native (1581 chars) | Nom → no-alimentari
+Parser → generic (mitjana)
+Lot: — | Data: 16/06/26 | CIF: A08258741
+Línies: 0 | Notes: —
+Mostra: Parking Monterrey, S.A. Empresa d'Inserció Solucions Socials Sostenibles SCCL Avda. Mistral 36 08015 Barcelona Barcelona C/ Font Honrada 2 TELEF.: 933253658 CIF: A08258741 08004 Barcelona catasus@cata...
+⚠ CAP PARSER ESPECÍFIC — cal implementar
+
+## 20260618LACHIAPANECASCCLB2026313CATERING.pdf
+Font: native (710 chars) | Nom → lachiapanecas?
+Parser → generic (mitjana)
+Lot: — | Data: 18.06.2026 | CIF: F67499186
+Línies: 0 | Notes: —
+Mostra: DESCRIPCIÓN CANTIDAD TOTAL TOTAL 748,50€ FACTURA PARA: Empresa D'inserció Solucions Socials Sostenibles SCCL. NIF: F67499186 C Font Honrada, Nr 2 08004 Barcelona Total Bruto IVA 10% Total Factura 748,...
+⚠ CAP PARSER ESPECÍFIC — cal implementar
+
+## 20260620ENDESAXWAYSLE726NC00497513ESTRUCTURA.pdf
+Font: native (1400 chars) | Nom → no-alimentari
+Parser → generic (mitjana)
+Lot: Factura | Data: 20/06/2026 | CIF: B09732520
+Línies: 0 | Notes: —
+Mostra: E I Solucions Socials Sostenibles SCCL Carrer de la Font Honrada 2 08004 Barcelona B Endesa X Way, S.L. CIF B09732520. C/Ribera del Loira, nº 60 28042 - Madrid. Factura emitida en Madrid por ENDESA X ...
+⚠ CAP PARSER ESPECÍFIC — cal implementar
+
+## 20260620TRANSGOURMETIBERICASAU260350351004505OBRADOR.pdf
+Font: ocr (2249 chars) | Nom → transgourmet?
+Parser → transgourmet (alta)
+Lot: 9122278 | Data: 20-06-2026 | CIF: A17371758
+Línies: 2 | Notes: —
+Mostra: AAA SENO EC Nc Ae EEE io ! _ | H E= ES ES FH ra UE i i TRANSGOURMET Da i CLIENT 2335581 NIF/CIF F67308437 Ji RUTA: R0301 ER ENTREGAT PER TTA il PREPARAT PER OSMARLY Reet se ceo od FSIS dessin Fant] E ...
+
+## 20260622CAFESCANDELASSLUF194041738CATERING.pdf
+Font: native (1491 chars) | Nom → cafescandelas?
+Parser → candelas (alta)
+Lot: A194047918 | Data: 22/6/2026 | CIF: B27013713
+Línies: 1 | Notes: —
+Mostra: Factura F194041738 Página 1 de 1 RSI: 2500496/LU CAFÉS CANDELAS S.L.U B-27013713 Rúa dos Transportes 7 Poligono Industrial do CEAO, 27003 Lugo (Lugo) Teléfono y Fax: 902996500 / 982209415 WWW.CAFESCAN...

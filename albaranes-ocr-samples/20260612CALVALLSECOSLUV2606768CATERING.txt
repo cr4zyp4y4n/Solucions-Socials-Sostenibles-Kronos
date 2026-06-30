@@ -1,0 +1,63 @@
+FACTURA
+SOLUCIONS SOCIALS SOSTENIBLES SCCL
+C/ Font Honrada, 2
+08004 BARCELONA
+BARCELONA
+1
+Pàg.
+Ref.   %
+ENV/2023/000013802   Import contribució S.I.G., Llei 11/97 del 24 d'Abril 1,3800 €
+%   R. Equiv.
+**********
+Visiteu la nostra pàgina web www.calvalls.com - Operador CT 003582 EIC controlat per ES-ECO-019-CT
+625 534 755 Telf.:
+F67499186
+C.I.F
+EUR
+Pagats Ports
+V2606768
+Nº Factura
+12/06/2026
+Data
+07190
+Client
+283,61
+Total Brut
+2
+%
+-5,67
+Dte. P.P.
+9,00
+IBEE
+136,01
+Base
+150,93
+Imposable
+21
+%
+10   28,56
+IVA
+15,09   330,59
+Total
+TRANSFERENCIA A LA VISTA Condicions de Pagament
+Banc
+12/06/2026
+Venciments   330,59
+Descripció   Caixes Ref.   Client   Unitats   Preu   Import   IVA
+AL171512
+SOLUCIONS SOCIALS SOSTENIBLES SCCL
+C/ Font Honrada, 2
+08004 BARCELONA
+SUC TARONJA ECO 1L CAL VALLS
+Lot: 4053630 , Cad.: 20281231 , Quant.: 42
+7 0013112C   42   2,60   10   98,28   10
+LLIMONADA ECO 1L CAL VALLS
+Lot: 4069640 , Cad.: 20271031 , Quant.: 60   IBEE
+10 0014212C   60   2,40
+0,15
+10   129,60
+9,00
+21
+SUC RAÏM I PRÉSSEC ECO 1L CAL VALLS
+Lot: 3745590 , Cad.: 20281031 , Quant.: 24
+4 0018112C   24   2,58   10   55,73   10

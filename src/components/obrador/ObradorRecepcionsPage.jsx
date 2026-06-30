@@ -7,6 +7,7 @@ import {
   buildRecepcioDraftFromParsed
 } from '../../services/obradorAlbaranParser';
 import { ocrTextFromAlbaranFile } from '../../utils/obradorOcrFromFile';
+import OcrDebugPanel, { buildOcrDebugReport } from './OcrDebugPanel';
 
 const ESTATS = [
   { value: 'bo', label: 'Bo' },
@@ -53,6 +54,7 @@ export default function ObradorRecepcionsPage() {
   const [ocrProcessing, setOcrProcessing] = useState(false);
   const [ocrProgress, setOcrProgress] = useState(0);
   const [ocrDraft, setOcrDraft] = useState(null);
+  const [ocrDebug, setOcrDebug] = useState(null);
   const [importingHolded, setImportingHolded] = useState(false);
   const [holdedCompany, setHoldedCompany] = useState('solucions');
   const [schemaIncomplete, setSchemaIncomplete] = useState(false);
@@ -160,15 +162,25 @@ export default function ObradorRecepcionsPage() {
     setOcrProcessing(true);
     setOcrProgress(0);
     setOcrDraft(null);
+    setOcrDebug(null);
 
     try {
-      const text = await ocrTextFromAlbaranFile(file, {
+      const ocrResult = await ocrTextFromAlbaranFile(file, {
         onProgress: setOcrProgress
       });
+      const text = ocrResult?.text ?? '';
+      const ocrMeta = ocrResult?.meta ?? {};
 
       const parsed = parseAlbaranText(text);
       const draft = buildRecepcioDraftFromParsed(parsed, proveidors);
+      const report = buildOcrDebugReport({
+        fileName: file.name,
+        ocrMeta,
+        ocrText: text,
+        parsed
+      });
       setOcrDraft(draft);
+      setOcrDebug({ report, text, meta: ocrMeta });
 
       setForm((prev) => ({
         ...formInicial(),
@@ -382,8 +394,10 @@ export default function ObradorRecepcionsPage() {
           {ocrDraft._parsed.proveidorNom && (
             <div>Proveïdor detectat: {ocrDraft._parsed.proveidorNom}</div>
           )}
-          {ocrDraft._parsed.lotProveidor && (
+          {ocrDraft._parsed.lotProveidor ? (
             <div>Lot / albarà: {ocrDraft._parsed.lotProveidor}</div>
+          ) : (
+            <div style={{ color: danger }}>Lot / albarà: no detectat — obre el log OCR</div>
           )}
           <div style={{ marginTop: 6, color: colors.textSecondary }}>
             Parser: {ocrDraft._parsed.parserId} · confiança {ocrDraft._parsed.confiança}
@@ -391,6 +405,8 @@ export default function ObradorRecepcionsPage() {
           </div>
         </div>
       )}
+
+      <OcrDebugPanel ocrDebug={ocrDebug} colors={colors} />
 
       {schemaIncomplete && (
         <div style={{
