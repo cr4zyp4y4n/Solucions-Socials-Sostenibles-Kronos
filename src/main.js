@@ -67,6 +67,7 @@ try {
 
 // Variable global para mainWindow
 let mainWindow = null;
+let ipcHandlersConfigured = false;
 
 // Función para configurar eventos del auto-updater
 function setupAutoUpdaterEvents() {
@@ -148,6 +149,11 @@ function setupAutoUpdaterEvents() {
 
 // Función para configurar handlers IPC
 function setupIpcHandlers() {
+  if (ipcHandlersConfigured) {
+    return;
+  }
+  ipcHandlersConfigured = true;
+
   // Abrir enlaces en el navegador del sistema (evita limitaciones de Electron con PDFs/DevTools)
   ipcMain.handle('open-external', async (event, url) => {
     if (typeof url !== 'string' || !url) {

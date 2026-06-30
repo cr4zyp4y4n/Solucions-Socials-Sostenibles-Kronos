@@ -1,4 +1,4 @@
-const { execSync, spawn } = require('node:child_process');
+const { execFileSync, spawn } = require('node:child_process');
 const { shell } = require('electron');
 
 const LOG_PREFIX = '[firma-email]';
@@ -119,9 +119,10 @@ function resolveWebmailCompose(draft) {
 function getWindowsMailtoProgId() {
   if (process.platform !== 'win32') return '';
   try {
-    const out = execSync(
-      'reg query "HKCU\\Software\\Microsoft\\Windows\\Shell\\Associations\\UrlAssociations\\mailto\\UserChoice" /v ProgId',
-      { encoding: 'utf8', timeout: 4000 }
+    const out = execFileSync(
+      'reg',
+      ['query', 'HKCU\\Software\\Microsoft\\Windows\\Shell\\Associations\\UrlAssociations\\mailto\\UserChoice', '/v', 'ProgId'],
+      { encoding: 'utf8', timeout: 4000, windowsHide: true }
     );
     const match = out.match(/ProgId\s+REG_SZ\s+(.+)/i);
     return match?.[1]?.trim() || '';
@@ -137,9 +138,10 @@ function getWindowsMailtoCommand() {
     const roots = ['HKCU\\Software\\Classes', 'HKCR'];
     for (const root of roots) {
       try {
-        const out = execSync(`reg query "${root}\\${progId}\\shell\\open\\command" /ve`, {
+        const out = execFileSync('reg', ['query', `${root}\\${progId}\\shell\\open\\command`, '/ve'], {
           encoding: 'utf8',
-          timeout: 4000
+          timeout: 4000,
+          windowsHide: true
         });
         const match = out.match(/REG_(?:EXPAND_)?SZ\s+(.+)/i);
         if (match?.[1]) return match[1].trim();
@@ -154,7 +156,11 @@ function getWindowsMailtoCommand() {
   ];
   for (const key of keys) {
     try {
-      const out = execSync(`reg query "${key}" /ve`, { encoding: 'utf8', timeout: 4000 });
+      const out = execFileSync('reg', ['query', key, '/ve'], {
+        encoding: 'utf8',
+        timeout: 4000,
+        windowsHide: true
+      });
       const match = out.match(/REG_(?:EXPAND_)?SZ\s+(.+)/i);
       if (match?.[1]) return match[1].trim();
     } catch (_) {
@@ -222,9 +228,11 @@ function spawnDetached(command, args) {
       stdio: 'ignore',
       windowsHide: true
     });
-    child.on('error', reject);
-    child.unref();
-    resolve();
+    child.once('error', reject);
+    child.once('spawn', () => {
+      child.unref();
+      resolve();
+    });
   });
 }
 
