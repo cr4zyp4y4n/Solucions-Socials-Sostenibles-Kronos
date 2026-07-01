@@ -1,4 +1,3 @@
-import { getFirmaDocumentoLabel } from '@/lib/firmaDocumentos';
 import { buildAceptacionRespuestaLine, buildStampLinesForDoc, getFirmaDocMeta, normalizeRespuestaAceptacion } from '@/lib/firmaDocumentosMeta';
 import { getOtpScopeIds, resolveFirmaToken } from '@/lib/resolveFirmaToken';
 import { supabaseAdmin } from '@/lib/supabase';
@@ -19,6 +18,17 @@ type DeclaracionAceptacion = {
   aceptacion_linea: string;
   opciones: DocumentoOpcionesAceptacion;
 };
+
+function toAuditDeclaracion(declaracion: DeclaracionAceptacion) {
+  return {
+    documento_id: declaracion.documento_id,
+    tipo_documento: declaracion.tipo_documento,
+    respuesta: declaracion.respuesta,
+    lectura_confirmada: declaracion.lectura_confirmada,
+    declaracion: declaracion.declaracion,
+    aceptacion_linea: declaracion.aceptacion_linea
+  };
+}
 
 async function loadAuditedRespuesta(documentoId: string): Promise<RespuestaAceptacion | null> {
   const { data } = await supabaseAdmin
@@ -302,7 +312,7 @@ export async function POST(_req: Request, ctx: { params: Promise<{ token: string
       sms_verificado_at: smsVerificadoAt,
       num_documentos: resolved.documentos.length,
       storage_paths_firmados: signedPaths,
-      declaraciones_aceptadas: declaracionesAceptadas.map(({ opciones, ...declaracion }) => declaracion)
+      declaraciones_aceptadas: declaracionesAceptadas.map(toAuditDeclaracion)
     }
   });
 
