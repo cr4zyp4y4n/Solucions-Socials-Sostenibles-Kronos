@@ -195,8 +195,8 @@ export function mapInnuvaRowsToHolded({
     const salario = round2(r.bruto || 0);
     const ssTrab = round2(r.ssTrabajador || 0);
     const ssEmp = round2(r.ssEmpresa || 0);
-    const totalSs = round2(Math.abs(ssTrab) + Math.abs(ssEmp));
-    const gastoSsEmpresa = round2(Math.abs(ssEmp));
+    const totalSs = round2(Math.abs(ssTrab) + ssEmp);
+    const gastoSsEmpresa = round2(ssEmp);
     const irpf = round2(Math.abs(r.irpf || 0));
     const importePagament = round2(r.liquido || 0);
     const nombreEmpleado = r.trabajador || r.nif;

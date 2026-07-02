@@ -24,12 +24,66 @@ function formatDateEs(date) {
   return `${d}/${m}/${y}`;
 }
 
-function lastDayOfMonth(year, month) {
-  return new Date(year, month, 0);
-}
-
 function round2(n) {
   return Math.round((Number(n) || 0) * 100) / 100;
+}
+
+function isNextCalendarDay(prevDate, nextDate) {
+  if (!prevDate || !nextDate) return false;
+  const expected = new Date(prevDate.getFullYear(), prevDate.getMonth(), prevDate.getDate() + 1);
+  return (
+    expected.getFullYear() === nextDate.getFullYear() &&
+    expected.getMonth() === nextDate.getMonth() &&
+    expected.getDate() === nextDate.getDate()
+  );
+}
+
+/** Agrupa jornadas del mismo trabajador en rachas de días de calendario consecutivos. */
+export function groupConsecutiveDayStreaks(days) {
+  const sorted = [...(days || [])].sort((a, b) => a.date - b.date);
+  const streaks = [];
+  let current = null;
+
+  for (const day of sorted) {
+    if (!current) {
+      current = {
+        startDate: day.date,
+        endDate: day.date,
+        brutoTotal: day.brutoTotal,
+        numDias: 1,
+        days: [day],
+        lugares: [...(day.lugares || [])]
+      };
+      continue;
+    }
+
+    if (isNextCalendarDay(current.endDate, day.date)) {
+      current.endDate = day.date;
+      current.brutoTotal = round2(current.brutoTotal + day.brutoTotal);
+      current.numDias += 1;
+      current.days.push(day);
+      current.lugares.push(...(day.lugares || []));
+    } else {
+      streaks.push(current);
+      current = {
+        startDate: day.date,
+        endDate: day.date,
+        brutoTotal: day.brutoTotal,
+        numDias: 1,
+        days: [day],
+        lugares: [...(day.lugares || [])]
+      };
+    }
+  }
+
+  if (current) streaks.push(current);
+  return streaks;
+}
+
+function formatStreakFecha(startDate, endDate) {
+  const a = formatDateEs(startDate);
+  const b = formatDateEs(endDate);
+  return a === b ? a : `${a} → ${b}`;
 }
 
 /**
@@ -39,75 +93,108 @@ export function buildInnuvaIncidenciasFromPlantilla(rows, fileName = '', codigoB
   const parsed = parsePlantillaFdRows(rows, fileName);
   const warnings = [...parsed.warnings];
   const incidencias = [];
-  const previewDays = [];
+  const previewBlocks = [];
+  const resumenPorTrabajador = new Map();
 
   for (const worker of parsed.workers) {
-    let sb = 0;
-    let pp = 0;
-    let mej = 0;
-    let fin = 0;
-    let lastWorkDate = null;
-
-    for (const day of worker.days) {
-      const bd = breakdownForDay(day.brutoTotal);
-      if (!bd) continue;
-      if (bd.warning) warnings.push(`${worker.workerName} (${formatDateEs(day.date)}): ${bd.warning}`);
-
-      sb += bd.salarioBase;
-      pp += bd.ppExtra;
-      mej += bd.mejoraVoluntaria;
-      fin += bd.finiquito;
-      lastWorkDate = day.date;
-
-      previewDays.push({
-        workerName: worker.workerName,
-        fecha: formatDateEs(day.date),
-        lugares: day.lugares.join(' · ') || '—',
-        brutoDia: day.brutoTotal,
-        tramoUsado: bd.tierDevengo,
-        salarioBase: bd.salarioBase,
-        ppExtra: bd.ppExtra,
-        mejoraVoluntaria: bd.mejoraVoluntaria,
-        finiquito: bd.finiquito,
-        warning: bd.warning
-      });
-    }
-
-    const unidades = worker.numDias;
+    const matchedWorker = codigoByWorkerKey[worker.workerKey] || null;
     const codigo =
-      codigoByWorkerKey[worker.workerKey] ||
+      matchedWorker?.codigo ||
       worker.innuvaCode ||
       '';
+    const nombreExacto =
+      matchedWorker?.nombre ||
+      worker.workerName.toUpperCase();
 
     if (!codigo) {
       warnings.push(`${worker.workerName}: sin código Innuva (se dejará vacío hasta que lo añadáis).`);
     }
 
-    const fechaNomina = formatDateEs(lastWorkDate || lastDayOfMonth(parsed.year, parsed.month));
+    const streaks = groupConsecutiveDayStreaks(worker.days);
 
-    incidencias.push({
-      codigo,
-      nombre: worker.workerName.toUpperCase(),
-      fecha: fechaNomina,
-      salarioBaseImporte: round2(sb),
-      salarioBaseUnidades: unidades,
-      mejoraImporte: round2(mej),
-      mejoraUnidades: unidades,
-      ppExtraImporte: round2(pp),
-      ppExtraUnidades: unidades,
-      liquidacionImporte: round2(fin),
-      liquidacionUnidades: unidades,
-      brutoTotalMes: worker.totalBruto,
-      numDias: unidades
-    });
+    for (const streak of streaks) {
+      const bd = breakdownForDay(streak.brutoTotal);
+      if (!bd) continue;
+
+      const label = formatStreakFecha(streak.startDate, streak.endDate);
+      const fechaBloque = formatDateEs(streak.endDate);
+
+      if (bd.warning) {
+        warnings.push(`${worker.workerName} (bloque ${label}, ${streak.numDias} día(s)): ${bd.warning}`);
+      }
+
+      const fila = {
+        codigo,
+        nombre: nombreExacto,
+        fecha: fechaBloque,
+        bloqueLabel: label,
+        salarioBaseImporte: round2(bd.salarioBase),
+        salarioBaseUnidades: streak.numDias,
+        mejoraImporte: round2(bd.mejoraVoluntaria),
+        mejoraUnidades: streak.numDias,
+        ppExtraImporte: round2(bd.ppExtra),
+        ppExtraUnidades: streak.numDias,
+        liquidacionImporte: round2(bd.finiquito),
+        liquidacionUnidades: streak.numDias,
+        brutoBloque: streak.brutoTotal,
+        tramoDevengo: bd.tierDevengo,
+        numDias: streak.numDias
+      };
+
+      incidencias.push(fila);
+
+      previewBlocks.push({
+        workerName: worker.workerName,
+        fecha: label,
+        fechaInnuva: fechaBloque,
+        numDias: streak.numDias,
+        lugares: [...new Set(streak.lugares)].join(' · ') || '—',
+        brutoBloque: streak.brutoTotal,
+        tramoUsado: bd.tierDevengo,
+        salarioBase: fila.salarioBaseImporte,
+        ppExtra: fila.ppExtraImporte,
+        mejoraVoluntaria: fila.mejoraImporte,
+        finiquito: fila.liquidacionImporte,
+        warning: bd.warning
+      });
+
+      const prev = resumenPorTrabajador.get(worker.workerKey) || {
+        codigo,
+        nombre: fila.nombre,
+        numDias: 0,
+        brutoTotalMes: 0,
+        salarioBaseImporte: 0,
+        mejoraImporte: 0,
+        ppExtraImporte: 0,
+        liquidacionImporte: 0,
+        numBloques: 0
+      };
+      prev.numDias += streak.numDias;
+      prev.brutoTotalMes = round2(prev.brutoTotalMes + streak.brutoTotal);
+      prev.salarioBaseImporte = round2(prev.salarioBaseImporte + fila.salarioBaseImporte);
+      prev.mejoraImporte = round2(prev.mejoraImporte + fila.mejoraImporte);
+      prev.ppExtraImporte = round2(prev.ppExtraImporte + fila.ppExtraImporte);
+      prev.liquidacionImporte = round2(prev.liquidacionImporte + fila.liquidacionImporte);
+      prev.numBloques += 1;
+      resumenPorTrabajador.set(worker.workerKey, prev);
+    }
   }
 
-  incidencias.sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+  incidencias.sort(
+    (a, b) => a.nombre.localeCompare(b.nombre, 'es') || String(a.fecha).localeCompare(String(b.fecha), 'es')
+  );
+
+  const resumenTrabajadores = Array.from(resumenPorTrabajador.values()).sort((a, b) =>
+    a.nombre.localeCompare(b.nombre, 'es')
+  );
 
   return {
     ...parsed,
     incidencias,
-    previewDays,
+    resumenTrabajadores,
+    previewBlocks,
+    /** @deprecated Usa previewBlocks */
+    previewDays: previewBlocks,
     warnings: [...new Set(warnings)]
   };
 }
@@ -119,19 +206,23 @@ export function convertPlantillaFileToInnuva(input, fileName, codigoByWorkerKey 
   return buildInnuvaIncidenciasFromPlantilla(rows, fileName, codigoByWorkerKey);
 }
 
+function formatEuroCell(value) {
+  return formatEuroEs(value);
+}
+
 export function incidenciasToExportRows(incidencias) {
   return incidencias.map((r) => ({
     Código: r.codigo,
     Nombre: r.nombre,
     Fecha: r.fecha,
     '': '',
-    '1 - Salario Base (Importe)': formatEuroEs(r.salarioBaseImporte),
+    '1 - Salario Base (Importe)': formatEuroCell(r.salarioBaseImporte),
     '1 - Salario Base (Unidades)': r.salarioBaseUnidades,
-    '39 - Mejoras voluntarias (Importe)': formatEuroEs(r.mejoraImporte),
+    '39 - Mejoras voluntarias (Importe)': formatEuroCell(r.mejoraImporte),
     '39 - Mejoras voluntarias (Unidades)': r.mejoraUnidades,
-    '34 - P.p.extra (Importe)': formatEuroEs(r.ppExtraImporte),
+    '34 - P.p.extra (Importe)': formatEuroCell(r.ppExtraImporte),
     '34 - P.p.extra (Unidades)': r.ppExtraUnidades,
-    '122 - Liquidacion vacaciones (Importe)': formatEuroEs(r.liquidacionImporte),
+    '122 - Liquidacion vacaciones (Importe)': formatEuroCell(r.liquidacionImporte),
     '122 - Liquidacion vacaciones (Unidades)': r.liquidacionUnidades
   }));
 }

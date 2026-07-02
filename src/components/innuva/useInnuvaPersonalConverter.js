@@ -1,6 +1,8 @@
 import { useCallback, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
-import { convertPlantillaFileToInnuva, incidenciasToExportRows } from './fdInnuvaConverter';
+import { convertPlantillaFileToInnuva } from './fdInnuvaConverter';
+import { downloadInnuvaIncidenciasWorkbook } from './innuvaIncidenciasExport';
+import { loadInnuvaWorkersCatalog, resolveInnuvaWorkerMatch } from './innuvaWorkersCatalog';
 import { parseCsvText } from './fdPlantillaParser';
 
 async function readPlantillaRows(file) {
@@ -32,7 +34,14 @@ export function useInnuvaPersonalConverter() {
 
     try {
       const rows = await readPlantillaRows(file);
-      const converted = convertPlantillaFileToInnuva(rows, file.name);
+      const catalog = await loadInnuvaWorkersCatalog().catch(() => new Map());
+      const codigoByWorkerKey = {};
+      const convertedPre = convertPlantillaFileToInnuva(rows, file.name);
+      for (const worker of convertedPre.workers || []) {
+        const match = resolveInnuvaWorkerMatch(worker.workerName, catalog);
+        if (match) codigoByWorkerKey[worker.workerKey] = match;
+      }
+      const converted = convertPlantillaFileToInnuva(rows, file.name, codigoByWorkerKey);
       if (!converted.incidencias.length) {
         setError('No se generaron filas. Revisa que la hoja tenga bloques de fijos discontinuos con importes Bruto.');
       }
@@ -63,12 +72,8 @@ export function useInnuvaPersonalConverter() {
 
   const handleDownload = useCallback(() => {
     if (!result?.incidencias?.length) return;
-    const exportRows = incidenciasToExportRows(result.incidencias);
-    const worksheet = XLSX.utils.json_to_sheet(exportRows);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Incidencias');
     const base = sourceFile?.name?.replace(/\.(xlsx?|csv)$/i, '') || 'plantilla_fd';
-    XLSX.writeFile(workbook, `${base}_INNUVA_INCIDENCIAS.xlsx`);
+    downloadInnuvaIncidenciasWorkbook(result.incidencias, `${base}_INNUVA_INCIDENCIAS.xlsx`);
   }, [result, sourceFile]);
 
   return {
