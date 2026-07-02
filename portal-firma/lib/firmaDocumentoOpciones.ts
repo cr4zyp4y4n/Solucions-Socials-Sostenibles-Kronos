@@ -7,7 +7,7 @@ export type DocumentoOpcionesAceptacion = {
   formacion_acoso?: boolean;
 };
 
-function isMissingOpcionesColumn(message: string): boolean {
+export function isMissingOpcionesColumn(message: string): boolean {
   return String(message || '').includes('opciones_aceptacion');
 }
 
@@ -65,4 +65,41 @@ export async function loadDocumentoOpciones(
   }
 
   return { tipoDocumento: undefined, opciones: null };
+}
+
+export async function loadDocumentoRespuestaFromAudit(
+  documentoId: string,
+  envioId?: string | null
+): Promise<DocumentoOpcionesAceptacion | null> {
+  const { data, error } = await supabaseAdmin
+    .from('firma_auditorias')
+    .select('detalle, created_at')
+    .eq('documento_id', documentoId)
+    .eq('resultado', 'ok')
+    .order('created_at', { ascending: false })
+    .limit(30);
+
+  if (error) return null;
+
+  for (const row of data || []) {
+    const det = row.detalle as {
+      accion?: string;
+      envio_id?: string | null;
+      respuesta?: string;
+      lectura_confirmada?: boolean;
+      formacion_acoso?: boolean;
+      confirmado_at?: string;
+    } | null;
+    if (det?.accion !== 'documento_lectura_confirmada') continue;
+    if (envioId && det.envio_id && det.envio_id !== envioId) continue;
+    if (det.respuesta !== 'si' && det.respuesta !== 'no') continue;
+    return {
+      respuesta: det.respuesta,
+      lectura_confirmada: det.respuesta === 'si',
+      formacion_acoso: !!det.formacion_acoso,
+      confirmado_at: det.confirmado_at
+    };
+  }
+
+  return null;
 }

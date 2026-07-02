@@ -1,12 +1,21 @@
-import { getFirmaDocumentoLabel } from '@/lib/firmaDocumentos';
-import { buildAceptacionRespuestaLine, buildStampLinesForDoc, getFirmaDocMeta, normalizeRespuestaAceptacion } from '@/lib/firmaDocumentosMeta';
+import {
+  buildAceptacionRespuestaLine,
+  buildStampLinesForDoc,
+  getFirmaDocMeta,
+  getReadStatementNo,
+  normalizeRespuestaAceptacion
+} from '@/lib/firmaDocumentosMeta';
 import { getOtpScopeIds, resolveFirmaToken } from '@/lib/resolveFirmaToken';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getRequestInfo } from '@/lib/requestInfo';
 import { stampPdfLastPage } from '@/lib/pdfSign';
 import { hasRecentDniConfirmation } from '@/lib/dniVerification';
 import { normalizeDni } from '@/lib/normalizeDni';
-import { loadDocumentoOpciones } from '@/lib/firmaDocumentoOpciones';
+import {
+  DocumentoOpcionesAceptacion,
+  loadDocumentoOpciones,
+  loadDocumentoRespuestaFromAudit
+} from '@/lib/firmaDocumentoOpciones';
 
 async function stampAndUploadDocument({
   documento,
@@ -17,7 +26,8 @@ async function stampAndUploadDocument({
   trabajadorNombre,
   trabajadorDni,
   dniConfirmadoEnPortal,
-  smsVerificadoAt
+  smsVerificadoAt,
+  opcionesVerificadas
 }: {
   documento: {
     id: string;
@@ -36,6 +46,7 @@ async function stampAndUploadDocument({
   trabajadorDni?: string | null;
   dniConfirmadoEnPortal?: boolean;
   smsVerificadoAt?: string | null;
+  opcionesVerificadas?: DocumentoOpcionesAceptacion | null;
 }) {
   if (documento.firmado_at && documento.storage_path_firmado) {
     return { signedPath: documento.storage_path_firmado, skipped: true };
@@ -46,6 +57,7 @@ async function stampAndUploadDocument({
 
   const { tipoDocumento: tipoFromDb, opciones } = await loadDocumentoOpciones(documento.id);
   const tipo = tipoFromDb || documento.tipo_documento;
+  const opcionesParaSello = opcionesVerificadas || opciones;
 
   const { data: signedData, error: signedErr } = await supabaseAdmin.storage
     .from('firma-documentos')
@@ -65,7 +77,7 @@ async function stampAndUploadDocument({
     trabajadorNombre,
     trabajadorDni,
     tipoDocumento: tipo,
-    opciones,
+    opciones: opcionesParaSello,
     nowIso,
     documentoId: documento.id,
     tokenRowId,
@@ -103,6 +115,33 @@ async function stampAndUploadDocument({
   if (docErr) throw new Error(docErr.message);
 
   return { signedPath, skipped: false };
+}
+
+async function loadAceptacionVerificada({
+  documentoId,
+  envioId
+}: {
+  documentoId: string;
+  envioId?: string | null;
+}): Promise<DocumentoOpcionesAceptacion | null> {
+  const { opciones } = await loadDocumentoOpciones(documentoId);
+  const respuestaOpciones = normalizeRespuestaAceptacion(opciones);
+  if (respuestaOpciones) {
+    return {
+      ...(opciones || {}),
+      respuesta: respuestaOpciones,
+      lectura_confirmada: respuestaOpciones === 'si'
+    };
+  }
+
+  const opcionesAuditadas = await loadDocumentoRespuestaFromAudit(documentoId, envioId);
+  const respuestaAuditada = normalizeRespuestaAceptacion(opcionesAuditadas);
+  if (!respuestaAuditada) return null;
+  return {
+    ...(opcionesAuditadas || {}),
+    respuesta: respuestaAuditada,
+    lectura_confirmada: respuestaAuditada === 'si'
+  };
 }
 
 export async function POST(_req: Request, ctx: { params: Promise<{ token: string }> }) {
@@ -179,6 +218,21 @@ export async function POST(_req: Request, ctx: { params: Promise<{ token: string
   const trabajadorDni = resolved.trabajador?.dni || null;
   const dniConfirmadoEnPortal = requiereDni;
   const smsVerificadoAt = consumed[0]?.consumed_at || null;
+  const aceptacionesVerificadas = new Map<string, DocumentoOpcionesAceptacion>();
+  for (const doc of resolved.documentos) {
+    const aceptacion = await loadAceptacionVerificada({ documentoId: doc.id, envioId });
+    if (!aceptacion) {
+      return Response.json(
+        {
+          ok: false,
+          error:
+            'No se pudo verificar la respuesta Sí/No de todos los documentos. Vuelve a revisar el pack antes de firmar.'
+        },
+        { status: 400 }
+      );
+    }
+    aceptacionesVerificadas.set(doc.id, aceptacion);
+  }
 
   const signedPaths: string[] = [];
   for (const doc of resolved.documentos) {
@@ -191,7 +245,8 @@ export async function POST(_req: Request, ctx: { params: Promise<{ token: string
       trabajadorNombre,
       trabajadorDni,
       dniConfirmadoEnPortal,
-      smsVerificadoAt
+      smsVerificadoAt,
+      opcionesVerificadas: aceptacionesVerificadas.get(doc.id) || null
     });
     signedPaths.push(result.signedPath);
   }
@@ -226,14 +281,18 @@ export async function POST(_req: Request, ctx: { params: Promise<{ token: string
       storage_paths_firmados: signedPaths,
       declaraciones_aceptadas: await Promise.all(
         resolved.documentos.map(async (d) => {
-          const { opciones } = await loadDocumentoOpciones(d.id);
-          const respuesta = normalizeRespuestaAceptacion(opciones) || 'si';
+          const opciones = aceptacionesVerificadas.get(d.id) || null;
+          const respuesta = normalizeRespuestaAceptacion(opciones);
+          if (!respuesta) throw new Error(`Respuesta no verificada para documento ${d.id}`);
           return {
             documento_id: d.id,
             tipo_documento: d.tipo_documento,
             respuesta,
             lectura_confirmada: respuesta === 'si',
-            declaracion: getFirmaDocMeta(d.tipo_documento).readStatement,
+            declaracion:
+              respuesta === 'si'
+                ? getFirmaDocMeta(d.tipo_documento).readStatement
+                : getReadStatementNo(d.tipo_documento),
             aceptacion_linea: buildAceptacionRespuestaLine(d.tipo_documento, respuesta)
           };
         })
