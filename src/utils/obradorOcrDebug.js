@@ -211,6 +211,22 @@ function candelasSearchHints(text, parsed) {
   return hints;
 }
 
+function trosdordalSearchHints(text, parsed) {
+  const normalized = String(text || '');
+  const hints = [];
+  hints.push(`Marcador "TROS D'ORDAL": ${/TROS\s+D['"”“]?\s*ORDAL/i.test(normalized) ? 'sí' : 'no'}`);
+  const cif = normalized.match(/\bB[-\s]?65790792\b/i);
+  hints.push(cif ? `CIF detectat: ${cif[0].replace(/[^A-Z0-9]/gi, '')}` : 'CIF B65790792: no trobat');
+  const albara = normalized.match(/\b(\d{2}\/\d{7}|\d{9})\b/);
+  hints.push(albara ? `Nº albarà candidat: ${albara[1]}` : 'Nº albarà tipus 26/0000677: no trobat');
+  const fecha = normalized.match(/\b(\d{1,2}\/\d{1,2}\/\d{2,4})\b/);
+  hints.push(fecha ? `Data candidata: ${fecha[1]}` : 'Data: no trobada');
+  const refs = [...normalized.matchAll(/\b([A-Z0-9]{4,12})\s+.+?\b(?:Manat|Unitat|Kg)\b/gi)].map((m) => m[1]);
+  if (refs.length) hints.push(`Codis producte (mostra): ${refs.slice(0, 8).join(', ')}`);
+  if (parsed?.linies?.length) hints.push(`Línies parsejades: ${parsed.linies.length}`);
+  return hints;
+}
+
 export function buildOcrDebugReport({ fileName = '', ocrMeta = {}, ocrText = '', parsed = null } = {}) {
   const parserId = parsed?.parserId || '—';
   const searchHints = parserId === 'multiembalajes'
@@ -225,6 +241,8 @@ export function buildOcrDebugReport({ fileName = '', ocrMeta = {}, ocrText = '',
             ? transgourmetSearchHints(ocrText, parsed)
             : parserId === 'candelas'
               ? candelasSearchHints(ocrText, parsed)
+              : parserId === 'trosdordal'
+                ? trosdordalSearchHints(ocrText, parsed)
               : genericSearchHints(ocrText, parsed);
 
   return {

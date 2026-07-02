@@ -56,10 +56,19 @@ const CANDELAS_MARKERS = [
   /\bB27013713\b/i
 ];
 
+const TROSDORDAL_MARKERS = [
+  /TROS\s+D['"”“]?\s*ORDAL/i,
+  /EL\s+TROS\s+D['"”“]?\s*ORDAL/i,
+  /\bB[-\s]?65790792\b/i,
+  /AGRICULTURA\s+ECOL[ÓO]GICA/i,
+  /CT\/003281\/P/i
+];
+
 const SSS_CLIENT_CIF = 'F67499186';
 const MAKRO_CIF = 'A28647451';
 const TRANSGOURMET_CIF = 'A17371758';
 const CANDELAS_CIF = 'B27013713';
+const TROSDORDAL_CIF = 'B65790792';
 
 const CIF_PATTERN = /\b([A-Z]\d{8})\b/g;
 
@@ -170,6 +179,14 @@ function isTransgourmetFormat(text) {
 function isCandelasFormat(text) {
 
   return CANDELAS_MARKERS.some((re) => re.test(text));
+
+}
+
+
+
+function isTrosdordalFormat(text) {
+
+  return TROSDORDAL_MARKERS.some((re) => re.test(text));
 
 }
 
@@ -2735,6 +2752,210 @@ export function parseCandelasAlbaran(text) {
 
 
 
+function normalizeTrosdordalAlbara(raw) {
+
+  const s = String(raw || '').replace(/\s+/g, '').replace(/[|]/g, '').trim();
+
+  if (/^\d{2}\/\d{7}$/.test(s)) return s;
+
+  if (/^(2[0-9])\d{7}$/.test(s)) return `${s.slice(0, 2)}/${s.slice(2)}`;
+
+  return s;
+
+}
+
+
+
+function normalizeTrosdordalAmount(raw) {
+
+  const s = String(raw || '').replace(/[^\d.,]/g, '').trim();
+
+  if (!s) return '';
+
+  if (/[.,]/.test(s)) return s.replace(',', '.');
+
+  if (/^\d{3,}$/.test(s)) return `${s.slice(0, -2)}.${s.slice(-2)}`;
+
+  return s;
+
+}
+
+
+
+function parseTrosdordalLinia(line) {
+
+  const cleaned = String(line || '')
+
+    .replace(/[|[\]]/g, ' ')
+
+    .replace(/\s+/g, ' ')
+
+    .trim();
+
+  if (!cleaned) return null;
+
+  if (/^(Lot|Descripci|Base|Forma de Pagament|IBAN|Passades 24h|Direcci[oó] d['’]entrega)/i.test(cleaned)) {
+
+    return null;
+
+  }
+
+  const codeMatch = cleaned.match(/^([A-Z0-9]{4,12})\s+(.+)$/i);
+
+  if (!codeMatch) return null;
+
+  const codi = codeMatch[1];
+
+  let rest = codeMatch[2]
+
+    .replace(/\bECO\b/gi, ' ')
+
+    .replace(/\s+/g, ' ')
+
+    .trim();
+
+  const tail = rest.match(/(\d+(?:[.,]\d+)?)\s+(Manat|Unitat|Kg)\s+(\d+(?:[.,]\d+)?)\s+(\d+(?:[.,]\d+)?)\s+(\d{1,2})\s*$/i);
+
+  if (!tail) return null;
+
+  const descripcio = rest.slice(0, tail.index).trim().replace(/[~"'`]+/g, '').trim();
+
+  if (!descripcio) return null;
+
+  return {
+
+    codi,
+
+    descripcio,
+
+    quantitat: tail[1].replace(',', '.'),
+
+    unitat: tail[2],
+
+    precioUnitario: normalizeTrosdordalAmount(tail[3]),
+
+    importe: normalizeTrosdordalAmount(tail[4]),
+
+    iva: tail[5]
+
+  };
+
+}
+
+
+
+/** Parser Tros d'Ordal. */
+
+export function parseTrosdordalAlbaran(text) {
+
+  const lines = linesOf(text);
+
+  const normalized = normalizeText(text);
+
+  const result = {
+
+    parserId: 'trosdordal',
+
+    confiança: 'alta',
+
+    proveidorNom: "Tros d'Ordal",
+
+    proveidorCif: TROSDORDAL_CIF,
+
+    lotProveidor: '',
+
+    dataDocument: '',
+
+    linies: [],
+
+    notes: []
+
+  };
+
+
+
+  const albaraLine = lines.find((l) => /Abar[aá]|Albar[aá]/i.test(l) && /\d{2}\/\d{7}|\d{9}/.test(l));
+
+  if (albaraLine) {
+
+    const albaM = albaraLine.match(/(\d{2}\/\d{7}|\d{9})/);
+
+    if (albaM) result.lotProveidor = normalizeTrosdordalAlbara(albaM[1]);
+
+  }
+
+
+
+  if (!result.lotProveidor) {
+
+    const rawAlba = normalized.match(/\b(\d{2}\/\d{7}|2[0-9]\d{7})\b/);
+
+    if (rawAlba) result.lotProveidor = normalizeTrosdordalAlbara(rawAlba[1]);
+
+  }
+
+
+
+  const dateM = normalized.match(/\b(\d{1,2}\/\d{1,2}\/\d{2,4})\b/);
+
+  if (dateM) {
+
+    result.dataDocument = dateM[1];
+
+  } else {
+
+    const looseDate = normalized.match(/\b(\d{1,2}\/\d{1,2}\/\d{3,4})\b/);
+
+    if (looseDate) {
+
+      result.dataDocument = /\/202$/.test(looseDate[1]) ? `${looseDate[1]}6` : looseDate[1];
+
+    }
+
+  }
+
+
+
+  const startIdx = lines.findIndex((l) => /Lot\s+\|\s*Descripci|Descipd[oó]|Descripci[oó]\s+Tipus/i.test(l));
+  const endIdx = lines.findIndex((l) => /BaseImpossable|TOTAL ALBARA|Forma de Pagament/i.test(l));
+  const productLines = startIdx >= 0
+    ? lines.slice(startIdx + 1, endIdx >= 0 ? endIdx : undefined)
+    : lines;
+
+  for (const line of productLines) {
+
+    const parsed = parseTrosdordalLinia(line);
+
+    if (parsed) result.linies.push(parsed);
+
+  }
+
+
+
+  if (!result.linies.length) result.confiança = 'mitjana';
+
+  if (!result.lotProveidor) {
+
+    result.notes.push("Nº albarà no detectat; busca patró 26/0000677.");
+
+    result.confiança = 'mitjana';
+
+  }
+
+  if (!result.dataDocument) {
+
+    result.notes.push('Data no detectada clarament al OCR.');
+
+    result.confiança = 'mitjana';
+
+  }
+
+  return result;
+
+}
+
+
+
 export function parseAlbaranText(text) {
 
   const raw = normalizeText(text);
@@ -2821,6 +3042,14 @@ export function parseAlbaranText(text) {
 
 
 
+  if (isTrosdordalFormat(raw)) {
+
+    return parseTrosdordalAlbaran(raw);
+
+  }
+
+
+
   return parseGenericAlbaran(raw);
 
 }
@@ -2858,6 +3087,10 @@ export function formatLiniesObservacions(parsed) {
               : parsed.parserId === 'candelas'
 
                 ? 'Línies albarà (Cafés Candelas):'
+
+                : parsed.parserId === 'trosdordal'
+
+                  ? "Línies albarà (Tros d'Ordal):"
 
                 : 'Línies detectades (OCR):';
 
