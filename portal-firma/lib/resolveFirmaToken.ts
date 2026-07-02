@@ -1,5 +1,6 @@
 import { supabaseAdmin } from '@/lib/supabase';
 import { asSingle } from '@/lib/relation';
+import { isMissingOpcionesColumn } from '@/lib/firmaDocumentoOpciones';
 
 export type FirmaDocumentoResolved = {
   id: string;
@@ -58,10 +59,7 @@ export async function resolveFirmaToken(token: string): Promise<ResolvedFirmaCon
   const trimmed = String(token || '').trim();
   if (!trimmed) return null;
 
-  const { data: tokenRow, error } = await supabaseAdmin
-    .from('firma_tokens')
-    .select(
-      `
+  const buildTokenSelect = (includeOpciones: boolean) => `
       id,
       token,
       expires_at,
@@ -92,8 +90,7 @@ export async function resolveFirmaToken(token: string): Promise<ResolvedFirmaCon
           hash_pdf,
           orden,
           revisado_at,
-          firmado_at,
-          opciones_aceptacion
+          firmado_at${includeOpciones ? ',\n          opciones_aceptacion' : ''}
         )
       ),
       documento:firma_documentos!firma_tokens_documento_id_fkey (
@@ -106,8 +103,7 @@ export async function resolveFirmaToken(token: string): Promise<ResolvedFirmaCon
         hash_pdf,
         orden,
         revisado_at,
-        firmado_at,
-        opciones_aceptacion,
+        firmado_at${includeOpciones ? ',\n        opciones_aceptacion' : ''},
         trabajador:firma_trabajadores (
           id,
           nombre,
@@ -115,11 +111,21 @@ export async function resolveFirmaToken(token: string): Promise<ResolvedFirmaCon
           telefono
         )
       )
-    `
-    )
+    `;
+
+  const runTokenQuery = (includeOpciones: boolean) =>
+    supabaseAdmin
+      .from('firma_tokens')
+      .select(buildTokenSelect(includeOpciones))
     .eq('token', trimmed)
     .maybeSingle();
 
+  let includeOpciones = true;
+  let { data: tokenRow, error } = await runTokenQuery(includeOpciones);
+  if (error && isMissingOpcionesColumn(error.message)) {
+    includeOpciones = false;
+    ({ data: tokenRow, error } = await runTokenQuery(includeOpciones));
+  }
   if (error) throw new Error(error.message);
   if (!tokenRow) return null;
 
@@ -160,6 +166,9 @@ export async function resolveFirmaToken(token: string): Promise<ResolvedFirmaCon
     firmado_at: d.firmado_at ?? null,
     opciones_aceptacion: d.opciones_aceptacion ?? null
   });
+  const documentoSelect = includeOpciones
+    ? 'id, tipo_documento, estado, storage_path, storage_path_firmado, file_name, hash_pdf, orden, revisado_at, firmado_at, opciones_aceptacion'
+    : 'id, tipo_documento, estado, storage_path, storage_path_firmado, file_name, hash_pdf, orden, revisado_at, firmado_at';
 
   if (envioRaw?.id) {
     envio = {
@@ -172,9 +181,7 @@ export async function resolveFirmaToken(token: string): Promise<ResolvedFirmaCon
     };
     const { data: docsByEnvio, error: docsErr } = await supabaseAdmin
       .from('firma_documentos')
-      .select(
-        'id, tipo_documento, estado, storage_path, storage_path_firmado, file_name, hash_pdf, orden, revisado_at, firmado_at, opciones_aceptacion'
-      )
+      .select(documentoSelect)
       .eq('envio_id', envioRaw.id)
       .order('orden', { ascending: true });
     if (!docsErr && docsByEnvio?.length) {
@@ -212,9 +219,7 @@ export async function resolveFirmaToken(token: string): Promise<ResolvedFirmaCon
       };
       const { data: docsByEnvio, error: docsErr } = await supabaseAdmin
         .from('firma_documentos')
-        .select(
-          'id, tipo_documento, estado, storage_path, storage_path_firmado, file_name, hash_pdf, orden, revisado_at, firmado_at, opciones_aceptacion'
-        )
+        .select(documentoSelect)
         .eq('envio_id', envioRow.id)
         .order('orden', { ascending: true });
       if (!docsErr && docsByEnvio?.length) {
