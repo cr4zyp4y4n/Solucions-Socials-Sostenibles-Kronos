@@ -4,12 +4,16 @@ import { useTheme } from '../ThemeContext';
 import { KronosButton, KronosCard } from '../kronos';
 import { useInnuvaPersonalConverter } from './useInnuvaPersonalConverter';
 
-function DataTable({ headers, rows, rowKey = 'id' }) {
+function formatEuro(n) {
+  return `${Number(n || 0).toFixed(2).replace('.', ',')} €`;
+}
+
+function DataTable({ headers, rows, rowKey = 'id', minWidth = 700 }) {
   const { colors } = useTheme();
   if (!rows.length) return null;
   return (
     <div style={{ overflowX: 'auto' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 700 }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth }}>
         <thead>
           <tr>
             {headers.map((h) => (
@@ -41,7 +45,7 @@ function DataTable({ headers, rows, rowKey = 'id' }) {
                     fontSize: 12,
                     borderBottom: `1px solid ${colors.border}`,
                     color: colors.text,
-                    maxWidth: 200,
+                    maxWidth: h === 'Bloque' ? 220 : 160,
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
                     whiteSpace: 'nowrap'
@@ -64,25 +68,32 @@ export default function InnuvaPersonalTab() {
   const c = useInnuvaPersonalConverter();
   const r = c.result;
 
-  const incidenciasPreview = (r?.incidencias || []).map((row) => ({
+  const incidenciasPreview = (r?.incidencias || []).map((row, i) => ({
+    id: i,
+    Código: row.codigo || '—',
+    Nombre: row.nombre,
+    Fecha: row.fecha,
+    Bloque: row.bloqueLabel || row.fecha,
+    Días: row.numDias,
+    Bruto: formatEuro(row.brutoBloque),
+    Tramo: row.tramoDevengo,
+    'SB (imp.)': formatEuro(row.salarioBaseImporte),
+    'Mejora (imp.)': formatEuro(row.mejoraImporte),
+    'PP extra (imp.)': formatEuro(row.ppExtraImporte),
+    'Liq. vac. (imp.)': formatEuro(row.liquidacionImporte)
+  }));
+
+  const resumenPreview = (r?.resumenTrabajadores || []).map((row) => ({
     id: row.nombre,
     Código: row.codigo || '—',
     Nombre: row.nombre,
+    Bloques: row.numBloques,
     Días: row.numDias,
-    'Bruto mes': `${row.brutoTotalMes?.toFixed(2).replace('.', ',')} €`,
-    'SB (imp.)': row.salarioBaseImporte?.toFixed(2).replace('.', ','),
-    'Mejora (imp.)': row.mejoraImporte?.toFixed(2).replace('.', ','),
-    'PP extra (imp.)': row.ppExtraImporte?.toFixed(2).replace('.', ','),
-    'Liq. vac. (imp.)': row.liquidacionImporte?.toFixed(2).replace('.', ',')
-  }));
-
-  const diasPreview = (r?.previewDays || []).slice(0, 25).map((d, i) => ({
-    id: i,
-    Trabajador: d.workerName,
-    Fecha: d.fecha,
-    Bruto: `${d.brutoDia?.toFixed(2).replace('.', ',')} €`,
-    Tramo: d.tramoUsado,
-    Lugar: d.lugares
+    'Bruto mes': formatEuro(row.brutoTotalMes),
+    'SB (imp.)': formatEuro(row.salarioBaseImporte),
+    'Mejora (imp.)': formatEuro(row.mejoraImporte),
+    'PP extra (imp.)': formatEuro(row.ppExtraImporte),
+    'Liq. vac. (imp.)': formatEuro(row.liquidacionImporte)
   }));
 
   return (
@@ -98,8 +109,9 @@ export default function InnuvaPersonalTab() {
       <KronosCard>
         <h3 style={{ margin: '0 0 6px', fontSize: 16, fontWeight: 800 }}>Plantilla FD → Incidencias Innuva</h3>
         <p style={{ margin: '0 0 14px', fontSize: 13, color: colors.textSecondary, lineHeight: 1.45 }}>
-          Sube el Excel/CSV de Lizeth (camareros FD). Se agrupa por trabajador y día, se aplica la tabla HORAS FD
-          y se genera el desglose para importar en Innuva. Los códigos de trabajador se pueden añadir después.
+          Sube el Excel/CSV de Lizeth. Cada bloque de días consecutivos genera una fila con el desglose HORAS FD
+          (Salario base, Mejora, P.p. extra, Liquidación). El Excel descargado replica la plantilla oficial de Innuva
+          (`INCIDENCIAS MANUALES` — fila EMPRESA, TRABAJADORES y columnas de importación).
         </p>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <KronosButton variant="primary" onClick={c.handleSelectFile} disabled={c.isProcessing}>
@@ -126,7 +138,7 @@ export default function InnuvaPersonalTab() {
               <>
                 {' '}
                 · {r.blocksFound} trabajadores FD · {r.dayDetails?.length} jornadas · {r.incidencias?.length} filas
-                Innuva
+                Innuva (bloques)
               </>
             ) : null}
           </div>
@@ -158,27 +170,60 @@ export default function InnuvaPersonalTab() {
         <>
           <KronosCard noPadding style={{ overflow: 'hidden' }}>
             <div style={{ padding: '14px 16px 8px' }}>
-              <h4 style={{ margin: 0, fontSize: 14, fontWeight: 800 }}>Resumen Innuva (por trabajador y mes)</h4>
+              <h4 style={{ margin: 0, fontSize: 14, fontWeight: 800 }}>
+                Incidencias Innuva — una fila por bloque (HORAS FD aplicado)
+              </h4>
+              <p style={{ margin: '6px 0 0', fontSize: 12, color: colors.textSecondary, lineHeight: 1.45 }}>
+                Esto es lo que contiene el Excel descargable. Cada fila = un bloque consecutivo con sus importes y unidades.
+              </p>
             </div>
             <div style={{ padding: '0 16px 14px' }}>
               <DataTable
-                headers={['Código', 'Nombre', 'Días', 'Bruto mes', 'SB (imp.)', 'Mejora (imp.)', 'PP extra (imp.)', 'Liq. vac. (imp.)']}
+                minWidth={1100}
+                headers={[
+                  'Código',
+                  'Nombre',
+                  'Fecha',
+                  'Bloque',
+                  'Días',
+                  'Bruto',
+                  'Tramo',
+                  'SB (imp.)',
+                  'Mejora (imp.)',
+                  'PP extra (imp.)',
+                  'Liq. vac. (imp.)'
+                ]}
                 rows={incidenciasPreview}
               />
             </div>
           </KronosCard>
 
-          <KronosCard noPadding style={{ overflow: 'hidden' }}>
-            <div style={{ padding: '14px 16px 8px' }}>
-              <h4 style={{ margin: 0, fontSize: 14, fontWeight: 800 }}>Detalle por día (primeras 25 jornadas)</h4>
-            </div>
-            <div style={{ padding: '0 16px 14px' }}>
-              <DataTable
-                headers={['Trabajador', 'Fecha', 'Bruto', 'Tramo', 'Lugar']}
-                rows={diasPreview}
-              />
-            </div>
-          </KronosCard>
+          {resumenPreview.length ? (
+            <KronosCard noPadding style={{ overflow: 'hidden' }}>
+              <div style={{ padding: '14px 16px 8px' }}>
+                <h4 style={{ margin: 0, fontSize: 14, fontWeight: 800 }}>Resumen por trabajador (solo control)</h4>
+                <p style={{ margin: '6px 0 0', fontSize: 12, color: colors.textSecondary }}>
+                  Suma de todos los bloques del mes. No se exporta a Innuva.
+                </p>
+              </div>
+              <div style={{ padding: '0 16px 14px' }}>
+                <DataTable
+                  headers={[
+                    'Código',
+                    'Nombre',
+                    'Bloques',
+                    'Días',
+                    'Bruto mes',
+                    'SB (imp.)',
+                    'Mejora (imp.)',
+                    'PP extra (imp.)',
+                    'Liq. vac. (imp.)'
+                  ]}
+                  rows={resumenPreview}
+                />
+              </div>
+            </KronosCard>
+          ) : null}
         </>
       ) : null}
     </div>

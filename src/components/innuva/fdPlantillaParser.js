@@ -128,6 +128,8 @@ function normalizeWorkerKey(name) {
     .trim();
 }
 
+export { normalizeWorkerKey };
+
 export function parsePlantillaFdRows(rows, fileName = '') {
   const headerRowIdx = rows.findIndex((r, idx) => idx >= 1 && r.some((_, i) => isFdBlockAt(r, i)));
   const headers = rows[headerRowIdx >= 0 ? headerRowIdx : 2] || rows[2] || [];
@@ -140,6 +142,7 @@ export function parsePlantillaFdRows(rows, fileName = '') {
     const name = extractWorkerName(nameRow, typeRow, i);
     blocks.push({
       colStart: i,
+      colHorario: i + 1,
       colBruto: i + 4,
       name,
       innuvaCode: extractInnuvaCode(nameRow, i)
@@ -178,6 +181,10 @@ export function parsePlantillaFdRows(rows, fileName = '') {
     if (facturado.includes('no es seerv')) continue;
 
     for (const block of blocks) {
+      // Filas sin Horario son subtotales del bloque superior (no servicios reales).
+      const horario = String(row[block.colHorario] || '').trim();
+      if (!horario) continue;
+
       const bruto = parseEuroEs(row[block.colBruto]);
       if (bruto === null || bruto <= 0) continue;
 
