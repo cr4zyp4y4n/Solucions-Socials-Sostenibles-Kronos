@@ -38,6 +38,28 @@ type FirmaTokenQueryRow = FirmaTokenResolved & {
   documento?: unknown;
 };
 
+type FirmaTrabajadorQueryRow = FirmaTrabajadorResolved;
+
+type FirmaDocumentoQueryRow = {
+  id: string;
+  tipo_documento: string;
+  estado: string;
+  storage_path?: string | null;
+  storage_path_firmado?: string | null;
+  file_name?: string | null;
+  hash_pdf?: string | null;
+  orden?: number | null;
+  revisado_at?: string | null;
+  firmado_at?: string | null;
+  opciones_aceptacion?: FirmaDocumentoResolved['opciones_aceptacion'];
+  trabajador?: unknown;
+};
+
+type FirmaEnvioQueryRow = FirmaEnvioResolved & {
+  trabajador?: unknown;
+  documentos?: unknown;
+};
+
 export type FirmaEnvioResolved = {
   id: string;
   nombre: string | null;
@@ -140,26 +162,14 @@ export async function resolveFirmaToken(token: string): Promise<ResolvedFirmaCon
   const isRevoked = !!tokenData.revoked_at;
   const isUsed = !!tokenData.used_at;
 
-  const envioRaw = asSingle(tokenData.envio);
-  const docAnchor = asSingle(tokenData.documento);
+  const envioRaw = asSingle(tokenData.envio as FirmaEnvioQueryRow | FirmaEnvioQueryRow[] | null | undefined);
+  const docAnchor = asSingle(tokenData.documento as FirmaDocumentoQueryRow | FirmaDocumentoQueryRow[] | null | undefined);
 
   let documentos: FirmaDocumentoResolved[] = [];
   let trabajador: FirmaTrabajadorResolved | null = null;
   let envio: FirmaEnvioResolved | null = null;
 
-  const mapDocRow = (d: {
-    id: string;
-    tipo_documento: string;
-    estado: string;
-    storage_path?: string | null;
-    storage_path_firmado?: string | null;
-    file_name?: string | null;
-    hash_pdf?: string | null;
-    orden?: number | null;
-    revisado_at?: string | null;
-    firmado_at?: string | null;
-    opciones_aceptacion?: FirmaDocumentoResolved['opciones_aceptacion'];
-  }): FirmaDocumentoResolved => ({
+  const mapDocRow = (d: FirmaDocumentoQueryRow): FirmaDocumentoResolved => ({
     id: d.id,
     tipo_documento: d.tipo_documento,
     estado: d.estado,
@@ -191,10 +201,10 @@ export async function resolveFirmaToken(token: string): Promise<ResolvedFirmaCon
       .eq('envio_id', envioRaw.id)
       .order('orden', { ascending: true });
     if (!docsErr && docsByEnvio?.length) {
-      documentos = docsByEnvio.map(mapDocRow);
+      documentos = (docsByEnvio as unknown as FirmaDocumentoQueryRow[]).map(mapDocRow);
     }
 
-    const t = asSingle(envioRaw.trabajador);
+    const t = asSingle(envioRaw.trabajador as FirmaTrabajadorQueryRow | FirmaTrabajadorQueryRow[] | null | undefined);
     if (t?.id && t.telefono) {
       trabajador = { id: t.id, nombre: t.nombre, dni: t.dni ?? null, telefono: t.telefono };
     }
@@ -214,24 +224,25 @@ export async function resolveFirmaToken(token: string): Promise<ResolvedFirmaCon
       )
       .eq('id', tokenData.envio_id)
       .maybeSingle();
-    if (!envioErr && envioRow?.id) {
+    const envioData = envioRow as unknown as FirmaEnvioQueryRow | null;
+    if (!envioErr && envioData?.id) {
       envio = {
-        id: envioRow.id,
-        nombre: envioRow.nombre ?? null,
-        estado: envioRow.estado,
-        fecha_inicio: envioRow.fecha_inicio ?? null,
-        fecha_fin: envioRow.fecha_fin ?? null,
-        firmado_at: envioRow.firmado_at ?? null
+        id: envioData.id,
+        nombre: envioData.nombre ?? null,
+        estado: envioData.estado,
+        fecha_inicio: envioData.fecha_inicio ?? null,
+        fecha_fin: envioData.fecha_fin ?? null,
+        firmado_at: envioData.firmado_at ?? null
       };
       const { data: docsByEnvio, error: docsErr } = await supabaseAdmin
         .from('firma_documentos')
         .select(documentoSelect)
-        .eq('envio_id', envioRow.id)
+        .eq('envio_id', envioData.id)
         .order('orden', { ascending: true });
       if (!docsErr && docsByEnvio?.length) {
-        documentos = docsByEnvio.map(mapDocRow);
+        documentos = (docsByEnvio as unknown as FirmaDocumentoQueryRow[]).map(mapDocRow);
       }
-      const t = asSingle(envioRow.trabajador);
+      const t = asSingle(envioData.trabajador as FirmaTrabajadorQueryRow | FirmaTrabajadorQueryRow[] | null | undefined);
       if (t?.id && t.telefono) {
         trabajador = { id: t.id, nombre: t.nombre, dni: t.dni ?? null, telefono: t.telefono };
       }
@@ -240,7 +251,7 @@ export async function resolveFirmaToken(token: string): Promise<ResolvedFirmaCon
 
   if (!documentos.length && docAnchor?.id) {
     documentos = [mapDocRow(docAnchor)];
-    const t = asSingle(docAnchor.trabajador);
+    const t = asSingle(docAnchor.trabajador as FirmaTrabajadorQueryRow | FirmaTrabajadorQueryRow[] | null | undefined);
     if (t?.id && t.telefono) {
       trabajador = { id: t.id, nombre: t.nombre, dni: t.dni ?? null, telefono: t.telefono };
     }
