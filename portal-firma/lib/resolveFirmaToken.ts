@@ -33,6 +33,11 @@ export type FirmaTokenResolved = {
   documento_id: string | null;
 };
 
+type FirmaTokenQueryRow = FirmaTokenResolved & {
+  envio?: unknown;
+  documento?: unknown;
+};
+
 export type FirmaEnvioResolved = {
   id: string;
   nombre: string | null;
@@ -128,14 +133,15 @@ export async function resolveFirmaToken(token: string): Promise<ResolvedFirmaCon
   }
   if (error) throw new Error(error.message);
   if (!tokenRow) return null;
+  const tokenData = tokenRow as unknown as FirmaTokenQueryRow;
 
-  const expiresAt = new Date(tokenRow.expires_at);
+  const expiresAt = new Date(tokenData.expires_at);
   const isExpired = Number.isFinite(expiresAt.getTime()) && expiresAt.getTime() < Date.now();
-  const isRevoked = !!tokenRow.revoked_at;
-  const isUsed = !!tokenRow.used_at;
+  const isRevoked = !!tokenData.revoked_at;
+  const isUsed = !!tokenData.used_at;
 
-  const envioRaw = asSingle(tokenRow.envio);
-  const docAnchor = asSingle(tokenRow.documento);
+  const envioRaw = asSingle(tokenData.envio);
+  const docAnchor = asSingle(tokenData.documento);
 
   let documentos: FirmaDocumentoResolved[] = [];
   let trabajador: FirmaTrabajadorResolved | null = null;
@@ -192,7 +198,7 @@ export async function resolveFirmaToken(token: string): Promise<ResolvedFirmaCon
     if (t?.id && t.telefono) {
       trabajador = { id: t.id, nombre: t.nombre, dni: t.dni ?? null, telefono: t.telefono };
     }
-  } else if (tokenRow.envio_id) {
+  } else if (tokenData.envio_id) {
     const { data: envioRow, error: envioErr } = await supabaseAdmin
       .from('firma_envios')
       .select(
@@ -206,7 +212,7 @@ export async function resolveFirmaToken(token: string): Promise<ResolvedFirmaCon
         trabajador:firma_trabajadores ( id, nombre, dni, telefono )
       `
       )
-      .eq('id', tokenRow.envio_id)
+      .eq('id', tokenData.envio_id)
       .maybeSingle();
     if (!envioErr && envioRow?.id) {
       envio = {
@@ -241,17 +247,17 @@ export async function resolveFirmaToken(token: string): Promise<ResolvedFirmaCon
   }
 
   const documentoPrincipal = documentos[0] || null;
-  const envioId = tokenRow.envio_id ?? envio?.id ?? null;
+  const envioId = tokenData.envio_id ?? envio?.id ?? null;
 
   return {
     tokenRow: {
-      id: tokenRow.id,
-      token: tokenRow.token,
-      expires_at: tokenRow.expires_at,
-      used_at: tokenRow.used_at,
-      revoked_at: tokenRow.revoked_at,
+      id: tokenData.id,
+      token: tokenData.token,
+      expires_at: tokenData.expires_at,
+      used_at: tokenData.used_at,
+      revoked_at: tokenData.revoked_at,
       envio_id: envioId,
-      documento_id: tokenRow.documento_id ?? null
+      documento_id: tokenData.documento_id ?? null
     },
     isExpired,
     isRevoked,

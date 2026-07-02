@@ -1,4 +1,3 @@
-import { getFirmaDocumentoLabel } from '@/lib/firmaDocumentos';
 import {
   buildAceptacionRespuestaLine,
   buildStampLinesForDoc,
