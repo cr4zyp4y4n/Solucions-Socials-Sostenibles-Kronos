@@ -23,9 +23,13 @@ const {
   openMailtoInSystem,
   getEmailDebugInfo
 } = require('./main/openSystemEmail');
+const { licitacionsHttpRequest } = require('./main/licitacionsHttp');
+const {
+  setMainSupabaseSession
+} = require('./main/licitacionsSupabaseMain');
+const { runBackgroundLicitacionsSync } = require('./main/licitacionsBackgroundSync');
 const https = require('https');
 const http = require('http');
-const zlib = require('node:zlib');
 const { autoUpdater } = require('electron-updater');
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
@@ -590,119 +594,6 @@ ipcMain.handle('make-holded-request', async (event, { url, options }) => {
   });
 });
 
-const LICITACIONS_HTTP_HOSTS = new Set([
-  'api.ted.europa.eu',
-  'opendata.aoc.cat',
-  'analisi.transparenciacatalunya.cat',
-  'contrataciondelestado.es'
-]);
-
-function licitacionsHttpRequest({ url, method = 'GET', headers = {}, body = null }) {
-  return new Promise((resolve, reject) => {
-    const MAX_REDIRECTS = 5;
-
-    const doRequest = (currentUrl, redirectsLeft) => {
-      const urlObj = new URL(currentUrl);
-      if (!LICITACIONS_HTTP_HOSTS.has(urlObj.hostname)) {
-        reject(new Error(`Host no permès per a licitacions: ${urlObj.hostname}`));
-        return;
-      }
-
-      const lib = urlObj.protocol === 'http:' ? http : https;
-      const baseHeaders = {
-        // User-Agent ayuda mucho con endpoints que devuelven HTML/bloqueos si parece "bot"
-        'User-Agent': 'SSS-Kronos/licitacions (+electron)',
-        'Accept': headers.Accept || headers.accept || '*/*',
-        'Accept-Language': headers['Accept-Language'] || headers['accept-language'] || 'es-ES,es;q=0.9,ca;q=0.8,en;q=0.7',
-        // Muchos endpoints sirven gzip por defecto; lo soportamos para poder parsear XML/JSON
-        'Accept-Encoding': 'gzip,deflate',
-        ...headers
-      };
-
-      const requestOptions = {
-        hostname: urlObj.hostname,
-        port: urlObj.port || (urlObj.protocol === 'https:' ? 443 : 80),
-        path: urlObj.pathname + urlObj.search,
-        method: method || 'GET',
-        headers: baseHeaders
-      };
-
-      const req = lib.request(requestOptions, (res) => {
-        const sc = res.statusCode || 0;
-        const isRedirect = sc >= 300 && sc < 400 && !!res.headers.location;
-        if (isRedirect) {
-          if (redirectsLeft <= 0) {
-            res.resume();
-            reject(new Error('Demasiadas redirecciones en licitacions-http-request'));
-            return;
-          }
-          const nextUrl = res.headers.location.startsWith('http')
-            ? res.headers.location
-            : new URL(res.headers.location, currentUrl).toString();
-          res.resume();
-          doRequest(nextUrl, redirectsLeft - 1);
-          return;
-        }
-
-        const encoding = String(res.headers['content-encoding'] || '').toLowerCase();
-        const contentType = String(res.headers['content-type'] || '');
-
-        const chunks = [];
-        res.on('data', (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
-        res.on('end', () => {
-          const buffer = Buffer.concat(chunks);
-
-          const finish = (buf) => resolve({
-            ok: sc >= 200 && sc < 300,
-            status: sc,
-            statusText: res.statusMessage,
-            text: buf.toString('utf8'),
-            headers: {
-              'content-type': contentType,
-              'content-encoding': encoding
-            }
-          });
-
-          if (encoding === 'gzip') {
-            zlib.gunzip(buffer, (err, out) => {
-              if (err) {
-                finish(buffer); // fallback sin descomprimir
-                return;
-              }
-              finish(out);
-            });
-            return;
-          }
-
-          if (encoding === 'deflate') {
-            zlib.inflate(buffer, (err, out) => {
-              if (err) {
-                finish(buffer);
-                return;
-              }
-              finish(out);
-            });
-            return;
-          }
-
-          finish(buffer);
-        });
-      });
-
-      req.on('error', (error) => {
-        reject(new Error(`Request failed: ${error.message}`));
-      });
-
-      if (body != null && body !== '') {
-        req.write(typeof body === 'string' ? body : JSON.stringify(body));
-      }
-      req.end();
-    };
-
-    doRequest(url, MAX_REDIRECTS);
-  });
-}
-
 /** Peticions TED/PSCP/PLACSP des del main (evita CSP del renderer). */
 ipcMain.handle('licitacions-http-request', async (_event, payload) => {
   const { url, method, headers, body } = payload || {};
@@ -710,6 +601,16 @@ ipcMain.handle('licitacions-http-request', async (_event, payload) => {
     throw new Error('URL requerida');
   }
   return licitacionsHttpRequest({ url, method, headers, body });
+});
+
+/** Replica la sesión Supabase al main para sync en background (cron). */
+ipcMain.handle('licitacions-sync-session', async (_event, session) => {
+  return setMainSupabaseSession(session || null);
+});
+
+/** Sync manual desde renderer vía main (opcional; el renderer suele llamar fetchAll directamente). */
+ipcMain.handle('licitacions-run-background-sync', async () => {
+  return runBackgroundLicitacionsSync();
 });
 
 const createWindow = () => {
@@ -814,15 +715,29 @@ app.whenReady().then(() => {
     const cron = require('node-cron');
     cron.schedule(
       '0 8 * * 1',
-      () => {
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('licitacions-cron-sync');
-          console.log('[licitacions] Cron semanal: sync solicitada al renderer');
+      async () => {
+        console.log('[licitacions] Cron semanal: iniciando sync en main process…');
+        try {
+          const result = await runBackgroundLicitacionsSync();
+          console.log('[licitacions] Cron sync OK:', {
+            ted: result?.fetched?.ted,
+            pscp: result?.fetched?.pscp,
+            placsp: result?.fetched?.placsp,
+            purged: result?.purge?.deleted
+          });
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('licitacions-cron-sync-done', result);
+          }
+        } catch (err) {
+          console.warn('[licitacions] Cron sync main falló:', err?.message || err);
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('licitacions-cron-sync');
+          }
         }
       },
       { timezone: 'Europe/Madrid' }
     );
-    console.log('[licitacions] Cron semanal programado (lunes 08:00 Europe/Madrid)');
+    console.log('[licitacions] Cron semanal programado (lunes 08:00 Europe/Madrid, main process)');
   } catch (err) {
     console.warn('[licitacions] No se pudo programar cron:', err?.message || err);
   }

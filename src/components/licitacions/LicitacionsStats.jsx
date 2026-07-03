@@ -29,7 +29,7 @@ export default function LicitacionsStats({ stats, onFilter }) {
     },
     {
       key: 'actives',
-      label: 'Activas',
+      label: 'Vigentes (JC)',
       value: stats.actives,
       tone: colors.primary,
       filter: { actives: true }

@@ -3,12 +3,12 @@ import * as XLSX from 'xlsx';
 import { convertPlantillaFileToInnuva } from './fdInnuvaConverter';
 import { downloadInnuvaIncidenciasWorkbook } from './innuvaIncidenciasExport';
 import { loadInnuvaWorkersCatalog, resolveInnuvaWorkerMatch } from './innuvaWorkersCatalog';
-import { parseCsvText } from './fdPlantillaParser';
+import { parseCsvText, readTextFileWithEncoding } from './fdPlantillaParser';
 
 async function readPlantillaRows(file) {
   const isCsv = /\.csv$/i.test(file.name) || file.type === 'text/csv';
   if (isCsv) {
-    const text = await file.text();
+    const text = await readTextFileWithEncoding(file);
     return parseCsvText(text);
   }
   const data = await file.arrayBuffer();
@@ -43,7 +43,12 @@ export function useInnuvaPersonalConverter() {
       }
       const converted = convertPlantillaFileToInnuva(rows, file.name, codigoByWorkerKey);
       if (!converted.incidencias.length) {
-        setError('No se generaron filas. Revisa que la hoja tenga bloques de fijos discontinuos con importes Bruto.');
+        const hint = converted.warnings?.length
+          ? ` ${converted.warnings.slice(0, 3).join(' · ')}`
+          : '';
+        setError(
+          `No se generaron filas. Revisa que la hoja tenga bloques de fijos discontinuos con importes Bruto.${hint}`
+        );
       }
       setResult(converted);
     } catch (e) {

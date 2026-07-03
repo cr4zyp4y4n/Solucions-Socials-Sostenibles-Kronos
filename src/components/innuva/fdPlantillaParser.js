@@ -1,17 +1,55 @@
 import { parseEuroEs } from './fdHorasLookup';
 
+/**
+ * CSV de Excel en Windows suele venir en Windows-1252, no UTF-8.
+ * Si se lee como UTF-8, ó/ñ/€ aparecen como "".
+ */
+export function decodeTextBytes(bytes) {
+  const data = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  if (data.length >= 3 && data[0] === 0xef && data[1] === 0xbb && data[2] === 0xbf) {
+    return new TextDecoder('utf-8').decode(data.slice(3));
+  }
+
+  const utf8 = new TextDecoder('utf-8', { fatal: false }).decode(data);
+  const replacementCount = (utf8.match(/\uFFFD/g) || []).length;
+  if (replacementCount === 0) return utf8;
+
+  try {
+    return new TextDecoder('windows-1252').decode(data);
+  } catch {
+    return new TextDecoder('iso-8859-1').decode(data);
+  }
+}
+
+export async function readTextFileWithEncoding(file) {
+  const buffer = await file.arrayBuffer();
+  return decodeTextBytes(new Uint8Array(buffer));
+}
+
 const MONTHS_ES = {
   ene: 1, feb: 2, mar: 3, abr: 4, may: 5, jun: 6,
   jul: 7, ago: 8, sep: 9, oct: 10, nov: 11, dic: 12
 };
 
-export function parseCsvText(text) {
-  const raw = String(text || '').replace(/^\uFEFF/, '');
-  const lines = raw.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
-  return lines.map(parseCsvLine);
+function detectCsvDelimiter(text) {
+  const sample = String(text || '')
+    .replace(/^\uFEFF/, '')
+    .split('\n')
+    .slice(0, 5)
+    .join('\n');
+  const semi = (sample.match(/;/g) || []).length;
+  const comma = (sample.match(/,/g) || []).length;
+  return semi > comma ? ';' : ',';
 }
 
-function parseCsvLine(line) {
+export function parseCsvText(text) {
+  const raw = String(text || '').replace(/^\uFEFF/, '');
+  const delimiter = detectCsvDelimiter(raw);
+  const lines = raw.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+  return lines.map((line) => parseCsvLine(line, delimiter));
+}
+
+function parseCsvLine(line, delimiter = ',') {
   const out = [];
   let cur = '';
   let inQ = false;
@@ -21,7 +59,7 @@ function parseCsvLine(line) {
       inQ = !inQ;
       continue;
     }
-    if (ch === ',' && !inQ) {
+    if (ch === delimiter && !inQ) {
       out.push(cur);
       cur = '';
       continue;
@@ -46,20 +84,34 @@ function isFdBlockAt(headers, i) {
   );
 }
 
+function isPlantillaMetadataCell(raw) {
+  const s = String(raw || '').trim();
+  if (!s) return true;
+  if (/^\d{2}-\d{10}/.test(s.replace(/\s/g, ''))) return true;
+  if (/^[\d\s\-\/\.]+$/.test(s)) return true;
+  if (/^[0-9]{1,2}\s*-\s*[0-9A-Z]{7,}$/i.test(s)) return true;
+  if (/^6\s*-\s*0?[0-9A-Z]{7,}$/i.test(s.replace(/\s/g, ''))) return true;
+  if (/^[0-9]{7,10}$/.test(s.replace(/\s/g, ''))) return true;
+  return false;
+}
+
+function looksLikePersonName(raw) {
+  const s = String(raw || '').trim();
+  if (!s || isPlantillaMetadataCell(s)) return false;
+  if (!/[a-záéíóúñ]/i.test(s)) return false;
+  if (s.length < 3) return false;
+  return true;
+}
+
 function extractWorkerName(nameRow, typeRow, colStart) {
-  let fallback = null;
-  for (let c = colStart; c >= Math.max(0, colStart - 14); c--) {
+  for (let c = colStart; c >= Math.max(0, colStart - 8); c--) {
     const raw = String(nameRow[c] || '').trim();
     if (!raw) continue;
     const coded = raw.match(/^\d+\s*-\s*(.+)$/);
     if (coded) return coded[1].trim();
-    if (/^\d{2}-\d{10}/.test(raw.replace(/\s/g, ''))) continue;
-    if (/^[\d\s\-\/\.]+$/.test(raw)) continue;
-    if (/[a-záéíóúñ]/i.test(raw) && raw.length > 2) {
-      fallback = raw;
-    }
+    if (looksLikePersonName(raw)) return raw;
   }
-  if (fallback) return fallback;
+
   const tipo = String(typeRow[colStart] || '').trim();
   if (/fijo\s*discontinuo/i.test(tipo)) {
     return `Trabajador col. ${colStart}`;
@@ -68,10 +120,14 @@ function extractWorkerName(nameRow, typeRow, colStart) {
 }
 
 function extractInnuvaCode(nameRow, colStart) {
-  for (let c = colStart; c <= colStart + 8 && c < nameRow.length; c++) {
+  for (let c = Math.max(0, colStart - 2); c <= colStart + 2 && c < nameRow.length; c++) {
     const raw = String(nameRow[c] || '').trim();
-    const m = raw.match(/^(\d{6,})$/);
-    if (m) return m[1];
+    if (isPlantillaMetadataCell(raw)) continue;
+    const coded = raw.match(/^(\d{1,3})\s*-\s*(.+)$/);
+    const namePart = coded?.[2]?.trim() || '';
+    if (coded && /[a-záéíóúñ]/i.test(namePart) && /\s/.test(namePart)) {
+      return coded[1].padStart(6, '0');
+    }
   }
   return '';
 }
@@ -130,14 +186,34 @@ function normalizeWorkerKey(name) {
 
 export { normalizeWorkerKey };
 
+function isEmmyMarineRomane(cell) {
+  const key = normalizeWorkerKey(cell);
+  return key.includes('emmy') && key.includes('marine') && key.includes('romane');
+}
+
+/** Primera columna de fijos discontinuos: desde Emmy Marine Romane (incluida). */
+function findFdAnchorColumn(nameRow, typeRow) {
+  for (let i = 0; i < nameRow.length; i++) {
+    if (isEmmyMarineRomane(nameRow[i])) return i;
+  }
+  for (let i = 0; i < typeRow.length; i++) {
+    if (/fijo\s*discontinuo/i.test(String(typeRow[i] || ''))) return i;
+  }
+  return 0;
+}
+
 export function parsePlantillaFdRows(rows, fileName = '') {
-  const headerRowIdx = rows.findIndex((r, idx) => idx >= 1 && r.some((_, i) => isFdBlockAt(r, i)));
-  const headers = rows[headerRowIdx >= 0 ? headerRowIdx : 2] || rows[2] || [];
   const nameRow = rows[0] || [];
   const typeRow = rows[1] || [];
+  const fdAnchorCol = findFdAnchorColumn(nameRow, typeRow);
+
+  const headerRowIdx = rows.findIndex((r, idx) => (
+    idx >= 1 && r.some((_, i) => i >= fdAnchorCol && isFdBlockAt(r, i))
+  ));
+  const headers = rows[headerRowIdx >= 0 ? headerRowIdx : 2] || rows[2] || [];
 
   const blocks = [];
-  for (let i = 0; i < headers.length - 4; i++) {
+  for (let i = fdAnchorCol; i < headers.length - 4; i++) {
     if (!isFdBlockAt(headers, i)) continue;
     const name = extractWorkerName(nameRow, typeRow, i);
     blocks.push({
@@ -158,7 +234,11 @@ export function parsePlantillaFdRows(rows, fileName = '') {
       month,
       workers: [],
       dayDetails: [],
-      warnings: ['No se detectaron bloques de fijos discontinuos (Parcialidad·Horario·Parcialidad·Horas·Bruto).'],
+      warnings: [
+        fdAnchorCol > 0
+          ? `No se detectaron bloques FD desde la columna de Emmy Marine Romane (col. ${fdAnchorCol + 1}).`
+          : 'No se detectaron bloques de fijos discontinuos (Parcialidad·Horario·Parcialidad·Horas·Bruto).'
+      ],
       blocksFound: 0
     };
   }

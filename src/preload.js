@@ -56,6 +56,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('licitacions-cron-sync', wrapped);
     return () => ipcRenderer.removeListener('licitacions-cron-sync', wrapped);
   },
+  onLicitacionsCronSyncDone: (callback) => {
+    const wrapped = (_event, ...args) => callback(...args);
+    ipcRenderer.on('licitacions-cron-sync-done', wrapped);
+    return () => ipcRenderer.removeListener('licitacions-cron-sync-done', wrapped);
+  },
+  syncLicitacionsSession: (session) => ipcRenderer.invoke('licitacions-sync-session', session),
 
   // Remover listeners
   removeAllListeners: (channel) => ipcRenderer.removeAllListeners(channel),

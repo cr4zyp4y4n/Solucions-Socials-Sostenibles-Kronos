@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { FileText, RefreshCw, ExternalLink, Save, Search } from 'feather-icons-react';
+import { FileText, RefreshCw, ExternalLink, Save, Search, HelpCircle } from 'feather-icons-react';
 import { motion } from 'framer-motion';
 import { useTheme } from './ThemeContext';
 import SectionHeader from './SectionHeader';
 import LicitacioDetailModal from './LicitacioDetailModal';
 import LicitacionsStats from './licitacions/LicitacionsStats';
+import LicitacionsLeyendaModal from './licitacions/LicitacionsLeyendaModal';
 import licitacionsService from '../services/licitacionsService';
 import { getEstatContractacioMeta } from '../constants/licitacionsEstat';
 import { KronosButton } from './kronos';
@@ -15,6 +16,7 @@ import {
   formatLastSyncLabel,
   getLastSync,
   getLastVisit,
+  isLicitacioVigent,
   setLastSync,
   setLastVisit
 } from './licitacions/licitacionsHelpers';
@@ -345,7 +347,9 @@ export default function LicitacionsPage() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
+  const [leyendaOpen, setLeyendaOpen] = useState(false);
   const [error, setError] = useState('');
+  const [syncInfo, setSyncInfo] = useState('');
   const [selectedId, setSelectedId] = useState(null);
   const [savingId, setSavingId] = useState(null);
   const [lastVisit] = useState(() => getLastVisit());
@@ -357,7 +361,8 @@ export default function LicitacionsPage() {
     estat_jc: '',
     q: '',
     vencenSetmana: false,
-    soloActivas: false
+    soloActivas: false,
+    incluirCaducadas: false
   });
 
   const load = useCallback(async () => {
@@ -388,11 +393,26 @@ export default function LicitacionsPage() {
   const syncNow = useCallback(async () => {
     setSyncing(true);
     setError('');
+    setSyncInfo('');
     try {
-      await licitacionsService.fetchAll({ page: 1, limit: 100 });
+      const result = await licitacionsService.fetchAll({ limit: 100, tedMaxPages: 3, purgeCaducadas: true });
       const now = new Date();
       setLastSync(now);
       setLastSyncAt(now);
+      const tedLabel = result.fetched?.tedPages > 1
+        ? `TED ${result.fetched?.ted ?? 0} (${result.fetched.tedPages} pág.)`
+        : `TED ${result.fetched?.ted ?? 0}`;
+      const parts = [
+        tedLabel,
+        `PSCP ${result.fetched?.pscp ?? 0}`,
+        `PLACSP ${result.fetched?.placsp ?? 0}`
+      ];
+      const purged = result.purge?.deleted ?? 0;
+      const purgePart = purged > 0 ? `, ${purged} caducadas eliminadas` : '';
+      setSyncInfo(`Sincronizado: ${parts.join(' · ')} (${result.inserted ?? 0} nuevas, ${result.updated ?? 0} actualizadas${purgePart})`);
+      if (result.errors) {
+        setError(Object.entries(result.errors).map(([k, v]) => `${k.toUpperCase()}: ${v}`).join(' · '));
+      }
       await load();
     } catch (e) {
       setError(e?.message || String(e));
@@ -408,11 +428,23 @@ export default function LicitacionsPage() {
       syncNow();
     };
     const unsub = api.onLicitacionsCronSync(handler);
+    const unsubDone = api.onLicitacionsCronSyncDone?.((result) => {
+      const now = new Date();
+      setLastSync(now);
+      setLastSyncAt(now);
+      const purged = result?.purge?.deleted ?? 0;
+      setSyncInfo(
+        `Sync automática (lunes): TED ${result?.fetched?.ted ?? 0} · PSCP ${result?.fetched?.pscp ?? 0} · PLACSP ${result?.fetched?.placsp ?? 0}${purged ? ` · ${purged} caducadas eliminadas` : ''}`
+      );
+      load();
+    });
     return () => {
       if (typeof unsub === 'function') unsub();
       else api.removeAllListeners?.('licitacions-cron-sync');
+      if (typeof unsubDone === 'function') unsubDone();
+      else api.removeAllListeners?.('licitacions-cron-sync-done');
     };
-  }, [syncNow]);
+  }, [syncNow, load]);
 
   const sectors = useMemo(() => {
     const set = new Set();
@@ -424,6 +456,9 @@ export default function LicitacionsPage() {
 
   const filteredRows = useMemo(() => {
     let list = rows;
+    if (!filters.incluirCaducadas) {
+      list = list.filter(isLicitacioVigent);
+    }
     if (filters.vencenSetmana) {
       list = list.filter((r) => {
         const d = daysUntil(r.termini_oferta);
@@ -439,10 +474,13 @@ export default function LicitacionsPage() {
       const hay = `${r?.title || ''} ${r?.organismo || ''} ${r?.sector || ''} ${r?.external_id || ''}`.toLowerCase();
       return hay.includes(q);
     });
-  }, [rows, filters.q, filters.vencenSetmana, filters.soloActivas]);
+  }, [rows, filters.q, filters.vencenSetmana, filters.soloActivas, filters.incluirCaducadas]);
 
   const stats = useMemo(() => computeLicitacionsStats(rows), [rows]);
-  const nuevasCount = useMemo(() => countNewSince(rows, lastVisit), [rows, lastVisit]);
+  const nuevasCount = useMemo(
+    () => countNewSince(rows.filter(isLicitacioVigent), lastVisit),
+    [rows, lastVisit]
+  );
   const lastSyncLabel = formatLastSyncLabel(lastSyncAt);
 
   const isRowNew = useCallback((row) => {
@@ -544,12 +582,16 @@ export default function LicitacionsPage() {
         )}
         subtitle={(
           <span>
-            TED · PSCP · PLACSP
+            TED · PSCP · PLACSP · Anuncios previos y licitaciones en plazo
             {lastSyncLabel ? ` · Última sync: ${lastSyncLabel}` : ' · Aún no has sincronizado'}
           </span>
         )}
         actions={(
           <>
+            <KronosButton variant="ghost" onClick={() => setLeyendaOpen(true)} title="Leyenda de estados">
+              <HelpCircle size={15} />
+              Leyenda
+            </KronosButton>
             <KronosButton onClick={syncNow} disabled={syncing}>
               <RefreshCw size={15} />
               {syncing ? 'Sincronizando…' : 'Sincronizar'}
@@ -563,6 +605,34 @@ export default function LicitacionsPage() {
       />
 
       <LicitacionsStats stats={stats} onFilter={applyKpiFilter} />
+
+      {!filters.incluirCaducadas && stats.ocultes > 0 ? (
+        <div style={{ marginBottom: 12, fontSize: 13, color: colors.textSecondary }}>
+          Mostrando {stats.vigents} oportunidades vigentes
+          {' '}
+          ({stats.previos} anuncio{stats.previos === 1 ? '' : 's'} previo{stats.previos === 1 ? '' : 's'}
+          {stats.vigents - stats.previos > 0 ? ` + ${stats.vigents - stats.previos} en plazo` : ''}).
+          {' '}
+          {stats.ocultes} caducada{stats.ocultes === 1 ? '' : 's'} u otras ocultas.
+        </div>
+      ) : null}
+
+      <label style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 8,
+        marginBottom: 12,
+        fontSize: 13,
+        color: colors.textSecondary,
+        cursor: 'pointer'
+      }}>
+        <input
+          type="checkbox"
+          checked={filters.incluirCaducadas}
+          onChange={(e) => setFilters((f) => ({ ...f, incluirCaducadas: e.target.checked }))}
+        />
+        Incluir caducadas y cerradas
+      </label>
 
       {(filters.vencenSetmana || filters.soloActivas) ? (
         <div style={{ marginBottom: 12, fontSize: 13, color: colors.textSecondary }}>
@@ -670,6 +740,20 @@ export default function LicitacionsPage() {
         </select>
       </div>
 
+      {syncInfo && !error ? (
+        <div style={{
+          marginBottom: 12,
+          fontSize: 13,
+          color: colors.success,
+          padding: '10px 14px',
+          borderRadius: 12,
+          background: `${colors.success}12`,
+          border: `1px solid ${colors.success}33`
+        }}>
+          {syncInfo}
+        </div>
+      ) : null}
+
       {error ? (
         <div style={{
           background: colors.error + '12',
@@ -744,6 +828,11 @@ export default function LicitacionsPage() {
         onSave={saveRow}
         onOpenUrl={openUrl}
         saving={savingId === selectedId}
+      />
+
+      <LicitacionsLeyendaModal
+        open={leyendaOpen}
+        onClose={() => setLeyendaOpen(false)}
       />
     </div>
   );

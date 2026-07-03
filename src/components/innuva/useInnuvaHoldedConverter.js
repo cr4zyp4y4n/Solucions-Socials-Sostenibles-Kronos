@@ -14,6 +14,7 @@ import {
   MAX_PREVIEW_ROWS,
   parseInnuvaNominasCsv
 } from './innuvaConverterCore';
+import { readTextFileWithEncoding } from './fdPlantillaParser';
 
 export function useInnuvaHoldedConverter() {
   const fileInputRef = useRef(null);
@@ -83,7 +84,7 @@ export function useInnuvaHoldedConverter() {
   }, [refreshCuentasFromDb]);
 
   const parseCuentasEmpleadosCsv = useCallback(async (file) => {
-    const text = await file.text();
+    const text = await readTextFileWithEncoding(file);
     const lines = String(text || '')
       .replace(/\r\n/g, '\n')
       .replace(/\r/g, '\n')
@@ -167,7 +168,7 @@ export function useInnuvaHoldedConverter() {
       let innuvaParsed = null;
 
       if (isCsv) {
-        const text = await file.text();
+        const text = await readTextFileWithEncoding(file);
         innuvaParsed = parseInnuvaNominasCsv(text);
       } else {
         const data = await file.arrayBuffer();

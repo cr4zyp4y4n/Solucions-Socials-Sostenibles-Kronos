@@ -1,7 +1,27 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { authService } from '../config/supabase';
+import { authService, supabase } from '../config/supabase';
 
 const AuthContext = createContext();
+
+function pushSessionToMain(session) {
+  try {
+    const api = typeof window !== 'undefined' ? window.electronAPI : null;
+    if (!api?.syncLicitacionsSession) return;
+
+    const payload =
+      session?.access_token && session?.refresh_token
+        ? {
+            access_token: session.access_token,
+            refresh_token: session.refresh_token
+          }
+        : null;
+
+    // invoke() devuelve promesa: el try/catch no captura rechazos (p. ej. main sin reiniciar tras HMR)
+    void api.syncLicitacionsSession(payload).catch(() => {});
+  } catch {
+    // ignore
+  }
+}
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
@@ -26,9 +46,13 @@ export const AuthProvider = ({ children }) => {
         if (event === 'SIGNED_IN') {
           setUser(session?.user || null);
           setError(null);
+          pushSessionToMain(session);
         } else if (event === 'SIGNED_OUT') {
           setUser(null);
           setError(null);
+          pushSessionToMain(null);
+        } else if (session) {
+          pushSessionToMain(session);
         }
         setLoading(false);
       }
@@ -58,6 +82,8 @@ export const AuthProvider = ({ children }) => {
         return;
       }
       setUser(user);
+      const { data: { session } } = await supabase.auth.getSession();
+      pushSessionToMain(session);
     } catch (err) {
       const msg = (err?.message || '').toLowerCase();
       if (msg.includes('oauth_client_id') || msg.includes('refresh')) {

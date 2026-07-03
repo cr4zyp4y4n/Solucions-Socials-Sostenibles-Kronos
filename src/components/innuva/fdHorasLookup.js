@@ -34,7 +34,7 @@ export function parseEuroEs(value) {
   if (value === null || value === undefined) return null;
   const s = String(value).replace(/\u00a0/g, ' ').replace(/€/g, '').trim();
   if (!s || s === '-' || /^n\/?a$/i.test(s)) return null;
-  const cleaned = s.replace(/\s/g, '');
+  const cleaned = s.replace(/\s/g, '').replace(/[^\d,.\-]/g, '');
   const n = Number.parseFloat(
     cleaned.includes(',')
       ? cleaned.replace(/\./g, '').replace(',', '.')

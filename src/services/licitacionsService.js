@@ -1,8 +1,24 @@
-import { supabase } from '../config/supabase';
+import { supabase as defaultSupabase } from '../config/supabase';
 import { LICITACIONS_CPV_FILTER } from '../constants/licitacionsCpv';
 import { LICITACIONS_ESTAT_CONTRACTACIO } from '../constants/licitacionsEstat';
+import { shouldPurgeLicitacioFromDb } from './licitacionsVigent';
 
 const TABLE = 'licitacions';
+
+let supabaseClientOverride = null;
+let httpClientOverride = null;
+
+export function setLicitacionsSupabaseClient(client) {
+  supabaseClientOverride = client || null;
+}
+
+export function setLicitacionsHttpClient(fn) {
+  httpClientOverride = typeof fn === 'function' ? fn : null;
+}
+
+function getSupabase() {
+  return supabaseClientOverride || defaultSupabase;
+}
 
 const TED_SEARCH_URL = 'https://api.ted.europa.eu/v3/notices/search';
 /** opendata.aoc.cat ya no resuelve DNS (jun 2026). Fuente actual: Transparencia Catalunya (Socrata). */
@@ -43,6 +59,34 @@ function contractStatusPayload({ code, label, fase = null, ofertes = null }) {
     fase_publicacio: fase || null,
     ofertes_rebudes: ofertes != null && !Number.isNaN(Number(ofertes)) ? Number(ofertes) : null
   };
+}
+
+function markClosedIfPastDeadline(status, terminiDate) {
+  if (!terminiDate) return status;
+  const today = new Date().toISOString().slice(0, 10);
+  if (terminiDate >= today) return status;
+  const code = String(status?.estat_contractacio || '').toUpperCase();
+  if (code === 'PRE' || ['EV', 'ADJ', 'RES', 'ANUL', 'DES'].includes(code)) return status;
+  return contractStatusPayload({ code: 'EV', label: 'Plazo cerrado' });
+}
+
+function extractPlacspDeadline(text) {
+  const blob = String(text || '');
+  const xmlEnd = blob.match(/EndDate[^>]*>(\d{4}-\d{2}-\d{2})/i)?.[1];
+  if (xmlEnd) return parseDateOnly(xmlEnd);
+
+  const patterns = [
+    /fecha\s+fin\s+de\s+presentaci[oó]n[^:;]*:\s*(\d{1,2}[/.-]\d{1,2}[/.-]\d{4})/i,
+    /fin\s+de\s+presentaci[oó]n\s+de\s+ofertas[^:;]*:\s*(\d{1,2}[/.-]\d{1,2}[/.-]\d{4})/i,
+    /fecha\s+fin\s+presentaci[oó]n\s+ofertas[^:;]*:\s*(\d{1,2}[/.-]\d{1,2}[/.-]\d{4})/i,
+    /presentaci[oó]n\s+de\s+ofertas[^:;]*:\s*(\d{1,2}[/.-]\d{1,2}[/.-]\d{4})/i,
+    /deadline[^:;]*:\s*(\d{4}-\d{2}-\d{2})/i
+  ];
+  for (const pattern of patterns) {
+    const match = String(text || '').match(pattern);
+    if (match) return parseDateOnly(match[1]);
+  }
+  return null;
 }
 
 function mapPlacspStatusCode(code) {
@@ -363,9 +407,9 @@ function normalizePSCPRecord(record) {
     'data_limit_presentacio',
     'data_fi_presentacio_ofertes',
     'termini_presentacio',
-    'data_publicacio_anunci',
     'deadline'
   ]);
+  const terminiParsed = parseDateOnly(termini);
   const url = firstField(fields, ['url', 'enllac', 'link', 'url_expedient']) || urlFromEnllac;
   const importEstimat = firstField(fields, [
     'valor_estimat_contracte',
@@ -381,7 +425,8 @@ function normalizePSCPRecord(record) {
 
   const fase = fields.fase_publicacio || null;
   const ofertes = fields.ofertes_rebudes ?? fields.ofertes_rebudes_oferta ?? null;
-  const status = mapPscpFase(fase, { ofertes });
+  let status = mapPscpFase(fase, { ofertes });
+  status = markClosedIfPastDeadline(status, terminiParsed);
 
   return normalizeBase({
     source: 'PSCP',
@@ -390,7 +435,7 @@ function normalizePSCPRecord(record) {
     organismo,
     cpvCodes: cpv,
     importEstimat,
-    termini,
+    termini: terminiParsed || termini,
     url,
     extra: { duracio: fields.durada_contracte || null, ...status }
   });
@@ -425,8 +470,36 @@ function extractMetaRefreshUrl(html) {
   return match ? match[1].trim() : null;
 }
 
-/** Parseja feed ATOM amb DOMParser (compatible renderer Electron, sense polyfills Node). */
-function parseAtomEntries(xmlText, { maxEntries = PLACSP_MAX_ENTRIES_SCAN } = {}) {
+function stripXmlCdata(text) {
+  return String(text || '').replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1').trim();
+}
+
+function parseAtomEntriesRegex(xmlText, { maxEntries = PLACSP_MAX_ENTRIES_SCAN } = {}) {
+  const entries = [];
+  const entryRegex = /<entry\b[^>]*>([\s\S]*?)<\/entry>/gi;
+  let match;
+  while ((match = entryRegex.exec(xmlText)) && entries.length < maxEntries) {
+    const inner = match[1];
+    const textOf = (tag) => {
+      const m = inner.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'i'));
+      return m ? stripXmlCdata(m[1]) : '';
+    };
+    let link = '';
+    const linkMatch = inner.match(/<link[^>]+href=["']([^"']+)["']/i);
+    if (linkMatch) link = linkMatch[1];
+    entries.push({
+      id: textOf('id'),
+      title: textOf('title'),
+      link,
+      updated: textOf('updated'),
+      summary: textOf('summary') || textOf('content'),
+      blob: inner
+    });
+  }
+  return entries;
+}
+
+function parseAtomEntriesDom(xmlText, { maxEntries = PLACSP_MAX_ENTRIES_SCAN } = {}) {
   const doc = new DOMParser().parseFromString(xmlText, 'application/xml');
   if (doc.querySelector('parsererror')) {
     throw new Error('PLACSP: XML no vàlid');
@@ -454,18 +527,31 @@ function parseAtomEntries(xmlText, { maxEntries = PLACSP_MAX_ENTRIES_SCAN } = {}
   });
 }
 
+/** Parseja feed ATOM (DOMParser al renderer; regex al main process). */
+function parseAtomEntries(xmlText, options = {}) {
+  if (typeof DOMParser !== 'undefined') {
+    try {
+      return parseAtomEntriesDom(xmlText, options);
+    } catch {
+      return parseAtomEntriesRegex(xmlText, options);
+    }
+  }
+  return parseAtomEntriesRegex(xmlText, options);
+}
+
 function normalizePLACSPEntry(entry) {
   const id = entry?.id || '';
   const title = entry?.title || '';
   const link = entry?.link || '';
-  const updated = entry?.updated || '';
   const summary = entry?.summary || '';
   const blob = `${title} ${summary} ${entry?.blob || ''}`;
   const cpvFound = LICITACIONS_CPV_FILTER.filter((cpv) => blob.includes(cpv));
   if (!cpvFound.length) return null;
   const parsedSummary = parsePlacspSummary(summary);
   const statusCode = parsedSummary.estadoCode || extractPlacspStatusFromBlob(entry?.blob || blob);
-  const status = mapPlacspStatusCode(statusCode);
+  const deadline = extractPlacspDeadline(`${summary}\n${entry?.blob || ''}`);
+  let status = mapPlacspStatusCode(statusCode);
+  status = markClosedIfPastDeadline(status, deadline);
 
   return normalizeBase({
     source: 'PLACSP',
@@ -474,7 +560,7 @@ function normalizePLACSPEntry(entry) {
     organismo: parsedSummary.organismo,
     cpvCodes: cpvFound,
     importEstimat: parsedSummary.importEstimat,
-    termini: updated,
+    termini: deadline,
     url: typeof link === 'string' ? link : pickLang(link),
     extra: status
   });
@@ -489,23 +575,36 @@ function buildPscpWhereLegacy() {
   return LICITACIONS_CPV_FILTER.map((c) => `cpv='${c}' OR cpv_principal='${c}' OR codi_cpv='${c}'`).join(' OR ');
 }
 
-function buildPscpCatalunyaWhere() {
-  const parts = LICITACIONS_CPV_FILTER.map((c) => `codi_cpv like '${c}%'`);
-  return `(${parts.join(' OR ')})`;
+function buildPscpCatalunyaCpvClause() {
+  return LICITACIONS_CPV_FILTER.map((c) => `codi_cpv like '${c}%'`).join(' OR ');
 }
 
-function buildPscpCatalunyaUrls(limit = 100) {
-  const where = encodeURIComponent(buildPscpCatalunyaWhere());
+/** Solo plazo abierto o anuncio previo (evita histórico adjudicado de PSCP). */
+function buildPscpCatalunyaWhereVigents() {
+  const today = new Date().toISOString().slice(0, 10);
+  const cpv = buildPscpCatalunyaCpvClause();
+  return `(${cpv}) AND (termini_presentacio_ofertes >= '${today}' OR lower(fase_publicacio) like '%anunci previ%')`;
+}
+
+function buildPscpCatalunyaUrls(limit = 200) {
+  const where = encodeURIComponent(buildPscpCatalunyaWhereVigents());
   return [
-    `${PSCP_CATALUNYA_URL}?$where=${where}&$order=data_publicacio_anunci DESC&$limit=${limit}`,
-    `${PSCP_CATALUNYA_URL}?$where=${where}&$order=data_publicacio_contracte DESC&$limit=${limit}`,
-    `${PSCP_CATALUNYA_URL}?$where=${where}&$limit=${limit}`
+    `${PSCP_CATALUNYA_URL}?$where=${where}&$order=termini_presentacio_ofertes ASC&$limit=${limit}`,
+    `${PSCP_CATALUNYA_URL}?$where=${where}&$order=data_publicacio_anunci DESC&$limit=${limit}`
   ];
 }
 
 /** HTTP des del procés main d'Electron (sense CSP del renderer). */
 async function httpRequest(url, options = {}) {
   const headers = { ...(options.headers || {}) };
+  if (httpClientOverride) {
+    return httpClientOverride({
+      url,
+      method: options.method || 'GET',
+      headers,
+      body: options.body ?? null
+    });
+  }
   if (typeof window !== 'undefined' && window.electronAPI?.licitacionsHttpRequest) {
     const res = await window.electronAPI.licitacionsHttpRequest({
       url,
@@ -555,6 +654,20 @@ async function fetchJson(url, options = {}) {
   );
 }
 
+/** TED — varias páginas si la primera llega al límite (máx. 100 por página en la API). */
+export async function fetchTEDAll({ maxPages = 3, limit = 100 } = {}) {
+  const merged = new Map();
+  for (let page = 1; page <= maxPages; page += 1) {
+    const batch = await fetchTED({ page, limit });
+    if (!batch.length) break;
+    for (const row of batch) {
+      if (row?.external_id) merged.set(row.external_id, row);
+    }
+    if (batch.length < limit) break;
+  }
+  return [...merged.values()];
+}
+
 /** TED — POST api.ted.europa.eu/v3/notices/search */
 export async function fetchTED({ page = 1, limit = 100 } = {}) {
   const body = {
@@ -595,6 +708,7 @@ export async function fetchPSCP({ limit = 100 } = {}) {
   }
 
   let lastErr;
+  const merged = new Map();
   for (const url of urls) {
     try {
       const data = await fetchJson(url);
@@ -605,9 +719,8 @@ export async function fetchPSCP({ limit = 100 } = {}) {
           : [];
       const normalized = results.map(normalizePSCPRecord).filter(Boolean);
       logDebug('PSCP ok', { url, raw: results.length, normalized: normalized.length });
-      if (normalized.length) return normalized;
-      if (results.length) {
-        logDebug('PSCP sin coincidencias CPV tras normalizar', { url, raw: results.length });
+      for (const row of normalized) {
+        if (row?.external_id) merged.set(row.external_id, row);
       }
     } catch (e) {
       lastErr = e;
@@ -622,6 +735,7 @@ export async function fetchPSCP({ limit = 100 } = {}) {
       logDebug('PSCP fallback failed', { url, message: msg + hint });
     }
   }
+  if (merged.size) return [...merged.values()];
   if (lastErr?.message?.includes?.('Host no permès per a licitacions: analisi.transparenciacatalunya.cat')) {
     throw new Error(
       "PSCP: el proceso main está bloqueando 'analisi.transparenciacatalunya.cat'. Reinicia la app (cerrar Electron por completo y volver a ejecutar npm start) para que se apliquen los cambios en src/main.js."
@@ -680,18 +794,23 @@ async function fetchPlacspAtomFromUrl(atomUrl) {
 
 /** PLACSP — feed ATOM (URL actualizada; la antigua *_licitaciones_todas.atom redirige a HTML). */
 export async function fetchPLACSP() {
+  const merged = new Map();
   let lastErr;
   for (const atomUrl of PLACSP_ATOM_URLS) {
     try {
-      return await withRetries(
+      const batch = await withRetries(
         async () => fetchPlacspAtomFromUrl(atomUrl),
         { label: 'fetchPLACSP', retries: 1, baseDelayMs: 900 }
       );
+      for (const row of batch) {
+        if (row?.external_id) merged.set(row.external_id, row);
+      }
     } catch (e) {
       lastErr = e;
       logDebug('PLACSP URL failed', { url: atomUrl, message: e?.message || String(e) });
     }
   }
+  if (merged.size) return [...merged.values()];
   throw lastErr || new Error('PLACSP: no se pudo leer ningún feed ATOM');
 }
 
@@ -710,7 +829,7 @@ async function upsertLicitacions(records) {
   }
 
   const externalIds = rows.map((r) => r.external_id);
-  const { data: existing, error: readErr } = await supabase
+  const { data: existing, error: readErr } = await getSupabase()
     .from(TABLE)
     .select('external_id')
     .in('external_id', externalIds);
@@ -721,14 +840,14 @@ async function upsertLicitacions(records) {
   const toUpdate = rows.filter((r) => existingSet.has(r.external_id));
 
   if (toInsert.length) {
-    const { error: insErr } = await supabase.from(TABLE).insert(
+    const { error: insErr } = await getSupabase().from(TABLE).insert(
       toInsert.map((r) => ({ ...syncPayloadFromNormalized(r), estat_jc: 'Pendent' }))
     );
     if (insErr) throw insErr;
   }
 
   for (const row of toUpdate) {
-    const { error: updErr } = await supabase
+    const { error: updErr } = await getSupabase()
       .from(TABLE)
       .update(syncPayloadFromNormalized(row))
       .eq('external_id', row.external_id);
@@ -738,16 +857,37 @@ async function upsertLicitacions(records) {
   return { inserted: toInsert.length, updated: toUpdate.length, total: rows.length };
 }
 
+/** Elimina de Supabase licitaciones caducadas/cerradas sin seguimiento Interessant/Contactat. */
+export async function purgeCaducadasLicitacions() {
+  const db = getSupabase();
+  const { data, error } = await db
+    .from(TABLE)
+    .select('id, source, estat_contractacio, termini_oferta, estat_jc');
+  if (error) throw error;
+
+  const toDelete = (data || []).filter(shouldPurgeLicitacioFromDb).map((r) => r.id);
+  if (!toDelete.length) return { deleted: 0 };
+
+  let deleted = 0;
+  for (let i = 0; i < toDelete.length; i += 100) {
+    const batch = toDelete.slice(i, i + 100);
+    const { error: delErr } = await db.from(TABLE).delete().in('id', batch);
+    if (delErr) throw delErr;
+    deleted += batch.length;
+  }
+  return { deleted };
+}
+
 /**
  * Obté licitacions de TED + PSCP + PLACSP i les desa a Supabase sense esborrar estat JC ni notes.
  */
 export async function fetchAll(options = {}) {
-  const { page = 1, limit = 100 } = options;
+  const { limit = 100, tedMaxPages = 3, purgeCaducadas = true } = options;
   const errors = {};
-  const fetched = { ted: 0, pscp: 0, placsp: 0 };
+  const fetched = { ted: 0, pscp: 0, placsp: 0, tedPages: 0 };
 
   const [tedRes, pscpRes, placspRes] = await Promise.allSettled([
-    fetchTED({ page, limit }),
+    fetchTEDAll({ maxPages: tedMaxPages, limit }),
     fetchPSCP({ limit }),
     fetchPLACSP()
   ]);
@@ -779,15 +919,32 @@ export async function fetchAll(options = {}) {
 
   const sync = await upsertLicitacions(all);
 
+  let purge = { deleted: 0 };
+  if (purgeCaducadas) {
+    try {
+      purge = await purgeCaducadasLicitacions();
+    } catch (e) {
+      errors.purge = e?.message || String(e);
+      console.warn('[licitacions] Purge:', errors.purge);
+    }
+  }
+
+  if (tedRes.status === 'fulfilled' && fetched.ted >= limit) {
+    fetched.tedPages = tedMaxPages;
+  } else if (tedRes.status === 'fulfilled') {
+    fetched.tedPages = 1;
+  }
+
   return {
     ...sync,
     fetched,
+    purge,
     errors: Object.keys(errors).length ? errors : null
   };
 }
 
 export async function loadLicitacions(filters = {}) {
-  let q = supabase.from(TABLE).select('*').order('termini_oferta', { ascending: true, nullsFirst: false });
+  let q = getSupabase().from(TABLE).select('*').order('termini_oferta', { ascending: true, nullsFirst: false });
   if (filters.source) q = q.eq('source', filters.source);
   if (filters.sector) q = q.eq('sector', filters.sector);
   if (filters.estat_jc) q = q.eq('estat_jc', filters.estat_jc);
@@ -802,19 +959,23 @@ export async function updateLicitacio(id, patch) {
   for (const key of allowed) {
     if (patch[key] !== undefined) payload[key] = patch[key];
   }
-  const { data, error } = await supabase.from(TABLE).update(payload).eq('id', id).select().single();
+  const { data, error } = await getSupabase().from(TABLE).update(payload).eq('id', id).select().single();
   if (error) throw error;
   return data;
 }
 
 const licitacionsService = {
   fetchTED,
+  fetchTEDAll,
   fetchPSCP,
   fetchPLACSP,
   fetchAll,
+  purgeCaducadasLicitacions,
   loadLicitacions,
   updateLicitacio,
   inferSector,
+  setLicitacionsHttpClient,
+  setLicitacionsSupabaseClient,
   LICITACIONS_CPV_FILTER
 };
 

@@ -109,6 +109,11 @@ function aliasKeysFromRow(row) {
     if (ape2) addAlias(aliases, `${firstName} ${ape1} ${ape2}`);
   }
 
+  // Plantilla Lizeth: "Emmy Marine Romane" ↔ Innuva "EMMY M"
+  if (firstName === 'EMMY' && nomTokens[1] === 'M') {
+    addAlias(aliases, 'Emmy Marine Romane');
+  }
+
   return [...aliases].filter(Boolean);
 }
 
