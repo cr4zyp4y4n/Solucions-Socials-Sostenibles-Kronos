@@ -36,6 +36,8 @@ Les etiquetes poden obrir una **fitxa pública** amb producte, dates i al·lèrg
 
 En escanejar, s'obre: `https://portal…/?trace=QR-…` (sense login).
 
+Després d'actualitzar la funció SQL a Supabase, cal **redeploy** del portal a Netlify per veure nous camps (proveïdor, recepció).
+
 ## Desenvolupament
 
 ```bash

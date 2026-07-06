@@ -135,6 +135,30 @@ export default function TraceLotPage({ traceCode }) {
             {lot.estat ? (
               <InfoRow label="Estat" value={ESTAT_LABELS[lot.estat] || lot.estat} />
             ) : null}
+
+            {(lot.proveidor || lot.data_recepcio || lot.lot_proveidor) ? (
+              <>
+                <div style={{
+                  marginTop: 8,
+                  fontSize: 12,
+                  fontWeight: 700,
+                  color: colors.primary,
+                  letterSpacing: '0.03em',
+                  textTransform: 'uppercase'
+                }}>
+                  Matèria primera
+                </div>
+                {lot.proveidor ? (
+                  <InfoRow label="Proveïdor" value={lot.proveidor} />
+                ) : null}
+                {lot.data_recepcio ? (
+                  <InfoRow label="Recepció" value={formatData(lot.data_recepcio)} />
+                ) : null}
+                {lot.lot_proveidor ? (
+                  <InfoRow label="Lot proveïdor" value={lot.lot_proveidor} />
+                ) : null}
+              </>
+            ) : null}
           </div>
         ) : null}
 
