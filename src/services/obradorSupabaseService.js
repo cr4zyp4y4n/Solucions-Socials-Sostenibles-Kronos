@@ -240,9 +240,11 @@ export async function getLotPerCodi(codi_lot) {
   return data;
 }
 
-/** Normalitza el codi QR (trim, sense espais; prefix QR en majúscules). */
+import { extractTraceCodeFromScan } from '../utils/obradorTraceCode';
+
+/** Normalitza el codi QR (URL ?trace=, QR-… o codi de lot). */
 export function normalitzarCodiQR(input) {
-  const t = (input || '').trim().replace(/\s+/g, '');
+  const t = extractTraceCodeFromScan(input);
   if (!t) return '';
   if (/^qr-/i.test(t)) return `QR-${t.slice(3)}`;
   return t;
@@ -275,6 +277,27 @@ export async function getLotPerQR(codiQR) {
   }
 
   if (error) throw error;
+  if (!data && /^LOT-/i.test(codi)) {
+    const lot = await getLotPerCodi(codi);
+    const etiqueta = Array.isArray(lot?.obrador_etiquetes)
+      ? lot.obrador_etiquetes[0]
+      : lot?.obrador_etiquetes;
+    if (lot) {
+      return {
+        codi_qr: etiqueta?.codi_qr || null,
+        data_caducitat: etiqueta?.data_caducitat || null,
+        allergens: etiqueta?.allergens || null,
+        obrador_lots: {
+          id: lot.id,
+          codi_lot: lot.codi_lot,
+          estat: lot.estat,
+          quantitat_kg: lot.quantitat_kg,
+          data_produccio: lot.data_produccio,
+          obrador_productes: lot.obrador_productes
+        }
+      };
+    }
+  }
   if (!data) {
     const err = new Error('Codi QR no trobat');
     err.code = 'PGRST116';

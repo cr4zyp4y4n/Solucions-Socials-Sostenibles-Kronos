@@ -363,7 +363,11 @@ export default function ObradorExpedicionsPage() {
               </div>
               {cercaMode === 'qr' && (
                 <p style={{ margin: 0, fontSize: 12, color: colors.textSecondary }}>
-                  Pots enganxar el codi tal com surt de l&apos;escàner; s&apos;accepta qr- o QR-.
+                  Pots enganxar el codi de l&apos;escàner, la URL completa del QR
+                  {' '}
+                  (<code style={{ fontSize: 11 }}>?trace=…</code>)
+                  {' '}
+                  o el codi <code style={{ fontSize: 11 }}>QR-…</code> / <code style={{ fontSize: 11 }}>LOT-…</code>.
                 </p>
               )}
               {cercaError && (

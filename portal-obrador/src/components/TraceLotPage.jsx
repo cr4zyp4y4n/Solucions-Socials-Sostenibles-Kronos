@@ -1,6 +1,16 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../config/supabase';
 import { colors } from '../theme';
+import ExpedirLotSection from './ExpedirLotSection';
+import LoginPage from './LoginPage';
+
+function wantsExpedirFromUrl() {
+  try {
+    return new URLSearchParams(window.location.search).get('expedir') === '1';
+  } catch {
+    return false;
+  }
+}
 
 function formatData(iso) {
   if (!iso) return '—';
@@ -22,7 +32,8 @@ const ESTAT_LABELS = {
   retirat: 'Retirat'
 };
 
-export default function TraceLotPage({ traceCode }) {
+export default function TraceLotPage({ traceCode, staffUser = null, onStaffLogin }) {
+  const [showLogin, setShowLogin] = useState(() => wantsExpedirFromUrl() && !staffUser);
   const [loading, setLoading] = useState(true);
   const [lot, setLot] = useState(null);
   const [error, setError] = useState('');
@@ -69,6 +80,17 @@ export default function TraceLotPage({ traceCode }) {
   }, [traceCode]);
 
   const allergens = Array.isArray(lot?.allergens) ? lot.allergens.filter(Boolean) : [];
+
+  if (showLogin && !staffUser) {
+    return (
+      <LoginPage
+        onLogin={(u) => {
+          onStaffLogin?.(u);
+          setShowLogin(false);
+        }}
+      />
+    );
+  }
 
   return (
     <div style={{
@@ -161,6 +183,30 @@ export default function TraceLotPage({ traceCode }) {
             ) : null}
           </div>
         ) : null}
+
+        {staffUser ? (
+          <ExpedirLotSection traceCode={traceCode} autoOpen={wantsExpedirFromUrl()} />
+        ) : (
+          <button
+            type="button"
+            onClick={() => setShowLogin(true)}
+            style={{
+              display: 'block',
+              width: '100%',
+              marginTop: 20,
+              padding: '10px 14px',
+              fontSize: 13,
+              fontWeight: 600,
+              borderRadius: 10,
+              border: `1px solid ${colors.border}`,
+              background: colors.surface,
+              color: colors.primary,
+              cursor: 'pointer'
+            }}
+          >
+            Iniciar sessió per expedir aquest lot
+          </button>
+        )}
 
         <p style={{
           marginTop: 24,

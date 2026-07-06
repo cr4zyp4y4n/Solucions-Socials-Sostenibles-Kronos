@@ -45,11 +45,9 @@ function ConfigMissing() {
 export default function App() {
   const [user, setUser] = useState(null);
   const [traceCode] = useState(() => getTraceCodeFromUrl());
-  const [checking, setChecking] = useState(() => !getTraceCodeFromUrl());
+  const [checking, setChecking] = useState(true);
 
   useEffect(() => {
-    if (traceCode) return undefined;
-
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
       setChecking(false);
@@ -58,16 +56,19 @@ export default function App() {
       setUser(session?.user ?? null);
     });
     return () => subscription?.unsubscribe();
-  }, [traceCode]);
+  }, []);
 
   async function handleLogout() {
     await supabase.auth.signOut();
     setUser(null);
   }
 
+  if (!isSupabaseConfigured) {
+    return <ConfigMissing />;
+  }
+
   if (traceCode) {
-    if (!isSupabaseConfigured) return <ConfigMissing />;
-    return <TraceLotPage traceCode={traceCode} />;
+    return <TraceLotPage traceCode={traceCode} staffUser={user} onStaffLogin={setUser} />;
   }
 
   if (checking) {
@@ -82,10 +83,6 @@ export default function App() {
         Carregant...
       </div>
     );
-  }
-
-  if (!isSupabaseConfigured) {
-    return <ConfigMissing />;
   }
 
   if (!user) {
