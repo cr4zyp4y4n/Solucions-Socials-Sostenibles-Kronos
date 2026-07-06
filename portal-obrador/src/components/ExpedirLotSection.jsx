@@ -6,7 +6,7 @@ export default function ExpedirLotSection({ traceCode, autoOpen = false }) {
   const [open, setOpen] = useState(autoOpen);
   const [idClient, setIdClient] = useState('');
   const [comandaHolded, setComandaHolded] = useState('');
-  const [checkClient, setCheckClient] = useState(false);
+  const [checkSortida, setCheckSortida] = useState(false);
   const [observacions, setObservacions] = useState('');
   const [enviant, setEnviant] = useState(false);
   const [error, setError] = useState('');
@@ -47,7 +47,8 @@ export default function ExpedirLotSection({ traceCode, autoOpen = false }) {
         id_lot: lot.id,
         id_client: idClient.trim(),
         comanda_holded: comandaHolded.trim() || null,
-        check_client: checkClient,
+        check_sortida: checkSortida,
+        check_client: false,
         observacions: observacions.trim() || null
       });
 
@@ -126,13 +127,19 @@ export default function ExpedirLotSection({ traceCode, autoOpen = false }) {
               style={{ ...inputStyle, marginTop: 6 }}
             />
           </label>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, cursor: 'pointer' }}>
+          <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 14, cursor: 'pointer' }}>
             <input
               type="checkbox"
-              checked={checkClient}
-              onChange={(e) => setCheckClient(e.target.checked)}
+              checked={checkSortida}
+              onChange={(e) => setCheckSortida(e.target.checked)}
+              style={{ marginTop: 3 }}
             />
-            Client ha verificat i acceptat el producte
+            <span>
+              Producte verificat abans de sortir (obrador / transport)
+              <span style={{ display: 'block', fontSize: 12, color: colors.textSecondary, marginTop: 4 }}>
+                Estat, etiquetatge i temperatura correctes en expedir.
+              </span>
+            </span>
           </label>
           <label style={{ fontSize: 13, color: colors.textSecondary }}>
             Observacions

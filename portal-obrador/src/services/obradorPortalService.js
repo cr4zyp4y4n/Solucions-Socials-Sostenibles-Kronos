@@ -138,3 +138,32 @@ export async function crearExpedicio(dades) {
 
   return data;
 }
+
+/** Última expedició d'un lot (en trànsit o entregada). Requereix sessió staff. */
+export async function getExpedicioPerLot(id_lot) {
+  const { data, error } = await supabase
+    .from('obrador_expedicions')
+    .select('id, id_client, data_sortida, estat, check_client, comanda_holded')
+    .eq('id_lot', id_lot)
+    .order('data_sortida', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+/** Marca l'expedició com a entregada al destí (catering / client). */
+export async function marcarExpedicioEntregada(id, { check_client = false } = {}) {
+  const { data, error } = await supabase
+    .from('obrador_expedicions')
+    .update({
+      estat: 'entregat',
+      check_client: Boolean(check_client),
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', id)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}

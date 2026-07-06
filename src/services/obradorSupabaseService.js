@@ -340,7 +340,7 @@ export async function getExpedicions(limit = 50) {
   const { data, error } = await supabase
     .from('obrador_expedicions')
     .select(`
-      id, id_client, data_sortida, comanda_holded, estat,
+      id, id_client, data_sortida, comanda_holded, estat, check_client, check_sortida,
       obrador_lots (
         codi_lot,
         obrador_productes ( nom )
@@ -366,6 +366,22 @@ export async function crearExpedicio(dades) {
     .eq('id', dades.id_lot);
   if (lotError) throw lotError;
 
+  return data;
+}
+
+/** Marca l'expedició com a entregada al client (destí). */
+export async function marcarExpedicioEntregada(id, { check_client = false } = {}) {
+  const { data, error } = await supabase
+    .from('obrador_expedicions')
+    .update({
+      estat: 'entregat',
+      check_client: Boolean(check_client),
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', id)
+    .select()
+    .single();
+  if (error) throw error;
   return data;
 }
 

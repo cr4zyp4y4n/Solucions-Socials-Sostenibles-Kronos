@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { supabase } from '../config/supabase';
 import { colors } from '../theme';
 import ExpedirLotSection from './ExpedirLotSection';
+import ConfirmarEntregaSection from './ConfirmarEntregaSection';
 import LoginPage from './LoginPage';
 
 function wantsExpedirFromUrl() {
@@ -10,6 +11,18 @@ function wantsExpedirFromUrl() {
   } catch {
     return false;
   }
+}
+
+function wantsEntregarFromUrl() {
+  try {
+    return new URLSearchParams(window.location.search).get('entregar') === '1';
+  } catch {
+    return false;
+  }
+}
+
+function wantsStaffActionFromUrl() {
+  return wantsExpedirFromUrl() || wantsEntregarFromUrl();
 }
 
 function formatData(iso) {
@@ -33,7 +46,7 @@ const ESTAT_LABELS = {
 };
 
 export default function TraceLotPage({ traceCode, staffUser = null, onStaffLogin }) {
-  const [showLogin, setShowLogin] = useState(() => wantsExpedirFromUrl() && !staffUser);
+  const [showLogin, setShowLogin] = useState(() => wantsStaffActionFromUrl() && !staffUser);
   const [loading, setLoading] = useState(true);
   const [lot, setLot] = useState(null);
   const [error, setError] = useState('');
@@ -80,6 +93,10 @@ export default function TraceLotPage({ traceCode, staffUser = null, onStaffLogin
   }, [traceCode]);
 
   const allergens = Array.isArray(lot?.allergens) ? lot.allergens.filter(Boolean) : [];
+  const lotExpedit = lot?.estat === 'expedit';
+  const staffActionLabel = lotExpedit
+    ? 'Iniciar sessió per confirmar l\'entrega'
+    : 'Iniciar sessió per expedir aquest lot';
 
   if (showLogin && !staffUser) {
     return (
@@ -185,7 +202,14 @@ export default function TraceLotPage({ traceCode, staffUser = null, onStaffLogin
         ) : null}
 
         {staffUser ? (
-          <ExpedirLotSection traceCode={traceCode} autoOpen={wantsExpedirFromUrl()} />
+          lotExpedit ? (
+            <ConfirmarEntregaSection
+              traceCode={traceCode}
+              autoOpen={wantsEntregarFromUrl()}
+            />
+          ) : (
+            <ExpedirLotSection traceCode={traceCode} autoOpen={wantsExpedirFromUrl()} />
+          )
         ) : (
           <button
             type="button"
@@ -200,11 +224,11 @@ export default function TraceLotPage({ traceCode, staffUser = null, onStaffLogin
               borderRadius: 10,
               border: `1px solid ${colors.border}`,
               background: colors.surface,
-              color: colors.primary,
+              color: lotExpedit ? (colors.success || '#1D9E75') : colors.primary,
               cursor: 'pointer'
             }}
           >
-            Iniciar sessió per expedir aquest lot
+            {lot ? staffActionLabel : 'Iniciar sessió (personal autoritzat)'}
           </button>
         )}
 

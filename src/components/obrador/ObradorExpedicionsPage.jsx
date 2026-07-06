@@ -5,6 +5,7 @@ import {
   getLotPerQR,
   getLotPerCodi,
   crearExpedicio,
+  marcarExpedicioEntregada,
   normalitzarCodiQR
 } from '../../services/obradorSupabaseService';
 
@@ -57,7 +58,7 @@ function normalitzarLotDesDeCodi(lot) {
 const formInicial = () => ({
   id_client: '',
   comanda_holded: '',
-  check_client: false,
+  check_sortida: false,
   observacions: ''
 });
 
@@ -79,6 +80,8 @@ export default function ObradorExpedicionsPage() {
   const [enviant, setEnviant] = useState(false);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const [entregantId, setEntregantId] = useState(null);
+  const [entregaModal, setEntregaModal] = useState(null);
 
   const inputStyle = {
     width: '100%',
@@ -187,7 +190,8 @@ export default function ObradorExpedicionsPage() {
         id_lot: lotTrobat.id,
         id_client: form.id_client.trim(),
         comanda_holded: form.comanda_holded.trim() || null,
-        check_client: form.check_client,
+        check_sortida: form.check_sortida,
+        check_client: false,
         observacions: form.observacions.trim() || null
       });
       setSuccessMsg(`Expedició registrada. Lot ${lotTrobat.codi_lot} marcat com a expedit.`);
@@ -203,6 +207,23 @@ export default function ObradorExpedicionsPage() {
   }
 
   const lotJaExpedit = lotTrobat?.estat === 'expedit';
+
+  async function confirmarEntrega(checkClient) {
+    if (!entregaModal?.id) return;
+    setEntregantId(entregaModal.id);
+    setError('');
+    try {
+      await marcarExpedicioEntregada(entregaModal.id, { check_client: checkClient });
+      setSuccessMsg(`Expedició entregada${checkClient ? ' (client ha acceptat)' : ''}.`);
+      setTimeout(() => setSuccessMsg(''), 5000);
+      setEntregaModal(null);
+      await carregar();
+    } catch (err) {
+      setError(err.message || 'Error en marcar com a entregat');
+    } finally {
+      setEntregantId(null);
+    }
+  }
 
   if (loading && mode === 'llistat' && expedicions.length === 0) {
     return (
@@ -275,7 +296,7 @@ export default function ObradorExpedicionsPage() {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
               <thead>
                 <tr>
-                  {['ID', 'Lot', 'Producte', 'Client', 'Data sortida', 'Estat', 'Holded'].map((col) => (
+                  {['ID', 'Lot', 'Producte', 'Client', 'Data sortida', 'Estat', 'Holded', 'Acció'].map((col) => (
                     <th
                       key={col}
                       style={{
@@ -314,6 +335,36 @@ export default function ObradorExpedicionsPage() {
                       </span>
                     </td>
                     <td style={{ padding: '12px 16px' }}>{exp.comanda_holded || '—'}</td>
+                    <td style={{ padding: '12px 16px' }}>
+                      {exp.estat === 'entregat' ? (
+                        <span style={{ fontSize: 12, color: colors.textSecondary }}>
+                          {exp.check_client ? 'Client OK' : '—'}
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={entregantId === exp.id}
+                          onClick={() => setEntregaModal({
+                            id: exp.id,
+                            lot: exp.obrador_lots?.codi_lot,
+                            client: exp.id_client
+                          })}
+                          style={{
+                            padding: '6px 12px',
+                            fontSize: 12,
+                            fontWeight: 600,
+                            borderRadius: 6,
+                            border: 'none',
+                            cursor: entregantId === exp.id ? 'wait' : 'pointer',
+                            background: colors.primary,
+                            color: '#fff',
+                            opacity: entregantId === exp.id ? 0.7 : 1
+                          }}
+                        >
+                          Marcar entregat
+                        </button>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -458,11 +509,14 @@ export default function ObradorExpedicionsPage() {
                   <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 14 }}>
                     <input
                       type="checkbox"
-                      checked={form.check_client}
-                      onChange={(e) => setForm((f) => ({ ...f, check_client: e.target.checked }))}
+                      checked={form.check_sortida}
+                      onChange={(e) => setForm((f) => ({ ...f, check_sortida: e.target.checked }))}
                     />
-                    Client ha verificat i acceptat el producte
+                    Producte verificat abans de sortir (obrador / transport)
                   </label>
+                  <p style={{ margin: '6px 0 0', fontSize: 12, color: colors.textSecondary }}>
+                    Estat, etiquetatge i temperatura correctes en el moment de l&apos;expedició.
+                  </p>
                 </div>
                 <div>
                   <label style={labelStyle} htmlFor="observacions">Observacions</label>
@@ -500,6 +554,92 @@ export default function ObradorExpedicionsPage() {
           )}
         </div>
       )}
+
+      {entregaModal ? (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            padding: 24
+          }}
+          onClick={() => !entregantId && setEntregaModal(null)}
+        >
+          <div
+            style={{
+              background: colors.card,
+              borderRadius: 12,
+              padding: 24,
+              maxWidth: 400,
+              width: '100%',
+              border: `0.5px solid ${colors.border}`
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 style={{ margin: '0 0 12px', fontSize: 18, fontWeight: 600 }}>Confirmar entrega</h2>
+            <p style={{ margin: '0 0 16px', fontSize: 14, color: colors.textSecondary, lineHeight: 1.5 }}>
+              Lot <strong>{entregaModal.lot}</strong> → client <strong>{entregaModal.client}</strong>.
+              {' '}
+              Marca com a entregat quan arribi al servei / catering.
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <button
+                type="button"
+                disabled={Boolean(entregantId)}
+                onClick={() => confirmarEntrega(true)}
+                style={{
+                  padding: '12px 16px',
+                  fontSize: 14,
+                  fontWeight: 600,
+                  borderRadius: 8,
+                  border: 'none',
+                  cursor: 'pointer',
+                  background: colors.primary,
+                  color: '#fff'
+                }}
+              >
+                Entregat — client ha acceptat el producte
+              </button>
+              <button
+                type="button"
+                disabled={Boolean(entregantId)}
+                onClick={() => confirmarEntrega(false)}
+                style={{
+                  padding: '12px 16px',
+                  fontSize: 14,
+                  fontWeight: 600,
+                  borderRadius: 8,
+                  cursor: 'pointer',
+                  background: colors.surface,
+                  color: colors.text,
+                  border: `0.5px solid ${colors.border}`
+                }}
+              >
+                Entregat (sense confirmació del client)
+              </button>
+              <button
+                type="button"
+                disabled={Boolean(entregantId)}
+                onClick={() => setEntregaModal(null)}
+                style={{
+                  padding: '8px',
+                  fontSize: 13,
+                  border: 'none',
+                  background: 'none',
+                  color: colors.textSecondary,
+                  cursor: 'pointer'
+                }}
+              >
+                Cancel·lar
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
