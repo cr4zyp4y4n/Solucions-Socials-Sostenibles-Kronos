@@ -232,8 +232,27 @@ export default function TraceLotPage({ traceCode, staffUser = null, onStaffLogin
           </button>
         )}
 
+        <button
+          type="button"
+          onClick={() => { window.location.href = '/ayuda'; }}
+          style={{
+            display: 'block',
+            width: '100%',
+            marginTop: 16,
+            padding: '8px',
+            fontSize: 12,
+            fontWeight: 600,
+            border: 'none',
+            background: 'none',
+            color: colors.primary,
+            cursor: 'pointer'
+          }}
+        >
+          Guia d&apos;ús (expedir i entregar)
+        </button>
+
         <p style={{
-          marginTop: 24,
+          marginTop: 16,
           fontSize: 11,
           textAlign: 'center',
           color: colors.textSecondary,

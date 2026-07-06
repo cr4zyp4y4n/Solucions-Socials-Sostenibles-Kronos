@@ -3,6 +3,7 @@ import { supabase, isSupabaseConfigured } from './config/supabase';
 import LoginPage from './components/LoginPage';
 import RecepcioPage from './components/RecepcioPage';
 import TraceLotPage from './components/TraceLotPage';
+import AyudaPage from './components/AyudaPage';
 import { colors } from './theme';
 
 function getTraceCodeFromUrl() {
@@ -12,6 +13,24 @@ function getTraceCodeFromUrl() {
   } catch {
     return '';
   }
+}
+
+function isAyudaRoute() {
+  try {
+    const path = window.location.pathname.replace(/\/$/, '') || '/';
+    if (path === '/ayuda') return true;
+    return new URLSearchParams(window.location.search).get('ayuda') === '1';
+  } catch {
+    return false;
+  }
+}
+
+function goToAyuda() {
+  window.location.href = '/ayuda';
+}
+
+function goToHome() {
+  window.location.href = '/';
 }
 
 function ConfigMissing() {
@@ -67,6 +86,10 @@ export default function App() {
     return <ConfigMissing />;
   }
 
+  if (isAyudaRoute()) {
+    return <AyudaPage onBack={goToHome} />;
+  }
+
   if (traceCode) {
     return <TraceLotPage traceCode={traceCode} staffUser={user} onStaffLogin={setUser} />;
   }
@@ -86,7 +109,7 @@ export default function App() {
   }
 
   if (!user) {
-    return <LoginPage onLogin={setUser} />;
+    return <LoginPage onLogin={setUser} onAyuda={goToAyuda} />;
   }
 
   return (
@@ -101,7 +124,24 @@ export default function App() {
         gap: 8
       }}>
         <span style={{ fontWeight: 700, fontSize: 15 }}>Portal Obrador</span>
-        <button
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <button
+            type="button"
+            onClick={goToAyuda}
+            style={{
+              padding: '8px 12px',
+              fontSize: 13,
+              borderRadius: 8,
+              border: `1px solid ${colors.border}`,
+              background: colors.surface,
+              cursor: 'pointer',
+              color: colors.primary,
+              fontWeight: 600
+            }}
+          >
+            Guia
+          </button>
+          <button
           type="button"
           onClick={handleLogout}
           style={{
@@ -115,6 +155,7 @@ export default function App() {
         >
           Sortir
         </button>
+        </div>
       </header>
       <main>
         <RecepcioPage userEmail={user.email} />

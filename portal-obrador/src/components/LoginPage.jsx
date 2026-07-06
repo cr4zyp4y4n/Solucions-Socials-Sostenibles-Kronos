@@ -3,7 +3,7 @@ import { Package } from 'lucide-react';
 import { supabase } from '../config/supabase';
 import { colors } from '../theme';
 
-export default function LoginPage({ onLogin }) {
+export default function LoginPage({ onLogin, onAyuda }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -102,6 +102,27 @@ export default function LoginPage({ onLogin }) {
             {loading ? 'Entrant...' : 'Entrar'}
           </button>
         </form>
+        {onAyuda ? (
+          <button
+            type="button"
+            onClick={onAyuda}
+            style={{
+              display: 'block',
+              width: '100%',
+              marginTop: 16,
+              padding: '10px',
+              fontSize: 13,
+              fontWeight: 600,
+              borderRadius: 8,
+              border: `1px solid ${colors.border}`,
+              background: colors.surface,
+              color: colors.primary,
+              cursor: 'pointer'
+            }}
+          >
+            Guia d&apos;ús (QR, expedicions, entregues)
+          </button>
+        ) : null}
       </div>
     </div>
   );
