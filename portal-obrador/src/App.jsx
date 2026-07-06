@@ -2,7 +2,17 @@ import React, { useState, useEffect } from 'react';
 import { supabase, isSupabaseConfigured } from './config/supabase';
 import LoginPage from './components/LoginPage';
 import RecepcioPage from './components/RecepcioPage';
+import TraceLotPage from './components/TraceLotPage';
 import { colors } from './theme';
+
+function getTraceCodeFromUrl() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('trace')?.trim() || '';
+  } catch {
+    return '';
+  }
+}
 
 function ConfigMissing() {
   return (
@@ -34,9 +44,12 @@ function ConfigMissing() {
 
 export default function App() {
   const [user, setUser] = useState(null);
-  const [checking, setChecking] = useState(true);
+  const [traceCode] = useState(() => getTraceCodeFromUrl());
+  const [checking, setChecking] = useState(() => !getTraceCodeFromUrl());
 
   useEffect(() => {
+    if (traceCode) return undefined;
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
       setChecking(false);
@@ -45,11 +58,16 @@ export default function App() {
       setUser(session?.user ?? null);
     });
     return () => subscription?.unsubscribe();
-  }, []);
+  }, [traceCode]);
 
   async function handleLogout() {
     await supabase.auth.signOut();
     setUser(null);
+  }
+
+  if (traceCode) {
+    if (!isSupabaseConfigured) return <ConfigMissing />;
+    return <TraceLotPage traceCode={traceCode} />;
   }
 
   if (checking) {

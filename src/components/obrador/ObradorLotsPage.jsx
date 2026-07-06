@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { useTheme } from '../ThemeContext';
+import { buildObradorQrPayload, getObradorTraceBaseUrl } from '../../utils/obradorQrUrl';
 import {
   getLots,
   getProductes,
@@ -53,6 +54,8 @@ const formInicial = () => ({
 function EtiquetaModal({ dades, onTancar, colors }) {
   const { lot, producte, etiqueta } = dades;
   const allergens = (etiqueta.allergens?.length ? etiqueta.allergens : producte.allergens) || [];
+  const qrValue = buildObradorQrPayload(etiqueta.codi_qr);
+  const traceUrlConfigured = Boolean(getObradorTraceBaseUrl());
 
   useEffect(() => {
     const style = document.createElement('style');
@@ -116,8 +119,18 @@ function EtiquetaModal({ dades, onTancar, colors }) {
           }}
         >
           <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 12 }}>
-            <QRCodeSVG value={etiqueta.codi_qr} size={128} />
+            <QRCodeSVG value={qrValue} size={128} />
           </div>
+          {!traceUrlConfigured ? (
+            <div style={{
+              fontSize: 11,
+              color: '#b45309',
+              marginBottom: 10,
+              lineHeight: 1.4
+            }}>
+              Configura OBRADOR_TRACE_BASE_URL al .env perquè l&apos;escaneig obri la fitxa del lot.
+            </div>
+          ) : null}
           <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8 }}>{lot.codi_lot}</div>
           <div style={{ fontSize: 14, marginBottom: 4 }}>Producte: {producte.nom}</div>
           <div style={{ fontSize: 14, marginBottom: 4 }}>Elaborat: {formatDataCurta(lot.data_produccio)}</div>

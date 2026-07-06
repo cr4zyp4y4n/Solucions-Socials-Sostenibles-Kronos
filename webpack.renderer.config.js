@@ -26,6 +26,7 @@ module.exports = {
       // Portal firma: base del API (ej. http://localhost:3001) y secreto para POST /api/firma/sms
       'process.env.FIRMA_SMS_API_BASE': JSON.stringify(process.env.FIRMA_SMS_API_BASE || ''),
       'process.env.FIRMA_SMS_API_SECRET': JSON.stringify(process.env.FIRMA_SMS_API_SECRET || ''),
+      'process.env.OBRADOR_TRACE_BASE_URL': JSON.stringify(process.env.OBRADOR_TRACE_BASE_URL || ''),
       // Constantes explícitas (más fiables que depender del reemplazo de `process.env.*` en todos los casos)
       __FIRMA_SMS_API_BASE__: JSON.stringify(process.env.FIRMA_SMS_API_BASE || ''),
       __FIRMA_SMS_API_SECRET__: JSON.stringify(process.env.FIRMA_SMS_API_SECRET || ''),

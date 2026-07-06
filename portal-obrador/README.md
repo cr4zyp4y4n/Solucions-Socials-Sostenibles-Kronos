@@ -24,6 +24,18 @@ Opcional a Supabase: executar `database/alter_obrador_proveidors_holded.sql` (CI
 
 La llista de proveïdors es llegeix de Supabase (`obrador_proveidors`). Per omplir-la, a **Kronos → Obrador → Recepcions** fes clic a **Importar proveïdors (Holded)**. El portal mòbil veu els mateixos proveïdors automàticament.
 
+## Traçabilitat QR (escaneig des del mòbil)
+
+Les etiquetes poden obrir una **fitxa pública** amb producte, dates i al·lèrgens.
+
+1. Executar `database/alter_obrador_trace_public.sql` a Supabase.
+2. Desplegar aquest portal (Netlify/Vercel) i copiar la URL pública.
+3. Al `.env` de **Kronos** (arrel del projecte):  
+   `OBRADOR_TRACE_BASE_URL=https://la-teva-url-del-portal`  
+   Reinicia Kronos i genera una **etiqueta nova** (les ja impreses amb QR antic cal reimprimir-les).
+
+En escanejar, s'obre: `https://portal…/?trace=QR-…` (sense login).
+
 ## Desenvolupament
 
 ```bash
@@ -34,9 +46,36 @@ npm run dev
 
 Obre la URL local des del mòbil (mateixa xarxa) o desplega a Netlify/Vercel.
 
-## Desplegament
+## Desplegament (Netlify)
 
-Com `portal-fichajes`: base directory `portal-obrador`, variables `VITE_SUPABASE_*`.
+Un sol portal, dues entrades:
+
+| URL | Qui | Què |
+|-----|-----|-----|
+| `https://obrador.tudominio.org/` | Operaris (login) | Recepcions amb OCR |
+| `https://obrador.tudominio.org/?trace=LOT-…` | Qualsevol (sense login) | Fitxa de traçabilitat del QR |
+
+### Passos Netlify
+
+1. **Site** → Add new site → Import del repo (o subcarpeta `portal-obrador`).
+2. **Build settings:**
+   - Base directory: `portal-obrador`
+   - Build command: `npm run build`
+   - Publish directory: `portal-obrador/dist`
+3. **Environment variables** (Site settings → Environment):
+   - `VITE_SUPABASE_URL` = mateix que Kronos
+   - `VITE_SUPABASE_ANON_KEY` = mateix que Kronos
+4. Deploy. Copia la URL (ex. `https://obrador-sss.netlify.app`).
+5. Al `.env` de **Kronos**:
+   ```env
+   OBRADOR_TRACE_BASE_URL=https://obrador-sss.netlify.app
+   ```
+   (sense barra final; sense `/?trace=`)
+6. Reinicia Kronos i genera etiquetes noves.
+
+Opcional: domini propi (`obrador.solucionssocials.org`) a Netlify → Domain settings.
+
+`netlify.toml` ja inclou redirect SPA (`/*` → `index.html`); `?trace=` funciona sense configuració extra.
 
 ## Parser
 
