@@ -6,7 +6,9 @@ import {
   getLotPerCodi,
   crearExpedicio,
   marcarExpedicioEntregada,
-  normalitzarCodiQR
+  normalitzarCodiQR,
+  lotEsExpedible,
+  getLotNoExpedibleMessage
 } from '../../services/obradorSupabaseService';
 
 function formatData(iso) {
@@ -175,8 +177,8 @@ export default function ObradorExpedicionsPage() {
       setError('Primer has d\'identificar el lot.');
       return;
     }
-    if (lotTrobat.estat === 'expedit') {
-      setError('Aquest lot ja ha estat expedit.');
+    if (!lotEsExpedible(lotTrobat.estat)) {
+      setError(getLotNoExpedibleMessage(lotTrobat.estat));
       return;
     }
     if (!form.id_client.trim()) {
@@ -206,7 +208,8 @@ export default function ObradorExpedicionsPage() {
     }
   }
 
-  const lotJaExpedit = lotTrobat?.estat === 'expedit';
+  const lotExpedible = lotEsExpedible(lotTrobat?.estat);
+  const lotBloquejat = Boolean(lotTrobat) && !lotExpedible;
 
   async function confirmarEntrega(checkClient) {
     if (!entregaModal?.id) return;
@@ -463,9 +466,9 @@ export default function ObradorExpedicionsPage() {
                   <div><strong>Caducitat:</strong> {formatDataCurta(lotTrobat.data_caducitat)}</div>
                   <div><strong>Estat:</strong> {lotTrobat.estat}</div>
                 </div>
-                {lotJaExpedit && (
+                {lotBloquejat && (
                   <p style={{ margin: '12px 0 0', color: warning, fontWeight: 600, fontSize: 14 }}>
-                    Aquest lot ja ha estat expedit.
+                    {getLotNoExpedibleMessage(lotTrobat.estat)}
                   </p>
                 )}
               </div>
@@ -473,7 +476,7 @@ export default function ObradorExpedicionsPage() {
           </section>
 
           {/* Pas 2: dades expedició */}
-          {lotTrobat && !lotJaExpedit && (
+          {lotTrobat && lotExpedible && (
             <section style={{
               background: colors.card,
               border: `0.5px solid ${colors.border}`,

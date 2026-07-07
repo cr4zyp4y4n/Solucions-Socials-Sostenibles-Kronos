@@ -1,5 +1,10 @@
 import React, { useState } from 'react';
-import { crearExpedicio, getLotPerQR } from '../services/obradorPortalService.js';
+import {
+  crearExpedicio,
+  getLotPerQR,
+  lotEsExpedible,
+  getLotNoExpedibleMessage
+} from '../services/obradorPortalService.js';
 import { colors } from '../theme.js';
 
 export default function ExpedirLotSection({ traceCode, autoOpen = false }) {
@@ -38,9 +43,9 @@ export default function ExpedirLotSection({ traceCode, autoOpen = false }) {
       const dades = await getLotPerQR(traceCode);
       const lot = dades?.obrador_lots;
       if (!lot?.id) throw new Error('Lot no trobat');
-      if (lot.estat === 'expedit') {
-        setLotEstat('expedit');
-        throw new Error('Aquest lot ja ha estat expedit.');
+      if (!lotEsExpedible(lot.estat)) {
+        setLotEstat(lot.estat || 'bloquejat');
+        throw new Error(getLotNoExpedibleMessage(lot.estat));
       }
 
       await crearExpedicio({

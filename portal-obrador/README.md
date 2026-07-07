@@ -9,7 +9,7 @@ Portal web per registrar **recepcions** fotografiant l'albarà en paper:
 ## Requisits
 
 - Node.js 18+
-- Mateix projecte Supabase que Kronos (`obrador_proveidors`, `obrador_recepcions`)
+- Mateix projecte Supabase que Kronos (`obrador_*`)
 - Usuari Supabase Auth amb permisos RLS d'escriptura a recepcions
 
 ## Configuració
@@ -18,7 +18,14 @@ Portal web per registrar **recepcions** fotografiant l'albarà en paper:
 2. Copia `.env.example` → `.env`
 3. Omple `VITE_SUPABASE_URL` i `VITE_SUPABASE_ANON_KEY`
 
-Opcional a Supabase: executar `database/alter_obrador_proveidors_holded.sql` (CIF + vincle Holded per import/sync).
+SQL necessari a Supabase:
+
+1. `database/create_obrador_ac3_tables.sql`
+2. `database/alter_obrador_ac3_v2.sql`
+3. `database/alter_obrador_expedicions_sortida.sql`
+4. `database/alter_obrador_atomic_flows.sql`
+
+Opcional: executar `database/alter_obrador_proveidors_holded.sql` (CIF + vincle Holded per import/sync).
 
 ## Proveïdors (Holded)
 

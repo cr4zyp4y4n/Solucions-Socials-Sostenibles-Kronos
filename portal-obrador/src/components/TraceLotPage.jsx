@@ -4,6 +4,7 @@ import { colors } from '../theme';
 import ExpedirLotSection from './ExpedirLotSection';
 import ConfirmarEntregaSection from './ConfirmarEntregaSection';
 import LoginPage from './LoginPage';
+import { normalitzarCodiQR } from '../utils/obradorTraceCode.js';
 
 function wantsExpedirFromUrl() {
   try {
@@ -57,7 +58,7 @@ export default function TraceLotPage({ traceCode, staffUser = null, onStaffLogin
       setLoading(true);
       setError('');
       setLot(null);
-      const codi = String(traceCode || '').trim();
+      const codi = normalitzarCodiQR(traceCode);
       if (!codi) {
         setError('Codi de traçabilitat no vàlid.');
         setLoading(false);

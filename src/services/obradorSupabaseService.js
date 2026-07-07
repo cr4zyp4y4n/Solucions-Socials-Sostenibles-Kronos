@@ -12,6 +12,8 @@ const TEMP_RANGS = {
 };
 
 const DIES_SETMANA = ['Dilluns', 'Dimarts', 'Dimecres', 'Dijous', 'Divendres', 'Dissabte', 'Diumenge'];
+export const ESTATS_RECEPCIO_PRODUCCIO = ['bo', 'regular'];
+export const ESTATS_LOT_EXPEDIBLE = ['envasat'];
 
 function madridDayStartIso(daysAgo = 0) {
   const ref = subDays(new Date(), daysAgo);
@@ -30,8 +32,8 @@ export function classificarTemperatura(valor, tipus) {
   const v = Number(valor);
   if (v >= r.min && v <= r.max) return 'ok';
   if (tipus === 'congelacio') {
-    if (v > r.max) return 'avís';
     if (v > (r.avis ?? r.max + 2)) return 'crític';
+    if (v > r.max) return 'avís';
     return 'avís';
   }
   if (r.avis != null) {
@@ -41,6 +43,20 @@ export function classificarTemperatura(valor, tipus) {
     return 'avís';
   }
   return 'ok';
+}
+
+export function recepcioEsValidaPerProduccio(estat) {
+  return ESTATS_RECEPCIO_PRODUCCIO.includes(String(estat || '').toLowerCase());
+}
+
+export function lotEsExpedible(estat) {
+  return ESTATS_LOT_EXPEDIBLE.includes(String(estat || '').toLowerCase());
+}
+
+export function getLotNoExpedibleMessage(estat) {
+  if (!estat) return 'No s\'ha pogut validar l\'estat del lot.';
+  if (String(estat).toLowerCase() === 'expedit') return 'Aquest lot ja ha estat expedit.';
+  return `Aquest lot està en estat "${estat}" i no es pot expedir fins que estigui envasat.`;
 }
 
 function comptarAlertesTemperatures(temperatures) {
@@ -217,13 +233,22 @@ export async function getLotsPerIncidencia(limit = 50) {
 }
 
 export async function crearLot(dades) {
-  const { data, error } = await supabase
-    .from('obrador_lots')
-    .insert({ ...dades, estat: 'produit' })
-    .select()
-    .single();
+  const { data, error } = await supabase.rpc('obrador_crear_lot_i_etiqueta', {
+    p_id_producte: dades.id_producte,
+    p_id_recepcio: dades.id_recepcio,
+    p_id_operari: dades.id_operari || null,
+    p_quantitat_kg: dades.quantitat_kg ?? null,
+    p_temp_final_coccio: dades.temp_final_coccio ?? null,
+    p_mostra_guardada: Boolean(dades.mostra_guardada),
+    p_observacions: dades.observacions || null,
+    p_caducitat_dies: dades.caducitat_dies ?? 3,
+    p_allergens: dades.allergens || []
+  });
   if (error) throw error;
-  return data;
+  return {
+    lot: data?.lot || null,
+    etiqueta: data?.etiqueta || null
+  };
 }
 
 export async function getLotPerCodi(codi_lot) {
@@ -353,20 +378,16 @@ export async function getExpedicions(limit = 50) {
 }
 
 export async function crearExpedicio(dades) {
-  const { data, error } = await supabase
-    .from('obrador_expedicions')
-    .insert(dades)
-    .select()
-    .single();
+  const { data, error } = await supabase.rpc('obrador_crear_expedicio_i_marcar_lot', {
+    p_id_lot: dades.id_lot,
+    p_id_client: dades.id_client,
+    p_comanda_holded: dades.comanda_holded || null,
+    p_check_sortida: Boolean(dades.check_sortida),
+    p_check_client: Boolean(dades.check_client),
+    p_observacions: dades.observacions || null
+  });
   if (error) throw error;
-
-  const { error: lotError } = await supabase
-    .from('obrador_lots')
-    .update({ estat: 'expedit' })
-    .eq('id', dades.id_lot);
-  if (lotError) throw lotError;
-
-  return data;
+  return data?.expedicio || null;
 }
 
 /** Marca l'expedició com a entregada al client (destí). */

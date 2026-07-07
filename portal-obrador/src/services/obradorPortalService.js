@@ -1,9 +1,20 @@
 import { supabase } from '../config/supabase.js';
 
 export const PROVEIDORS_SCHEMA_SQL = 'database/alter_obrador_proveidors_holded.sql';
+export const ESTATS_LOT_EXPEDIBLE = ['envasat'];
 
 function isMissingColumnError(error) {
   return error?.code === '42703' || /column .* does not exist/i.test(error?.message || '');
+}
+
+export function lotEsExpedible(estat) {
+  return ESTATS_LOT_EXPEDIBLE.includes(String(estat || '').toLowerCase());
+}
+
+export function getLotNoExpedibleMessage(estat) {
+  if (!estat) return 'No s\'ha pogut validar l\'estat del lot.';
+  if (String(estat).toLowerCase() === 'expedit') return 'Aquest lot ja ha estat expedit.';
+  return `Aquest lot està en estat "${estat}" i no es pot expedir fins que estigui envasat.`;
 }
 
 export async function getProveidors() {
@@ -123,20 +134,16 @@ export async function getLotPerQR(codiQR) {
 }
 
 export async function crearExpedicio(dades) {
-  const { data, error } = await supabase
-    .from('obrador_expedicions')
-    .insert(dades)
-    .select()
-    .single();
+  const { data, error } = await supabase.rpc('obrador_crear_expedicio_i_marcar_lot', {
+    p_id_lot: dades.id_lot,
+    p_id_client: dades.id_client,
+    p_comanda_holded: dades.comanda_holded || null,
+    p_check_sortida: Boolean(dades.check_sortida),
+    p_check_client: Boolean(dades.check_client),
+    p_observacions: dades.observacions || null
+  });
   if (error) throw error;
-
-  const { error: lotError } = await supabase
-    .from('obrador_lots')
-    .update({ estat: 'expedit' })
-    .eq('id', dades.id_lot);
-  if (lotError) throw lotError;
-
-  return data;
+  return data?.expedicio || null;
 }
 
 /** Última expedició d'un lot (en trànsit o entregada). Requereix sessió staff. */

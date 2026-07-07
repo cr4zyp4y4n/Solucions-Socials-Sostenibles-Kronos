@@ -8,7 +8,7 @@ import {
   getRecepcions,
   getOperaris,
   crearLot,
-  crearEtiqueta
+  recepcioEsValidaPerProduccio
 } from '../../services/obradorSupabaseService';
 
 const ESTATS_LOT = {
@@ -223,6 +223,10 @@ export default function ObradorLotsPage() {
     () => productes.find((p) => p.id === form.id_producte),
     [productes, form.id_producte]
   );
+  const recepcionsValides = useMemo(
+    () => recepcions.filter((r) => recepcioEsValidaPerProduccio(r.estat)),
+    [recepcions]
+  );
 
   const tempNum = form.temp_final_coccio === '' ? null : Number(form.temp_final_coccio);
   const tempMin = producteSeleccionat?.temp_coccio != null ? Number(producteSeleccionat.temp_coccio) : null;
@@ -271,6 +275,11 @@ export default function ObradorLotsPage() {
       setError('Producte i recepció són obligatoris.');
       return;
     }
+    const recepcioSeleccionada = recepcions.find((r) => r.id === form.id_recepcio);
+    if (!recepcioEsValidaPerProduccio(recepcioSeleccionada?.estat)) {
+      setError('La recepció seleccionada no és apta per producció.');
+      return;
+    }
     if (!form.mostra_guardada) {
       setError('Has de confirmar la mostra guardada.');
       return;
@@ -282,21 +291,22 @@ export default function ObradorLotsPage() {
 
     setEnviant(true);
     try {
-      const lot = await crearLot({
+      const resultat = await crearLot({
         id_producte: form.id_producte,
         id_recepcio: form.id_recepcio,
         id_operari: form.id_operari || null,
         quantitat_kg: form.quantitat_kg === '' ? null : Number(form.quantitat_kg),
         temp_final_coccio: tempNum,
         mostra_guardada: true,
-        observacions: form.observacions || null
+        observacions: form.observacions || null,
+        caducitat_dies: producteSeleccionat.caducitat_dies,
+        allergens: producteSeleccionat.allergens
       });
-
-      const etiqueta = await crearEtiqueta(
-        lot.id,
-        producteSeleccionat.caducitat_dies,
-        producteSeleccionat.allergens
-      );
+      const lot = resultat?.lot;
+      const etiqueta = resultat?.etiqueta;
+      if (!lot || !etiqueta) {
+        throw new Error('La resposta de Supabase no inclou el lot i l\'etiqueta generats.');
+      }
 
       setEtiquetaModal({
         lot,
@@ -471,10 +481,15 @@ export default function ObradorLotsPage() {
                   required
                 >
                   <option value="">Selecciona recepció...</option>
-                  {recepcions.map((r) => (
+                  {recepcionsValides.map((r) => (
                     <option key={r.id} value={r.id}>{labelRecepcio(r)}</option>
                   ))}
                 </select>
+                {recepcions.length > recepcionsValides.length && (
+                  <p style={{ margin: '8px 0 0', fontSize: 13, color: colors.textSecondary }}>
+                    Les recepcions rebutjades no es poden utilitzar per crear lots.
+                  </p>
+                )}
               </div>
 
               <div>
