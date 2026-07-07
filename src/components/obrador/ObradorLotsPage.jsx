@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { QRCodeSVG } from 'qrcode.react';
 import { useTheme } from '../ThemeContext';
 import { buildObradorQrPayload, getObradorTraceBaseUrl } from '../../utils/obradorQrUrl';
+import ObradorQrCode from './ObradorQrCode';
 import {
   getLots,
   getProductes,
@@ -119,7 +119,7 @@ function EtiquetaModal({ dades, onTancar, colors }) {
           }}
         >
           <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 12 }}>
-            <QRCodeSVG value={qrValue} size={128} />
+            <ObradorQrCode value={qrValue} size={160} />
           </div>
           {!traceUrlConfigured ? (
             <div style={{
