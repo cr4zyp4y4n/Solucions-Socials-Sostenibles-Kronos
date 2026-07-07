@@ -24,6 +24,7 @@ SQL necessari a Supabase:
 2. `database/alter_obrador_ac3_v2.sql`
 3. `database/alter_obrador_expedicions_sortida.sql`
 4. `database/alter_obrador_atomic_flows.sql`
+5. `database/alter_obrador_rls_hardening.sql`
 
 Opcional: executar `database/alter_obrador_proveidors_holded.sql` (CIF + vincle Holded per import/sync).
 

@@ -392,16 +392,10 @@ export async function crearExpedicio(dades) {
 
 /** Marca l'expedició com a entregada al client (destí). */
 export async function marcarExpedicioEntregada(id, { check_client = false } = {}) {
-  const { data, error } = await supabase
-    .from('obrador_expedicions')
-    .update({
-      estat: 'entregat',
-      check_client: Boolean(check_client),
-      updated_at: new Date().toISOString()
-    })
-    .eq('id', id)
-    .select()
-    .single();
+  const { data, error } = await supabase.rpc('obrador_marcar_expedicio_entregada', {
+    p_id: id,
+    p_check_client: Boolean(check_client)
+  });
   if (error) throw error;
   return data;
 }
