@@ -1,4 +1,3 @@
-import { getFirmaDocumentoLabel } from '@/lib/firmaDocumentos';
 import { buildAceptacionRespuestaLine, buildStampLinesForDoc, getFirmaDocMeta, normalizeRespuestaAceptacion } from '@/lib/firmaDocumentosMeta';
 import { getOtpScopeIds, resolveFirmaToken } from '@/lib/resolveFirmaToken';
 import { supabaseAdmin } from '@/lib/supabase';
@@ -6,7 +5,73 @@ import { getRequestInfo } from '@/lib/requestInfo';
 import { stampPdfLastPage } from '@/lib/pdfSign';
 import { hasRecentDniConfirmation } from '@/lib/dniVerification';
 import { normalizeDni } from '@/lib/normalizeDni';
-import { loadDocumentoOpciones } from '@/lib/firmaDocumentoOpciones';
+import { loadDocumentoOpciones, type DocumentoOpcionesAceptacion } from '@/lib/firmaDocumentoOpciones';
+
+type RespuestaAceptacion = 'si' | 'no';
+
+type DeclaracionAceptacion = {
+  documento_id: string;
+  tipo_documento: string;
+  respuesta: RespuestaAceptacion;
+  lectura_confirmada: boolean;
+  declaracion: string;
+  aceptacion_linea: string;
+  opciones: DocumentoOpcionesAceptacion;
+};
+
+function toAuditDeclaracion(declaracion: DeclaracionAceptacion) {
+  return {
+    documento_id: declaracion.documento_id,
+    tipo_documento: declaracion.tipo_documento,
+    respuesta: declaracion.respuesta,
+    lectura_confirmada: declaracion.lectura_confirmada,
+    declaracion: declaracion.declaracion,
+    aceptacion_linea: declaracion.aceptacion_linea
+  };
+}
+
+async function loadAuditedRespuesta(documentoId: string): Promise<RespuestaAceptacion | null> {
+  const { data } = await supabaseAdmin
+    .from('firma_auditorias')
+    .select('detalle')
+    .eq('documento_id', documentoId)
+    .eq('resultado', 'ok')
+    .eq('detalle->>accion', 'documento_lectura_confirmada')
+    .order('created_at', { ascending: false })
+    .limit(5);
+
+  for (const row of data || []) {
+    const respuesta = normalizeRespuestaAceptacion((row as { detalle?: DocumentoOpcionesAceptacion }).detalle);
+    if (respuesta) return respuesta;
+  }
+
+  return null;
+}
+
+async function loadDeclaracionAceptacion(documento: {
+  id: string;
+  tipo_documento: string;
+}): Promise<DeclaracionAceptacion | null> {
+  const { opciones } = await loadDocumentoOpciones(documento.id);
+  const respuesta = normalizeRespuestaAceptacion(opciones) || (await loadAuditedRespuesta(documento.id));
+  if (!respuesta) return null;
+
+  const opcionesVerificadas: DocumentoOpcionesAceptacion = {
+    ...(opciones || {}),
+    respuesta,
+    lectura_confirmada: respuesta === 'si'
+  };
+
+  return {
+    documento_id: documento.id,
+    tipo_documento: documento.tipo_documento,
+    respuesta,
+    lectura_confirmada: respuesta === 'si',
+    declaracion: getFirmaDocMeta(documento.tipo_documento).readStatement,
+    aceptacion_linea: buildAceptacionRespuestaLine(documento.tipo_documento, respuesta),
+    opciones: opcionesVerificadas
+  };
+}
 
 async function stampAndUploadDocument({
   documento,
@@ -17,7 +82,8 @@ async function stampAndUploadDocument({
   trabajadorNombre,
   trabajadorDni,
   dniConfirmadoEnPortal,
-  smsVerificadoAt
+  smsVerificadoAt,
+  opcionesAceptacion
 }: {
   documento: {
     id: string;
@@ -36,6 +102,7 @@ async function stampAndUploadDocument({
   trabajadorDni?: string | null;
   dniConfirmadoEnPortal?: boolean;
   smsVerificadoAt?: string | null;
+  opcionesAceptacion?: DocumentoOpcionesAceptacion | null;
 }) {
   if (documento.firmado_at && documento.storage_path_firmado) {
     return { signedPath: documento.storage_path_firmado, skipped: true };
@@ -44,8 +111,9 @@ async function stampAndUploadDocument({
     throw new Error(`Documento ${documento.id} sin PDF`);
   }
 
-  const { tipoDocumento: tipoFromDb, opciones } = await loadDocumentoOpciones(documento.id);
+  const { tipoDocumento: tipoFromDb, opciones: opcionesFromDb } = await loadDocumentoOpciones(documento.id);
   const tipo = tipoFromDb || documento.tipo_documento;
+  const opciones = opcionesAceptacion || opcionesFromDb;
 
   const { data: signedData, error: signedErr } = await supabaseAdmin.storage
     .from('firma-documentos')
@@ -180,6 +248,25 @@ export async function POST(_req: Request, ctx: { params: Promise<{ token: string
   const dniConfirmadoEnPortal = requiereDni;
   const smsVerificadoAt = consumed[0]?.consumed_at || null;
 
+  const declaraciones = await Promise.all(resolved.documentos.map(loadDeclaracionAceptacion));
+  const missingDeclaraciones = declaraciones
+    .map((declaracion, idx) => declaracion ? null : resolved.documentos[idx])
+    .filter(Boolean);
+  if (missingDeclaraciones.length) {
+    return Response.json(
+      {
+        ok: false,
+        error: `Falta una respuesta Sí/No verificable antes de firmar (documentos afectados: ${missingDeclaraciones.length}).`
+      },
+      { status: 400 }
+    );
+  }
+
+  const declaracionesAceptadas = declaraciones as DeclaracionAceptacion[];
+  const opcionesPorDocumento = new Map(
+    declaracionesAceptadas.map((declaracion) => [declaracion.documento_id, declaracion.opciones])
+  );
+
   const signedPaths: string[] = [];
   for (const doc of resolved.documentos) {
     const result = await stampAndUploadDocument({
@@ -191,7 +278,8 @@ export async function POST(_req: Request, ctx: { params: Promise<{ token: string
       trabajadorNombre,
       trabajadorDni,
       dniConfirmadoEnPortal,
-      smsVerificadoAt
+      smsVerificadoAt,
+      opcionesAceptacion: opcionesPorDocumento.get(doc.id) || null
     });
     signedPaths.push(result.signedPath);
   }
@@ -224,20 +312,7 @@ export async function POST(_req: Request, ctx: { params: Promise<{ token: string
       sms_verificado_at: smsVerificadoAt,
       num_documentos: resolved.documentos.length,
       storage_paths_firmados: signedPaths,
-      declaraciones_aceptadas: await Promise.all(
-        resolved.documentos.map(async (d) => {
-          const { opciones } = await loadDocumentoOpciones(d.id);
-          const respuesta = normalizeRespuestaAceptacion(opciones) || 'si';
-          return {
-            documento_id: d.id,
-            tipo_documento: d.tipo_documento,
-            respuesta,
-            lectura_confirmada: respuesta === 'si',
-            declaracion: getFirmaDocMeta(d.tipo_documento).readStatement,
-            aceptacion_linea: buildAceptacionRespuestaLine(d.tipo_documento, respuesta)
-          };
-        })
-      )
+      declaraciones_aceptadas: declaracionesAceptadas.map(toAuditDeclaracion)
     }
   });
 
