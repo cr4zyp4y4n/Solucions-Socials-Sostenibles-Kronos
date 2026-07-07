@@ -25,8 +25,24 @@ SQL necessari a Supabase:
 3. `database/alter_obrador_expedicions_sortida.sql`
 4. `database/alter_obrador_atomic_flows.sql`
 5. `database/alter_obrador_rls_hardening.sql`
+6. `database/alter_obrador_portal_staff_identity.sql`
 
 Opcional: executar `database/alter_obrador_proveidors_holded.sql` (CIF + vincle Holded per import/sync).
+
+### Compte compartit staff (sense credencials al repo)
+
+Si vols mantenir un compte compartit per transport / catering / obrador:
+
+1. Executa `database/alter_obrador_portal_staff_identity.sql`
+2. Obre `database/create_obrador_portal_shared_user.sql`
+3. Substitueix:
+   - `__SET_OBRADOR_PORTAL_EMAIL__`
+   - `__SET_STRONG_PASSWORD__`
+4. Executa el script al SQL Editor de Supabase
+
+El repo ja no porta credencials reals. El compte queda identificat per la bandera
+`obrador_portal_staff` a `user_profiles`, en lloc de dependre d'un email hardcodejat
+en RLS.
 
 ## Proveïdors (Holded)
 

@@ -1,9 +1,11 @@
 -- Compte compartit Portal Obrador (transport / catering / obrador)
+-- Plantilla segura: NO inclou credencials reals al repo.
 -- Executar al SQL Editor de Supabase (com a postgres / service role).
 --
 -- ABANS D'EXECUTAR:
---   1. Canvia user_email i user_password (línies ~20-21).
---   2. Opcional: canvia user_name.
+--   1. Executa abans `database/alter_obrador_portal_staff_identity.sql`
+--   2. Canvia user_email i user_password pels valors reals.
+--   3. Opcional: canvia user_name.
 --
 -- Crea:
 --   - auth.users (login email + contrasenya)
@@ -16,17 +18,25 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 DO $$
 DECLARE
-  -- ═══ EDITAR AQUÍ ═══
-  user_email    text := 'obrador.transport@solucionssocials.org';
-  user_password text := 'transport2026Obrador';
+  -- ═══ EDITAR AQUÍ ABANS D'EXECUTAR ═══
+  user_email    text := '__SET_OBRADOR_PORTAL_EMAIL__';
+  user_password text := '__SET_STRONG_PASSWORD__';
   user_name     text := 'Portal Obrador / Transport';
-  -- ═══════════════════
+  -- ════════════════════════════════════
 
   new_user_id   uuid;
   existing_id   uuid;
 BEGIN
-  IF user_password = 'caraculobergasola' THEN
-    RAISE EXCEPTION 'Canvia user_password al script abans d''executar-lo.';
+  IF user_email LIKE '__SET_%' OR user_password LIKE '__SET_%' THEN
+    RAISE EXCEPTION 'Canvia user_email i user_password al script abans d''executar-lo.';
+  END IF;
+
+  IF position('@' in user_email) = 0 THEN
+    RAISE EXCEPTION 'user_email no és vàlid.';
+  END IF;
+
+  IF length(user_password) < 14 THEN
+    RAISE EXCEPTION 'La contrasenya ha de tenir almenys 14 caràcters.';
   END IF;
 
   SELECT id INTO existing_id FROM auth.users WHERE lower(email) = lower(user_email) LIMIT 1;
@@ -34,12 +44,13 @@ BEGIN
   IF existing_id IS NOT NULL THEN
     RAISE NOTICE 'L''usuari % ja existeix (id: %). No s''ha creat de nou.', user_email, existing_id;
 
-    INSERT INTO public.user_profiles (id, name, role, email, disabled)
-    VALUES (existing_id, user_name, 'user', user_email, false)
+    INSERT INTO public.user_profiles (id, name, role, email, disabled, obrador_portal_staff)
+    VALUES (existing_id, user_name, 'user', user_email, false, true)
     ON CONFLICT (id) DO UPDATE SET
       name = EXCLUDED.name,
       email = EXCLUDED.email,
       disabled = COALESCE(public.user_profiles.disabled, false),
+      obrador_portal_staff = true,
       updated_at = NOW();
 
     RETURN;
@@ -99,7 +110,7 @@ BEGIN
     NULL,
     NOW(),
     '{"provider":"email","providers":["email"]}'::jsonb,
-    jsonb_build_object('name', user_name, 'role', 'user'),
+    jsonb_build_object('name', user_name, 'role', 'user', 'obrador_portal_staff', true),
     FALSE,
     NOW(),
     NOW(),
@@ -142,11 +153,12 @@ BEGIN
     NOW()
   );
 
-  INSERT INTO public.user_profiles (id, name, role, email, disabled)
-  VALUES (new_user_id, user_name, 'user', user_email, false)
+  INSERT INTO public.user_profiles (id, name, role, email, disabled, obrador_portal_staff)
+  VALUES (new_user_id, user_name, 'user', user_email, false, true)
   ON CONFLICT (id) DO UPDATE SET
     name = EXCLUDED.name,
     email = EXCLUDED.email,
+    obrador_portal_staff = true,
     updated_at = NOW();
 
   RAISE NOTICE 'Usuari creat correctament: % (id: %)', user_email, new_user_id;
@@ -163,4 +175,4 @@ SELECT
   COALESCE(up.disabled, false) AS disabled
 FROM auth.users au
 LEFT JOIN public.user_profiles up ON up.id = au.id
-WHERE lower(au.email) = lower('obrador.transport@solucionssocials.org');
+WHERE lower(au.email) = lower('__SET_OBRADOR_PORTAL_EMAIL__');
