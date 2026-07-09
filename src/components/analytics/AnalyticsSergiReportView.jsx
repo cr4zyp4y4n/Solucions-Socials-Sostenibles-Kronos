@@ -28,6 +28,10 @@ export default function AnalyticsSergiReportView({
   const [v2Error, setV2Error] = useState('');
   const [estimateRows, setEstimateRows] = useState([]);
   const [proformRows, setProformRows] = useState([]);
+  const [mhEissRows, setMhEissRows] = useState([]);
+  const [exportModalOpen, setExportModalOpen] = useState(false);
+  const [exportActiveSheet, setExportActiveSheet] = useState('IDONI');
+  const [exportSelection, setExportSelection] = useState({});
 
   useEffect(() => {
     let cancelled = false;
@@ -42,13 +46,14 @@ export default function AnalyticsSergiReportView({
       setV2Error('');
 
       try {
-        const [accounts, invoices, allEstimates, unbilledEstimates, v2AllProformas, v1PendingProforms] = await Promise.all([
+        const [accounts, invoices, allEstimates, unbilledEstimates, v2AllProformas, v1PendingProforms, mhInvoices] = await Promise.all([
           holdedApiV2Service.getAccountingAccounts('solucions'),
           holdedApiV2Service.getInvoices('solucions'),
           holdedApiV2Service.getEstimates({ sort: '-date' }, 'solucions'),
           holdedApi.getAllEstimatesPages('solucions', targetYear, 0),
           holdedApiV2Service.getProformas({ sort: '-date' }, 'solucions'),
-          holdedApi.getAllProformsPages('solucions', targetYear, 0)
+          holdedApi.getAllProformsPages('solucions', targetYear, 0),
+          holdedApiV2Service.getInvoices('menjar_dhort')
         ]);
 
         if (cancelled) return;
@@ -167,9 +172,53 @@ export default function AnalyticsSergiReportView({
           })
           .sort((a, b) => String(b.vencimiento || '').localeCompare(String(a.vencimiento || '')));
 
+        const mhInvoicesForYear = (mhInvoices || []).filter((invoice) => String(invoice?.date || '').startsWith(yearPrefix));
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const normalizedMhEissRows = mhInvoicesForYear
+          .map((invoice) => {
+            const contactName = String(invoice?.contact_name || invoice?.contactName || '').trim();
+            const normalizedContact = norm(contactName);
+            if (!normalizedContact.includes('solucions socials sostenibles')) return null;
+
+            const status = String(invoice?.status || '').trim().toLowerCase();
+            const total = parseAmount(invoice?.total);
+            const dueValue = invoice?.due_date || invoice?.dueDate || '';
+            const dueDate = dueValue ? new Date(`${String(dueValue).slice(0, 10)}T00:00:00`) : null;
+            const overdue = Boolean(dueDate && dueDate < today && ['pending', 'overdue'].includes(status));
+            if (!overdue) return null;
+
+            const accountNames = Array.from(
+              new Set(
+                (invoice.lines || [])
+                  .map((line) => String(line?.name || '').trim())
+                  .filter(Boolean)
+              )
+            );
+
+            return {
+              fecha: invoice.date ? formatDate(invoice.date) : '-',
+              numeroFactura: invoice.document_number || invoice.docNumber || `INV-${invoice.id}`,
+              proveedor: contactName || 'Sin cliente',
+              descripcion: invoice.description || invoice.desc || '-',
+              cuenta: accountNames.join(' | ') || '-',
+              proyecto: '-',
+              tags: Array.isArray(invoice.tags) && invoice.tags.length ? invoice.tags.join(', ') : '-',
+              vencimiento: dueValue ? formatDate(dueValue) : '-',
+              total,
+              pendiente: total,
+              estado: 'Vencida',
+              overdue,
+              dataset: 'menjar_dhort'
+            };
+          })
+          .filter(Boolean)
+          .sort((a, b) => String(b.vencimiento || '').localeCompare(String(a.vencimiento || '')));
+
         setV2Rows(enriched.rows);
         setEstimateRows(normalizedEstimates);
         setProformRows(normalizedProforms);
+        setMhEissRows(normalizedMhEissRows);
 
         console.log('[Informe Sergi][v2] cuentas cargadas:', accounts.length);
         console.log('[Informe Sergi][v2] facturas 2026:', invoicesForYear.length);
@@ -216,6 +265,8 @@ export default function AnalyticsSergiReportView({
         console.log('[Informe Sergi][proformas][debug] proformas pending v1 API:', (v1PendingProforms || []).length);
         console.log('[Informe Sergi][proformas][debug] proformas 2026 v2:', proformasForYear.length);
         console.log('[Informe Sergi][proformas][debug] proformas ligadas visibles:', normalizedProforms.length);
+        console.log('[Informe Sergi][mh_eiss][debug] facturas menjar_dhort 2026:', mhInvoicesForYear.length);
+        console.log('[Informe Sergi][mh_eiss][debug] facturas visibles:', normalizedMhEissRows.length);
       } catch (error) {
         if (cancelled) return;
         console.error('[Informe Sergi][v2] error enriqueciendo cuentas:', error);
@@ -252,18 +303,43 @@ export default function AnalyticsSergiReportView({
             totalAmount: proformRows.reduce((sum, row) => sum + row.total, 0),
             totalPending: proformRows.reduce((sum, row) => sum + row.pendiente, 0),
             totalOverdue: proformRows.reduce((sum, row) => sum + (row.overdue ? row.pendiente : 0), 0)
+          },
+          {
+            key: 'MH_EISSS',
+            rows: mhEissRows,
+            totalAmount: mhEissRows.reduce((sum, row) => sum + row.total, 0),
+            totalPending: mhEissRows.reduce((sum, row) => sum + row.pendiente, 0),
+            totalOverdue: mhEissRows.reduce((sum, row) => sum + (row.overdue ? row.pendiente : 0), 0)
           }
         ],
         invoiceType,
         formatDate,
         accountFilters
       }),
-    [v2Rows, solucionsHeaders, estimateRows, proformRows, invoiceType, formatDate, accountFilters]
+    [v2Rows, solucionsHeaders, estimateRows, proformRows, mhEissRows, invoiceType, formatDate, accountFilters]
   );
 
   const active = sheets.find((sheet) => sheet.key === activeSheet) || sheets[0];
   const sheetDefs = getSergiReportSheetDefs();
   const totalRows = sheets.reduce((sum, sheet) => sum + sheet.invoiceCount, 0);
+  const exportSheetModels = useMemo(
+    () =>
+      sheets.map((sheet) => ({
+        ...sheet,
+        rows: (sheet.rows || []).map((row, index) => ({
+          ...row,
+          __rowId: buildExportRowId(sheet.key, row, index)
+        }))
+      })),
+    [sheets]
+  );
+  const exportActive = exportSheetModels.find((sheet) => sheet.key === exportActiveSheet) || exportSheetModels[0];
+  const exportSheetsSelected = useMemo(
+    () => buildSelectedSheetsForExport(exportSheetModels, exportSelection),
+    [exportSheetModels, exportSelection]
+  );
+  const exportActiveSummary = exportSheetsSelected.find((sheet) => sheet.key === exportActiveSheet) || exportSheetsSelected[0];
+  const exportSelectedTotalRows = exportSheetsSelected.reduce((sum, sheet) => sum + sheet.invoiceCount, 0);
   const groupedActiveRows = useMemo(() => {
     const rows = active?.rows || [];
     if (activeSheet !== 'PRESUPUESTOS' && activeSheet !== 'PROFORMAS') return [];
@@ -278,6 +354,21 @@ export default function AnalyticsSergiReportView({
 
     return Array.from(groups.values()).sort((a, b) => a.sortValue - b.sortValue);
   }, [active, activeSheet]);
+
+  const groupedExportRows = useMemo(() => {
+    const rows = exportActive?.rows || [];
+    if (exportActiveSheet !== 'PRESUPUESTOS' && exportActiveSheet !== 'PROFORMAS') return [];
+
+    const groups = new Map();
+    rows.forEach((row) => {
+      const monthKey = getMonthGroupKey(row.vencimiento);
+      const bucket = groups.get(monthKey.key) || { ...monthKey, rows: [] };
+      bucket.rows.push(row);
+      groups.set(monthKey.key, bucket);
+    });
+
+    return Array.from(groups.values()).sort((a, b) => a.sortValue - b.sortValue);
+  }, [exportActive, exportActiveSheet]);
 
   useEffect(() => {
     const colIdx = buildAnalyticsColumnIndices(solucionsHeaders || []);
@@ -303,6 +394,48 @@ export default function AnalyticsSergiReportView({
     console.log('[Informe Sergi][debug] matches por compte:', matched);
   }, [v2Rows, solucionsHeaders, accountFilters]);
 
+  useEffect(() => {
+    if (!exportSheetModels.length) return;
+    setExportActiveSheet((current) => {
+      if (exportSheetModels.some((sheet) => sheet.key === current)) return current;
+      return exportSheetModels[0]?.key || 'IDONI';
+    });
+  }, [exportSheetModels]);
+
+  function handleOpenExportModal() {
+    setExportSelection(buildInitialExportSelection(exportSheetModels));
+    setExportActiveSheet(exportSheetModels[0]?.key || 'IDONI');
+    setExportModalOpen(true);
+  }
+
+  function handleConfirmExport() {
+    exportSergiReportWorkbook({ sheets: exportSheetsSelected, invoiceType });
+    setExportModalOpen(false);
+  }
+
+  function toggleExportRow(sheetKey, rowId) {
+    setExportSelection((current) => ({
+      ...current,
+      [sheetKey]: {
+        ...(current[sheetKey] || {}),
+        [rowId]: !(current[sheetKey]?.[rowId] !== false)
+      }
+    }));
+  }
+
+  function setAllRowsForSheet(sheetKey, checked) {
+    const sheet = exportSheetModels.find((item) => item.key === sheetKey);
+    if (!sheet) return;
+    const nextSheetSelection = {};
+    (sheet.rows || []).forEach((row) => {
+      nextSheetSelection[row.__rowId] = checked;
+    });
+    setExportSelection((current) => ({
+      ...current,
+      [sheetKey]: nextSheetSelection
+    }));
+  }
+
   return (
     <div style={{ display: 'grid', gap: 24 }}>
       <div
@@ -319,7 +452,7 @@ export default function AnalyticsSergiReportView({
               Informe Sergi
             </h3>
             <p style={{ margin: '8px 0 0', color: colors.textSecondary, fontSize: 14, lineHeight: 1.5 }}>
-              Vista consolidada desde el Holded de EISSS, filtrando por el campo Compte para IDONI, CATERING, KOIKI, M&apos;H y presupuestos.
+              Vista consolidada desde Holded para IDONI, CATERING, KOIKI, M&apos;H, M&apos;H -&gt; EISSS, presupuestos y proformas.
             </p>
             <p style={{ margin: '6px 0 0', color: colors.textSecondary, fontSize: 13 }}>
               Año fijo del informe: <strong>{targetYear}</strong> · tipo fijo: <strong>facturas de venta</strong>
@@ -337,7 +470,7 @@ export default function AnalyticsSergiReportView({
           </div>
           <button
             type="button"
-            onClick={() => exportSergiReportWorkbook({ sheets, invoiceType })}
+            onClick={handleOpenExportModal}
             style={{
               alignSelf: 'flex-start',
               display: 'inline-flex',
@@ -357,6 +490,197 @@ export default function AnalyticsSergiReportView({
           </button>
         </div>
       </div>
+
+      {exportModalOpen ? (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(15, 23, 42, 0.45)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 24,
+            zIndex: 1000
+          }}
+          onClick={() => setExportModalOpen(false)}
+        >
+          <div
+            style={{
+              width: 'min(1200px, 100%)',
+              height: 'min(90vh, 860px)',
+              maxHeight: '90vh',
+              overflow: 'hidden',
+              background: colors.card,
+              borderRadius: 16,
+              border: `1px solid ${colors.border}`,
+              boxShadow: '0 24px 80px rgba(15, 23, 42, 0.22)',
+              display: 'grid',
+              gridTemplateRows: 'auto auto 1fr auto'
+            }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div style={{ padding: 20, borderBottom: `1px solid ${colors.border}` }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+                <div>
+                  <h3 style={{ margin: 0, color: colors.text, fontSize: 22, fontWeight: 800 }}>
+                    Seleccionar facturas para exportar
+                  </h3>
+                  <p style={{ margin: '8px 0 0', color: colors.textSecondary, fontSize: 14 }}>
+                    Desmarca las facturas que no quieres incluir. El Excel recalculará los totales de cada hoja con lo seleccionado.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setExportModalOpen(false)}
+                  style={modalSecondaryButtonStyle(colors)}
+                >
+                  Cerrar
+                </button>
+              </div>
+            </div>
+
+            <div style={{ padding: '16px 20px', borderBottom: `1px solid ${colors.border}`, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+              {exportSheetsSelected.map((sheet) => (
+                <button
+                  key={sheet.key}
+                  type="button"
+                  onClick={() => setExportActiveSheet(sheet.key)}
+                  style={{
+                    padding: '10px 14px',
+                    borderRadius: 999,
+                    border: exportActiveSheet === sheet.key ? `1px solid ${colors.primary}` : `1px solid ${colors.border}`,
+                    background: exportActiveSheet === sheet.key ? `${colors.primary}12` : colors.surface,
+                    color: exportActiveSheet === sheet.key ? colors.primary : colors.text,
+                    fontWeight: 700,
+                    cursor: 'pointer'
+                  }}
+                >
+                  {sheet.label} · {sheet.invoiceCount}
+                </button>
+              ))}
+            </div>
+
+            <div style={{ overflow: 'auto', padding: 20 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', marginBottom: 16 }}>
+                <div>
+                  <h4 style={{ margin: 0, color: colors.text, fontSize: 19, fontWeight: 800 }}>
+                    {exportActive?.label || 'Hoja'}
+                  </h4>
+                  <div style={{ marginTop: 6, fontSize: 13, color: colors.textSecondary }}>
+                    {exportActive?.invoiceCount || 0} seleccionadas de {exportSheetModels.find((sheet) => sheet.key === exportActiveSheet)?.invoiceCount || 0}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+                  <button type="button" onClick={() => setAllRowsForSheet(exportActiveSheet, true)} style={modalSecondaryButtonStyle(colors)}>
+                    Marcar todo
+                  </button>
+                  <button type="button" onClick={() => setAllRowsForSheet(exportActiveSheet, false)} style={modalSecondaryButtonStyle(colors)}>
+                    Desmarcar todo
+                  </button>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', marginBottom: 18 }}>
+                <Metric label="Total facturado" value={formatCurrency(exportActiveSummary?.totalAmount || 0)} colors={colors} />
+                <Metric label="Pendiente" value={formatCurrency(exportActiveSummary?.totalPending || 0)} colors={colors} />
+                <Metric label="Vencido" value={formatCurrency(exportActiveSummary?.totalOverdue || 0)} colors={colors} danger />
+              </div>
+
+              <div style={{ overflowX: 'auto', maxWidth: '100%' }}>
+                <table style={{ width: '100%', minWidth: 1080, borderCollapse: 'collapse', fontSize: 14, tableLayout: 'fixed' }}>
+                  <thead>
+                    <tr>
+                      {['', 'Fecha', 'Número', invoiceType === 'sale' ? 'Cliente' : 'Proveedor', 'Descripción', 'Cuenta', 'Proyecto', 'Vencimiento', 'Pendiente', 'Estado'].map((label) => (
+                        <th
+                          key={label || 'check'}
+                          style={{
+                            textAlign: label ? 'left' : 'center',
+                            padding: '12px 10px',
+                            borderBottom: `1px solid ${colors.border}`,
+                            color: colors.primary,
+                            fontWeight: 700,
+                            background: colors.card
+                          }}
+                        >
+                          {label || 'OK'}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {exportActiveSheet === 'PRESUPUESTOS' || exportActiveSheet === 'PROFORMAS'
+                      ? groupedExportRows.map((group) => (
+                        <React.Fragment key={`export-${group.key}`}>
+                          <tr>
+                            <td
+                              colSpan={10}
+                              style={{
+                                padding: '10px 10px',
+                                borderBottom: `1px solid ${colors.border}`,
+                                background: `${colors.primary}12`,
+                                color: colors.primary,
+                                fontWeight: 800,
+                                letterSpacing: 0.2
+                              }}
+                            >
+                              {group.label} · {group.rows.length} seleccionadas
+                            </td>
+                          </tr>
+                          {group.rows.map((row, index) => (
+                            <ExportSelectionRow
+                              key={row.__rowId}
+                              row={row}
+                              index={index}
+                              colors={colors}
+                              formatCurrency={formatCurrency}
+                              onToggle={() => toggleExportRow(exportActiveSheet, row.__rowId)}
+                              checked={isExportRowChecked(exportSelection, exportActiveSheet, row.__rowId)}
+                            />
+                          ))}
+                        </React.Fragment>
+                      ))
+                      : (exportActive?.rows || []).map((row, index) => (
+                        <ExportSelectionRow
+                          key={row.__rowId}
+                          row={row}
+                          index={index}
+                          colors={colors}
+                          formatCurrency={formatCurrency}
+                          onToggle={() => toggleExportRow(exportActiveSheet, row.__rowId)}
+                          checked={isExportRowChecked(exportSelection, exportActiveSheet, row.__rowId)}
+                        />
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div style={{ padding: 20, borderTop: `1px solid ${colors.border}`, display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+              <div style={{ color: colors.textSecondary, fontSize: 13 }}>
+                {exportSelectedTotalRows} registros seleccionados para el Excel
+              </div>
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                <button type="button" onClick={() => setExportModalOpen(false)} style={modalSecondaryButtonStyle(colors)}>
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmExport}
+                  style={{
+                    ...modalPrimaryButtonStyle(colors),
+                    opacity: exportSelectedTotalRows ? 1 : 0.6,
+                    cursor: exportSelectedTotalRows ? 'pointer' : 'not-allowed'
+                  }}
+                  disabled={!exportSelectedTotalRows}
+                >
+                  Exportar selección
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16 }}>
         {sheets.map((sheet) => (
@@ -558,6 +882,13 @@ function parseAmount(value) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function norm(value) {
+  return String(value || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
 function buildEstimateInvoiceLinks(invoices = []) {
   const links = new Map();
 
@@ -624,6 +955,66 @@ function getMonthGroupKey(formattedDate) {
   };
 }
 
+function buildExportRowId(sheetKey, row, index) {
+  return [
+    sheetKey,
+    row?.numeroFactura || 'sin-numero',
+    row?.proveedor || 'sin-proveedor',
+    row?.vencimiento || 'sin-vencimiento',
+    index
+  ].join('::');
+}
+
+function buildInitialExportSelection(sheets = []) {
+  return Object.fromEntries(
+    (sheets || []).map((sheet) => [
+      sheet.key,
+      Object.fromEntries((sheet.rows || []).map((row) => [row.__rowId, true]))
+    ])
+  );
+}
+
+function isExportRowChecked(selection, sheetKey, rowId) {
+  return selection?.[sheetKey]?.[rowId] !== false;
+}
+
+function buildSelectedSheetsForExport(sheets = [], selection = {}) {
+  return (sheets || []).map((sheet) => {
+    const selectedRows = (sheet.rows || []).filter((row) => isExportRowChecked(selection, sheet.key, row.__rowId));
+    return {
+      ...sheet,
+      rows: selectedRows.map(({ __rowId, ...row }) => row),
+      invoiceCount: selectedRows.length,
+      totalAmount: selectedRows.reduce((sum, row) => sum + (Number(row.total) || 0), 0),
+      totalPending: selectedRows.reduce((sum, row) => sum + (Number(row.pendiente) || 0), 0),
+      totalOverdue: selectedRows.reduce((sum, row) => sum + (row.overdue ? (Number(row.pendiente) || 0) : 0), 0)
+    };
+  });
+}
+
+function modalSecondaryButtonStyle(colors) {
+  return {
+    padding: '10px 14px',
+    borderRadius: 10,
+    border: `1px solid ${colors.border}`,
+    background: colors.surface,
+    color: colors.text,
+    fontWeight: 700,
+    cursor: 'pointer'
+  };
+}
+
+function modalPrimaryButtonStyle(colors) {
+  return {
+    padding: '10px 16px',
+    borderRadius: 10,
+    border: 'none',
+    background: colors.primary,
+    color: '#fff',
+    fontWeight: 700
+  };
+}
+
 function Metric({ label, value, colors, danger = false }) {
   return (
     <div>
@@ -635,22 +1026,58 @@ function Metric({ label, value, colors, danger = false }) {
   );
 }
 
+function ExportSelectionRow({ row, index, colors, formatCurrency, onToggle, checked }) {
+  return (
+    <tr style={{ background: index % 2 === 0 ? colors.surface : colors.card }}>
+      <td style={{ ...cellStyle(colors, 'checkbox'), textAlign: 'center' }}>
+        <input type="checkbox" checked={checked} onChange={onToggle} style={{ width: 16, height: 16, cursor: 'pointer' }} />
+      </td>
+      <td style={cellStyle(colors, 'date')}>{row.fecha}</td>
+      <td style={cellStyle(colors, 'number')}>{row.numeroFactura}</td>
+      <td style={cellStyle(colors, 'provider')}>{row.proveedor}</td>
+      <td style={cellStyle(colors, 'description')}>{row.descripcion}</td>
+      <td style={cellStyle(colors, 'account')}>{row.cuenta}</td>
+      <td style={cellStyle(colors, 'project')}>{row.proyecto}</td>
+      <td style={cellStyle(colors, 'date')}>{row.vencimiento}</td>
+      <td style={{ ...cellStyle(colors, 'money'), fontWeight: 700, color: row.overdue ? (colors.error || '#c0392b') : colors.text }}>
+        {formatCurrency(row.pendiente)}
+      </td>
+      <td style={cellStyle(colors, 'status')}>
+        <span
+          style={{
+            display: 'inline-flex',
+            padding: '4px 10px',
+            borderRadius: 999,
+            fontSize: 12,
+            fontWeight: 700,
+            background: row.overdue ? `${colors.error || '#c0392b'}18` : `${colors.primary}14`,
+            color: row.overdue ? (colors.error || '#c0392b') : colors.primary
+          }}
+        >
+          {row.overdue ? 'Vencida' : row.estado}
+        </span>
+      </td>
+    </tr>
+  );
+}
+
 function cellStyle(colors, column = 'default') {
   const base = {
     padding: '12px 10px',
     borderBottom: `1px solid ${colors.border}`,
     color: colors.text,
     verticalAlign: 'top',
-    overflowWrap: 'anywhere',
-    wordBreak: 'break-word'
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis'
   };
 
   if (column === 'date') return { ...base, width: 92, minWidth: 92 };
   if (column === 'number') return { ...base, width: 110, minWidth: 110 };
   if (column === 'provider') return { ...base, width: 180, minWidth: 180 };
-  if (column === 'description') return { ...base, width: 360, minWidth: 360 };
-  if (column === 'account') return { ...base, width: 140, minWidth: 140 };
-  if (column === 'project') return { ...base, width: 80, minWidth: 80 };
+  if (column === 'description') return { ...base, width: 320, minWidth: 320, maxWidth: 320 };
+  if (column === 'account') return { ...base, width: 170, minWidth: 170, maxWidth: 170 };
+  if (column === 'project') return { ...base, width: 110, minWidth: 110, maxWidth: 110 };
   if (column === 'money') return { ...base, width: 120, minWidth: 120 };
   if (column === 'status') return { ...base, width: 110, minWidth: 110 };
   return base;

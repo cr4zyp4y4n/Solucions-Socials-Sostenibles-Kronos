@@ -23,10 +23,11 @@ function nextCursor(payload) {
 
 class HoldedApiV2Service {
   async makeRequest(endpoint, options = {}, company = 'solucions') {
-    const envKey =
-      company === 'solucions'
-        ? String(process.env.HOLDED_V2_API_KEY_SOLUCIONS || '').trim()
-        : '';
+    const envKeyByCompany = {
+      solucions: String(process.env.HOLDED_V2_API_KEY_SOLUCIONS || '').trim(),
+      menjar_dhort: String(process.env.HOLDED_V2_API_KEY_MENJAR_DHORT || '').trim()
+    };
+    const envKey = envKeyByCompany[company] || '';
     const apiKey = envKey || HOLDED_API_KEYS[company];
     if (!apiKey) throw new Error(`API key no encontrada para: ${company}`);
 

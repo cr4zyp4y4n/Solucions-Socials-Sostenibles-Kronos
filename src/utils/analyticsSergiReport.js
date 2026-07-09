@@ -5,6 +5,7 @@ const SERGI_SHEETS = [
   { key: 'CATERING', label: 'CATERING', workbookLabel: 'FACTURAS_A_FECHA_CATERING', dataset: 'solucions' },
   { key: 'KOIKI', label: 'KOIKI', workbookLabel: 'FACTURAS_A_FECHA_KOIKI', dataset: 'solucions' },
   { key: 'MH', label: "M'H", workbookLabel: 'FACTURACION_MH', dataset: 'solucions' },
+  { key: 'MH_EISSS', label: "M'H -> EISSS", workbookLabel: 'FACTURACION_MH_EISSS', dataset: 'menjar_dhort' },
   { key: 'PRESUPUESTOS', label: 'PRESUPUESTOS', workbookLabel: 'PRESUPUESTOS_A_FECHA', dataset: 'solucions' },
   { key: 'PROFORMAS', label: 'PROFORMAS', workbookLabel: 'PROFORMAS', dataset: 'solucions' }
 ];
@@ -583,7 +584,7 @@ function getSheetTheme(sheetKey = '') {
   if (key === 'IDONI') {
     return { accent: 'D96AA7', soft: 'F9E1EC', accentText: '8E3A68' };
   }
-  if (key === 'CATERING' || key === 'PRESUPUESTOS' || key === 'PROFORMAS' || key === 'MH') {
+  if (key === 'CATERING' || key === 'PRESUPUESTOS' || key === 'PROFORMAS' || key === 'MH' || key === 'MH_EISSS') {
     return { accent: 'B7D531', soft: 'EEF6C8', accentText: '556B0F' };
   }
   if (key === 'KOIKI') {
