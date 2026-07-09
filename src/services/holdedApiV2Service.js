@@ -23,7 +23,11 @@ function nextCursor(payload) {
 
 class HoldedApiV2Service {
   async makeRequest(endpoint, options = {}, company = 'solucions') {
-    const apiKey = HOLDED_API_KEYS[company];
+    const envKey =
+      company === 'solucions'
+        ? String(process.env.HOLDED_V2_API_KEY_SOLUCIONS || '').trim()
+        : '';
+    const apiKey = envKey || HOLDED_API_KEYS[company];
     if (!apiKey) throw new Error(`API key no encontrada para: ${company}`);
 
     const path = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
@@ -84,6 +88,22 @@ class HoldedApiV2Service {
 
   async getPayrollRecords(year, company = 'solucions') {
     return this.fetchAllPages('/payroll-records', { year }, company);
+  }
+
+  async getAccountingAccounts(company = 'solucions') {
+    return this.fetchAllPages('/accounting-accounts', {}, company);
+  }
+
+  async getInvoices(company = 'solucions') {
+    return this.fetchAllPages('/invoices', {}, company);
+  }
+
+  async getEstimates(params = {}, company = 'solucions') {
+    return this.fetchAllPages('/estimates', params, company);
+  }
+
+  async getProformas(params = {}, company = 'solucions') {
+    return this.fetchAllPages('/proformas', params, company);
   }
 }
 

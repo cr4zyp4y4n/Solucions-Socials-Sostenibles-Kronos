@@ -33,6 +33,7 @@ export default function FirmaNewPackForm({
 }) {
   const { colors } = useTheme();
   const esBaja = packKind === 'baja';
+  const esSoloNotificacion = packKind === 'notificacion';
 
   return (
     <div style={{ display: 'grid', gap: 18, maxWidth: 720 }}>
@@ -41,7 +42,9 @@ export default function FirmaNewPackForm({
         <p style={{ margin: '0 0 12px', fontSize: 13, color: colors.textSecondary, lineHeight: 1.45 }}>
           {esBaja
             ? 'Notificación de fin de relación laboral con acuse en el portal. Tras crear el envío, envía el enlace por WhatsApp y por email (doble vía registrada en auditoría).'
-            : 'Documentación de alta: PRL, protocolos y VRP con un solo enlace al portal.'}
+            : esSoloNotificacion
+              ? 'Comunicación genérica al trabajador con un único enlace al portal, sin fechas obligatorias.'
+              : 'Documentación de alta: PRL, protocolos y VRP con un solo enlace al portal.'}
         </p>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
           {FIRMA_PACK_KINDS.map((kind) => (
@@ -137,7 +140,9 @@ export default function FirmaNewPackForm({
         <p style={{ margin: '0 0 16px', fontSize: 13, color: colors.textSecondary, lineHeight: 1.45 }}>
           {esBaja
             ? 'Por defecto se genera la carta de baja desde Holded. Sube PDF propio si la asesoría te envía el documento definitivo.'
-            : 'Por defecto se generan desde Holded. Solo sube PDF propio si necesitas sustituir uno (p. ej. contrato de asesoría).'}
+            : esSoloNotificacion
+              ? 'Sube un PDF propio con la comunicación que quieras notificar. No se pide fecha de alta ni de baja.'
+              : 'Por defecto se generan desde Holded. Solo sube PDF propio si necesitas sustituir uno (p. ej. contrato de asesoría).'}
         </p>
 
         <div style={{ display: 'grid', gap: 10, marginBottom: 14 }}>
@@ -146,29 +151,31 @@ export default function FirmaNewPackForm({
             <FirmaInput
               value={envioForm.nombre}
               onChange={(e) => onEnvioFormChange({ nombre: e.target.value })}
-              placeholder={esBaja ? 'Pack de baja / fin de relación' : 'Pack de contratación'}
+              placeholder={esBaja ? 'Pack de baja / fin de relación' : esSoloNotificacion ? 'Notificación al trabajador' : 'Pack de contratación'}
             />
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 }}>
-            {!esBaja ? (
+          {!esSoloNotificacion ? (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 }}>
+              {!esBaja ? (
+                <div>
+                  <FirmaFieldLabel>Fecha inicio</FirmaFieldLabel>
+                  <FirmaInput
+                    type="date"
+                    value={envioForm.fechaInicio}
+                    onChange={(e) => onEnvioFormChange({ fechaInicio: e.target.value })}
+                  />
+                </div>
+              ) : null}
               <div>
-                <FirmaFieldLabel>Fecha inicio</FirmaFieldLabel>
+                <FirmaFieldLabel>{esBaja ? 'Fecha efecto baja' : 'Fecha fin'}</FirmaFieldLabel>
                 <FirmaInput
                   type="date"
-                  value={envioForm.fechaInicio}
-                  onChange={(e) => onEnvioFormChange({ fechaInicio: e.target.value })}
+                  value={envioForm.fechaFin}
+                  onChange={(e) => onEnvioFormChange({ fechaFin: e.target.value })}
                 />
               </div>
-            ) : null}
-            <div>
-              <FirmaFieldLabel>{esBaja ? 'Fecha efecto baja' : 'Fecha fin'}</FirmaFieldLabel>
-              <FirmaInput
-                type="date"
-                value={envioForm.fechaFin}
-                onChange={(e) => onEnvioFormChange({ fechaFin: e.target.value })}
-              />
             </div>
-          </div>
+          ) : null}
         </div>
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
@@ -308,7 +315,7 @@ export default function FirmaNewPackForm({
             rows={2}
             value={envioForm.notasInternas}
             onChange={(e) => onEnvioFormChange({ notasInternas: e.target.value })}
-            placeholder={esBaja ? 'Ej. fin de contrato temporal, dimisión, despido…' : ''}
+            placeholder={esBaja ? 'Ej. fin de contrato temporal, dimisión, despido…' : esSoloNotificacion ? 'Ej. comunicación interna, aviso, requerimiento…' : ''}
           />
         </div>
 
@@ -323,7 +330,9 @@ export default function FirmaNewPackForm({
             ? 'Generando PDFs y enlace…'
             : esBaja
               ? 'Generar notificación de baja y enlace'
-              : 'Generar pack y enlace'}
+              : esSoloNotificacion
+                ? 'Generar notificación y enlace'
+                : 'Generar pack y enlace'}
         </FirmaButton>
       </FirmaCard>
     </div>

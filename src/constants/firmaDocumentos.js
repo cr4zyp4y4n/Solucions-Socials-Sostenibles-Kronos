@@ -125,13 +125,15 @@ export const FIRMA_DOCUMENTO_DEFAULT = 'contrato';
 
 
 
-/** Tipos de pack en Kronos (contratación vs fin de relación). */
+/** Tipos de pack en Kronos (contratación, baja o solo notificación). */
 
 export const FIRMA_PACK_KINDS = [
 
   { id: 'contratacion', label: 'Contratación', shortLabel: 'Alta' },
 
-  { id: 'baja', label: 'Baja / fin de relación', shortLabel: 'Baja' }
+  { id: 'baja', label: 'Baja / fin de relación', shortLabel: 'Baja' },
+
+  { id: 'notificacion', label: 'Solo notificación', shortLabel: 'Notificación' }
 
 ];
 
@@ -157,11 +159,17 @@ export const FIRMA_DEFAULT_CONTRATACION_PACK = [
 
 export const FIRMA_DEFAULT_BAJA_PACK = ['baja'];
 
+/** Pack genérico para aviso interno o comunicación sin fechas. */
+
+export const FIRMA_DEFAULT_NOTIFICACION_PACK = ['otro'];
+
 
 
 export function getFirmaDefaultPack(kind) {
 
-  return kind === 'baja' ? [...FIRMA_DEFAULT_BAJA_PACK] : [...FIRMA_DEFAULT_CONTRATACION_PACK];
+  if (kind === 'baja') return [...FIRMA_DEFAULT_BAJA_PACK];
+  if (kind === 'notificacion') return [...FIRMA_DEFAULT_NOTIFICACION_PACK];
+  return [...FIRMA_DEFAULT_CONTRATACION_PACK];
 
 }
 

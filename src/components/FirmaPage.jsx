@@ -371,6 +371,13 @@ export default function FirmaPage() {
       setError('El contrato laboral requiere subir el PDF.');
       return;
     }
+    const notificacionSinPdf = packKind === 'notificacion'
+      ? packItems.find((i) => !i.file)
+      : null;
+    if (notificacionSinPdf) {
+      setError('La opción "Solo notificación" requiere subir un PDF propio.');
+      return;
+    }
     setSavingDocumento(true);
     setError('');
     setMessage('');
@@ -409,6 +416,8 @@ export default function FirmaPage() {
       if (packKind === 'baja') {
         setNotificarBajaEnvioId(result.envioId);
         setMessage('Notificación creada. Envía el enlace por WhatsApp y por email.');
+      } else if (packKind === 'notificacion') {
+        setMessage(`Notificación creada. Enlace: ${result.tokenInfo.portalLink}`);
       } else {
         setMessage(`Pack creado. Enlace: ${result.tokenInfo.portalLink}`);
       }

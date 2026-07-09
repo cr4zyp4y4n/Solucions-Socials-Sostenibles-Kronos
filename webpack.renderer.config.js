@@ -23,6 +23,7 @@ module.exports = {
     new webpack.DefinePlugin({
       'process.env.SUPABASE_URL': JSON.stringify(process.env.SUPABASE_URL),
       'process.env.SUPABASE_ANON_KEY': JSON.stringify(process.env.SUPABASE_ANON_KEY),
+      'process.env.HOLDED_V2_API_KEY_SOLUCIONS': JSON.stringify(process.env.HOLDED_V2_API_KEY_SOLUCIONS || ''),
       // Portal firma: base del API (ej. http://localhost:3001) y secreto para POST /api/firma/sms
       'process.env.FIRMA_SMS_API_BASE': JSON.stringify(process.env.FIRMA_SMS_API_BASE || ''),
       'process.env.FIRMA_SMS_API_SECRET': JSON.stringify(process.env.FIRMA_SMS_API_SECRET || ''),

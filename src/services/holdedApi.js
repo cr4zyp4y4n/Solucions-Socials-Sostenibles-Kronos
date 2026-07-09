@@ -817,6 +817,7 @@ class HoldedApiService {
       starttmp,
       endtmp,
       contactid,
+      billed,
       sort = 'created-desc'
     } = params;
 
@@ -824,12 +825,13 @@ class HoldedApiService {
     if (starttmp) endpoint += `&starttmp=${starttmp}`;
     if (endtmp) endpoint += `&endtmp=${endtmp}`;
     if (contactid) endpoint += `&contactid=${contactid}`;
+    if (billed !== undefined) endpoint += `&billed=${billed}`;
 
     return this.makeRequest(endpoint, {}, company);
   }
 
   // Obtener TODOS los presupuestos (todas las páginas), con año opcional
-  async getAllEstimatesPages(company = 'solucions', year = null) {
+  async getAllEstimatesPages(company = 'solucions', year = null, billed = undefined) {
     const all = [];
     let page = 1;
     const limit = 100;
@@ -842,11 +844,64 @@ class HoldedApiService {
       baseParams.endtmp = Math.floor(endDate.getTime() / 1000);
     }
 
+    if (billed !== undefined) {
+      baseParams.billed = billed;
+    }
+
     while (true) {
       const estimates = await this.getEstimates({ page, limit, ...baseParams }, company);
       if (!estimates || estimates.length === 0) break;
       all.push(...estimates);
       if (estimates.length < limit) break;
+      page++;
+    }
+
+    return all;
+  }
+
+  async getProforms(params = {}, company = 'solucions') {
+    const {
+      page = 1,
+      limit = 100,
+      starttmp,
+      endtmp,
+      contactid,
+      paid,
+      billed,
+      sort = 'created-desc'
+    } = params;
+
+    let endpoint = `/documents/proform?page=${page}&limit=${limit}&sort=${sort}`;
+    if (starttmp) endpoint += `&starttmp=${starttmp}`;
+    if (endtmp) endpoint += `&endtmp=${endtmp}`;
+    if (contactid) endpoint += `&contactid=${contactid}`;
+    if (paid !== undefined) endpoint += `&paid=${paid}`;
+    if (billed !== undefined) endpoint += `&billed=${billed}`;
+
+    return this.makeRequest(endpoint, {}, company);
+  }
+
+  async getAllProformsPages(company = 'solucions', year = null, paid = undefined) {
+    const all = [];
+    let page = 1;
+    const limit = 100;
+
+    const baseParams = { sort: 'created-desc' };
+    if (year) {
+      const startDate = new Date(`${year}-01-01T00:00:00Z`);
+      const endDate = new Date(`${year}-12-31T23:59:59Z`);
+      baseParams.starttmp = Math.floor(startDate.getTime() / 1000);
+      baseParams.endtmp = Math.floor(endDate.getTime() / 1000);
+    }
+    if (paid !== undefined) {
+      baseParams.paid = paid;
+    }
+
+    while (true) {
+      const proforms = await this.getProforms({ page, limit, ...baseParams }, company);
+      if (!proforms || proforms.length === 0) break;
+      all.push(...proforms);
+      if (proforms.length < limit) break;
       page++;
     }
 

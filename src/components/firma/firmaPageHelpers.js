@@ -61,6 +61,14 @@ export function initialEnvioFormForPack(packKind = 'contratacion') {
       notasInternas: ''
     };
   }
+  if (packKind === 'notificacion') {
+    return {
+      nombre: 'Notificación al trabajador',
+      fechaInicio: '',
+      fechaFin: '',
+      notasInternas: ''
+    };
+  }
   return { ...initialEnvioForm };
 }
 

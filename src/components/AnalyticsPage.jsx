@@ -25,6 +25,7 @@ import {
   Filler
 } from 'chart.js';
 import { Bar, Line } from 'react-chartjs-2';
+import AnalyticsSergiReportView from './analytics/AnalyticsSergiReportView';
 
 ChartJS.register(
   CategoryScale,
@@ -279,6 +280,16 @@ const AnalyticsPage = () => {
       loadDataFromHoldedSales();
     }
   }, [invoiceType]);
+
+  // El Informe Sergi siempre trabaja con facturas de venta de Solucions.
+  // Si el usuario entra desde "Facturas de compra", forzamos igualmente la carga
+  // de ventas para reutilizar exactamente la misma fuente que la Vista Sergi.
+  useEffect(() => {
+    if (!canViewAllDatasets) return;
+    if (selectedView !== 'sergi_report') return;
+    if (salesData.solucions.data.length > 0) return;
+    loadDataFromHoldedSales();
+  }, [selectedView, canViewAllDatasets, salesData.solucions.data.length]);
 
 
 
@@ -1754,6 +1765,12 @@ const AnalyticsPage = () => {
     
     return filtered;
   }, [baseData, selectedMonth, selectedYear]);
+
+  // Mismo origen que la Vista Sergi de ventas de Solucions, con el mismo filtrado de año
+  // reutilizando la función existente del componente.
+  const sergiReportRows = useMemo(() => {
+    return filterDataByYear(salesData.solucions.data || [], '2026');
+  }, [salesData.solucions.data]);
   
   // Datos para la vista Bruno (con filtro de año si está seleccionado)
   const brunoData = useMemo(() => {
@@ -2023,6 +2040,9 @@ const AnalyticsPage = () => {
 
   // Solucions: facturas que deben ir a CATERING aunque descripción/cuenta no contengan "catering"
   const SOLUCIONS_CATERING_EXPLICIT_INVOICE_NUMBERS = ['ES5005J4VMENPS'];
+
+  const reportSolucionsData = salesData.solucions.data;
+  const reportSolucionsHeaders = salesData.solucions.headers;
 
   // Encontrar índices de columnas importantes
   const columnIndices = useMemo(() => {
@@ -2559,6 +2579,7 @@ const AnalyticsPage = () => {
   const views = useMemo(() => [
     { id: 'general', name: 'Vista General', description: 'Todas las facturas con columnas personalizables' },
     { id: 'sergi', name: 'Vista Sergi', description: `Análisis por canales ${sergiChannelsText}` },
+    { id: 'sergi_report', name: 'Informe Sergi', description: 'IDONI, CATERING, KOIKI y M\'H con exportación Excel' },
     { id: 'bruno', name: 'Vista Bruno', description: invoiceType === 'sale' ? 'Análisis de cobros por cliente' : 'Análisis de deudas por proveedor' }
   ], [sergiChannelsText, invoiceType]);
 
@@ -8607,6 +8628,31 @@ const AnalyticsPage = () => {
                   )}
                 </AnimatePresence>
               </div>
+            )}
+
+            {selectedView === 'sergi_report' && (
+              <motion.div
+                initial={{ opacity: 0, y: 30 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 30 }}
+                transition={{ duration: 0.5, ease: 'easeOut' }}
+              >
+                <AnalyticsSergiReportView
+                  solucionsRows={sergiReportRows}
+                  solucionsHeaders={reportSolucionsHeaders}
+                  invoiceType="sale"
+                  formatDate={formatDate}
+                  formatCurrency={formatCurrency}
+                  colors={colors}
+                  accountFilters={{
+                    IDONI: ['IDONI'],
+                    CATERING: ['CATERING'],
+                    KOIKI: ['Koiki'],
+                    MH: ["BOTIGA M'H", 'MENJAR D HORT', "MENJAR D'HORT", 'OBRADOR']
+                  }}
+                  targetYear={2026}
+                />
+              </motion.div>
             )}
 
             {selectedView === 'bruno' && (
