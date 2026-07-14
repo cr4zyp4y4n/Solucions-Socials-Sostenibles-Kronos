@@ -1,0 +1,37 @@
+---
+description: Contexto ESCALBRADOR / Enfortim ESS 2026 y módulos futuros en Kronos
+alwaysApply: true
+---
+
+# ESCALBRADOR — contexto obligatorio
+
+Leer y respetar el documento completo: `CONTEXTO_ESCALBRADOR_Kronos.md`.
+
+## Situación
+
+- Subvención **Enfortim l'ESS 2026** (Ajuntament BCN), proyecto **ESCALBRADOR** (exp. 2026_OVT_583379).
+- Ejecución: **14/12/2026 → 13/12/2027**. Entregables formales se generan en ese periodo.
+- **InnvESS** (Generalitat) = obrador + digitalización (módulo Ac3, ya en producción).
+- **Enfortim** = capa de gestión: SOPs, escandalls, dashboard KPIs mensual, comercialización B2B.
+- **Ningún gasto puede imputarse a las dos subvenciones a la vez.**
+
+## Estado (PRE-REUNIÓN)
+
+- **NO empezar desarrollo pesado** de escandalls, dashboard mensual KPIs ni SOPs digitales hasta cerrar reunión con Sergi y Bruno.
+- Infraestructura propia / mejoras del obrador existente puede ser legítima; no cerrar esquemas ni entregables formales antes de validación.
+
+## Módulos futuros en Kronos (Brian)
+
+1. **Escandalls (R2)** — pestaña nueva en Obrador; costes vía Holded; **no cerrar modelo de ficha** hasta post-reunión.
+2. **Dashboard mensual KPIs (R3)** — vista NUEVA, distinta del dashboard operativo diario; 6 KPIs; export PDF = entregable justificable.
+3. **SOPs digitales (R1, parte Brian)** — `docs/sops/` + export PDF; APPCC/manipulación = externa.
+
+## Obrador actual (ya en producción)
+
+- `src/components/obrador/`, `src/services/obradorSupabaseService.js`, tablas `obrador_*`, RLS, Europe/Madrid, UI en catalán.
+- **No romper** el dashboard operativo existente al añadir el mensual.
+
+## Convenciones
+
+- Electron + React + Supabase; SQL en `database/`; RLS en tablas nuevas.
+- Commits: gitmoji del repo. Responder al usuario en **español** (regla de usuario).
