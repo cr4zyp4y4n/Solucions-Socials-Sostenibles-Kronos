@@ -13,6 +13,13 @@ const ACCION_LABELS = {
   pack_aceptado_y_firmado: 'Pack firmado electrónicamente',
   portal_primera_visita: 'Primera visita al portal (navegador)',
   portal_visita_detectada: 'Petición al portal detectada',
+  onboarding_modal_mostrado: 'Onboarding: modal mostrado',
+  onboarding_iniciado: 'Onboarding: guía iniciada (primera vez)',
+  onboarding_rechazado_inicio: 'Onboarding: saltado al inicio',
+  onboarding_abandonado_mitad: 'Onboarding: saltado a la mitad',
+  onboarding_omitido: 'Onboarding: omitido (histórico)',
+  onboarding_paso_visto: 'Onboarding: paso visto',
+  onboarding_completado: 'Onboarding: guía completada',
 };
 
 function formatFirmaDateTime(iso) {
@@ -173,6 +180,30 @@ export function describeFirmaAuditoriaRow(row) {
     else if (det.skip_reason) notes.push(`Sin marcar: ${det.skip_reason}`);
     if (det.referer) notes.push(`Referer: ${truncate(det.referer, 80)}`);
     if (det.sec_fetch_site) notes.push(`Fetch: ${det.sec_fetch_site}`);
+  }
+
+  if (
+    accion === 'onboarding_modal_mostrado' ||
+    accion === 'onboarding_iniciado' ||
+    accion === 'onboarding_rechazado_inicio' ||
+    accion === 'onboarding_abandonado_mitad' ||
+    accion === 'onboarding_omitido' ||
+    accion === 'onboarding_paso_visto' ||
+    accion === 'onboarding_completado'
+  ) {
+    if (det.is_pack) notes.push('Pack de documentos');
+    if (accion === 'onboarding_rechazado_inicio') {
+      notes.push('Pulsó «No, ir a firmar» y continuó al portal de firma');
+    }
+    if (accion === 'onboarding_abandonado_mitad') {
+      notes.push('Pulsó «Saltar explicación» y continuó al portal de firma');
+    }
+    if (accion === 'onboarding_omitido') {
+      notes.push('Evento histórico (antes de separar rechazo/abandono)');
+    }
+    if (Number.isFinite(Number(det.paso)) && Number.isFinite(Number(det.total_pasos))) {
+      notes.push(`Paso ${det.paso}/${det.total_pasos}`);
+    }
   }
 
   const ua = row?.user_agent ? String(row.user_agent) : '';

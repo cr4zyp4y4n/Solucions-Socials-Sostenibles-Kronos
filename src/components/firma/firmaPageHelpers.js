@@ -121,6 +121,36 @@ export function canalesNotificacionBaja(envio) {
   return { whatsapp, email, completo: whatsapp && email };
 }
 
+function onboardingTimelineRow(envio) {
+  const modalAt = envio?.onboarding_modal_at || null;
+  const resueltoAt = envio?.onboarding_resuelto_at || null;
+  const resultado = envio?.onboarding_resultado || null;
+
+  let title = 'Onboarding del portal';
+  let at = null;
+  let note = 'Explicación del proceso antes de firmar. Detalle en Auditoría.';
+
+  if (resultado === 'completado' && resueltoAt) {
+    title = 'Onboarding: guía completada';
+    at = resueltoAt;
+    note = 'Vio todos los pasos y pulsó «Entendido, empezar».';
+  } else if (resultado === 'rechazado_inicio' && resueltoAt) {
+    title = 'Onboarding: saltado al inicio';
+    at = resueltoAt;
+    note = 'Pulsó «No, ir a firmar» y continuó al portal de firma.';
+  } else if (resultado === 'abandonado_mitad' && resueltoAt) {
+    title = 'Onboarding: saltado a la mitad';
+    at = resueltoAt;
+    note = 'Pulsó «Saltar explicación» y continuó al portal de firma.';
+  } else if (modalAt && !resueltoAt) {
+    title = 'Onboarding: modal visto sin respuesta';
+    at = modalAt;
+    note = 'Vio el modal pero no eligió ninguna opción (p. ej. cerró la pestaña).';
+  }
+
+  return { key: 'onboarding', title, at, note };
+}
+
 export function buildFirmaTimeline(envio) {
   if (!envio) return [];
   const numDocs = envio.documentos?.length || 1;
@@ -171,6 +201,7 @@ export function buildFirmaTimeline(envio) {
 
   rows.push(
     { key: 'portal', title: 'Primera visita al portal', at: envio.portal_abierto_at || null, note: 'Solo cuando el navegador confirma la carga (no bots SSR). Detalle en Auditoría.' },
+    onboardingTimelineRow(envio),
     {
       key: 'otp',
       title: 'SMS con código OTP',

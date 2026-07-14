@@ -1,9 +1,10 @@
 'use client';
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getFirmaDocumentoLabel } from '@/lib/firmaDocumentos';
 import { getFirmaDocMeta, getReadStatementNo } from '@/lib/firmaDocumentosMeta';
 import FirmaFlowClient from './FirmaFlowClient';
+import FirmaOnboardingModal from './FirmaOnboardingModal';
 
 export type PackDocumento = {
   id: string;
@@ -67,6 +68,40 @@ export default function FirmaPackPortal({
   const [formacionAcoso, setFormacionAcoso] = useState<Record<string, boolean>>({});
   const [confirmErr, setConfirmErr] = useState('');
   const [confirming, setConfirming] = useState(false);
+  const portalEligible = canAttempt && !isExpired && !isRevoked && !isUsed;
+  const [showOnboarding, setShowOnboarding] = useState(portalEligible);
+  const portalOpenedRef = useRef(false);
+
+  const auditOnboarding = useCallback(
+    async (payload: {
+      evento: 'modal_mostrado' | 'eleccion_primera_vez' | 'rechazado_inicio' | 'guia_abandonada' | 'paso_siguiente' | 'completado';
+      paso?: number;
+      totalPasos?: number;
+    }) => {
+      try {
+        await fetch(`/firmar/${encodeURIComponent(token)}/onboarding`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...payload, isPack })
+        });
+      } catch {
+        // No bloquear la UX si falla la auditoría
+      }
+    },
+    [isPack, token]
+  );
+
+  useEffect(() => {
+    if (!portalEligible || portalOpenedRef.current) return;
+    portalOpenedRef.current = true;
+
+    void fetch(`/firmar/${encodeURIComponent(token)}/open`, {
+      method: 'POST',
+      cache: 'no-store'
+    }).catch(() => {});
+
+    void auditOnboarding({ evento: 'modal_mostrado' });
+  }, [auditOnboarding, portalEligible, token]);
 
   const activeDoc = useMemo(
     () => documentos.find((d) => d.id === activeId) || documentos[0] || null,
@@ -131,7 +166,21 @@ export default function FirmaPackPortal({
   const reviewedCount = documentos.filter((d) => revisados[d.id] || d.revisado_at || d.firmado_at).length;
 
   return (
-    <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,300px)_minmax(0,1fr)]">
+    <>
+      {showOnboarding ? (
+        <FirmaOnboardingModal
+          isPack={isPack}
+          onAudit={(payload) => void auditOnboarding(payload)}
+          onClose={() => setShowOnboarding(false)}
+        />
+      ) : null}
+
+      <div
+        className={`grid min-w-0 gap-6 lg:grid-cols-[minmax(0,300px)_minmax(0,1fr)] ${
+          showOnboarding ? 'pointer-events-none select-none opacity-40' : ''
+        }`}
+        aria-hidden={showOnboarding}
+      >
       {isPack ? (
         <section className="min-w-0 rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
           <h2 className="mb-1 text-lg font-black">Documentos del pack</h2>
@@ -352,6 +401,7 @@ export default function FirmaPackPortal({
           />
         </div>
       </section>
-    </div>
+      </div>
+    </>
   );
 }

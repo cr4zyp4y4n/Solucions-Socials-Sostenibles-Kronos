@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 
 type Props = {
   token: string;
@@ -23,12 +23,6 @@ export default function FirmaFlowClient({
   acceptLabel = 'Acepto y firmo',
   blockedHint = ''
 }: Props) {
-  useEffect(() => {
-    if (isExpired || isRevoked) return;
-    const url = `/firmar/${encodeURIComponent(token)}/open`;
-    void fetch(url, { method: 'POST', cache: 'no-store' }).catch(() => {});
-  }, [token, isExpired, isRevoked]);
-
   const [step, setStep] = useState<'idle' | 'requested' | 'verified' | 'done'>('idle');
   const [dni, setDni] = useState('');
   const [otp, setOtp] = useState('');

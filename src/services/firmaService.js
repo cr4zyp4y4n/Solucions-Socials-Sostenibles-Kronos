@@ -366,6 +366,9 @@ class FirmaService {
       link_compartido_at: doc.link_compartido_at,
       portal_abierto_at: doc.portal_abierto_at,
       otp_primera_solicitud_at: doc.otp_primera_solicitud_at,
+      onboarding_modal_at: doc.onboarding_modal_at,
+      onboarding_resuelto_at: doc.onboarding_resuelto_at,
+      onboarding_resultado: doc.onboarding_resultado,
       firmado_at: doc.firmado_at,
       created_at: doc.created_at,
       updated_at: doc.updated_at,
@@ -460,6 +463,9 @@ class FirmaService {
         link_compartido_at: e.link_compartido_at || d.link_compartido_at,
         portal_abierto_at: e.portal_abierto_at || d.portal_abierto_at,
         otp_primera_solicitud_at: e.otp_primera_solicitud_at || d.otp_primera_solicitud_at,
+        onboarding_modal_at: e.onboarding_modal_at || d.onboarding_modal_at,
+        onboarding_resuelto_at: e.onboarding_resuelto_at || d.onboarding_resuelto_at,
+        onboarding_resultado: e.onboarding_resultado || d.onboarding_resultado,
         envio: e
       }))
     );
