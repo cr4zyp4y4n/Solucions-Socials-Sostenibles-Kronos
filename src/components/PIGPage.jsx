@@ -2235,23 +2235,38 @@ const PIG_GENERAL_EISSS_OBSERVACIONES = [
   [19, 'SUBV. CAMBIO CLIMATICO 80K A LA ESPERA DE APROVACIÓN']
 ];
 
-const PIG_GENERAL_GROUP1_SUBV_SUBLABEL = 'd) Subvenciones imputadas al excedente del ejercicio';
-
-function isPigGeneralGroup1SubvSubLabel(subLabel) {
-  const s = String(subLabel || '')
+function normalizePigLabel(value) {
+  return String(value || '')
     .toLowerCase()
     .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '');
-  return s.includes('subvenciones imputadas');
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
-function isPigGeneralGroup1SubvCuenta(c) {
-  const group = String(c?.groupLabel || '');
-  if (!group.startsWith('1.')) return false;
-  if (isPigGeneralGroup1SubvSubLabel(c?.subLabel)) return true;
-  const code = String(c?.code || '');
-  return code.startsWith('740');
+function isPigGeneralGroupPrefix(groupLabel, prefix) {
+  return String(groupLabel || '').trim().startsWith(`${prefix}.`);
 }
+
+/** Desglose de comptes del CSV mensual dins del PIG GENERAL (sense hardcodejar codis). */
+const PIG_GENERAL_ACCOUNT_BREAKDOWNS = [
+  {
+    afterLabel: 'd) Subvenciones imputadas al excedente del ejercicio',
+    filterCuenta: (c) => {
+      if (!isPigGeneralGroupPrefix(c?.groupLabel, '1')) return false;
+      if (normalizePigLabel(c?.subLabel).includes('subvenciones imputadas')) return true;
+      return String(c?.code || '').startsWith('740');
+    }
+  },
+  {
+    afterLabel: 'Venta y otros ingresos de la actividad mercantil',
+    filterCuenta: (c) => {
+      if (!isPigGeneralGroupPrefix(c?.groupLabel, '2')) return false;
+      if (normalizePigLabel(c?.subLabel).includes('venta y otros ingresos')) return true;
+      return String(c?.code || '').startsWith('700');
+    }
+  }
+];
 
 function pigGeneralCuentaLabel(c) {
   return `${c.code} - ${c.name}`.trim();
@@ -2263,19 +2278,24 @@ function findPigGeneralCuentaByLabel(cuentas = [], label) {
   return (cuentas || []).find((c) => pigGeneralCuentaLabel(c) === target) || null;
 }
 
-function extractPigGeneralGroup1SubvCuentas(cuentas = []) {
+function extractPigGeneralBreakdownCuentas(cuentas = [], filterCuenta) {
   return (cuentas || [])
-    .filter(isPigGeneralGroup1SubvCuenta)
+    .filter(filterCuenta)
     .sort((a, b) => String(a.code || '').localeCompare(String(b.code || '')));
 }
 
 function buildPigGeneralSummaryLabels(cuentasMensuales = []) {
-  const subvCuentas = extractPigGeneralGroup1SubvCuentas(cuentasMensuales);
+  const breakdownByLabel = new Map(
+    PIG_GENERAL_ACCOUNT_BREAKDOWNS.map((rule) => [
+      rule.afterLabel,
+      extractPigGeneralBreakdownCuentas(cuentasMensuales, rule.filterCuenta)
+    ])
+  );
   const labels = [];
   for (const label of SUMMARY_LABELS) {
     labels.push(label);
-    if (label === PIG_GENERAL_GROUP1_SUBV_SUBLABEL) {
-      for (const cuenta of subvCuentas) labels.push(pigGeneralCuentaLabel(cuenta));
+    for (const cuenta of breakdownByLabel.get(label) || []) {
+      labels.push(pigGeneralCuentaLabel(cuenta));
     }
   }
   return labels;
@@ -3328,6 +3348,35 @@ export default function PIGPage() {
         }
 
         try {
+          const yy = yearGuess ? yearGuess.slice(2) : '';
+          const monthsEstructura = months.map((m) => {
+            const base = String(m || '').trim();
+            if (!yy) return base;
+            if (new RegExp(`\\b${yy}\\b`).test(base)) return base;
+            return `${base} ${yy}`.trim();
+          });
+          const titleEstructuraSubv740 = `Cierre PIG ESTRUCTURA SUBV 740  EI.SSS ${yy ? `01/01/${yy} A ${endOfMonthStr(lastIdx)}` : ''}`.trim();
+          const cuentasSubv740 = (mensualParsed.cuentas || []).filter(isPigEstructuraSubv740Cuenta);
+          const aoaEstructuraSubv740 = buildPigLineaEstructuraAoa({
+            title: titleEstructuraSubv740,
+            months: monthsEstructura,
+            cuentasMensuales: mensualParsed.cuentas || [],
+            filterCuenta: isPigEstructuraSubv740Cuenta,
+            lineName: 'ESTRUCTURA SUBV 740',
+            accountOrder: PIG_ESTRUCTURA_SUBV_740_ACCOUNT_CODES
+          });
+          console.log('[PIG ESTRUCTURA SUBV 740] Hoja generada:', {
+            cuentas: cuentasSubv740.map((c) => c.code),
+            count: cuentasSubv740.length
+          });
+          const wsEstructuraSubv740 = XLSX.utils.aoa_to_sheet(aoaEstructuraSubv740);
+          stylePigLineaCateringSheet({ ws: wsEstructuraSubv740, aoa: aoaEstructuraSubv740 });
+          XLSX.utils.book_append_sheet(wb, wsEstructuraSubv740, 'PIG ESTRUCTURA SUBV 740');
+        } catch (e) {
+          console.error('Error generando hoja PIG ESTRUCTURA SUBV 740:', e);
+        }
+
+        try {
           const objetivos = {
             catering: { normal: parseEuroNumber(objetivosForGenerate.cateringNormal), optim: parseEuroNumber(objetivosForGenerate.cateringOptim) },
             idoni: { normal: parseEuroNumber(objetivosForGenerate.idoniNormal), optim: parseEuroNumber(objetivosForGenerate.idoniOptim) },
@@ -3380,50 +3429,6 @@ export default function PIGPage() {
           XLSX.utils.book_append_sheet(wb, wsComp, 'COMPARATIVA ANUAL');
         } catch (e) {
           console.error('Error generando hoja COMPARATIVA ANUAL:', e);
-        }
-
-        try {
-          const yy = yearGuess ? yearGuess.slice(2) : '';
-          const monthsEstructura = months.map((m) => {
-            const base = String(m || '').trim();
-            if (!yy) return base;
-            if (new RegExp(`\\b${yy}\\b`).test(base)) return base;
-            return `${base} ${yy}`.trim();
-          });
-          const titleEstructura = `Cierre PIG LINEA ESTRUCTURA  EI.SSS ${yy ? `01/01/${yy} A ${endOfMonthStr(lastIdx)}` : ''}`.trim();
-          const cuentasEstructura = (mensualParsed.cuentas || []).filter(isPigEstructuraLineaCuenta);
-          const aoaEstructura = buildPigLineaEstructuraAoa({
-            title: titleEstructura,
-            months: monthsEstructura,
-            cuentasMensuales: mensualParsed.cuentas || []
-          });
-          console.log('[PIG ESTRUCTURA] Hoja generada:', {
-            cuentas: cuentasEstructura.map((c) => c.code),
-            count: cuentasEstructura.length
-          });
-          const wsEstructura = XLSX.utils.aoa_to_sheet(aoaEstructura);
-          stylePigLineaCateringSheet({ ws: wsEstructura, aoa: aoaEstructura });
-          XLSX.utils.book_append_sheet(wb, wsEstructura, 'PIG LINEA ESTRUCTURA');
-
-          const titleEstructuraSubv740 = `Cierre PIG ESTRUCTURA SUBV 740  EI.SSS ${yy ? `01/01/${yy} A ${endOfMonthStr(lastIdx)}` : ''}`.trim();
-          const cuentasSubv740 = (mensualParsed.cuentas || []).filter(isPigEstructuraSubv740Cuenta);
-          const aoaEstructuraSubv740 = buildPigLineaEstructuraAoa({
-            title: titleEstructuraSubv740,
-            months: monthsEstructura,
-            cuentasMensuales: mensualParsed.cuentas || [],
-            filterCuenta: isPigEstructuraSubv740Cuenta,
-            lineName: 'ESTRUCTURA SUBV 740',
-            accountOrder: PIG_ESTRUCTURA_SUBV_740_ACCOUNT_CODES
-          });
-          console.log('[PIG ESTRUCTURA SUBV 740] Hoja generada:', {
-            cuentas: cuentasSubv740.map((c) => c.code),
-            count: cuentasSubv740.length
-          });
-          const wsEstructuraSubv740 = XLSX.utils.aoa_to_sheet(aoaEstructuraSubv740);
-          stylePigLineaCateringSheet({ ws: wsEstructuraSubv740, aoa: aoaEstructuraSubv740 });
-          XLSX.utils.book_append_sheet(wb, wsEstructuraSubv740, 'PIG ESTRUCTURA SUBV 740');
-        } catch (e) {
-          console.error('Error generando hoja PIG LINEA ESTRUCTURA:', e);
         }
 
         try {
