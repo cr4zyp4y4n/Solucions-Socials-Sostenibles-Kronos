@@ -1,5 +1,7 @@
 import { supabase } from '../config/supabase';
-import { PIG_LINEAS } from './pigBasesHistoricasService';
+
+/** Líneas con estimado de subvención en PIG (incluye ESTRUCTURA para hoja SUBV 740). */
+export const PIG_ESTIMADOS_LINEAS = /** @type {const} */ (['CATERING', 'IDONI', 'KOIKI', 'ESTRUCTURA']);
 
 export const PIG_ESTIMADO_MONTH_OPTIONS = [
   { value: 1, label: 'Gener' },
@@ -28,7 +30,8 @@ function emptyEstimados() {
   return {
     CATERING: { subv1: emptySubvSlot(), subv2: emptySubvSlot() },
     IDONI: { subv1: emptySubvSlot(), subv2: emptySubvSlot() },
-    KOIKI: { subv1: emptySubvSlot(), subv2: emptySubvSlot() }
+    KOIKI: { subv1: emptySubvSlot(), subv2: emptySubvSlot() },
+    ESTRUCTURA: { subv1: emptySubvSlot(), subv2: emptySubvSlot() }
   };
 }
 
@@ -43,6 +46,10 @@ export const PIG_ESTIMADOS_DEFAULTS = {
   },
   KOIKI: {
     subv1: { tramos: [{ amount: '900', from: 1, to: 12 }, emptyTramo()] },
+    subv2: emptySubvSlot()
+  },
+  ESTRUCTURA: {
+    subv1: { tramos: [{ amount: '2800,87', from: 1, to: 12 }, emptyTramo()] },
     subv2: emptySubvSlot()
   }
 };
@@ -86,7 +93,7 @@ function normalizeSubvSlot(raw) {
 
 function normalizeEstimadosInput(estimados) {
   const out = emptyEstimados();
-  for (const linea of PIG_LINEAS) {
+  for (const linea of PIG_ESTIMADOS_LINEAS) {
     const row = estimados?.[linea] || {};
     if (row.subv1 != null && typeof row.subv1 === 'object') {
       out[linea] = {
@@ -136,7 +143,7 @@ function slotHasData(slot) {
 export function estimadosToSlots(estimados) {
   const normalized = normalizeEstimadosInput(estimados);
   const byLinea = {};
-  for (const linea of PIG_LINEAS) {
+  for (const linea of PIG_ESTIMADOS_LINEAS) {
     const slots = [];
     for (const slotNum of [1, 2]) {
       const slot = normalized[linea][`subv${slotNum}`];
@@ -185,7 +192,7 @@ export async function loadPigEstimadosSubvencion({ year }) {
   const estimados = emptyEstimados();
   for (const row of data) {
     const linea = String(row.linea || '').toUpperCase();
-    if (!PIG_LINEAS.includes(linea)) continue;
+    if (!PIG_ESTIMADOS_LINEAS.includes(linea)) continue;
     const slot = Number(row.slot);
     if (slot !== 1 && slot !== 2) continue;
     const segment = Number(row.segment) || 1;
@@ -207,7 +214,7 @@ export async function upsertPigEstimadosSubvencion({ year, estimados }) {
   const normalized = normalizeEstimadosInput(estimados);
   const payload = [];
 
-  for (const linea of PIG_LINEAS) {
+  for (const linea of PIG_ESTIMADOS_LINEAS) {
     for (const slot of [1, 2]) {
       const slotData = normalized[linea][`subv${slot}`];
       const tramos = slotData?.tramos || [];
@@ -231,7 +238,7 @@ export async function upsertPigEstimadosSubvencion({ year, estimados }) {
     .from('pig_estimados_subvencion')
     .delete()
     .eq('year', y)
-    .in('linea', PIG_LINEAS);
+    .in('linea', [...PIG_ESTIMADOS_LINEAS]);
 
   if (deleteError) return { error: deleteError };
 

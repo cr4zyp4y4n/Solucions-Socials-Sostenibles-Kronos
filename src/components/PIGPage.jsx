@@ -641,13 +641,21 @@ function stylePigTesoreriaSheet({ ws, aoa, meta = {} }) {
   }
 }
 
-function estimadoSubvLabel(slot) {
-  return slot === 1
+function estimadoSubvLabel(slot, suffix = '') {
+  const base = slot === 1
     ? 'ESTIMADO DE SUBVENCIÓN ANTES DE INGRESO'
     : `ESTIMADO DE SUBVENCIÓN ${slot} ANTES DE INGRESO`;
+  const sfx = String(suffix || '').trim();
+  return sfx ? `${base} ${sfx}`.trim() : base;
 }
 
-function appendEstimadoSubvRows({ aoa, monthsLen, estimadosSlots = [] }) {
+function estimadosSlotsHaveAmount(estimadosSlots = []) {
+  return (estimadosSlots || []).some((entry) =>
+    (entry?.months || []).some((v) => Math.abs(Number(v) || 0) > 0.005)
+  );
+}
+
+function appendEstimadoSubvRows({ aoa, monthsLen, estimadosSlots = [], labelSuffixBySlot = {}, totalInMainCol = false }) {
   const sumArray = (arrA, arrB) => arrA.map((v, i) => (Number(v) || 0) + (Number(arrB[i]) || 0));
   const sorted = [...estimadosSlots].sort((a, b) => (Number(a.slot) || 0) - (Number(b.slot) || 0));
   let combined = new Array(monthsLen).fill(0);
@@ -659,9 +667,14 @@ function appendEstimadoSubvRows({ aoa, monthsLen, estimadosSlots = [] }) {
       : new Array(monthsLen).fill(Number(entry.amount) || 0);
     while (vals.length < monthsLen) vals.push(0);
     const hasAmount = vals.some((v) => Math.abs(Number(v) || 0) > 0.005);
-    if (slot > 1 && !hasAmount) continue;
+    if (!hasAmount) continue;
     const total = vals.reduce((a, b) => a + (Number(b) || 0), 0);
-    aoa.push([estimadoSubvLabel(slot), ...vals, '', '', total]);
+    const label = estimadoSubvLabel(slot, labelSuffixBySlot[slot] || '');
+    if (totalInMainCol) {
+      aoa.push([label, ...vals, total, '', '']);
+    } else {
+      aoa.push([label, ...vals, '', '', total]);
+    }
     combined = sumArray(combined, vals);
   }
 
@@ -860,13 +873,22 @@ function buildPigLineaCateringAoa({ title, months, cuentasMensuales = [], mensua
   return aoa;
 }
 
+function inferYearFullFromTitle(title, months) {
+  const m = String(title || '').match(/01\/01\/(\d{2})/);
+  if (m?.[1]) return `20${m[1]}`;
+  const yy = inferYearSuffix2({ title, months });
+  return yy ? `20${yy}` : '';
+}
+
 function buildPigLineaEstructuraAoa({
   title,
   months,
   cuentasMensuales = [],
   filterCuenta = isPigEstructuraLineaCuenta,
   lineName = 'ESTRUCTURA',
-  accountOrder = null
+  accountOrder = null,
+  compactLayout = false,
+  estimadosSlots = []
 }) {
   const aoa = [];
   const yy = inferYearSuffix2({ title, months });
@@ -904,13 +926,24 @@ function buildPigLineaEstructuraAoa({
   const resto = accountOrder?.length ? restoRaw : restoRaw.slice().sort(pigAccountCompare);
   const monthsLen = Math.min(12, months.length);
 
+  if (compactLayout && estimadosSlotsHaveAmount(estimadosSlots)) {
+    const yearFull = inferYearFullFromTitle(title, months);
+    appendEstimadoSubvRows({
+      aoa,
+      monthsLen,
+      estimadosSlots,
+      labelSuffixBySlot: { 1: yearFull ? `L1 ${yearFull}` : 'L1' },
+      totalInMainCol: true
+    });
+  }
+
   if (subv.length) {
     for (const c of subv) {
       const monthsVals = (c.months || new Array(12).fill(0)).slice(0, 12);
       const total = monthsVals.reduce((a, b) => a + (Number(b) || 0), 0);
       aoa.push([`${c.code} - ${c.name}`.trim(), ...monthsVals, total, '', '']);
     }
-    aoa.push(new Array(cols.length).fill(''));
+    if (!compactLayout) aoa.push(new Array(cols.length).fill(''));
   }
 
   for (const c of resto) {
@@ -941,6 +974,11 @@ function buildPigLineaEstructuraAoa({
 
   aoa.push(new Array(cols.length).fill(''));
   aoa.push([`TOTAL BENEFICIO POR MES ${lineName}`, ...totalBeneficioMes, totalBeneficioMesTotal, '', '']);
+
+  if (compactLayout) {
+    return aoa;
+  }
+
   aoa.push(new Array(cols.length).fill(''));
   aoa.push([`TOTAL INGRESOS ${lineName} SIN SUBVENCIONES`, ...ingresosSinSubvMonths, ingresosSinSubvTotal, '', '']);
   aoa.push(['TOTAL DESPESES', ...despesesMonths, despesesTotal, '', '']);
@@ -3363,7 +3401,9 @@ export default function PIGPage() {
             cuentasMensuales: mensualParsed.cuentas || [],
             filterCuenta: isPigEstructuraSubv740Cuenta,
             lineName: 'ESTRUCTURA SUBV 740',
-            accountOrder: PIG_ESTRUCTURA_SUBV_740_ACCOUNT_CODES
+            accountOrder: PIG_ESTRUCTURA_SUBV_740_ACCOUNT_CODES,
+            compactLayout: true,
+            estimadosSlots: estimadosSlotsByLinea.ESTRUCTURA || []
           });
           console.log('[PIG ESTRUCTURA SUBV 740] Hoja generada:', {
             cuentas: cuentasSubv740.map((c) => c.code),
@@ -3584,7 +3624,8 @@ export default function PIGPage() {
               {[
                 { linea: 'CATERING', label: 'CATERING' },
                 { linea: 'IDONI', label: 'IDONI' },
-                { linea: 'KOIKI', label: 'KOIKI' }
+                { linea: 'KOIKI', label: 'KOIKI' },
+                { linea: 'ESTRUCTURA', label: 'ESTRUCTURA (hoja SUBV 740)' }
               ].map((row) => (
                 <div
                   key={row.linea}
