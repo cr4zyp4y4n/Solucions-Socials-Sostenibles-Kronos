@@ -106,6 +106,12 @@ class HoldedApiV2Service {
   async getProformas(params = {}, company = 'solucions') {
     return this.fetchAllPages('/proformas', params, company);
   }
+
+  /** Comptes de tresoreria (bancs, targetes, caixa, passarel·les). Scope: accounting:banks.read */
+  async getTreasuryAccounts(params = {}, company = 'solucions') {
+    const query = { archived: 'false', ...params };
+    return this.fetchAllPages('/treasury/accounts', query, company);
+  }
 }
 
 const holdedApiV2Service = new HoldedApiV2Service();
