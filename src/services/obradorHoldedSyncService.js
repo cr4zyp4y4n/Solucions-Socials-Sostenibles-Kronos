@@ -22,6 +22,10 @@ function normCif(value) {
     .replace(/[\s.-]/g, '');
 }
 
+function canReuseForCompany(proveidor, company) {
+  return !proveidor.holded_empresa || proveidor.holded_empresa === company;
+}
+
 /** CIF/NIF des del contacte Holded (taxId, code, etc.). */
 export function extractHoldedContactCif(contact) {
   const raw =
@@ -69,12 +73,14 @@ function findExistingProveidor(existing, row, company) {
   if (byHolded) return byHolded;
 
   if (row.cif) {
-    const byCif = existing.find((p) => p.cif && normCif(p.cif) === row.cif);
+    const byCif = existing.find(
+      (p) => canReuseForCompany(p, company) && p.cif && normCif(p.cif) === row.cif
+    );
     if (byCif) return byCif;
   }
 
   const nomNorm = normNom(row.nom);
-  return existing.find((p) => normNom(p.nom) === nomNorm) || null;
+  return existing.find((p) => canReuseForCompany(p, company) && normNom(p.nom) === nomNorm) || null;
 }
 
 /**
