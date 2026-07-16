@@ -105,7 +105,29 @@ ALTER TABLE obrador_temperatures
 -- Política UPDATE per temperatures (el schema base només tenia SELECT/INSERT/DELETE)
 DROP POLICY IF EXISTS "obrador_temperatures_update" ON obrador_temperatures;
 CREATE POLICY "obrador_temperatures_update" ON obrador_temperatures
-  FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+  FOR UPDATE TO authenticated
+  USING (
+    auth.role() = 'authenticated'
+    AND (
+      EXISTS (
+        SELECT 1 FROM public.user_profiles up
+        WHERE up.id = auth.uid()
+          AND lower(coalesce(up.role, '')) IN ('admin', 'management', 'manager', 'jefe', 'administrador', 'gestion', 'gestión')
+      )
+      OR lower(coalesce(auth.jwt() -> 'user_metadata' ->> 'role', '')) IN ('admin', 'management', 'manager', 'jefe', 'administrador', 'gestion', 'gestión')
+    )
+  )
+  WITH CHECK (
+    auth.role() = 'authenticated'
+    AND (
+      EXISTS (
+        SELECT 1 FROM public.user_profiles up
+        WHERE up.id = auth.uid()
+          AND lower(coalesce(up.role, '')) IN ('admin', 'management', 'manager', 'jefe', 'administrador', 'gestion', 'gestión')
+      )
+      OR lower(coalesce(auth.jwt() -> 'user_metadata' ->> 'role', '')) IN ('admin', 'management', 'manager', 'jefe', 'administrador', 'gestion', 'gestión')
+    )
+  );
 
 -- -----------------------------------------------------------------------------
 -- 8. Funció: generar codi de lot (Europe/Madrid, evita duplicats obvis)
