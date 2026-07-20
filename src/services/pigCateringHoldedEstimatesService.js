@@ -88,6 +88,52 @@ function sumLineAmounts(doc) {
   return sum;
 }
 
+function sumLineSubtotals(doc) {
+  const lines = getDocumentLines(doc);
+  if (!lines.length) return 0;
+  let sum = 0;
+  for (const line of lines) {
+    const direct = parseAmount(line.subtotal ?? line.net ?? line.base);
+    if (Math.abs(direct) > 0.005) {
+      sum += direct;
+      continue;
+    }
+    const price = parseAmount(line.price ?? line.unitPrice);
+    const units = parseAmount(line.units ?? line.quantity ?? 1) || 1;
+    const base = price * units;
+    if (Math.abs(base) > 0.005) sum += base;
+  }
+  return sum;
+}
+
+/** Subtotal sin IVA (para COMPARATIVA / celdas verdes de presupuestos catering). */
+function getEstimateSubtotal(doc) {
+  const candidates = [
+    doc?.subtotal,
+    doc?.net,
+    doc?.base,
+    doc?.totals?.subtotal,
+    doc?.totals?.net,
+    doc?.totals?.base
+  ];
+  for (const candidate of candidates) {
+    const parsed = parseAmount(candidate);
+    if (Math.abs(parsed) > 0.005) return parsed;
+  }
+
+  const total = parseAmount(doc?.total ?? doc?.gross ?? doc?.amount ?? doc?.totals?.total);
+  const tax = parseAmount(doc?.tax ?? doc?.vat ?? doc?.totals?.tax ?? doc?.totals?.vat);
+  if (Math.abs(total) > 0.005 && Math.abs(tax) > 0.005 && total > tax) {
+    return total - tax;
+  }
+
+  const fromLines = sumLineSubtotals(doc);
+  if (Math.abs(fromLines) > 0.005) return fromLines;
+
+  // Último recurso: no inventar IVA; si solo hay total, no lo usamos como subtotal.
+  return 0;
+}
+
 function getEstimateTotal(doc) {
   const candidates = [
     doc?.total,
@@ -176,7 +222,9 @@ function pushSample(stats, doc, reason, extra = {}) {
     reason,
     docNumber: doc?.document_number || doc?.docNumber || doc?.id,
     total: doc?.total,
+    subtotal: doc?.subtotal ?? doc?.net ?? doc?.base,
     parsedTotal: getEstimateTotal(doc),
+    parsedSubtotal: getEstimateSubtotal(doc),
     dueDate: doc?.due_date || doc?.dueDate,
     status: doc?.status,
     billed: doc?.billed,
@@ -207,16 +255,22 @@ function addEstimateToMonths(months, doc, year, cateringAccountId, accountMap, s
     pushSample(stats, doc, 'no-due-in-year', { dueRaw });
     return;
   }
-  const amount = getEstimateTotal(doc);
+  const amount = getEstimateSubtotal(doc);
   if (Math.abs(amount) <= 0.005) {
     stats.matchedZeroAmount += 1;
-    pushSample(stats, doc, 'matched-zero-amount', { monthIdx, month: MONTH_LABELS[monthIdx], dueRaw });
+    pushSample(stats, doc, 'matched-zero-amount', {
+      monthIdx,
+      month: MONTH_LABELS[monthIdx],
+      dueRaw,
+      parsedTotal: getEstimateTotal(doc),
+      parsedSubtotal: amount
+    });
     return;
   }
   months[monthIdx] += amount;
   stats.matched += 1;
   stats.months[monthIdx] += amount;
-  pushSample(stats, doc, 'matched', { monthIdx, month: MONTH_LABELS[monthIdx], amount });
+  pushSample(stats, doc, 'matched', { monthIdx, month: MONTH_LABELS[monthIdx], amount, parsedSubtotal: amount });
 }
 
 function findCateringAccountId(accounts = []) {

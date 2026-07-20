@@ -26,8 +26,17 @@ import {
 } from '../services/pigEstructuraPurchasesService';
 import {
   buildPigTesoreriaSheetAoa,
-  loadPigTreasuryAccounts
+  loadPigTreasuryAccounts,
+  TESORERIA_RIGHT_COL
 } from '../services/pigTesoreriaService';
+import {
+  buildPigPresupuestosSheetAoa,
+  loadPigPresupuestosPendientes
+} from '../services/pigPresupuestosService';
+import {
+  buildPigFacturacionPendienteSheetAoa,
+  loadPigFacturacionPendiente
+} from '../services/pigFacturacionPendienteService';
 import SectionHeader from './SectionHeader';
 
 function parseEuroNumber(input) {
@@ -138,6 +147,19 @@ function isPigSubvCuenta(c) {
   const hay = `${c?.code || ''} ${c?.name || ''}`.toLowerCase();
   const code = String(c?.code || '');
   return hay.includes('subv') || code.startsWith('740');
+}
+
+function filterCuentasSinSubvenciones(cuentas = []) {
+  return (cuentas || []).filter((c) => !isPigSubvCuenta(c));
+}
+
+function isPigGeneralSubvencionLabel(label) {
+  const n = normalizePigLabel(label);
+  return (
+    n.includes('subvenc') ||
+    n.includes('donaciones y legados de capital') ||
+    n.includes('donaciones y legados de capital traspasados')
+  );
 }
 
 function inferYearSuffix2({ title, months }) {
@@ -557,12 +579,24 @@ function styleGroupAccountsSheet({ ws, aoa, yellowRows = [] }) {
 }
 
 function stylePigTesoreriaSheet({ ws, aoa, meta = {} }) {
-  const colsLen = 6;
+  const hasRight = Boolean(meta?.rightTables?.tables?.length);
+  const colsLen = hasRight ? (TESORERIA_RIGHT_COL.obs + 1) : 6;
   ws['!sheetView'] = [{ showGridLines: false }];
-  ws['!cols'] = [{ wch: 52 }, { wch: 22 }, { wch: 8 }, { wch: 28 }, { wch: 16 }, { wch: 14 }];
+  ws['!cols'] = [
+    { wch: 52 },
+    { wch: 22 },
+    { wch: 8 },
+    { wch: 28 },
+    { wch: 16 },
+    { wch: 14 },
+    { wch: 3 },
+    { wch: 48 },
+    { wch: 16 },
+    { wch: 62 }
+  ].slice(0, colsLen);
   ws['!rows'] = [];
   ws['!rows'][0] = { hpt: 18 };
-  ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: colsLen - 1 } }];
+  ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: Math.min(5, colsLen - 1) } }];
 
   const borderThin = {
     top: { style: 'thin', color: { rgb: '000000' } },
@@ -582,8 +616,13 @@ function stylePigTesoreriaSheet({ ws, aoa, meta = {} }) {
     border: borderThin
   };
   const yellow = makeFill('#FFFF00');
+  const purpleHeader = makeFill('#D5A6E6');
+  const pinkAmount = makeFill('#F8CBAD');
+  const blueObsHeader = makeFill('#9DC3E6');
+  const blueObsNote = makeFill('#DDEBF7');
+  const purpleObsHeader = makeFill('#C5A0D0');
 
-  setRangeStyle(ws, 0, 0, 0, colsLen - 1, titleStyle);
+  setRangeStyle(ws, 0, 0, 0, Math.min(5, colsLen - 1), titleStyle);
 
   const summaryStart = meta.summaryStartRow ?? 2;
   const summaryEnd = meta.summaryEndRow ?? (meta.detailHeaderRow > 0 ? meta.detailHeaderRow - 3 : aoa.length - 1);
@@ -604,12 +643,12 @@ function stylePigTesoreriaSheet({ ws, aoa, meta = {} }) {
         alignment: { vertical: 'center' }
       });
     }
-    setRangeStyle(ws, meta.detailHeaderRow, 0, meta.detailHeaderRow, colsLen - 1, headerStyle);
+    setRangeStyle(ws, meta.detailHeaderRow, 0, meta.detailHeaderRow, 5, headerStyle);
 
     const dataStart = meta.detailDataStartRow >= 0 ? meta.detailDataStartRow : meta.detailHeaderRow + 1;
     const dataEnd = meta.detailDataEndRow >= dataStart ? meta.detailDataEndRow : dataStart;
     for (let r = dataStart; r <= dataEnd; r++) {
-      for (let c = 0; c < colsLen; c++) {
+      for (let c = 0; c < 6; c++) {
         const style = { border: borderThin, alignment: { vertical: 'center' } };
         if (c === 4) Object.assign(style, moneyStyle);
         if (c === 5) Object.assign(style, { numFmt: '0', alignment: { horizontal: 'right' } });
@@ -619,7 +658,7 @@ function stylePigTesoreriaSheet({ ws, aoa, meta = {} }) {
   }
 
   for (const rowIdx of meta.totalRows || []) {
-    setRangeStyle(ws, rowIdx, 0, rowIdx, colsLen - 1, {
+    setRangeStyle(ws, rowIdx, 0, rowIdx, 5, {
       font: { bold: true, name: 'Calibri' },
       border: borderThin
     });
@@ -627,7 +666,7 @@ function stylePigTesoreriaSheet({ ws, aoa, meta = {} }) {
     setCellStyle(ws, rowIdx, 4, { ...moneyStyle, font: { bold: true, name: 'Calibri' } });
     const label = String(ws[XLSX.utils.encode_cell({ r: rowIdx, c: 0 })]?.v || '');
     if (label.toUpperCase().includes('TOTAL TESORER')) {
-      setRangeStyle(ws, rowIdx, 0, rowIdx, colsLen - 1, {
+      setRangeStyle(ws, rowIdx, 0, rowIdx, 5, {
         font: { bold: true, name: 'Calibri' },
         fill: yellow,
         border: borderThin
@@ -639,6 +678,331 @@ function stylePigTesoreriaSheet({ ws, aoa, meta = {} }) {
       });
     }
   }
+
+  // Tablas hardcodeadas a la derecha (Cuenta Resultados)
+  if (hasRight) {
+    const { label: cLabel, amount: cAmount, obs: cObs } = TESORERIA_RIGHT_COL;
+    for (const t of meta.rightTables.tables) {
+      // Cabecera título + INGRESO PREVISTO
+      setCellStyle(ws, t.titleRow, cLabel, {
+        font: { bold: true, name: 'Calibri', color: { rgb: '000000' } },
+        fill: purpleHeader,
+        border: borderThin,
+        alignment: { horizontal: 'left', vertical: 'center', wrapText: true }
+      });
+      setCellStyle(ws, t.titleRow, cAmount, {
+        font: { bold: true, name: 'Calibri' },
+        fill: pinkAmount,
+        border: borderThin,
+        alignment: { horizontal: 'center', vertical: 'center', wrapText: true }
+      });
+
+      for (let r = t.dataStartRow; r <= t.dataEndRow; r++) {
+        setCellStyle(ws, r, cLabel, {
+          border: borderThin,
+          font: { name: 'Calibri' },
+          alignment: { vertical: 'center', wrapText: true }
+        });
+        setCellStyle(ws, r, cAmount, {
+          border: borderThin,
+          ...moneyStyle,
+          font: { name: 'Calibri' }
+        });
+      }
+
+      if (t.totalRow >= 0) {
+        setCellStyle(ws, t.totalRow, cLabel, {
+          font: { bold: true, name: 'Calibri' },
+          fill: purpleHeader,
+          border: borderThin,
+          alignment: { vertical: 'center', wrapText: true }
+        });
+        setCellStyle(ws, t.totalRow, cAmount, {
+          font: { bold: true, name: 'Calibri' },
+          fill: purpleHeader,
+          border: borderThin,
+          ...moneyStyle
+        });
+      }
+
+      // Observaciones
+      const obsHeaderSet = new Set(t.obsHeaderRows || []);
+      for (let r = t.obsStartRow; r <= t.obsEndRow; r++) {
+        const val = ws[XLSX.utils.encode_cell({ r, c: cObs })]?.v;
+        if (val === undefined || val === '') continue;
+        const isHeader = obsHeaderSet.has(r);
+        setCellStyle(ws, r, cObs, {
+          font: {
+            bold: isHeader,
+            name: 'Calibri',
+            color: isHeader && t.kind === 'porAprobar' ? { rgb: 'FFFFFF' } : { rgb: '000000' }
+          },
+          fill: isHeader
+            ? (t.kind === 'porAprobar' ? purpleObsHeader : blueObsHeader)
+            : blueObsNote,
+          border: borderThin,
+          alignment: { vertical: 'center', wrapText: true }
+        });
+      }
+    }
+  }
+}
+
+function stylePigPresupuestosSheet({ ws, aoa, meta = {} }) {
+  const colsLen = 10;
+  ws['!sheetView'] = [{ showGridLines: false }];
+  ws['!cols'] = [
+    { wch: 12 },
+    { wch: 16 },
+    { wch: 28 },
+    { wch: 36 },
+    { wch: 28 },
+    { wch: 18 },
+    { wch: 12 },
+    { wch: 14 },
+    { wch: 18 },
+    { wch: 12 }
+  ];
+  ws['!rows'] = [];
+  ws['!rows'][0] = { hpt: 18 };
+  ws['!merges'] = [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: colsLen - 1 } },
+    { s: { r: 1, c: 0 }, e: { r: 1, c: colsLen - 1 } }
+  ];
+
+  const borderThin = {
+    top: { style: 'thin', color: { rgb: '000000' } },
+    bottom: { style: 'thin', color: { rgb: '000000' } },
+    left: { style: 'thin', color: { rgb: '000000' } },
+    right: { style: 'thin', color: { rgb: '000000' } }
+  };
+  const moneyStyle = { numFmt: '#,##0.00;[Red]-#,##0.00', alignment: { horizontal: 'right' } };
+  const titleStyle = {
+    font: { bold: true, color: { rgb: 'C00000' }, sz: 12, name: 'Calibri' },
+    alignment: { horizontal: 'center', vertical: 'center' }
+  };
+  const subtitleStyle = {
+    font: { italic: true, name: 'Calibri', sz: 10 },
+    alignment: { horizontal: 'left', vertical: 'center' }
+  };
+  const monthHeaderFill = makeFill('#EEF6C8');
+  const colHeaderFill = makeFill('#E7E6E6');
+  const totalFill = makeFill('#FFFF00');
+  const facturadoFill = makeFill('#C6EFCE'); // verde clarito
+  const subHeaderFill = makeFill('#DDEBF7');
+
+  setRangeStyle(ws, 0, 0, 0, colsLen - 1, titleStyle);
+  setRangeStyle(ws, 1, 0, 1, colsLen - 1, subtitleStyle);
+
+  for (const r of meta.monthHeaderRows || []) {
+    setRangeStyle(ws, r, 0, r, colsLen - 1, {
+      font: { bold: true, name: 'Calibri' },
+      fill: monthHeaderFill,
+      border: borderThin,
+      alignment: { vertical: 'center' }
+    });
+    setCellStyle(ws, r, 7, { ...moneyStyle, font: { bold: true, name: 'Calibri' }, fill: monthHeaderFill, border: borderThin });
+    setCellStyle(ws, r, 8, { ...moneyStyle, font: { bold: true, name: 'Calibri' }, fill: monthHeaderFill, border: borderThin });
+  }
+
+  for (const r of meta.subHeaderRows || []) {
+    const estado = String(ws[XLSX.utils.encode_cell({ r, c: 9 })]?.v || '').toUpperCase();
+    const fill = estado.includes('FACTURADO') ? facturadoFill : subHeaderFill;
+    setRangeStyle(ws, r, 0, r, colsLen - 1, {
+      font: { bold: true, name: 'Calibri' },
+      fill,
+      border: borderThin,
+      alignment: { vertical: 'center', wrapText: true }
+    });
+    setCellStyle(ws, r, 7, { ...moneyStyle, font: { bold: true, name: 'Calibri' }, fill, border: borderThin });
+    setCellStyle(ws, r, 8, { ...moneyStyle, font: { bold: true, name: 'Calibri' }, fill, border: borderThin });
+  }
+
+  for (const r of meta.headerRows || []) {
+    setRangeStyle(ws, r, 0, r, colsLen - 1, {
+      font: { bold: true, name: 'Calibri' },
+      fill: colHeaderFill,
+      border: borderThin,
+      alignment: { horizontal: 'center', vertical: 'center', wrapText: true }
+    });
+  }
+
+  const facturadoSet = new Set(meta.facturadoRows || []);
+  for (const r of meta.dataRows || []) {
+    const isFacturado = facturadoSet.has(r);
+    for (let c = 0; c < colsLen; c++) {
+      const style = {
+        border: borderThin,
+        alignment: { vertical: 'center' },
+        font: { name: 'Calibri', bold: isFacturado },
+        fill: isFacturado ? facturadoFill : undefined
+      };
+      if (c === 7 || c === 8) Object.assign(style, moneyStyle);
+      setCellStyle(ws, r, c, style);
+    }
+  }
+
+  for (const r of meta.monthTotalRows || []) {
+    setRangeStyle(ws, r, 0, r, colsLen - 1, {
+      font: { bold: true, name: 'Calibri' },
+      border: borderThin
+    });
+    setCellStyle(ws, r, 7, { ...moneyStyle, font: { bold: true, name: 'Calibri' }, border: borderThin });
+    setCellStyle(ws, r, 8, { ...moneyStyle, font: { bold: true, name: 'Calibri' }, border: borderThin });
+  }
+
+  for (const r of meta.blockTotalFacturadoRows || []) {
+    setRangeStyle(ws, r, 0, r, colsLen - 1, {
+      font: { bold: true, name: 'Calibri' },
+      fill: facturadoFill,
+      border: borderThin
+    });
+    setCellStyle(ws, r, 7, { ...moneyStyle, font: { bold: true, name: 'Calibri' }, fill: facturadoFill, border: borderThin });
+    setCellStyle(ws, r, 8, { ...moneyStyle, font: { bold: true, name: 'Calibri' }, fill: facturadoFill, border: borderThin });
+  }
+
+  for (const r of meta.blockTotalPendingRows || []) {
+    setRangeStyle(ws, r, 0, r, colsLen - 1, {
+      font: { bold: true, name: 'Calibri' },
+      fill: subHeaderFill,
+      border: borderThin
+    });
+    setCellStyle(ws, r, 7, { ...moneyStyle, font: { bold: true, name: 'Calibri' }, fill: subHeaderFill, border: borderThin });
+    setCellStyle(ws, r, 8, { ...moneyStyle, font: { bold: true, name: 'Calibri' }, fill: subHeaderFill, border: borderThin });
+  }
+
+  if (meta.grandTotalRow >= 0) {
+    const r = meta.grandTotalRow;
+    setRangeStyle(ws, r, 0, r, colsLen - 1, {
+      font: { bold: true, name: 'Calibri' },
+      fill: totalFill,
+      border: borderThin
+    });
+    setCellStyle(ws, r, 7, { ...moneyStyle, font: { bold: true, name: 'Calibri' }, fill: totalFill, border: borderThin });
+    setCellStyle(ws, r, 8, { ...moneyStyle, font: { bold: true, name: 'Calibri' }, fill: totalFill, border: borderThin });
+  }
+
+  void aoa;
+}
+
+function stylePigFacturacionPendienteSheet({ ws, aoa, meta = {} }) {
+  const colsLen = 12;
+  ws['!sheetView'] = [{ showGridLines: false }];
+  ws['!cols'] = [
+    { wch: 12 },
+    { wch: 16 },
+    { wch: 28 },
+    { wch: 34 },
+    { wch: 28 },
+    { wch: 16 },
+    { wch: 16 },
+    { wch: 12 },
+    { wch: 12 },
+    { wch: 12 },
+    { wch: 16 },
+    { wch: 12 }
+  ];
+  ws['!rows'] = [];
+  ws['!rows'][0] = { hpt: 18 };
+  ws['!merges'] = [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: colsLen - 1 } },
+    { s: { r: 1, c: 0 }, e: { r: 1, c: colsLen - 1 } }
+  ];
+
+  const borderThin = {
+    top: { style: 'thin', color: { rgb: '000000' } },
+    bottom: { style: 'thin', color: { rgb: '000000' } },
+    left: { style: 'thin', color: { rgb: '000000' } },
+    right: { style: 'thin', color: { rgb: '000000' } }
+  };
+  const moneyStyle = { numFmt: '#,##0.00;[Red]-#,##0.00', alignment: { horizontal: 'right' } };
+  const titleStyle = {
+    font: { bold: true, color: { rgb: 'C00000' }, sz: 12, name: 'Calibri' },
+    alignment: { horizontal: 'center', vertical: 'center' }
+  };
+  const subtitleStyle = {
+    font: { italic: true, name: 'Calibri', sz: 10 },
+    alignment: { horizontal: 'left', vertical: 'center' }
+  };
+
+  setRangeStyle(ws, 0, 0, 0, colsLen - 1, titleStyle);
+  setRangeStyle(ws, 1, 0, 1, colsLen - 1, subtitleStyle);
+
+  for (const r of meta.sectionHeaderRows || []) {
+    setRangeStyle(ws, r, 0, r, colsLen - 1, {
+      font: { bold: true, name: 'Calibri', color: { rgb: 'FFFFFF' } },
+      fill: makeFill('#556B0F'),
+      border: borderThin,
+      alignment: { vertical: 'center' }
+    });
+    for (const c of [8, 9, 10]) {
+      setCellStyle(ws, r, c, {
+        ...moneyStyle,
+        font: { bold: true, name: 'Calibri', color: { rgb: 'FFFFFF' } },
+        fill: makeFill('#556B0F'),
+        border: borderThin
+      });
+    }
+  }
+
+  for (const r of meta.colHeaderRows || []) {
+    setRangeStyle(ws, r, 0, r, colsLen - 1, {
+      font: { bold: true, name: 'Calibri' },
+      fill: makeFill('#EEF6C8'),
+      border: borderThin,
+      alignment: { horizontal: 'center', vertical: 'center', wrapText: true }
+    });
+  }
+
+  const overdueSet = new Set(meta.overdueRows || []);
+  for (const r of meta.dataRows || []) {
+    const isOverdue = overdueSet.has(r);
+    for (let c = 0; c < colsLen; c++) {
+      const style = {
+        border: borderThin,
+        alignment: { vertical: 'center' },
+        font: { name: 'Calibri', color: isOverdue ? { rgb: 'C00000' } : undefined },
+        fill: isOverdue ? makeFill('#FCE4D6') : undefined
+      };
+      if (c === 8 || c === 9 || c === 10) Object.assign(style, moneyStyle);
+      setCellStyle(ws, r, c, style);
+    }
+  }
+
+  for (const r of meta.sectionTotalRows || []) {
+    setRangeStyle(ws, r, 0, r, colsLen - 1, {
+      font: { bold: true, name: 'Calibri' },
+      border: borderThin,
+      fill: makeFill('#F3F4F6')
+    });
+    for (const c of [8, 9, 10]) {
+      setCellStyle(ws, r, c, {
+        ...moneyStyle,
+        font: { bold: true, name: 'Calibri' },
+        border: borderThin,
+        fill: makeFill('#F3F4F6')
+      });
+    }
+  }
+
+  if (meta.grandTotalRow >= 0) {
+    const r = meta.grandTotalRow;
+    setRangeStyle(ws, r, 0, r, colsLen - 1, {
+      font: { bold: true, name: 'Calibri' },
+      fill: makeFill('#FFFF00'),
+      border: borderThin
+    });
+    for (const c of [8, 10]) {
+      setCellStyle(ws, r, c, {
+        ...moneyStyle,
+        font: { bold: true, name: 'Calibri' },
+        fill: makeFill('#FFFF00'),
+        border: borderThin
+      });
+    }
+  }
+
+  void aoa;
 }
 
 function estimadoSubvLabel(slot, suffix = '') {
@@ -681,6 +1045,136 @@ function appendEstimadoSubvRows({ aoa, monthsLen, estimadosSlots = [], labelSuff
   return combined;
 }
 
+/** Subvenciones hardcodeadas para EISSS Cuenta Resultados (tabla grande LINEA). Ene–Jun 2026. */
+const PIG_CTA_RESULTADOS_SUBV = {
+  CATERING: [
+    {
+      label: 'ESTIMADO DE SUBVENCIÓN ANTES DE INGRESO  L2 2026 (DAVID)',
+      months: [483.46, 483.46, 483.46, 483.46, 483.46, 483.46]
+    },
+    {
+      label: 'ESTIMADO DE SUBVENCIÓN ANTES DE INGRESO  L1 2026 (TEC.ACOMP.)',
+      months: [277.31, 277.31, 277.31, 277.31, 277.31, 277.31]
+    }
+  ],
+  IDONI: [
+    {
+      label: 'ESTIMADO DE SUBVENCIÓN ANTES DE INGRESO L2  GIO/LOLA/BELINDA',
+      months: [2126.81, 2126.81, 2126.81, 2126.81, 2126.81, 2126.81]
+    },
+    {
+      label: 'ESTIMADO DE SUBVENCIÓN ANTES DE INGRESO L1  TEC. ACOMP.',
+      months: [1192.43, 1192.43, 1192.43, 1192.43, 1192.43, 1192.43]
+    },
+    {
+      label: 'IMPULSEM 10/25 A 10/26 SE IMPUTA 100% A IDONI (10.000)',
+      months: [833.33, 833.33, 833.33, 833.33, 833.33, 833.33]
+    },
+    {
+      label: 'ENFORTIM    2026  PERIODO  DE 12/26 A 12/27',
+      months: [],
+      forceShow: true
+    }
+  ],
+  KOIKI: [
+    {
+      label: 'ESTIMADO DE SUBVENCIÓN ANTES DE INGRESO L2 2026',
+      months: [966.93, 966.93, 900.57, 786.0, 1001.53, 483.46]
+    },
+    {
+      label: 'ESTIMADO DE SUBVENCIÓN ANTES DE INGRESO L1  TEC. ACOMP.',
+      months: [499.15, 499.15, 499.15, 499.15, 499.15, 499.15]
+    }
+  ],
+  ESTRUCTURA: [
+    {
+      label: 'ESTIMADO DE SUBVENCIÓN ANTES DE INGRESO L2 2026',
+      months: [1448.4, 1448.4, 1448.4, 1448.4, 1448.4, 1448.4]
+    },
+    {
+      label: 'ESTIMADO DE SUBVENCIÓN ANTES DE INGRESO L1  TEC. ACOMP.',
+      months: [831.9, 831.9, 831.9, 831.9, 831.9, 831.9]
+    }
+  ]
+};
+
+const PIG_CTA_RESULTADOS_GENERAL_SUBV_LABELS = [
+  'SUBV EISSS L1 2026',
+  'SUBV EISSS L2 2026',
+  'IMPULSEM'
+];
+
+const PIG_CTA_RESULTADOS_GENERAL_INGRESOS_LABEL =
+  'Estimado Subvenciones Imputadas Al Excedente Del Ejercicio 2026';
+const PIG_GENERAL_INGRESOS_PROPIA_LABEL = '1. Ingresos de la actividad propia';
+
+/** Agrupa subv hardcodeadas de todas las LINEA: L1 / L2 / resto→IMPULSEM. */
+function classifyCtaResultadosSubvBucket(label) {
+  const u = String(label || '').toUpperCase();
+  if (/\bL1\b/.test(u)) return 'SUBV EISSS L1 2026';
+  if (/\bL2\b/.test(u)) return 'SUBV EISSS L2 2026';
+  return 'IMPULSEM';
+}
+
+function buildCuentaResultadosGeneralSubvMonths(monthsLen = 12) {
+  const lim = Math.max(1, Math.min(12, Number(monthsLen) || 12));
+  const buckets = {
+    'SUBV EISSS L1 2026': new Array(lim).fill(0),
+    'SUBV EISSS L2 2026': new Array(lim).fill(0),
+    IMPULSEM: new Array(lim).fill(0)
+  };
+  for (const rows of Object.values(PIG_CTA_RESULTADOS_SUBV)) {
+    for (const entry of rows || []) {
+      const key = classifyCtaResultadosSubvBucket(entry.label);
+      const src = Array.isArray(entry.months) ? entry.months : [];
+      for (let i = 0; i < Math.min(6, lim, src.length); i++) {
+        buckets[key][i] += Number(src[i]) || 0;
+      }
+    }
+  }
+  return buckets;
+}
+
+function sumMonthArrays(arrays, monthsLen = 12) {
+  const lim = Math.max(1, Math.min(12, Number(monthsLen) || 12));
+  const out = new Array(lim).fill(0);
+  for (const arr of arrays || []) {
+    for (let i = 0; i < lim; i++) out[i] += Number(arr?.[i]) || 0;
+  }
+  return out;
+}
+
+function clonePigNumberMap(map) {
+  const out = new Map();
+  if (!map) return out;
+  for (const [k, v] of map.entries()) {
+    out.set(k, Array.isArray(v) ? [...v] : v);
+  }
+  return out;
+}
+
+function appendCuentaResultadosSubvRows({ aoa, linea, monthsLen = 12 }) {
+  const sumArray = (arrA, arrB) => arrA.map((v, i) => (Number(v) || 0) + (Number(arrB[i]) || 0));
+  const rows = PIG_CTA_RESULTADOS_SUBV[linea] || [];
+  let combined = new Array(monthsLen).fill(0);
+
+  for (const entry of rows) {
+    const vals = new Array(monthsLen).fill('');
+    const src = Array.isArray(entry.months) ? entry.months : [];
+    for (let i = 0; i < Math.min(6, monthsLen, src.length); i++) {
+      vals[i] = Number(src[i]) || 0;
+    }
+    const numeric = vals.map((v) => (v === '' ? 0 : Number(v) || 0));
+    const total = numeric.reduce((a, b) => a + b, 0);
+    const hasAmount = Math.abs(total) > 0.005;
+    if (!hasAmount && !entry.forceShow) continue;
+    aoa.push([entry.label, ...vals, hasAmount ? total : '', '']);
+    combined = sumArray(combined, numeric);
+  }
+
+  return combined;
+}
+
 function appendPigLineaBottomTotales({
   aoa,
   cols,
@@ -690,7 +1184,10 @@ function appendPigLineaBottomTotales({
   novLimit,
   decLimit,
   endOfMonthStr,
-  doubleSpaceBeneficio = false
+  doubleSpaceBeneficio = false,
+  cuentaResultados = false,
+  beneficioConSubvTotal = null,
+  beneficioSinSubvTotal = null
 }) {
   const sumMonthsLocal = (arr, limit) => (arr || []).slice(0, limit).reduce((a, b) => a + (Number(b) || 0), 0);
   const novTotal = listAll.reduce((sum, c) => sum + sumMonthsLocal(c.months, novLimit), 0);
@@ -706,6 +1203,28 @@ function appendPigLineaBottomTotales({
   const beneficioPrefix = doubleSpaceBeneficio ? 'TOTAL  BENEFICIO' : 'TOTAL BENEFICIO';
 
   aoa.push(new Array(cols.length).fill(''));
+  if (cuentaResultados) {
+    // Misma cifra que la tabla grande (TOTAL BENEFICIO POR MES / BENEFICIO SIN SUBVENCIONES).
+    const conSubv = Number(beneficioConSubvTotal) || 0;
+    const sinSubv = Number(beneficioSinSubvTotal) || 0;
+    {
+      const row = new Array(cols.length).fill('');
+      row[0] = `TOTAL BENEFICIO ${lineName} CON SUBV.`;
+      row[1] = conSubv;
+      row[3] = `TOTAL BENEFICIO ${lineName} CON SUBV.`;
+      row[8] = conSubv;
+      aoa.push(row);
+    }
+    {
+      const row = new Array(cols.length).fill('');
+      row[0] = `TOTAL BENEFICIO ${lineName} SIN SUBV.`;
+      row[1] = sinSubv;
+      row[3] = `TOTAL BENEFICIO ${lineName} SIN SUBV.`;
+      row[8] = sinSubv;
+      aoa.push(row);
+    }
+    return;
+  }
   {
     const row = new Array(cols.length).fill('');
     row[0] = `${beneficioPrefix} ${lineName} A ${novDate}`;
@@ -724,12 +1243,15 @@ function appendPigLineaBottomTotales({
   }
 }
 
-function buildPigLineaCateringAoa({ title, months, cuentasMensuales = [], mensualMap, estimadosSlots = [] }) {
+function buildPigLineaCateringAoa({ title, months, cuentasMensuales = [], mensualMap, estimadosSlots = [], cuentaResultados = false }) {
   const aoa = [];
   const yy = inferYearSuffix2({ title, months });
   const totalLabel = `TOTAL ${yy || ''}`.trim();
   const totalEstLabel = `TOTAL ${yy || ''} ESTIMADO SUBV`.trim();
-  const cols = ['Cuenta', ...months, totalLabel, '', totalEstLabel];
+  // Cuenta Resultados: sin columna "TOTAL ESTIMADO SUBV" (como el Excel de Lizeth).
+  const cols = cuentaResultados
+    ? ['Cuenta', ...months, totalLabel, '']
+    : ['Cuenta', ...months, totalLabel, '', totalEstLabel];
   aoa.push([title, ...new Array(cols.length - 1).fill('')]);
   aoa.push(new Array(cols.length).fill(''));
   aoa.push(cols);
@@ -752,14 +1274,15 @@ function buildPigLineaCateringAoa({ title, months, cuentasMensuales = [], mensua
   };
 
   const catering = (cuentasMensuales || []).filter(isCatering);
-  const subv = catering.filter(isSubv).slice().sort(pigAccountCompare);
+  const subv = cuentaResultados ? [] : catering.filter(isSubv).slice().sort(pigAccountCompare);
   const resto = catering.filter((c) => !isSubv(c)).slice().sort(pigAccountCompare);
 
   // ===== Tabla principal =====
   const monthsLen = Math.min(12, months.length);
 
-  // Nota: estos importes NO entran en "TOTAL BENEFICIO POR MES", solo se suman en la columna de TOTAL ESTIMADO SUBV.
-  const estimadoAntesIngreso = appendEstimadoSubvRows({ aoa, monthsLen, estimadosSlots });
+  const estimadoAntesIngreso = cuentaResultados
+    ? appendCuentaResultadosSubvRows({ aoa, linea: 'CATERING', monthsLen })
+    : appendEstimadoSubvRows({ aoa, monthsLen, estimadosSlots });
 
   if (subv.length) {
     for (const c of subv) {
@@ -773,7 +1296,8 @@ function buildPigLineaCateringAoa({ title, months, cuentasMensuales = [], mensua
   for (const c of resto) {
     const monthsVals = (c.months || new Array(12).fill(0)).slice(0, 12);
     const total = monthsVals.reduce((a, b) => a + (Number(b) || 0), 0);
-    aoa.push([`${c.code} - ${c.name}`.trim(), ...monthsVals, total, '', total]);
+    if (cuentaResultados) aoa.push([`${c.code} - ${c.name}`.trim(), ...monthsVals, total, '']);
+    else aoa.push([`${c.code} - ${c.name}`.trim(), ...monthsVals, total, '', total]);
   }
 
   // ===== Resumen inferior ligado a la tabla =====
@@ -796,12 +1320,22 @@ function buildPigLineaCateringAoa({ title, months, cuentasMensuales = [], mensua
 
   aoa.push(new Array(cols.length).fill(''));
   const estimadoTotal = sumMonths(estimadoAntesIngreso, monthsLen);
-  aoa.push(['TOTAL BENEFICIO POR MES CATERING', ...totalBeneficioMes, totalBeneficioMesTotal, '', (totalBeneficioMesTotal + estimadoTotal)]);
-  // 1 fila de espacio antes del bloque de 3 líneas
-  aoa.push(new Array(cols.length).fill(''));
-  aoa.push(['TOTAL INGRESOS CATERING SIN SUBVENCIONES', ...ingresosSinSubvMonths, ingresosSinSubvTotal, '', '']);
-  aoa.push(['TOTAL DESPESES', ...despesesMonths, despesesTotal, '', '']);
-  aoa.push(['BENEFICIO SIN SUBVENCIONES', ...beneficioSinSubvMonths, beneficioSinSubvTotal, '', '']);
+  const beneficioConSubvTotalFinal = totalBeneficioMesTotal + estimadoTotal;
+  if (cuentaResultados) {
+    // Como el Excel de Lizeth: TOTAL BENEFICIO POR MES incluye subv hardcodeadas.
+    const beneficioConSubv = sumArray(totalBeneficioMes, estimadoAntesIngreso);
+    aoa.push(['TOTAL BENEFICIO POR MES CATERING', ...beneficioConSubv, beneficioConSubvTotalFinal, '']);
+    aoa.push(new Array(cols.length).fill(''));
+    aoa.push(['TOTAL INGRESOS CATERING SIN SUBVENCIONES', ...ingresosSinSubvMonths, ingresosSinSubvTotal, '']);
+    aoa.push(['TOTAL DESPESES', ...despesesMonths, despesesTotal, '']);
+    aoa.push(['BENEFICIO SIN SUBVENCIONES', ...beneficioSinSubvMonths, beneficioSinSubvTotal, '']);
+  } else {
+    aoa.push(['TOTAL BENEFICIO POR MES CATERING', ...totalBeneficioMes, totalBeneficioMesTotal, '', beneficioConSubvTotalFinal]);
+    aoa.push(new Array(cols.length).fill(''));
+    aoa.push(['TOTAL INGRESOS CATERING SIN SUBVENCIONES', ...ingresosSinSubvMonths, ingresosSinSubvTotal, '', '']);
+    aoa.push(['TOTAL DESPESES', ...despesesMonths, despesesTotal, '', '']);
+    aoa.push(['BENEFICIO SIN SUBVENCIONES', ...beneficioSinSubvMonths, beneficioSinSubvTotal, '', '']);
+  }
 
   // ===== Tablas inferiores (totales computados) =====
   // Construimos 2 listados: enero–nov y enero–dic
@@ -867,7 +1401,10 @@ function buildPigLineaCateringAoa({ title, months, cuentasMensuales = [], mensua
     isSubv,
     novLimit,
     decLimit,
-    endOfMonthStr
+    endOfMonthStr,
+    cuentaResultados,
+    beneficioConSubvTotal: beneficioConSubvTotalFinal,
+    beneficioSinSubvTotal: beneficioSinSubvTotal
   });
 
   return aoa;
@@ -888,7 +1425,8 @@ function buildPigLineaEstructuraAoa({
   lineName = 'ESTRUCTURA',
   accountOrder = null,
   compactLayout = false,
-  estimadosSlots = []
+  estimadosSlots = [],
+  cuentaResultados = false
 }) {
   const aoa = [];
   const yy = inferYearSuffix2({ title, months });
@@ -911,7 +1449,7 @@ function buildPigLineaEstructuraAoa({
     return g.startsWith('6.') || g.startsWith('8.') || g.startsWith('9.') || g.startsWith('10.') || g.startsWith('11.') || g.startsWith('12.') || g.startsWith('13.') || g.startsWith('14.') || g.startsWith('15.') || g.startsWith('16.');
   };
 
-  let estructura = (cuentasMensuales || []).filter(filterCuenta);
+  let estructura = cuentaResultados ? [] : (cuentasMensuales || []).filter(filterCuenta);
   if (Array.isArray(accountOrder) && accountOrder.length) {
     const orderMap = new Map(accountOrder.map((code, idx) => [String(code).trim(), idx]));
     estructura = estructura.slice().sort((a, b) => {
@@ -926,9 +1464,15 @@ function buildPigLineaEstructuraAoa({
   const resto = accountOrder?.length ? restoRaw : restoRaw.slice().sort(pigAccountCompare);
   const monthsLen = Math.min(12, months.length);
 
-  if (compactLayout && estimadosSlotsHaveAmount(estimadosSlots)) {
+  let estimadoAntesIngreso = new Array(monthsLen).fill(0);
+  if (cuentaResultados) {
+    estimadoAntesIngreso = appendCuentaResultadosSubvRows({ aoa, linea: 'ESTRUCTURA', monthsLen });
+    // Filas placeholder como en el Excel de Lizeth (a rellenar más adelante).
+    aoa.push(['640 ESTRUCTURA', ...new Array(monthsLen).fill(''), '', '', '']);
+    aoa.push(['642 ESTRUCTURA', ...new Array(monthsLen).fill(''), '', '', '']);
+  } else if (compactLayout && estimadosSlotsHaveAmount(estimadosSlots)) {
     const yearFull = inferYearFullFromTitle(title, months);
-    appendEstimadoSubvRows({
+    estimadoAntesIngreso = appendEstimadoSubvRows({
       aoa,
       monthsLen,
       estimadosSlots,
@@ -956,7 +1500,9 @@ function buildPigLineaEstructuraAoa({
     (acc, c) => sumArray(acc, (c.months || new Array(12).fill(0)).slice(0, monthsLen)),
     new Array(monthsLen).fill(0)
   );
-  const totalBeneficioMes = allEstructuraMonths;
+  const totalBeneficioMes = cuentaResultados
+    ? sumArray(allEstructuraMonths, estimadoAntesIngreso)
+    : allEstructuraMonths;
   const totalBeneficioMesTotal = totalBeneficioMes.reduce((a, b) => a + (Number(b) || 0), 0);
 
   const ingresosSinSubvMonths = estructura
@@ -1047,12 +1593,14 @@ function buildPigLineaEstructuraAoa({
   return aoa;
 }
 
-function buildPigLineaIdoniAoa({ title, months, cuentasMensuales = [], mensualMap, estimadosSlots = [] }) {
+function buildPigLineaIdoniAoa({ title, months, cuentasMensuales = [], mensualMap, estimadosSlots = [], cuentaResultados = false }) {
   const aoa = [];
   const yy = inferYearSuffix2({ title, months });
   const totalLabel = `TOTAL ${yy || ''}`.trim();
   const totalEstLabel = `TOTAL ${yy || ''} ESTIMADO`.trim();
-  const cols = ['Cuenta', ...months, totalLabel, '', totalEstLabel];
+  const cols = cuentaResultados
+    ? ['Cuenta', ...months, totalLabel, '']
+    : ['Cuenta', ...months, totalLabel, '', totalEstLabel];
   aoa.push([title, ...new Array(cols.length - 1).fill('')]);
   aoa.push(new Array(cols.length).fill(''));
   aoa.push(cols);
@@ -1075,11 +1623,13 @@ function buildPigLineaIdoniAoa({ title, months, cuentasMensuales = [], mensualMa
   };
 
   const idoni = (cuentasMensuales || []).filter(isIdoni);
-  const subv = idoni.filter(isSubv).slice().sort(pigAccountCompare);
+  const subv = cuentaResultados ? [] : idoni.filter(isSubv).slice().sort(pigAccountCompare);
   const resto = idoni.filter((c) => !isSubv(c)).slice().sort(pigAccountCompare);
 
   const monthsLen = Math.min(12, months.length);
-  const estimadoAntesIngreso = appendEstimadoSubvRows({ aoa, monthsLen, estimadosSlots });
+  const estimadoAntesIngreso = cuentaResultados
+    ? appendCuentaResultadosSubvRows({ aoa, linea: 'IDONI', monthsLen })
+    : appendEstimadoSubvRows({ aoa, monthsLen, estimadosSlots });
 
   if (subv.length) {
     for (const c of subv) {
@@ -1092,7 +1642,8 @@ function buildPigLineaIdoniAoa({ title, months, cuentasMensuales = [], mensualMa
   for (const c of resto) {
     const monthsVals = (c.months || new Array(12).fill(0)).slice(0, 12);
     const total = monthsVals.reduce((a, b) => a + (Number(b) || 0), 0);
-    aoa.push([`${c.code} - ${c.name}`.trim(), ...monthsVals, total, '', total]);
+    if (cuentaResultados) aoa.push([`${c.code} - ${c.name}`.trim(), ...monthsVals, total, '']);
+    else aoa.push([`${c.code} - ${c.name}`.trim(), ...monthsVals, total, '', total]);
   }
 
   // ===== Resumen inferior =====
@@ -1115,11 +1666,21 @@ function buildPigLineaIdoniAoa({ title, months, cuentasMensuales = [], mensualMa
 
   aoa.push(new Array(cols.length).fill(''));
   const estimadoTotal = sumMonths(estimadoAntesIngreso, monthsLen);
-  aoa.push(['TOTAL BENEFICIO POR MES IDONI', ...totalBeneficioMes, totalBeneficioMesTotal, '', (totalBeneficioMesTotal + estimadoTotal)]);
-  aoa.push(new Array(cols.length).fill(''));
-  aoa.push(['TOTAL INGRESOS IDONI SIN SUBV.', ...ingresosSinSubvMonths, ingresosSinSubvTotal, '', '']);
-  aoa.push(['TOTAL DESPESES', ...despesesMonths, despesesTotal, '', '']);
-  aoa.push(['BENEFICIO SIN SUBVENCIONES', ...beneficioSinSubvMonths, beneficioSinSubvTotal, '', '']);
+  const beneficioConSubvTotalFinal = totalBeneficioMesTotal + estimadoTotal;
+  if (cuentaResultados) {
+    const beneficioConSubv = sumArray(totalBeneficioMes, estimadoAntesIngreso);
+    aoa.push(['TOTAL BENEFICIO POR MES IDONI', ...beneficioConSubv, beneficioConSubvTotalFinal, '']);
+    aoa.push(new Array(cols.length).fill(''));
+    aoa.push(['TOTAL INGRESOS IDONI SIN SUBV.', ...ingresosSinSubvMonths, ingresosSinSubvTotal, '']);
+    aoa.push(['TOTAL DESPESES', ...despesesMonths, despesesTotal, '']);
+    aoa.push(['BENEFICIO SIN SUBVENCIONES', ...beneficioSinSubvMonths, beneficioSinSubvTotal, '']);
+  } else {
+    aoa.push(['TOTAL BENEFICIO POR MES IDONI', ...totalBeneficioMes, totalBeneficioMesTotal, '', beneficioConSubvTotalFinal]);
+    aoa.push(new Array(cols.length).fill(''));
+    aoa.push(['TOTAL INGRESOS IDONI SIN SUBV.', ...ingresosSinSubvMonths, ingresosSinSubvTotal, '', '']);
+    aoa.push(['TOTAL DESPESES', ...despesesMonths, despesesTotal, '', '']);
+    aoa.push(['BENEFICIO SIN SUBVENCIONES', ...beneficioSinSubvMonths, beneficioSinSubvTotal, '', '']);
+  }
 
   // ===== Tablas inferiores (totales computados) =====
   const listAll = idoni.slice().sort(pigAccountCompare);
@@ -1179,7 +1740,10 @@ function buildPigLineaIdoniAoa({ title, months, cuentasMensuales = [], mensualMa
     novLimit,
     decLimit,
     endOfMonthStr,
-    doubleSpaceBeneficio: true
+    doubleSpaceBeneficio: true,
+    cuentaResultados,
+    beneficioConSubvTotal: beneficioConSubvTotalFinal,
+    beneficioSinSubvTotal: beneficioSinSubvTotal
   });
 
   return aoa;
@@ -1191,12 +1755,14 @@ function applyPigLineaKoikiObservaciones(aoa) {
   }
 }
 
-function buildPigLineaKoikiAoa({ title, months, cuentasMensuales = [], mensualMap, estimadosSlots = [] }) {
+function buildPigLineaKoikiAoa({ title, months, cuentasMensuales = [], mensualMap, estimadosSlots = [], cuentaResultados = false }) {
   const aoa = [];
   const yy = inferYearSuffix2({ title, months });
   const totalLabel = `TOTAL ${yy || ''}`.trim();
   const totalEstLabel = `TOTAL ${yy || ''} ESTIMADO`.trim();
-  const cols = ['Cuenta', ...months, totalLabel, '', totalEstLabel];
+  const cols = cuentaResultados
+    ? ['Cuenta', ...months, totalLabel, '']
+    : ['Cuenta', ...months, totalLabel, '', totalEstLabel];
   aoa.push([title, ...new Array(cols.length - 1).fill('')]);
   aoa.push(new Array(cols.length).fill(''));
   aoa.push(cols);
@@ -1222,13 +1788,18 @@ function buildPigLineaKoikiAoa({ title, months, cuentasMensuales = [], mensualMa
     (cuentasMensuales || []).filter(isKoiki),
     inferYearFullFromPigTitle(title, months)
   );
-  const subv = koiki.filter(isSubv).slice().sort(pigAccountCompare);
+  const subv = cuentaResultados ? [] : koiki.filter(isSubv).slice().sort(pigAccountCompare);
   const resto = koiki.filter((c) => !isSubv(c)).slice().sort(pigAccountCompare);
 
   const monthsLen = Math.min(12, months.length);
   const yearKoiki = inferYearFullFromPigTitle(title, months);
-  const estimadosSlotsResolved = applyKoikiEstimadoSubvOverrides2026(estimadosSlots, yearKoiki);
-  const estimadoAntesIngreso = appendEstimadoSubvRows({ aoa, monthsLen, estimadosSlots: estimadosSlotsResolved });
+  const estimadoAntesIngreso = cuentaResultados
+    ? appendCuentaResultadosSubvRows({ aoa, linea: 'KOIKI', monthsLen })
+    : appendEstimadoSubvRows({
+      aoa,
+      monthsLen,
+      estimadosSlots: applyKoikiEstimadoSubvOverrides2026(estimadosSlots, yearKoiki)
+    });
 
   if (subv.length) {
     for (const c of subv) {
@@ -1241,7 +1812,8 @@ function buildPigLineaKoikiAoa({ title, months, cuentasMensuales = [], mensualMa
   for (const c of resto) {
     const monthsVals = (c.months || new Array(12).fill(0)).slice(0, 12);
     const total = monthsVals.reduce((a, b) => a + (Number(b) || 0), 0);
-    aoa.push([`${c.code} - ${c.name}`.trim(), ...monthsVals, total, '', total]);
+    if (cuentaResultados) aoa.push([`${c.code} - ${c.name}`.trim(), ...monthsVals, total, '']);
+    else aoa.push([`${c.code} - ${c.name}`.trim(), ...monthsVals, total, '', total]);
   }
 
   // ===== Resumen inferior =====
@@ -1264,11 +1836,21 @@ function buildPigLineaKoikiAoa({ title, months, cuentasMensuales = [], mensualMa
 
   aoa.push(new Array(cols.length).fill(''));
   const estimadoTotal = sumMonths(estimadoAntesIngreso, monthsLen);
-  aoa.push(['TOTAL BENEFICIO POR MES KOIKI', ...totalBeneficioMes, totalBeneficioMesTotal, '', (totalBeneficioMesTotal + estimadoTotal)]);
-  aoa.push(new Array(cols.length).fill(''));
-  aoa.push(['TOTAL INGRESOS KOIKI SIN SUBVENCIONES', ...ingresosSinSubvMonths, ingresosSinSubvTotal, '', '']);
-  aoa.push(['TOTAL DESPESES', ...despesesMonths, despesesTotal, '', '']);
-  aoa.push(['BENEFICIO SIN SUBVENCIONES', ...beneficioSinSubvMonths, beneficioSinSubvTotal, '', '']);
+  const beneficioConSubvTotalFinal = totalBeneficioMesTotal + estimadoTotal;
+  if (cuentaResultados) {
+    const beneficioConSubv = sumArray(totalBeneficioMes, estimadoAntesIngreso);
+    aoa.push(['TOTAL BENEFICIO POR MES KOIKI', ...beneficioConSubv, beneficioConSubvTotalFinal, '']);
+    aoa.push(new Array(cols.length).fill(''));
+    aoa.push(['TOTAL INGRESOS KOIKI SIN SUBVENCIONES', ...ingresosSinSubvMonths, ingresosSinSubvTotal, '']);
+    aoa.push(['TOTAL DESPESES', ...despesesMonths, despesesTotal, '']);
+    aoa.push(['BENEFICIO SIN SUBVENCIONES', ...beneficioSinSubvMonths, beneficioSinSubvTotal, '']);
+  } else {
+    aoa.push(['TOTAL BENEFICIO POR MES KOIKI', ...totalBeneficioMes, totalBeneficioMesTotal, '', beneficioConSubvTotalFinal]);
+    aoa.push(new Array(cols.length).fill(''));
+    aoa.push(['TOTAL INGRESOS KOIKI SIN SUBVENCIONES', ...ingresosSinSubvMonths, ingresosSinSubvTotal, '', '']);
+    aoa.push(['TOTAL DESPESES', ...despesesMonths, despesesTotal, '', '']);
+    aoa.push(['BENEFICIO SIN SUBVENCIONES', ...beneficioSinSubvMonths, beneficioSinSubvTotal, '', '']);
+  }
 
   // ===== Tablas inferiores (totales computados) =====
   const listAll = koiki.slice().sort(pigAccountCompare);
@@ -1328,7 +1910,10 @@ function buildPigLineaKoikiAoa({ title, months, cuentasMensuales = [], mensualMa
     novLimit,
     decLimit,
     endOfMonthStr,
-    doubleSpaceBeneficio: true
+    doubleSpaceBeneficio: true,
+    cuentaResultados,
+    beneficioConSubvTotal: beneficioConSubvTotalFinal,
+    beneficioSinSubvTotal: beneficioSinSubvTotal
   });
 
   applyPigLineaKoikiObservaciones(aoa);
@@ -2322,15 +2907,29 @@ function extractPigGeneralBreakdownCuentas(cuentas = [], filterCuenta) {
     .sort((a, b) => String(a.code || '').localeCompare(String(b.code || '')));
 }
 
-function buildPigGeneralSummaryLabels(cuentasMensuales = []) {
+function buildPigGeneralSummaryLabels(cuentasMensuales = [], { omitSubvenciones = false } = {}) {
+  const breakdownRules = omitSubvenciones
+    ? PIG_GENERAL_ACCOUNT_BREAKDOWNS.filter((rule) => !isPigGeneralSubvencionLabel(rule.afterLabel))
+    : PIG_GENERAL_ACCOUNT_BREAKDOWNS;
   const breakdownByLabel = new Map(
-    PIG_GENERAL_ACCOUNT_BREAKDOWNS.map((rule) => [
+    breakdownRules.map((rule) => [
       rule.afterLabel,
       extractPigGeneralBreakdownCuentas(cuentasMensuales, rule.filterCuenta)
     ])
   );
   const labels = [];
   for (const label of SUMMARY_LABELS) {
+    if (omitSubvenciones && isPigGeneralSubvencionLabel(label)) {
+      // Tras quitar subv Holded: insertar agrupación hardcodeada (L1 / L2 / IMPULSEM).
+      if (label === 'd) Subvenciones imputadas al excedente del ejercicio') {
+        labels.push(...PIG_CTA_RESULTADOS_GENERAL_SUBV_LABELS);
+      }
+      continue;
+    }
+    if (omitSubvenciones && label === PIG_GENERAL_INGRESOS_PROPIA_LABEL) {
+      labels.push(PIG_CTA_RESULTADOS_GENERAL_INGRESOS_LABEL);
+      continue;
+    }
     labels.push(label);
     for (const cuenta of breakdownByLabel.get(label) || []) {
       labels.push(pigGeneralCuentaLabel(cuenta));
@@ -2676,10 +3275,54 @@ function stylePigEstructuraSheet({ ws, aoa, meta = null }) {
   }
 }
 
-function buildGeneralAoa({ title, months, mensualMap, annualTotalsMap, monthLimit, cuentasMensuales = [] }) {
+function buildGeneralAoa({ title, months, mensualMap, annualTotalsMap, monthLimit, cuentasMensuales = [], omitSubvenciones = false }) {
   const lim = Math.max(1, Math.min(12, Number(monthLimit || 12)));
   const monthsLimited = months.slice(0, lim);
-  const summaryLabels = buildPigGeneralSummaryLabels(cuentasMensuales);
+  const cuentas = omitSubvenciones ? filterCuentasSinSubvenciones(cuentasMensuales) : cuentasMensuales;
+  const summaryLabels = buildPigGeneralSummaryLabels(cuentas, { omitSubvenciones });
+
+  let mapMensual = mensualMap;
+  let mapAnnual = annualTotalsMap;
+  if (omitSubvenciones) {
+    mapMensual = clonePigNumberMap(mensualMap);
+    mapAnnual = clonePigNumberMap(annualTotalsMap);
+    const subvBuckets = buildCuentaResultadosGeneralSubvMonths(12);
+    const hardcodedAll = sumMonthArrays(Object.values(subvBuckets), 12);
+    const holdedSubvLabel = 'd) Subvenciones imputadas al excedente del ejercicio';
+    const holdedSubv = (mensualMap.get(holdedSubvLabel) || new Array(12).fill(0)).slice(0, 12);
+    // Sustituir subv Holded por hardcodeadas en totales de ingresos / excedente.
+    const parentLabelsToAdjust = [
+      PIG_GENERAL_INGRESOS_PROPIA_LABEL,
+      'A.1) EXCEDENTE DE LA ACTIVIDAD',
+      'A.3) EXCEDENTE ANTES DE IMPUESTOS',
+      'A.4) Variación de patrimonio neto reconocida en el excedente del ejercicio',
+      SUMMARY_LABELS.find((l) => String(l).startsWith('I) RESULTADO'))
+    ].filter(Boolean);
+    for (const label of parentLabelsToAdjust) {
+      if (!mapMensual.has(label) && !mensualMap.has(label)) continue;
+      const base = (mapMensual.get(label) || mensualMap.get(label) || new Array(12).fill(0)).slice(0, 12);
+      const next = base.map((v, i) => (Number(v) || 0) - (Number(holdedSubv[i]) || 0) + (Number(hardcodedAll[i]) || 0));
+      mapMensual.set(label, next);
+      mapAnnual.set(label, next.reduce((a, b) => a + (Number(b) || 0), 0));
+    }
+    // Misma cifra bajo el nombre de Cuenta Resultados (sin el "1.").
+    const ingresosAjustados = mapMensual.get(PIG_GENERAL_INGRESOS_PROPIA_LABEL);
+    if (ingresosAjustados) {
+      mapMensual.set(PIG_CTA_RESULTADOS_GENERAL_INGRESOS_LABEL, [...ingresosAjustados]);
+      mapAnnual.set(
+        PIG_CTA_RESULTADOS_GENERAL_INGRESOS_LABEL,
+        ingresosAjustados.reduce((a, b) => a + (Number(b) || 0), 0)
+      );
+    }
+    for (const [label, monthsVals] of Object.entries(subvBuckets)) {
+      const padded = [...monthsVals];
+      while (padded.length < 12) padded.push(0);
+      mapMensual.set(label, padded);
+      mapAnnual.set(label, padded.reduce((a, b) => a + (Number(b) || 0), 0));
+    }
+    mapMensual.set(holdedSubvLabel, new Array(12).fill(0));
+    mapAnnual.set(holdedSubvLabel, 0);
+  }
 
   const aoa = [];
   aoa.push([title, '', '']);
@@ -2690,10 +3333,10 @@ function buildGeneralAoa({ title, months, mensualMap, annualTotalsMap, monthLimi
     aoa.push([label, '', '']);
     const v = getPigGeneralSummaryValue({
       label,
-      mensualMap,
-      annualTotalsMap,
+      mensualMap: mapMensual,
+      annualTotalsMap: mapAnnual,
       monthLimit: lim,
-      cuentasMensuales
+      cuentasMensuales: cuentas
     });
     aoa.push(['', v ?? 0, '']);
   }
@@ -2705,13 +3348,13 @@ function buildGeneralAoa({ title, months, mensualMap, annualTotalsMap, monthLimi
   const header = ['', ...monthsLimited, 'TOTAL'];
   aoa.push(header);
   for (const label of summaryLabels) {
-    const vals = getPigGeneralMensualValues({ label, mensualMap, monthLimit: lim, cuentasMensuales });
+    const vals = getPigGeneralMensualValues({ label, mensualMap: mapMensual, monthLimit: lim, cuentasMensuales: cuentas });
     const total = getPigGeneralSummaryValue({
       label,
-      mensualMap,
-      annualTotalsMap,
+      mensualMap: mapMensual,
+      annualTotalsMap: mapAnnual,
       monthLimit: lim,
-      cuentasMensuales
+      cuentasMensuales: cuentas
     });
     aoa.push([label, ...vals, total]);
   }
@@ -2982,13 +3625,18 @@ export default function PIGPage() {
 
   const canGenerate = useMemo(() => Boolean(anualFile && mensualFile), [anualFile, mensualFile]);
 
-  const generateExcel = useCallback(async () => {
+  const generateExcel = useCallback(async (opts = {}) => {
     try {
       setError('');
       if (!anualFile || !mensualFile) {
         setError('Sube los 2 archivos del PIG: anual y mensual (CSV o Excel).');
         return;
       }
+
+      const cuentaResultados = Boolean(opts?.cuentaResultados);
+      // Cuenta Resultados = mismo flujo EISSS, sin subvenciones de Holded ni estimados.
+      const empresaMode = cuentaResultados ? 'EISSS' : pigEmpresa;
+      const omitSubvenciones = cuentaResultados;
 
       const [anualText, mensualText] = await Promise.all([
         readHoldedFileAsText(anualFile),
@@ -3007,22 +3655,34 @@ export default function PIGPage() {
       const yearForEstimados = Number(yearGuess || estimadosYear) || Number(estimadosYear);
       let estimadosForGenerate = estimadosSubv;
       let objetivosForGenerate = objetivosComparativa;
-      if (yearForEstimados && Number(yearForEstimados) !== Number(estimadosYear)) {
-        const [{ estimados, error: loadEstError }, { objetivos, error: loadObjError }] = await Promise.all([
-          loadPigEstimadosSubvencion({ year: yearForEstimados }),
-          loadPigObjetivosComparativa({ year: yearForEstimados })
-        ]);
-        if (!loadEstError && estimados) estimadosForGenerate = estimados;
-        if (!loadObjError && objetivos) objetivosForGenerate = objetivos;
-      } else {
-        await Promise.all([saveEstimadosSubv(), saveObjetivosComparativa()]);
+      if (!omitSubvenciones) {
+        if (yearForEstimados && Number(yearForEstimados) !== Number(estimadosYear)) {
+          const [{ estimados, error: loadEstError }, { objetivos, error: loadObjError }] = await Promise.all([
+            loadPigEstimadosSubvencion({ year: yearForEstimados }),
+            loadPigObjetivosComparativa({ year: yearForEstimados })
+          ]);
+          if (!loadEstError && estimados) estimadosForGenerate = estimados;
+          if (!loadObjError && objetivos) objetivosForGenerate = objetivos;
+        } else {
+          await Promise.all([saveEstimadosSubv(), saveObjetivosComparativa()]);
+        }
+      } else if (yearForEstimados && Number(yearForEstimados) === Number(estimadosYear)) {
+        // Objetivos de comparativa sí se pueden usar; estimados de subvención no.
+        await saveObjetivosComparativa();
       }
-      const estimadosSlotsByLinea = estimadosToSlots(estimadosForGenerate);
+      const estimadosSlotsByLinea = omitSubvenciones
+        ? { CATERING: [], IDONI: [], KOIKI: [], ESTRUCTURA: [] }
+        : estimadosToSlots(estimadosForGenerate);
+
+      const cuentasMensualesRaw = mensualParsed.cuentas || [];
+      const cuentasMensuales = omitSubvenciones
+        ? filterCuentasSinSubvenciones(cuentasMensualesRaw)
+        : cuentasMensualesRaw;
 
       const getLastNonZeroMonthIndex = () => {
         let last = -1;
         // mirar cuentas (más “real” que map)
-        for (const c of (mensualParsed.cuentas || [])) {
+        for (const c of cuentasMensualesRaw) {
           const m = c?.months || [];
           for (let i = 0; i < Math.min(12, m.length); i++) {
             if (Number(m[i]) !== 0) last = Math.max(last, i);
@@ -3071,12 +3731,13 @@ export default function PIGPage() {
       const monthLabelUpper = (idx) => String(months[idx] || defaultMonths[idx] || '').toUpperCase();
 
       const yy = yearGuess ? yearGuess.slice(2) : '';
-      const empresaLabel = pigEmpresa === 'MH' ? 'MH' : 'EI.SSS';
+      const empresaLabel = empresaMode === 'MH' ? 'MH' : 'EI.SSS';
       const rangeStartIdx = (mensualParsed.rangeStartIdx ?? null);
       const startStr = yy ? (rangeStartIdx !== null ? startOfMonthStr(rangeStartIdx) : `01/01/${yy}`) : '';
-      const titleFull = `Cierre PIG GENERAL  ${empresaLabel} ${yy ? `${startStr} A ${endOfMonthStr(lastIdx)}` : ''}`.trim();
-      const titlePrev = `PIG GENERAL ${empresaLabel} A ${monthLabelUpper(prevIdx)} ${yy ? `${startStr} A ${endOfMonthStr(prevIdx)}` : ''}`.trim();
-      const sheetNamePrev = (`PIG GENERAL ${empresaLabel} A ${monthLabelUpper(prevIdx)}`.trim()).slice(0, 31);
+      const titleDocKind = omitSubvenciones ? 'CUENTA RESULTADOS' : 'PIG';
+      const titleFull = `Cierre ${titleDocKind} GENERAL  ${empresaLabel} ${yy ? `${startStr} A ${endOfMonthStr(lastIdx)}` : ''}`.trim();
+      const titlePrev = `${titleDocKind} GENERAL ${empresaLabel} A ${monthLabelUpper(prevIdx)} ${yy ? `${startStr} A ${endOfMonthStr(prevIdx)}` : ''}`.trim();
+      const sheetNamePrev = (`${titleDocKind} GENERAL ${empresaLabel} A ${monthLabelUpper(prevIdx)}`.trim()).slice(0, 31);
 
       const { aoa: aoaFull, monthsLimited: monthsFull } = buildGeneralAoa({
         title: titleFull,
@@ -3084,12 +3745,15 @@ export default function PIGPage() {
         mensualMap: mensual,
         annualTotalsMap: anual,
         monthLimit: monthLimitFull,
-        cuentasMensuales: mensualParsed.cuentas || []
+        cuentasMensuales,
+        omitSubvenciones
       });
       let miniTablaMeta = null;
       const sideColsFull = getPigGeneralSideCols(monthsFull);
-      if (pigEmpresa !== 'MH') {
-        applyPigGeneralEisssObservaciones(aoaFull, { obsCol: sideColsFull.obsCol });
+      if (empresaMode !== 'MH') {
+        if (!omitSubvenciones) {
+          applyPigGeneralEisssObservaciones(aoaFull, { obsCol: sideColsFull.obsCol });
+        }
         miniTablaMeta = applyPigGeneralEisssMiniTabla(aoaFull, {
           mensualMap: mensual,
           annualTotalsMap: anual,
@@ -3103,13 +3767,13 @@ export default function PIGPage() {
         ws,
         aoa: aoaFull,
         monthsLimited: monthsFull,
-        withObservaciones: pigEmpresa !== 'MH',
+        withObservaciones: empresaMode !== 'MH' && !omitSubvenciones,
         miniTablaMeta,
         sideCols: sideColsFull
       });
 
       const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, pigEmpresa === 'MH' ? 'PIG GENERAL MH' : 'PIG GENERAL EISSS');
+      XLSX.utils.book_append_sheet(wb, ws, empresaMode === 'MH' ? 'PIG GENERAL MH' : (omitSubvenciones ? 'CR GENERAL EISSS' : 'PIG GENERAL EISSS'));
 
       // Hoja hasta Noviembre (enero–noviembre)
       const { aoa: aoaNov, monthsLimited: monthsNov } = buildGeneralAoa({
@@ -3118,12 +3782,13 @@ export default function PIGPage() {
         mensualMap: mensual,
         annualTotalsMap: anual,
         monthLimit: monthLimitPrev,
-        cuentasMensuales: mensualParsed.cuentas || []
+        cuentasMensuales,
+        omitSubvenciones
       });
       const wsNov = XLSX.utils.aoa_to_sheet(aoaNov);
       let miniTablaMetaNov = null;
       const sideColsNov = getPigGeneralSideCols(monthsNov);
-      if (pigEmpresa !== 'MH') {
+      if (empresaMode !== 'MH') {
         miniTablaMetaNov = applyPigGeneralEisssMiniTabla(aoaNov, {
           mensualMap: mensual,
           annualTotalsMap: anual,
@@ -3276,7 +3941,7 @@ export default function PIGPage() {
         console.error('Error generando hoja GRUPO 9 - OTROS GASTOS:', e);
       }
 
-      if (pigEmpresa === 'MH') {
+      if (empresaMode === 'MH') {
         // ===== PIG LINEA OBRADOR (solo MH) =====
         try {
           const yy = yearGuess ? yearGuess.slice(2) : '';
@@ -3287,7 +3952,7 @@ export default function PIGPage() {
             return `${base} ${yy}`.trim();
           });
           const titleObrador = `Cierre PIG LINEA OBRADOR  MH ${yy ? `01/01/${yy} A ${endOfMonthStr(lastIdx)}` : ''}`.trim();
-          const aoaObrador = buildPigLineaObradorAoa({ title: titleObrador, months: monthsObrador, cuentasMensuales: mensualParsed.cuentas || [] });
+          const aoaObrador = buildPigLineaObradorAoa({ title: titleObrador, months: monthsObrador, cuentasMensuales });
           const wsObrador = XLSX.utils.aoa_to_sheet(aoaObrador);
           stylePigLineaObradorSheet({ ws: wsObrador, aoa: aoaObrador });
           XLSX.utils.book_append_sheet(wb, wsObrador, 'PIG LINEA OBRADOR');
@@ -3305,7 +3970,7 @@ export default function PIGPage() {
             return `${base} ${yy}`.trim();
           });
           const titleObrador2 = `Cierre PIG LINEA OBRADOR 2  MH ${yy ? `01/01/${yy} A ${endOfMonthStr(lastIdx)}` : ''}`.trim();
-          const aoaObrador2 = buildPigLineaObrador2Aoa({ title: titleObrador2, months: monthsObrador, cuentasMensuales: mensualParsed.cuentas || [] });
+          const aoaObrador2 = buildPigLineaObrador2Aoa({ title: titleObrador2, months: monthsObrador, cuentasMensuales });
           const wsObrador2 = XLSX.utils.aoa_to_sheet(aoaObrador2);
           stylePigLineaObradorSheet({ ws: wsObrador2, aoa: aoaObrador2 });
           XLSX.utils.book_append_sheet(wb, wsObrador2, 'PIG LINEA OBRADOR 2');
@@ -3314,7 +3979,7 @@ export default function PIGPage() {
         }
       }
 
-      if (pigEmpresa !== 'MH') {
+      if (empresaMode !== 'MH') {
         // ===== PIG LINEA CATERING / IDONI / KOIKI + COMPARATIVA (solo EISSS) =====
         try {
           const yy = yearGuess ? yearGuess.slice(2) : '';
@@ -3324,13 +3989,14 @@ export default function PIGPage() {
             if (new RegExp(`\\b${yy}\\b`).test(base)) return base;
             return `${base} ${yy}`.trim();
           });
-          const titleCatering = `Cierre PIG LINEA CATERING  EI.SSS ${yy ? `01/01/${yy} A ${endOfMonthStr(lastIdx)}` : ''}`.trim();
+          const titleCatering = `Cierre ${omitSubvenciones ? 'CUENTA RESULTADOS' : 'PIG'} LINEA CATERING  EI.SSS ${yy ? `01/01/${yy} A ${endOfMonthStr(lastIdx)}` : ''}`.trim();
           const aoaCat = buildPigLineaCateringAoa({
             title: titleCatering,
             months: monthsCatering,
-            cuentasMensuales: mensualParsed.cuentas || [],
+            cuentasMensuales,
             mensualMap: mensual,
-            estimadosSlots: estimadosSlotsByLinea.CATERING
+            estimadosSlots: estimadosSlotsByLinea.CATERING,
+            cuentaResultados: omitSubvenciones
           });
           const wsCat = XLSX.utils.aoa_to_sheet(aoaCat);
           stylePigLineaCateringSheet({ ws: wsCat, aoa: aoaCat });
@@ -3347,13 +4013,14 @@ export default function PIGPage() {
             if (new RegExp(`\\b${yy}\\b`).test(base)) return base;
             return `${base} ${yy}`.trim();
           });
-          const titleIdoni = `Cierre PIG LINEA IDONI  EI.SSS ${yy ? `01/01/${yy} A ${endOfMonthStr(lastIdx)}` : ''}`.trim();
+          const titleIdoni = `Cierre ${omitSubvenciones ? 'CUENTA RESULTADOS' : 'PIG'} LINEA IDONI  EI.SSS ${yy ? `01/01/${yy} A ${endOfMonthStr(lastIdx)}` : ''}`.trim();
           const aoaIdoni = buildPigLineaIdoniAoa({
             title: titleIdoni,
             months: monthsIdoni,
-            cuentasMensuales: mensualParsed.cuentas || [],
+            cuentasMensuales,
             mensualMap: mensual,
-            estimadosSlots: estimadosSlotsByLinea.IDONI
+            estimadosSlots: estimadosSlotsByLinea.IDONI,
+            cuentaResultados: omitSubvenciones
           });
           const wsIdoni = XLSX.utils.aoa_to_sheet(aoaIdoni);
           stylePigLineaCateringSheet({ ws: wsIdoni, aoa: aoaIdoni });
@@ -3370,16 +4037,17 @@ export default function PIGPage() {
             if (new RegExp(`\\b${yy}\\b`).test(base)) return base;
             return `${base} ${yy}`.trim();
           });
-          const titleKoiki = `Cierre PIG LINEA KOIKI  EI.SSS ${yy ? `01/01/${yy} A ${endOfMonthStr(lastIdx)}` : ''}`.trim();
+          const titleKoiki = `Cierre ${omitSubvenciones ? 'CUENTA RESULTADOS' : 'PIG'} LINEA KOIKI  EI.SSS ${yy ? `01/01/${yy} A ${endOfMonthStr(lastIdx)}` : ''}`.trim();
           const aoaKoiki = buildPigLineaKoikiAoa({
             title: titleKoiki,
             months: monthsKoiki,
-            cuentasMensuales: mensualParsed.cuentas || [],
+            cuentasMensuales,
             mensualMap: mensual,
-            estimadosSlots: estimadosSlotsByLinea.KOIKI
+            estimadosSlots: estimadosSlotsByLinea.KOIKI,
+            cuentaResultados: omitSubvenciones
           });
           const wsKoiki = XLSX.utils.aoa_to_sheet(aoaKoiki);
-          stylePigLineaCateringSheet({ ws: wsKoiki, aoa: aoaKoiki, koikiObservations: true });
+          stylePigLineaCateringSheet({ ws: wsKoiki, aoa: aoaKoiki, koikiObservations: !omitSubvenciones });
           XLSX.utils.book_append_sheet(wb, wsKoiki, 'PIG LINEA KOIKI');
         } catch (e) {
           console.error('Error generando hoja PIG LINEA KOIKI:', e);
@@ -3393,21 +4061,24 @@ export default function PIGPage() {
             if (new RegExp(`\\b${yy}\\b`).test(base)) return base;
             return `${base} ${yy}`.trim();
           });
-          const titleEstructuraSubv740 = `Cierre PIG ESTRUCTURA SUBV 740  EI.SSS ${yy ? `01/01/${yy} A ${endOfMonthStr(lastIdx)}` : ''}`.trim();
-          const cuentasSubv740 = (mensualParsed.cuentas || []).filter(isPigEstructuraSubv740Cuenta);
+          const titleEstructuraSubv740 = `Cierre ${omitSubvenciones ? 'CUENTA RESULTADOS' : 'PIG'} ESTRUCTURA SUBV 740  EI.SSS ${yy ? `01/01/${yy} A ${endOfMonthStr(lastIdx)}` : ''}`.trim();
+          // En Cuenta Resultados: subvenciones hardcodeadas + filas 640/642 vacías (sin importes Holded).
+          const cuentasSubv740Source = cuentasMensualesRaw.filter(isPigEstructuraSubv740Cuenta);
           const aoaEstructuraSubv740 = buildPigLineaEstructuraAoa({
             title: titleEstructuraSubv740,
             months: monthsEstructura,
-            cuentasMensuales: mensualParsed.cuentas || [],
+            cuentasMensuales: omitSubvenciones ? [] : cuentasMensualesRaw,
             filterCuenta: isPigEstructuraSubv740Cuenta,
             lineName: 'ESTRUCTURA SUBV 740',
             accountOrder: PIG_ESTRUCTURA_SUBV_740_ACCOUNT_CODES,
             compactLayout: true,
-            estimadosSlots: estimadosSlotsByLinea.ESTRUCTURA || []
+            estimadosSlots: omitSubvenciones ? [] : (estimadosSlotsByLinea.ESTRUCTURA || []),
+            cuentaResultados: omitSubvenciones
           });
           console.log('[PIG ESTRUCTURA SUBV 740] Hoja generada:', {
-            cuentas: cuentasSubv740.map((c) => c.code),
-            count: cuentasSubv740.length
+            cuentaResultados: omitSubvenciones,
+            cuentas: omitSubvenciones ? ['hardcoded'] : cuentasSubv740Source.map((c) => c.code),
+            count: omitSubvenciones ? 2 : cuentasSubv740Source.length
           });
           const wsEstructuraSubv740 = XLSX.utils.aoa_to_sheet(aoaEstructuraSubv740);
           stylePigLineaCateringSheet({ ws: wsEstructuraSubv740, aoa: aoaEstructuraSubv740 });
@@ -3483,7 +4154,8 @@ export default function PIGPage() {
           const { aoa: aoaTesoreria, meta: tesoreriaMeta } = buildPigTesoreriaSheetAoa({
             title: titleTesoreria,
             accounts: treasuryAccounts,
-            errorMessage: treasuryError?.message || ''
+            errorMessage: treasuryError?.message || '',
+            cuentaResultados: omitSubvenciones
           });
           const wsTesoreria = XLSX.utils.aoa_to_sheet(aoaTesoreria);
           stylePigTesoreriaSheet({ ws: wsTesoreria, aoa: aoaTesoreria, meta: tesoreriaMeta });
@@ -3491,10 +4163,56 @@ export default function PIGPage() {
         } catch (e) {
           console.error('Error generando hoja TESORERÍA:', e);
         }
+
+        try {
+          const yearPres = Number(yearGuess) || new Date().getFullYear();
+          const { rows: presupuestosRows, error: presupuestosError } = await loadPigPresupuestosPendientes({
+            year: yearPres,
+            company: 'solucions'
+          });
+          if (presupuestosError) {
+            console.warn('PIG PRESUPUESTOS: no se pudieron cargar presupuestos de Holded.', presupuestosError);
+          }
+          const titlePresupuestos = `PRESUPUESTOS EI.SSS ${yearPres} · Pendientes / Parciales por vencimiento`.trim();
+          const { aoa: aoaPresupuestos, meta: presupuestosMeta } = buildPigPresupuestosSheetAoa({
+            title: titlePresupuestos,
+            rows: presupuestosRows,
+            year: yearPres
+          });
+          const wsPresupuestos = XLSX.utils.aoa_to_sheet(aoaPresupuestos);
+          stylePigPresupuestosSheet({ ws: wsPresupuestos, aoa: aoaPresupuestos, meta: presupuestosMeta });
+          XLSX.utils.book_append_sheet(wb, wsPresupuestos, 'PRESUPUESTOS');
+        } catch (e) {
+          console.error('Error generando hoja PRESUPUESTOS:', e);
+        }
+
+        try {
+          const yearFac = Number(yearGuess) || new Date().getFullYear();
+          const { lineas: facturacionLineas, error: facturacionError } = await loadPigFacturacionPendiente({
+            year: yearFac,
+            company: 'solucions'
+          });
+          if (facturacionError) {
+            console.warn('PIG FACTURACIÓN PENDIENTE: no se pudieron cargar facturas de Holded.', facturacionError);
+          }
+          const titleFacturacion = `FACTURACIÓN PENDIENTE EI.SSS ${yearFac} · Pendiente / Vencida por línea`.trim();
+          const { aoa: aoaFacturacion, meta: facturacionMeta } = buildPigFacturacionPendienteSheetAoa({
+            title: titleFacturacion,
+            lineas: facturacionLineas,
+            year: yearFac
+          });
+          const wsFacturacion = XLSX.utils.aoa_to_sheet(aoaFacturacion);
+          stylePigFacturacionPendienteSheet({ ws: wsFacturacion, aoa: aoaFacturacion, meta: facturacionMeta });
+          XLSX.utils.book_append_sheet(wb, wsFacturacion, 'FACTURACIÓN PENDIENTE');
+        } catch (e) {
+          console.error('Error generando hoja FACTURACIÓN PENDIENTE:', e);
+        }
       }
       XLSX.writeFile(
         wb,
-        `PIG_${pigEmpresa === 'MH' ? 'MH' : 'EISSS'}_${new Date().toISOString().slice(0, 10)}.xlsx`
+        omitSubvenciones
+          ? `PIG_EISSS_Cuenta_Resultados_${new Date().toISOString().slice(0, 10)}.xlsx`
+          : `PIG_${empresaMode === 'MH' ? 'MH' : 'EISSS'}_${new Date().toISOString().slice(0, 10)}.xlsx`
       );
     } catch (e) {
       console.error(e);
@@ -3845,7 +4563,7 @@ export default function PIGPage() {
 
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
           <button
-            onClick={generateExcel}
+            onClick={() => generateExcel()}
             disabled={!canGenerate}
             style={{
               display: 'inline-flex',
@@ -3864,7 +4582,38 @@ export default function PIGPage() {
             <Download size={18} />
             Generar Excel
           </button>
+          {pigEmpresa !== 'MH' && (
+            <button
+              onClick={() => generateExcel({ cuentaResultados: true })}
+              disabled={!canGenerate}
+              title="Mismo PIG EISSS sin subvenciones de Holded ni estimados (para cuenta de resultados)"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 10,
+                padding: '10px 14px',
+                borderRadius: 10,
+                cursor: canGenerate ? 'pointer' : 'not-allowed',
+                border: `1px solid ${canGenerate ? colors.border : colors.border}`,
+                background: canGenerate ? colors.surface : colors.surface,
+                color: canGenerate ? colors.text : colors.textSecondary,
+                fontWeight: 950,
+                opacity: canGenerate ? 1 : 0.7
+              }}
+            >
+              <Download size={18} />
+              EISSS Cuenta Resultados
+            </button>
+          )}
         </div>
+        {pigEmpresa !== 'MH' && (
+          <div style={{ fontSize: 12, color: colors.textSecondary, lineHeight: 1.4 }}>
+            <b>EISSS Cuenta Resultados</b> genera el PIG EISSS <b>sin subvenciones de Holded</b>, con las subvenciones
+            hardcodeadas (Catering / Idoni / Koiki / Estructura SUBV 740) en las tablas grandes.
+            Incluye también la hoja <b>PRESUPUESTOS</b> y <b>FACTURACIÓN PENDIENTE</b>
+            (misma lógica que Informe Sergi: pendientes/parciales y cobros pendientes por línea).
+          </div>
+        )}
       </div>
     </div>
   );
