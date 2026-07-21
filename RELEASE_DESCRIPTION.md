@@ -1,3 +1,40 @@
+## v2.4.9
+
+### PIG (EISSS) — Tesorería
+
+- **Nueva hoja `TESORERÍA`:** se genera automáticamente al exportar el PIG de EISSS con datos de Holded API v2 (`GET /api/v2/treasury/accounts`, scope `accounting:banks.read`).
+- **Solo cuentas bancarias reales:** se filtran únicamente las cuentas con **IBAN** (sin tarjetas, PayPal, caja, etc.).
+- **Contenido:** resumen por cuenta, detalle (IBAN, BIC, saldo, pendientes de conciliar) y **TOTAL TESORERÍA**.
+- **Requisito:** variable `HOLDED_V2_API_KEY_SOLUCIONS` configurada en el entorno Electron.
+
+### PIG (EISSS) — PIG GENERAL
+
+- **Desglose dinámico grupo 1 (subvenciones 740):** debajo de `d) Subvenciones imputadas al excedente del ejercicio` aparecen las cuentas 740 del CSV mensual de Holded (sin hardcodear códigos); los totales del grupo no cambian.
+- **Desglose dinámico grupo 2 (ventas 700):** debajo de `Venta y otros ingresos de la actividad mercantil` aparecen las cuentas 700 del CSV (CATERING, KOIKI, IDONI TPV, etc.); el total del grupo se mantiene.
+- Aplica al **bloque resumen** (columnas A–B) y a la **tabla mensual** de `PIG GENERAL EISSS` y la hoja del mes anterior.
+
+### PIG (EISSS) — Objetivos COMPARATIVA ANUAL
+
+- **Persistencia en Supabase:** los 6 objetivos (CATERING / IDONI / KOIKI · Normal y Òptim) se guardan y cargan por año, igual que los estimados de subvención.
+- **Botón «Guardar objetivos»** y guardado automático al generar el Excel del mismo año.
+- **Valores por defecto 2026:** CATERING 650.000 / 600.000 · IDONI 140.000 / 150.000 · KOIKI 20.207 / 23.881.
+- **SQL en Supabase (requerido):** `database/create_pig_objetivos_comparativa.sql`, `database/alter_pig_objetivos_comparativa_rls.sql` y opcionalmente `database/seed_pig_objetivos_comparativa_2026.sql`.
+
+### PIG (EISSS) — ESTRUCTURA SUBV 740
+
+- **Eliminada la hoja `PIG LINEA ESTRUCTURA`:** solo queda **`PIG ESTRUCTURA SUBV 740`**, colocada **justo después de `PIG LINEA KOIKI`**.
+- **Hoja simplificada (layout compacto):** se eliminan las filas `TOTAL INGRESOS… SIN SUBVENCIONES`, `TOTAL DESPESES`, `BENEFICIO SIN SUBVENCIONES` y las dos tablas inferiores de `TOTAL COMPUTADO`.
+- **Fila de estimado de subvención:** aparece `ESTIMADO DE SUBVENCIÓN ANTES DE INGRESO L1 {año}` con los importes mensuales configurados; la columna **TOTAL** es la suma de esos meses.
+- **`TOTAL BENEFICIO POR MES ESTRUCTURA SUBV 740`:** suma solo las cuentas 740 del CSV (no incluye el estimado).
+- **Nueva línea ESTRUCTURA en «Estimados de subvención (PIG LINEA)»:** editable y guardable en Supabase (por defecto 2.800,87 €/mes en 2026 = E.I L1 33K).
+- **SQL en Supabase (requerido):** `database/alter_pig_estimados_subvencion_add_estructura.sql` y opcionalmente `database/seed_pig_estimados_subvencion_estructura_2026.sql`.
+
+### Holded v2 (PIG)
+
+- **`holdedApiV2Service.getTreasuryAccounts()`:** nuevo método con paginación por cursor para listar cuentas de tesorería activas.
+
+---
+
 ## v2.4.7
 
 ### Portal de firma — Onboarding
