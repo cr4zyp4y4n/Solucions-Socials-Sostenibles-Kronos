@@ -1,3 +1,17 @@
+## v2.5.0
+
+### Licitaciones
+
+- **Nuevos códigos CPV de catering:** ampliado el filtro de sincronización (TED · PSCP · PLACSP) para captar más oportunidades del sector:
+  - **55300000** — restaurante, preparación y suministro de comidas (general).
+  - **55523000** — catering para empresas e instituciones.
+  - Ya existían **55520000** (comidas desde el exterior) y **55523100** (catering escolar); se mantiene la cobertura anterior.
+- **Sincronizar tras actualizar:** en **Licitaciones → Sincronizar** para traer expedientes que antes no entraban por CPV.
+- **Qué sigue sin aparecer (comportamiento esperado):** las publicaciones en fase **Adjudicació**, **Formalització** o **Publicació agregada** (contratos menores en lote ya resueltos) no se importan: Kronos muestra **oportunidades vigentes** (anuncio previo o plazo de ofertas abierto), no histórico adjudicado.
+- **Corrección:** error `formatMoney is not defined` al abrir la página de Licitaciones (modo privacidad / formateo de importes).
+
+---
+
 ## v2.4.9
 
 ### PIG (EISSS) — Tesorería
