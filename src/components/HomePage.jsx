@@ -19,6 +19,8 @@ import {
 import { useDataContext } from './DataContext';
 import { useTheme } from './ThemeContext';
 import { useCurrency } from './CurrencyContext';
+import Sensitive from './Sensitive';
+import { privacyTypeFromStatLabel } from '../utils/privacyFormat';
 import { useAuth } from './AuthContext';
 import { useNavigation } from './NavigationContext';
 import { supabase } from '../config/supabase';
@@ -1445,7 +1447,7 @@ const HomePage = () => {
                     color: colors.text,
                     marginBottom: '4px',
                   }}>
-                    {stat.value}
+                    <Sensitive value={stat.value} type={privacyTypeFromStatLabel(stat.label)} />
                   </div>
                   <div style={{
                     fontSize: '14px',

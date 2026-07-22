@@ -28,6 +28,8 @@ import holdedEmployeesService from '../services/holdedEmployeesService';
 import hojaRutaService from '../services/hojaRutaSupabaseService';
 import subvencionesService from '../services/subvencionesService';
 import { useTheme } from './ThemeContext';
+import Sensitive from './Sensitive';
+import { sensitiveTypeFromLabel } from '../utils/sensitiveData';
 import { useNavigation } from './NavigationContext';
 import { useAuth } from './AuthContext';
 import { supabase } from '../config/supabase';
@@ -734,7 +736,7 @@ const EmpleadosPage = () => {
                 <div style={{ flex: 1 }}>
                   <div style={{ display: 'flex', alignItems: 'center', marginBottom: '8px', gap: '12px' }}>
                     <h3 style={{ fontSize: '18px', fontWeight: '600', color: colors.text, margin: 0 }}>
-                      {empleado.nombreCompleto}
+                      <Sensitive value={empleado.nombreCompleto} type="name" />
                     </h3>
                     <div style={{
                       display: 'flex',
@@ -786,13 +788,13 @@ const EmpleadosPage = () => {
                     {empleado.email && (
                       <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                         <Mail size={14} />
-                        {empleado.email}
+                        <Sensitive value={empleado.email} type="email" />
                       </span>
                     )}
                     {empleado.telefono && (
                       <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                         <Phone size={14} />
-                        {empleado.telefono}
+                        <Sensitive value={empleado.telefono} type="phone" />
                       </span>
                     )}
                     {empleado.departamento && (
@@ -1330,8 +1332,10 @@ const EmpleadosPage = () => {
 };
 
 // Componente auxiliar para mostrar campos de información
-const InfoField = ({ label, value, colors, icon, valueColor, fullWidth }) => {
+const InfoField = ({ label, value, colors, icon, valueColor, fullWidth, sensitiveType }) => {
   if (!value) return null;
+  const type = sensitiveType || sensitiveTypeFromLabel(label);
+  const displayValue = type ? <Sensitive value={value} type={type} /> : value;
   
   return (
     <div style={{ gridColumn: fullWidth ? '1 / -1' : 'auto' }}>
@@ -1347,7 +1351,7 @@ const InfoField = ({ label, value, colors, icon, valueColor, fullWidth }) => {
         fontWeight: '500'
       }}>
         {icon && <span style={{ color: colors.primary }}>{icon}</span>}
-        {value}
+        {displayValue}
       </div>
     </div>
   );

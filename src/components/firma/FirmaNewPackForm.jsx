@@ -1,6 +1,7 @@
 import React from 'react';
 import { Plus, RefreshCw, Upload, Users, X, XCircle } from 'feather-icons-react';
 import { useTheme } from '../ThemeContext';
+import Sensitive from '../Sensitive';
 import holdedEmployeesService from '../../services/holdedEmployeesService';
 import {
   FIRMA_DOCUMENTO_GRUPOS,
@@ -351,12 +352,14 @@ function EmployeePreview({ colors, employee, entity }) {
         lineHeight: 1.55
       }}
     >
-      <div style={{ fontWeight: 800, marginBottom: 8 }}>{employee.nombreCompleto}</div>
+      <div style={{ fontWeight: 800, marginBottom: 8 }}>
+        <Sensitive value={employee.nombreCompleto} type="name" />
+      </div>
       <div><b>Empresa:</b> {getFirmaEmpresaNombre(entity)}</div>
-      <div><b>DNI:</b> {employee.dni || '—'}</div>
+      <div><b>DNI:</b> <Sensitive value={employee.dni || '—'} type="dni" /></div>
       <div><b>Puesto:</b> {employee.contratoPuesto || employee.puesto || '—'}</div>
-      <div><b>Teléfono OTP:</b> {employee.telefono || '—'}</div>
-      <div><b>Email:</b> {employee.email || '—'}</div>
+      <div><b>Teléfono OTP:</b> <Sensitive value={employee.telefono || '—'} type="phone" /></div>
+      <div><b>Email:</b> <Sensitive value={employee.email || '—'} type="email" /></div>
     </div>
   );
 }

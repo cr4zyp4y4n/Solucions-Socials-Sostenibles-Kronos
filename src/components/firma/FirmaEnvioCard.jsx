@@ -23,6 +23,7 @@ import {
 } from './firmaPageHelpers';
 import { FirmaButton, FirmaStatusBadge } from './FirmaUi';
 import { FirmaDropdown, FirmaIconMenu } from './FirmaDropdown';
+import Sensitive from '../Sensitive';
 
 const flowIcon = (key) => {
   if (key === 'firmado') return CheckCircle;
@@ -154,7 +155,7 @@ export default function FirmaEnvioCard({
           <div style={{ flex: '1 1 200px', minWidth: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
               <div style={{ fontSize: 16, fontWeight: 800, lineHeight: 1.3 }}>
-                {envio.trabajador?.nombre || 'Sin trabajador'}
+                <Sensitive value={envio.trabajador?.nombre || 'Sin trabajador'} type="name" />
               </div>
               <FirmaStatusBadge
                 flow={flow}
@@ -207,8 +208,12 @@ export default function FirmaEnvioCard({
               flex: '0 0 auto'
             }}
           >
-            {envio.trabajador?.telefono ? <div>{envio.trabajador.telefono}</div> : null}
-            {envio.trabajador?.email ? <div>{envio.trabajador.email}</div> : null}
+            {envio.trabajador?.telefono ? (
+              <div><Sensitive value={envio.trabajador.telefono} type="phone" /></div>
+            ) : null}
+            {envio.trabajador?.email ? (
+              <div><Sensitive value={envio.trabajador.email} type="email" /></div>
+            ) : null}
             {envio.firmado_at ? (
               <div style={{ color: colors.success, fontWeight: 700 }}>
                 Firmado {formatFirmaDate(envio.firmado_at)}

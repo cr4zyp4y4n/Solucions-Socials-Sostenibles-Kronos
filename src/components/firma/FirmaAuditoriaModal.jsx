@@ -1,6 +1,7 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { useTheme } from '../ThemeContext';
+import Sensitive from '../Sensitive';
 import { describeFirmaAuditoriaRow, describeDocumentoAceptacion } from '../../utils/firmaAuditoriaLabels';
 import { documentosPackOrdenados } from './firmaPageHelpers';
 import FirmaModal from './FirmaModal';
@@ -17,7 +18,13 @@ export default function FirmaAuditoriaModal({ envio, rows, loading, onClose }) {
       onClose={onClose}
       titleId="firma-auditoria-title"
       title="Auditoría del envío"
-      subtitle={envio ? `${envio.trabajador?.nombre || 'Trabajador'} · ${envioLabel(envio)}` : ''}
+      subtitle={envio ? (
+        <>
+          <Sensitive value={envio.trabajador?.nombre || 'Trabajador'} type="name" />
+          {' · '}
+          {envioLabel(envio)}
+        </>
+      ) : ''}
       width={600}
       footer={(
         <FirmaButton variant="ghost" onClick={onClose} style={{ width: '100%' }}>

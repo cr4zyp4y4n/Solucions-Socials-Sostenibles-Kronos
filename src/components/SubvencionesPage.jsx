@@ -18,6 +18,8 @@ import * as XLSX from 'xlsx';
 import subvencionesService from '../services/subvencionesService';
 import * as menjarDhortService from '../services/menjarDhortService';
 import { useTheme } from './ThemeContext';
+import { usePrivacy } from './PrivacyContext';
+import { applyPrivacyMoney } from '../utils/privacyFormat';
 import holdedEmployeesService from '../services/holdedEmployeesService';
 import { useNavigation } from './NavigationContext';
 import SectionHeader from './SectionHeader';
@@ -51,6 +53,7 @@ const InfoField = ({ label, value, colors, icon, valueColor, fullWidth }) => {
 
 export default function SubvencionesPage() {
   const { colors } = useTheme();
+  const { hideSensitiveData } = usePrivacy();
   const FASES_DEFINICION = useMemo(() => ([
     { value: '1', label: 'FASE 1', desc: 'CONVOCATORIA-POSTULACIÓN, Se acompaña de una resolución y-o una Orden' },
     { value: '2', label: 'FASE 2', desc: 'PRESENTACIÓN Y REGISTRO DE PRESUPUESTO Y MEMORIA TECNICA + OTROS DOC QUE SE PUEDAN SOLICITAR SEGÚN LA SUBV' },
@@ -100,8 +103,9 @@ export default function SubvencionesPage() {
 
   const formatCurrency = useCallback((amount) => {
     const num = typeof amount === 'number' ? amount : 0;
-    return new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(num);
-  }, []);
+    const formatted = new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(num);
+    return applyPrivacyMoney(formatted, hideSensitiveData);
+  }, [hideSensitiveData]);
 
   const parseNumberEs = useCallback((value) => {
     if (value === null || value === undefined) return 0;

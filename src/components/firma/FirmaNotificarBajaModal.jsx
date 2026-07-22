@@ -1,6 +1,7 @@
 import React from 'react';
 import { CheckCircle, Mail, Phone } from 'feather-icons-react';
 import { useTheme } from '../ThemeContext';
+import Sensitive from '../Sensitive';
 import FirmaModal from './FirmaModal';
 import { FirmaButton } from './FirmaUi';
 import { canalesNotificacionBaja, envioLabel } from './firmaPageHelpers';
@@ -25,7 +26,13 @@ export default function FirmaNotificarBajaModal({
       onClose={onClose}
       titleId="firma-notificar-baja-title"
       title="Notificar fin de relación laboral"
-      subtitle={`${envio.trabajador?.nombre || 'Trabajador'} · ${envioLabel(envio)}`}
+      subtitle={(
+        <>
+          <Sensitive value={envio.trabajador?.nombre || 'Trabajador'} type="name" />
+          {' · '}
+          {envioLabel(envio)}
+        </>
+      )}
       width={520}
       footer={(
         <div style={{ display: 'grid', gap: 8 }}>
@@ -84,6 +91,7 @@ export default function FirmaNotificarBajaModal({
           icon={Phone}
           titulo="WhatsApp"
           destino={telefono || 'Sin teléfono en Holded'}
+          destinoType="phone"
           enviado={canales.whatsapp}
           disabled={!telefono}
           onClick={() => onWhatsApp(envio)}
@@ -93,6 +101,7 @@ export default function FirmaNotificarBajaModal({
           icon={Mail}
           titulo="Email"
           destino={email || 'Sin email en Holded'}
+          destinoType="email"
           enviado={canales.email}
           disabled={!email}
           onClick={() => onEmail(envio)}
@@ -102,7 +111,7 @@ export default function FirmaNotificarBajaModal({
   );
 }
 
-function CanalCard({ colors, icon: Icon, titulo, destino, enviado, disabled, onClick }) {
+function CanalCard({ colors, icon: Icon, titulo, destino, destinoType, enviado, disabled, onClick }) {
   return (
     <div
       style={{
@@ -121,7 +130,9 @@ function CanalCard({ colors, icon: Icon, titulo, destino, enviado, disabled, onC
               <span style={{ fontSize: 11, color: colors.success, fontWeight: 800 }}>✓ Enviado</span>
             ) : null}
           </div>
-          <div style={{ marginTop: 6, fontSize: 12, color: colors.textSecondary }}>{destino}</div>
+          <div style={{ marginTop: 6, fontSize: 12, color: colors.textSecondary }}>
+            <Sensitive value={destino} type={destinoType || 'text'} />
+          </div>
         </div>
         <FirmaButton size="sm" disabled={disabled} onClick={onClick}>
           {enviado ? 'Reenviar' : 'Enviar'}

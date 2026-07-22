@@ -10,6 +10,7 @@ import {
   User
 } from 'lucide-react';
 import { useTheme } from '../ThemeContext';
+import Sensitive from '../Sensitive';
 import { formatDateShortMadrid, formatTimeMadrid } from '../../utils/timeUtils';
 import { empleadoEstadoFlow, estadoPanelColor } from './panelFichajesHelpers';
 
@@ -86,7 +87,7 @@ export default function PanelEmpleadoCard({ empleado, resumen, index = 0, onOpen
                 }}
                 title={nombre}
               >
-                {nombre}
+                <Sensitive value={nombre} type="name" />
               </div>
               <div style={{ marginTop: 5, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
                 <span
@@ -113,7 +114,7 @@ export default function PanelEmpleadoCard({ empleado, resumen, index = 0, onOpen
                   whiteSpace: 'nowrap'
                 }}
               >
-                {empleado.email || '\u00a0'}
+                <Sensitive value={empleado.email || '\u00a0'} type="email" />
               </div>
             </div>
           </div>

@@ -1,6 +1,7 @@
 import React from 'react';
 import { CheckCircle, Download, Eye } from 'feather-icons-react';
 import { useTheme } from '../ThemeContext';
+import Sensitive from '../Sensitive';
 import { getFirmaDocumentoLabel } from '../../constants/firmaDocumentos';
 import FirmaModal from './FirmaModal';
 import { FirmaButton } from './FirmaUi';
@@ -28,7 +29,13 @@ export default function FirmaDocumentosModal({
       onClose={onClose}
       titleId="firma-docs-title"
       title="Documentos firmados"
-      subtitle={`${envio.trabajador?.nombre || 'Trabajador'} · ${envioLabel(envio)}`}
+      subtitle={(
+        <>
+          <Sensitive value={envio.trabajador?.nombre || 'Trabajador'} type="name" />
+          {' · '}
+          {envioLabel(envio)}
+        </>
+      )}
       width={540}
       footer={(
         <FirmaButton variant="ghost" onClick={onClose} style={{ width: '100%' }}>

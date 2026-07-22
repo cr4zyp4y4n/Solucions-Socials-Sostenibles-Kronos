@@ -81,4 +81,7 @@ body {
   color: inherit !important;
 }
 
-
+/* Modo privacidad: refuerzo para elementos marcados manualmente */
+body.privacy-mode-active [data-sensitive] {
+  user-select: none;
+}

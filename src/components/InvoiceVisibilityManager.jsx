@@ -14,12 +14,15 @@ import {
 } from 'feather-icons-react';
 import { useAuth } from './AuthContext';
 import { useTheme } from './ThemeContext';
+import { usePrivacy } from './PrivacyContext';
+import { applyPrivacyMoney } from '../utils/privacyFormat';
 import { invoiceVisibilityService } from '../services/invoiceVisibilityService';
 import { supabase } from '../config/supabase';
 
 const InvoiceVisibilityManager = () => {
   const { user } = useAuth();
   const { colors } = useTheme();
+  const { hideSensitiveData } = usePrivacy();
   
   // Estados principales
   const [allInvoices, setAllInvoices] = useState([]);
@@ -164,11 +167,14 @@ const InvoiceVisibilityManager = () => {
 
   // Formatear moneda
   const formatCurrency = (amount) => {
-    if (!amount) return '0,00 €';
-    return new Intl.NumberFormat('es-ES', {
+    if (!amount) {
+      return applyPrivacyMoney('0,00 €', hideSensitiveData);
+    }
+    const formatted = new Intl.NumberFormat('es-ES', {
       style: 'currency',
       currency: 'EUR'
     }).format(amount);
+    return applyPrivacyMoney(formatted, hideSensitiveData);
   };
 
   if (!canManageVisibility) {

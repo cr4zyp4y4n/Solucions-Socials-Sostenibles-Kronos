@@ -36,6 +36,7 @@ import LoginPage from './components/LoginPage';
 import OnboardingPage from './components/OnboardingPage';
 import { DataProvider } from './components/DataContext';
 import { ThemeProvider } from './components/ThemeContext';
+import { PrivacyProvider } from './components/PrivacyContext';
 import { CurrencyProvider } from './components/CurrencyContext';
 import { AuthProvider, useAuth } from './components/AuthContext';
 import licitacionsService from './services/licitacionsService';
@@ -112,13 +113,15 @@ const AppContent = () => {
 function App() {
   return (
     <ThemeProvider>
-      <AuthProvider>
-        <DataProvider>
-          <CurrencyProvider>
-            <AppContent />
-          </CurrencyProvider>
-        </DataProvider>
-      </AuthProvider>
+      <PrivacyProvider>
+        <AuthProvider>
+          <DataProvider>
+            <CurrencyProvider>
+              <AppContent />
+            </CurrencyProvider>
+          </DataProvider>
+        </AuthProvider>
+      </PrivacyProvider>
     </ThemeProvider>
   );
 }

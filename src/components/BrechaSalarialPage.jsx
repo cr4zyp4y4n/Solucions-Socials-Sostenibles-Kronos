@@ -2,6 +2,8 @@ import React, { useCallback, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Scale, Download, RefreshCw, AlertCircle, CheckCircle, Users, Upload } from 'lucide-react';
 import { useTheme } from './ThemeContext';
+import { usePrivacy } from './PrivacyContext';
+import { applyPrivacyMoney } from '../utils/privacyFormat';
 import SectionHeader from './SectionHeader';
 import {
   buildBrechaDataset,
@@ -18,7 +20,7 @@ const ENTITY_OPTIONS = [
   { id: 'MENJAR_DHORT', label: "Menjar d'Hort", company: 'menjar' }
 ];
 
-function formatEuro(n) {
+function formatEuroBase(n) {
   if (n == null || !Number.isFinite(n)) return '—';
   return new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(n);
 }
@@ -30,6 +32,11 @@ function formatPct(n) {
 
 export default function BrechaSalarialPage() {
   const { colors } = useTheme();
+  const { hideSensitiveData } = usePrivacy();
+  const formatEuro = useCallback(
+    (n) => applyPrivacyMoney(formatEuroBase(n), hideSensitiveData),
+    [hideSensitiveData]
+  );
   const currentYear = new Date().getFullYear();
   const [entity, setEntity] = useState('EI_SSS');
   const [year, setYear] = useState(currentYear - 1);

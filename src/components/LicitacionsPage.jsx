@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { FileText, RefreshCw, ExternalLink, Save, Search, HelpCircle } from 'feather-icons-react';
 import { motion } from 'framer-motion';
 import { useTheme } from './ThemeContext';
+import { usePrivacy } from './PrivacyContext';
+import { applyPrivacyMoney } from '../utils/privacyFormat';
 import SectionHeader from './SectionHeader';
 import LicitacioDetailModal from './LicitacioDetailModal';
 import LicitacionsStats from './licitacions/LicitacionsStats';
@@ -30,7 +32,7 @@ const SOURCE_COLORS = {
   PLACSP: '#8B5CF6'
 };
 
-function formatMoney(value) {
+function formatMoneyBase(value) {
   const n = Number(value);
   if (!Number.isFinite(n)) return '—';
   try {
@@ -111,7 +113,7 @@ function SourceBadge({ source, colors }) {
   );
 }
 
-function LicitacioRow({ row, colors, onUpdate, onSave, onOpen, onSelect, isNew }) {
+function LicitacioRow({ row, colors, formatMoney, onUpdate, onSave, onOpen, onSelect, isNew }) {
   const inputStyle = {
     width: '100%',
     background: colors.background,
@@ -344,6 +346,11 @@ function LicitacioRow({ row, colors, onUpdate, onSave, onOpen, onSelect, isNew }
 
 export default function LicitacionsPage() {
   const { colors } = useTheme();
+  const { hideSensitiveData } = usePrivacy();
+  const formatMoney = useCallback(
+    (value) => applyPrivacyMoney(formatMoneyBase(value), hideSensitiveData),
+    [hideSensitiveData]
+  );
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
@@ -810,6 +817,7 @@ export default function LicitacionsPage() {
               key={r.id}
               row={r}
               colors={colors}
+              formatMoney={formatMoney}
               onUpdate={updateRowLocal}
               onSave={saveRow}
               onOpen={openUrl}

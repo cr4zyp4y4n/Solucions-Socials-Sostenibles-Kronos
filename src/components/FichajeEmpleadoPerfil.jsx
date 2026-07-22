@@ -27,6 +27,7 @@ import { es } from 'date-fns/locale';
 import fichajeSupabaseService from '../services/fichajeSupabaseService';
 import { formatTimeMadrid, formatDateShortMadrid, formatearHorasDecimal } from '../utils/timeUtils';
 import { useTheme } from './ThemeContext';
+import Sensitive from './Sensitive';
 import { useAuth } from './AuthContext';
 import { supabase } from '../config/supabase';
 import { KronosButton, KronosCard, KronosFieldLabel, KronosInput, KronosSelect } from './kronos';
@@ -329,10 +330,10 @@ const FichajeEmpleadoPerfil = ({ empleado, onBack, resumen, mesInicial }) => {
         </div>
         <div style={{ minWidth: 0 }}>
           <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: colors.text }}>
-            {nombreEmpleado}
+            <Sensitive value={nombreEmpleado} type="name" />
           </h2>
           <div style={{ marginTop: 5, fontSize: 13, color: colors.textSecondary }}>
-            {empleado?.email || 'Sin email'}
+            <Sensitive value={empleado?.email || 'Sin email'} type="email" />
           </div>
           <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
             <span

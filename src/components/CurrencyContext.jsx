@@ -1,4 +1,6 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { usePrivacy } from './PrivacyContext';
+import { applyPrivacyMoney } from '../utils/privacyFormat';
 
 const CurrencyContext = createContext();
 
@@ -11,6 +13,7 @@ export const useCurrency = () => {
 };
 
 export const CurrencyProvider = ({ children }) => {
+  const { hideSensitiveData } = usePrivacy();
   const [currency, setCurrency] = useState('EUR');
   const [exchangeRates, setExchangeRates] = useState({});
   const [loading, setLoading] = useState(false);
@@ -88,18 +91,19 @@ export const CurrencyProvider = ({ children }) => {
     return amountNum;
   };
 
-  const formatCurrency = (amount, currencyCode = currency) => {
+  const formatCurrency = useCallback((amount, currencyCode = currency) => {
     const selectedCurrency = currencies.find(c => c.code === currencyCode) || currencies[0];
     const convertedAmount = convertCurrency(amount, 'EUR', currencyCode);
     
     // Redondear a 2 decimales para evitar números con muchos decimales
     const roundedAmount = Math.round(convertedAmount * 100) / 100;
     
-    return `${selectedCurrency.symbol}${roundedAmount.toLocaleString('es-ES', {
+    const formatted = `${selectedCurrency.symbol}${roundedAmount.toLocaleString('es-ES', {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2
     })}`;
-  };
+    return applyPrivacyMoney(formatted, hideSensitiveData);
+  }, [currency, exchangeRates, hideSensitiveData]);
 
   const value = {
     currency,

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from './AuthContext';
 import { useTheme } from './ThemeContext';
+import Sensitive from './Sensitive';
 import { BarChart2, LogOut, Edit2, Save, X, User, Key, Mail, Calendar, Shield } from 'feather-icons-react';
 import OnboardingPage from './OnboardingPage';
 import { supabase } from '../config/supabase';
@@ -424,7 +425,7 @@ const UserProfile = ({ onShowOnboarding }) => {
           <div style={{ display: 'flex', alignItems: 'center', gap: 18, margin: '18px 0 0 0', flexWrap: 'wrap' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 7, color: colors.textSecondary, fontSize: 15 }}>
               <Mail size={15} />
-              <span style={{ userSelect: 'none' }}>{user?.email}</span>
+              <Sensitive value={user?.email} type="email" />
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 7, color: colors.textSecondary, fontSize: 15 }}>
               <Calendar size={14} />

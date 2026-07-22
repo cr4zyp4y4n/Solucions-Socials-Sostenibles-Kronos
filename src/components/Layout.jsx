@@ -12,9 +12,13 @@ import {
   Download,
   CheckCircle,
   X,
-  ChevronDown
+  ChevronDown,
+  Eye,
+  EyeOff
 } from 'feather-icons-react';
 import { useTheme } from './ThemeContext';
+import { usePrivacy } from './PrivacyContext';
+import Sensitive from './Sensitive';
 import { useAuth } from './AuthContext';
 import { useNavigation } from './NavigationContext';
 import { CateringProvider } from './catering/CateringContext';
@@ -102,6 +106,7 @@ const Layout = () => {
     return {};
   });
   const { isDarkMode, toggleTheme, colors } = useTheme();
+  const { hideSensitiveData, toggleHideSensitiveData } = usePrivacy();
   const { user, signOut } = useAuth();
 
   // Consultar el perfil real del usuario desde la base de datos
@@ -794,7 +799,15 @@ const Layout = () => {
                   textOverflow: 'ellipsis',
                   userSelect: 'none'
                 }}>
-                  {userProfile?.name || user?.user_metadata?.name || user?.email || 'Usuario'}
+                  <Sensitive
+                    value={userProfile?.name || user?.user_metadata?.name || user?.email || 'Usuario'}
+                    type="name"
+                    style={{
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis'
+                    }}
+                  />
                 </div>
                 <div style={{
                   color: colors.textSecondary,
@@ -1373,6 +1386,29 @@ const Layout = () => {
                   )}
                 </AnimatePresence>
               </div>
+
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={toggleHideSensitiveData}
+                title={hideSensitiveData ? 'Mostrar datos e importes' : 'Ocultar datos sensibles e importes'}
+                aria-label={hideSensitiveData ? 'Mostrar datos e importes' : 'Ocultar datos sensibles e importes'}
+                aria-pressed={hideSensitiveData}
+                style={{
+                  background: hideSensitiveData ? `${colors.primary}18` : 'none',
+                  border: hideSensitiveData ? `1px solid ${colors.primary}44` : 'none',
+                  cursor: 'pointer',
+                  padding: '8px',
+                  borderRadius: '6px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: hideSensitiveData ? colors.primary : colors.textSecondary,
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                {hideSensitiveData ? <Eye size={18} /> : <EyeOff size={18} />}
+              </motion.button>
 
               <motion.button
                 whileHover={{ scale: 1.05 }}

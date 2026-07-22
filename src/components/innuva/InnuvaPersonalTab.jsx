@@ -1,10 +1,12 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import { AlertCircle, DownloadCloud, RefreshCw, UploadCloud } from 'feather-icons-react';
 import { useTheme } from '../ThemeContext';
-import { KronosButton, KronosCard } from '../kronos';
+import { usePrivacy } from '../PrivacyContext';
+import { applyPrivacyMoney } from '../../utils/privacyFormat';
 import { useInnuvaPersonalConverter } from './useInnuvaPersonalConverter';
+import { KronosButton, KronosCard } from '../kronos';
 
-function formatEuro(n) {
+function formatEuroBase(n) {
   return `${Number(n || 0).toFixed(2).replace('.', ',')} €`;
 }
 
@@ -65,6 +67,11 @@ function DataTable({ headers, rows, rowKey = 'id', minWidth = 700 }) {
 
 export default function InnuvaPersonalTab() {
   const { colors } = useTheme();
+  const { hideSensitiveData } = usePrivacy();
+  const formatEuro = useCallback(
+    (n) => applyPrivacyMoney(formatEuroBase(n), hideSensitiveData),
+    [hideSensitiveData]
+  );
   const c = useInnuvaPersonalConverter();
   const r = c.result;
 

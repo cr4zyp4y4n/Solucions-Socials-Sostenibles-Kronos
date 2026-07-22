@@ -17,6 +17,7 @@ import {
   CreditCard
 } from 'lucide-react';
 import { useTheme } from './ThemeContext';
+import Sensitive from './Sensitive';
 import { useAuth } from './AuthContext';
 import sociosService from '../services/sociosService';
 import { formatDateOnlyLocal } from '../utils/timeUtils';
@@ -613,7 +614,7 @@ const SociosPage = () => {
                         color: colors.text,
                         margin: '0 0 4px 0'
                       }}>
-                        {socio.nombre} {socio.apellido}
+                        <Sensitive value={`${socio.nombre} ${socio.apellido}`.trim()} type="name" />
                       </h4>
                       <div style={{
                         display: 'flex',
@@ -624,7 +625,7 @@ const SociosPage = () => {
                       }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                           <Mail size={12} />
-                          <span>{socio.correo}</span>
+                          <span><Sensitive value={socio.correo} type="email" /></span>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                           <User size={12} />
@@ -637,13 +638,13 @@ const SociosPage = () => {
                         {socio.telefono && (
                           <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                             <Phone size={12} />
-                            <span>{socio.telefono}</span>
+                            <span><Sensitive value={socio.telefono} type="phone" /></span>
                           </div>
                         )}
                         {socio.dni && (
                           <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                             <CreditCard size={12} />
-                            <span>{socio.dni}</span>
+                            <span><Sensitive value={socio.dni} type="dni" /></span>
                           </div>
                         )}
                       </div>

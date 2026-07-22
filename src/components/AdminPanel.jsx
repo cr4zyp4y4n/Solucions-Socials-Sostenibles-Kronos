@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from './AuthContext';
 import { useTheme } from './ThemeContext';
+import Sensitive from './Sensitive';
 import { useNavigation } from './NavigationContext';
 import {
   Users,
@@ -922,7 +923,7 @@ const AdminPanel = () => {
                             </div>
                             <div>
                               <div style={{ color: colors.text, fontWeight: '600', fontSize: '14px' }}>
-                                {usr.name || 'Sin nombre'}
+                                <Sensitive value={usr.name || 'Sin nombre'} type="name" />
                               </div>
                               {usr.id === user.id && (
                                 <div style={{
@@ -947,7 +948,7 @@ const AdminPanel = () => {
                           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                             <Mail size={14} color={colors.textSecondary} />
                             <span style={{ color: colors.text, fontSize: '14px' }}>
-                              {usr.email || 'N/A'}
+                              <Sensitive value={usr.email || 'N/A'} type="email" />
                             </span>
                           </div>
                         </td>

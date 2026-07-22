@@ -1,7 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, ExternalLink, Save, Tag } from 'feather-icons-react';
 import { useTheme } from './ThemeContext';
+import { usePrivacy } from './PrivacyContext';
+import { applyPrivacyMoney } from '../utils/privacyFormat';
 import { getEstatContractacioMeta } from '../constants/licitacionsEstat';
 
 const ESTATS = ['Pendent', 'Interessant', 'Descartada', 'Contactat'];
@@ -12,7 +14,7 @@ const SOURCE_COLORS = {
   PLACSP: '#8B5CF6'
 };
 
-function formatMoney(value) {
+function formatMoneyBase(value) {
   const n = Number(value);
   if (!Number.isFinite(n)) return '—';
   try {
@@ -105,6 +107,11 @@ export default function LicitacioDetailModal({
   saving = false
 }) {
   const { colors } = useTheme();
+  const { hideSensitiveData } = usePrivacy();
+  const formatMoney = useCallback(
+    (value) => applyPrivacyMoney(formatMoneyBase(value), hideSensitiveData),
+    [hideSensitiveData]
+  );
   const [draft, setDraft] = useState(row);
 
   useEffect(() => {

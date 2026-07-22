@@ -1,6 +1,7 @@
 import React from 'react';
 import { Clock, FileText } from 'feather-icons-react';
 import { useTheme } from '../ThemeContext';
+import Sensitive from '../Sensitive';
 import FirmaModal from './FirmaModal';
 import { FirmaButton } from './FirmaUi';
 import {
@@ -21,7 +22,13 @@ export default function FirmaTimelineModal({ envio, onClose, onVerFirmados, onAu
       onClose={onClose}
       titleId="firma-timeline-title"
       title="Seguimiento del envío"
-      subtitle={`${envio.trabajador?.nombre || 'Trabajador'} · ${envioLabel(envio)}`}
+      subtitle={(
+        <>
+          <Sensitive value={envio.trabajador?.nombre || 'Trabajador'} type="name" />
+          {' · '}
+          {envioLabel(envio)}
+        </>
+      )}
       width={480}
       footer={(
         <div style={{ display: 'grid', gap: 8 }}>
