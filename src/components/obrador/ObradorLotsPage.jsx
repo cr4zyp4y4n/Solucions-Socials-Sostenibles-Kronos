@@ -43,7 +43,7 @@ function labelRecepcio(r) {
 
 const formInicial = () => ({
   id_producte: '',
-  id_recepcio: '',
+  id_recepcions: [],
   id_operari: '',
   quantitat_kg: '',
   temp_final_coccio: '',
@@ -223,10 +223,28 @@ export default function ObradorLotsPage() {
     () => productes.find((p) => p.id === form.id_producte),
     [productes, form.id_producte]
   );
-  const recepcionsValides = useMemo(
-    () => recepcions.filter((r) => recepcioEsValidaPerProduccio(r.estat)),
-    [recepcions]
+
+  const proveidorsProducte = useMemo(() => {
+    const links = producteSeleccionat?.obrador_producte_proveidors || [];
+    return links
+      .map((l) => ({
+        id: l.id_proveidor || l.obrador_proveidors?.id,
+        nom: l.obrador_proveidors?.nom || 'Proveïdor',
+        ingredient: l.ingredient_nom || null
+      }))
+      .filter((p) => p.id);
+  }, [producteSeleccionat]);
+
+  const idsProveidorProducte = useMemo(
+    () => new Set(proveidorsProducte.map((p) => p.id)),
+    [proveidorsProducte]
   );
+
+  const recepcionsValides = useMemo(() => {
+    const base = recepcions.filter((r) => recepcioEsValidaPerProduccio(r.estat));
+    if (!form.id_producte || idsProveidorProducte.size === 0) return base;
+    return base.filter((r) => idsProveidorProducte.has(r.id_proveidor));
+  }, [recepcions, form.id_producte, idsProveidorProducte]);
 
   const tempNum = form.temp_final_coccio === '' ? null : Number(form.temp_final_coccio);
   const tempMin = producteSeleccionat?.temp_coccio != null ? Number(producteSeleccionat.temp_coccio) : null;
@@ -238,7 +256,7 @@ export default function ObradorLotsPage() {
       const [l, prod, rec, op] = await Promise.all([
         getLots(),
         getProductes(),
-        getRecepcions(20),
+        getRecepcions(80),
         getOperaris()
       ]);
       setLots(l);
@@ -267,17 +285,40 @@ export default function ObradorLotsPage() {
     setError('');
   }
 
+  function onCanviProducte(idProducte) {
+    setForm((prev) => ({
+      ...prev,
+      id_producte: idProducte,
+      id_recepcions: []
+    }));
+    setError('');
+  }
+
+  function toggleRecepcio(idRecepcio) {
+    setForm((prev) => {
+      const has = prev.id_recepcions.includes(idRecepcio);
+      const next = has
+        ? prev.id_recepcions.filter((id) => id !== idRecepcio)
+        : [...prev.id_recepcions, idRecepcio];
+      return { ...prev, id_recepcions: next };
+    });
+    setError('');
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
     setError('');
 
-    if (!form.id_producte || !form.id_recepcio) {
-      setError('Producte i recepció són obligatoris.');
+    if (!form.id_producte || !form.id_recepcions.length) {
+      setError('Producte i almenys una recepció són obligatoris.');
       return;
     }
-    const recepcioSeleccionada = recepcions.find((r) => r.id === form.id_recepcio);
-    if (!recepcioEsValidaPerProduccio(recepcioSeleccionada?.estat)) {
-      setError('La recepció seleccionada no és apta per producció.');
+    const invalid = form.id_recepcions.some((id) => {
+      const r = recepcions.find((x) => x.id === id);
+      return !recepcioEsValidaPerProduccio(r?.estat);
+    });
+    if (invalid) {
+      setError('Hi ha alguna recepció seleccionada que no és apta per producció.');
       return;
     }
     if (!form.mostra_guardada) {
@@ -293,7 +334,7 @@ export default function ObradorLotsPage() {
     try {
       const resultat = await crearLot({
         id_producte: form.id_producte,
-        id_recepcio: form.id_recepcio,
+        id_recepcions: form.id_recepcions,
         id_operari: form.id_operari || null,
         quantitat_kg: form.quantitat_kg === '' ? null : Number(form.quantitat_kg),
         temp_final_coccio: tempNum,
@@ -390,7 +431,7 @@ export default function ObradorLotsPage() {
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
                   <thead>
                     <tr>
-                      {['Codi lot', 'Data', 'Producte', 'Operari', 'Temp. cocció', 'Estat', 'Mostra'].map((col) => (
+                      {['Codi lot', 'Data', 'Producte', 'Recepcions', 'Operari', 'Temp. cocció', 'Estat', 'Mostra'].map((col) => (
                         <th
                           key={col}
                           style={{
@@ -414,6 +455,18 @@ export default function ObradorLotsPage() {
                         <td style={{ padding: '12px 16px', fontWeight: 600 }}>{lot.codi_lot || '—'}</td>
                         <td style={{ padding: '12px 16px' }}>{formatData(lot.data_produccio)}</td>
                         <td style={{ padding: '12px 16px' }}>{lot.obrador_productes?.nom || '—'}</td>
+                        <td style={{ padding: '12px 16px', fontSize: 13, color: colors.textSecondary }}>
+                          {(() => {
+                            const rows = [...(lot.obrador_lot_recepcions || [])]
+                              .sort((a, b) => (a.ordre || 0) - (b.ordre || 0));
+                            if (!rows.length) return '1';
+                            const noms = rows
+                              .map((lr) => lr.obrador_recepcions?.obrador_proveidors?.nom)
+                              .filter(Boolean);
+                            if (!noms.length) return String(rows.length);
+                            return `${rows.length}: ${noms.join(', ')}`;
+                          })()}
+                        </td>
                         <td style={{ padding: '12px 16px' }}>{lot.obrador_operaris?.nom || '—'}</td>
                         <td style={{ padding: '12px 16px' }}>
                           {lot.temp_final_coccio != null ? `${lot.temp_final_coccio} °C` : '—'}
@@ -455,7 +508,7 @@ export default function ObradorLotsPage() {
                 <select
                   id="id_producte"
                   value={form.id_producte}
-                  onChange={(e) => actualitzar('id_producte', e.target.value)}
+                  onChange={(e) => onCanviProducte(e.target.value)}
                   style={inputStyle}
                   required
                 >
@@ -469,23 +522,72 @@ export default function ObradorLotsPage() {
                     Temp. mínima cocció: {producteSeleccionat.temp_coccio}°C
                   </p>
                 )}
+                {form.id_producte && proveidorsProducte.length > 0 ? (
+                  <p style={{ margin: '8px 0 0', fontSize: 13, color: colors.textSecondary }}>
+                    Proveïdors del producte:{' '}
+                    {proveidorsProducte.map((p) => (
+                      p.ingredient ? `${p.nom} (${p.ingredient})` : p.nom
+                    )).join(' · ')}
+                  </p>
+                ) : null}
+                {form.id_producte && proveidorsProducte.length === 0 ? (
+                  <p style={{ margin: '8px 0 0', fontSize: 13, color: colors.textSecondary }}>
+                    Aquest producte encara no té proveïdors associats (pestanya Productes).
+                    Es mostren totes les recepcions vàlides.
+                  </p>
+                ) : null}
               </div>
 
               <div>
-                <label style={labelStyle} htmlFor="id_recepcio">Recepció *</label>
-                <select
-                  id="id_recepcio"
-                  value={form.id_recepcio}
-                  onChange={(e) => actualitzar('id_recepcio', e.target.value)}
-                  style={inputStyle}
-                  required
-                >
-                  <option value="">Selecciona recepció...</option>
-                  {recepcionsValides.map((r) => (
-                    <option key={r.id} value={r.id}>{labelRecepcio(r)}</option>
-                  ))}
-                </select>
-                {recepcions.length > recepcionsValides.length && (
+                <div style={{ ...labelStyle, marginBottom: 8 }}>
+                  Recepcions * ({form.id_recepcions.length} seleccionada{form.id_recepcions.length === 1 ? '' : 's'})
+                </div>
+                {!form.id_producte ? (
+                  <p style={{ margin: 0, fontSize: 14, color: colors.textSecondary }}>
+                    Primer selecciona un producte.
+                  </p>
+                ) : recepcionsValides.length === 0 ? (
+                  <p style={{ margin: 0, fontSize: 14, color: colors.textSecondary }}>
+                    No hi ha recepcions aptes
+                    {proveidorsProducte.length > 0 ? ' dels proveïdors d\'aquest producte' : ''}.
+                  </p>
+                ) : (
+                  <div style={{
+                    maxHeight: 240,
+                    overflowY: 'auto',
+                    border: `0.5px solid ${colors.border}`,
+                    borderRadius: 8,
+                    background: colors.surface
+                  }}>
+                    {recepcionsValides.map((r) => {
+                      const checked = form.id_recepcions.includes(r.id);
+                      return (
+                        <label
+                          key={r.id}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'flex-start',
+                            gap: 10,
+                            padding: '10px 12px',
+                            borderBottom: `1px solid ${colors.border}`,
+                            cursor: 'pointer',
+                            fontSize: 13,
+                            background: checked ? `${colors.primary}14` : 'transparent'
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleRecepcio(r.id)}
+                            style={{ marginTop: 2 }}
+                          />
+                          <span>{labelRecepcio(r)}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
+                {recepcions.length > recepcions.filter((r) => recepcioEsValidaPerProduccio(r.estat)).length && (
                   <p style={{ margin: '8px 0 0', fontSize: 13, color: colors.textSecondary }}>
                     Les recepcions rebutjades no es poden utilitzar per crear lots.
                   </p>

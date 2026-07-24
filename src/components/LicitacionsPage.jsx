@@ -58,6 +58,56 @@ function formatDateInput(value) {
   return iso ? iso[1] : '';
 }
 
+/** Año de la licitación: plazo de oferta, si no, fecha de detección. */
+function yearFromLicitacio(row) {
+  const fromTermini = String(row?.termini_oferta || '').match(/^(\d{4})/);
+  if (fromTermini) return Number(fromTermini[1]);
+  if (row?.detected_at) {
+    const y = new Date(row.detected_at).getFullYear();
+    if (Number.isFinite(y)) return y;
+  }
+  return null;
+}
+
+function sortLicitacionsNuevasPrimero(list) {
+  return [...(list || [])].sort((a, b) => {
+    const da = a?.detected_at ? new Date(a.detected_at).getTime() : 0;
+    const db = b?.detected_at ? new Date(b.detected_at).getTime() : 0;
+    if (db !== da) return db - da;
+    return String(a?.termini_oferta || '').localeCompare(String(b?.termini_oferta || ''));
+  });
+}
+
+function PaulaCommentCard({ text, colors, onChange, placeholder }) {
+  const danger = colors.error || '#DC2626';
+  return (
+    <textarea
+      value={text || ''}
+      onChange={(e) => onChange?.(e.target.value)}
+      placeholder={placeholder || ''}
+      rows={3}
+      style={{
+        width: '100%',
+        boxSizing: 'border-box',
+        background: `${danger}14`,
+        border: `1px solid ${danger}44`,
+        borderLeft: `4px solid ${danger}`,
+        borderRadius: 10,
+        padding: '10px 12px',
+        color: danger,
+        fontSize: 13,
+        fontWeight: 650,
+        lineHeight: 1.4,
+        resize: 'vertical',
+        minHeight: 56,
+        fontFamily: 'inherit',
+        outline: 'none',
+        boxShadow: `0 1px 2px ${danger}22`
+      }}
+    />
+  );
+}
+
 function FieldLabel({ children, colors }) {
   return (
     <div style={{
@@ -127,6 +177,30 @@ function LicitacioRow({ row, colors, formatMoney, onUpdate, onSave, onOpen, onSe
 
   const daysLeft = daysUntil(row.termini_oferta);
   const urgent = daysLeft != null && daysLeft >= 0 && daysLeft <= 7;
+
+  // compose = campo blanco para escribir; card = solo tarjetita roja editable (tras Guardar)
+  const [commentView, setCommentView] = useState(
+    () => (String(row.notes_paula || '').trim() ? 'card' : 'compose')
+  );
+  const [composeText, setComposeText] = useState('');
+  const [cardText, setCardText] = useState(() => String(row.notes_paula || ''));
+
+  useEffect(() => {
+    const saved = String(row.notes_paula || '');
+    if (saved.trim()) {
+      setCommentView('card');
+      setCardText(saved);
+      setComposeText('');
+    } else {
+      setCommentView('compose');
+      setCardText('');
+    }
+  }, [row.id, row.notes_paula]);
+
+  function handleSaveClick() {
+    const notes = commentView === 'card' ? cardText : composeText;
+    onSave(row.id, { notes_paula: notes });
+  }
 
   return (
     <div style={{
@@ -277,19 +351,28 @@ function LicitacioRow({ row, colors, formatMoney, onUpdate, onSave, onOpen, onSe
         </div>
 
         <div>
-          <FieldLabel colors={colors}>Notas Paula</FieldLabel>
-          <textarea
-            value={row.notes_paula || ''}
-            onChange={(e) => onUpdate(row.id, { notes_paula: e.target.value })}
-            placeholder="Notas internas…"
-            rows={2}
-            style={{
-              ...inputStyle,
-              resize: 'vertical',
-              minHeight: 38,
-              fontFamily: 'inherit'
-            }}
-          />
+          <FieldLabel colors={colors}>Comentarios Paula</FieldLabel>
+          {commentView === 'card' ? (
+            <PaulaCommentCard
+              text={cardText}
+              colors={colors}
+              onChange={setCardText}
+              placeholder="Editar comentario…"
+            />
+          ) : (
+            <textarea
+              value={composeText}
+              onChange={(e) => setComposeText(e.target.value)}
+              placeholder="Ej: Revisado, espera respuesta Sergi…"
+              rows={2}
+              style={{
+                ...inputStyle,
+                resize: 'vertical',
+                minHeight: 38,
+                fontFamily: 'inherit'
+              }}
+            />
+          )}
         </div>
 
         <div style={{ display: 'flex', gap: 8, paddingBottom: 1 }}>
@@ -320,7 +403,7 @@ function LicitacioRow({ row, colors, formatMoney, onUpdate, onSave, onOpen, onSe
           <motion.button
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
-            onClick={() => onSave(row.id)}
+            onClick={handleSaveClick}
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -366,6 +449,7 @@ export default function LicitacionsPage() {
     source: '',
     sector: '',
     estat_jc: '',
+    year: String(new Date().getFullYear()),
     q: '',
     vencenSetmana: false,
     soloActivas: false,
@@ -461,10 +545,25 @@ export default function LicitacionsPage() {
     return [''].concat([...set].sort((a, b) => String(a).localeCompare(String(b), 'es')));
   }, [rows]);
 
+  const yearOptions = useMemo(() => {
+    const set = new Set();
+    const current = new Date().getFullYear();
+    for (let y = current - 1; y <= current + 2; y += 1) set.add(y);
+    for (const r of rows) {
+      const y = yearFromLicitacio(r);
+      if (y) set.add(y);
+    }
+    return [...set].sort((a, b) => b - a);
+  }, [rows]);
+
   const filteredRows = useMemo(() => {
     let list = rows;
     if (!filters.incluirCaducadas) {
       list = list.filter(isLicitacioVigent);
+    }
+    if (filters.year) {
+      const y = Number(filters.year);
+      list = list.filter((r) => yearFromLicitacio(r) === y);
     }
     if (filters.vencenSetmana) {
       list = list.filter((r) => {
@@ -476,12 +575,14 @@ export default function LicitacionsPage() {
       list = list.filter((r) => r.estat_jc !== 'Descartada');
     }
     const q = String(filters.q || '').trim().toLowerCase();
-    if (!q) return list;
-    return list.filter((r) => {
-      const hay = `${r?.title || ''} ${r?.organismo || ''} ${r?.sector || ''} ${r?.external_id || ''}`.toLowerCase();
-      return hay.includes(q);
-    });
-  }, [rows, filters.q, filters.vencenSetmana, filters.soloActivas, filters.incluirCaducadas]);
+    if (q) {
+      list = list.filter((r) => {
+        const hay = `${r?.title || ''} ${r?.organismo || ''} ${r?.sector || ''} ${r?.external_id || ''} ${r?.notes_paula || ''}`.toLowerCase();
+        return hay.includes(q);
+      });
+    }
+    return sortLicitacionsNuevasPrimero(list);
+  }, [rows, filters.q, filters.year, filters.vencenSetmana, filters.soloActivas, filters.incluirCaducadas]);
 
   const stats = useMemo(() => computeLicitacionsStats(rows), [rows]);
   const nuevasCount = useMemo(
@@ -528,18 +629,22 @@ export default function LicitacionsPage() {
     setRows((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
   };
 
-  const saveRow = async (id) => {
+  const saveRow = async (id, extraPatch = {}) => {
     setError('');
     const row = rows.find((r) => r.id === id);
     if (!row) return;
     setSavingId(id);
+    const patch = {
+      notes_paula: extraPatch.notes_paula !== undefined ? extraPatch.notes_paula : (row.notes_paula ?? ''),
+      estat_jc: extraPatch.estat_jc !== undefined ? extraPatch.estat_jc : row.estat_jc,
+      data_contacte: extraPatch.data_contacte !== undefined ? extraPatch.data_contacte : (row.data_contacte || null),
+      resultat_jc: extraPatch.resultat_jc !== undefined ? extraPatch.resultat_jc : (row.resultat_jc ?? '')
+    };
     try {
-      const saved = await licitacionsService.updateLicitacio(id, {
-        notes_paula: row.notes_paula ?? '',
-        estat_jc: row.estat_jc,
-        data_contacte: row.data_contacte || null,
-        resultat_jc: row.resultat_jc ?? ''
-      });
+      if (extraPatch && Object.keys(extraPatch).length) {
+        updateRowLocal(id, patch);
+      }
+      const saved = await licitacionsService.updateLicitacio(id, patch);
       updateRowLocal(id, saved);
     } catch (e) {
       setError(e?.message || String(e));
@@ -666,7 +771,7 @@ export default function LicitacionsPage() {
 
       <div style={{
         display: 'grid',
-        gridTemplateColumns: '1.2fr 1fr 1fr 1.2fr',
+        gridTemplateColumns: '1.4fr 0.9fr 0.9fr 0.9fr 1fr',
         gap: 12,
         marginBottom: 16
       }}>
@@ -675,7 +780,7 @@ export default function LicitacionsPage() {
           <input
             value={filters.q}
             onChange={(e) => setFilters((f) => ({ ...f, q: e.target.value }))}
-            placeholder="Buscar por título, organismo, sector o ID…"
+            placeholder="Buscar por título, organismo, sector, ID o comentario…"
             style={{
               width: '100%',
               border: 'none',
@@ -686,6 +791,25 @@ export default function LicitacionsPage() {
             }}
           />
         </div>
+
+        <select
+          value={filters.year}
+          onChange={(e) => setFilters((f) => ({ ...f, year: e.target.value }))}
+          style={{
+            width: '100%',
+            background: colors.surface,
+            color: colors.text,
+            border: `1px solid ${colors.border}`,
+            borderRadius: 12,
+            padding: '10px 12px',
+            fontSize: 14
+          }}
+        >
+          <option value="">Año: todos</option>
+          {yearOptions.map((y) => (
+            <option key={y} value={String(y)}>{`Año: ${y}`}</option>
+          ))}
+        </select>
 
         <select
           value={filters.source}

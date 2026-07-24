@@ -4,6 +4,7 @@ import { useAuth } from '../AuthContext';
 import { ObradorProvider, useObrador } from './ObradorContext';
 import ObradorDashboardPage from './ObradorDashboardPage';
 import ObradorRecepcionsPage from './ObradorRecepcionsPage';
+import ObradorProductesPage from './ObradorProductesPage';
 import ObradorLotsPage from './ObradorLotsPage';
 import ObradorExpedicionsPage from './ObradorExpedicionsPage';
 import ObradorIncidenciesPage from './ObradorIncidenciesPage';
@@ -11,6 +12,7 @@ import ObradorIncidenciesPage from './ObradorIncidenciesPage';
 const TABS = [
   { id: 'dashboard', label: 'Dashboard' },
   { id: 'recepcions', label: 'Recepcions' },
+  { id: 'productes', label: 'Productes', roles: ['admin', 'management', 'manager'] },
   { id: 'lots', label: 'Lots' },
   { id: 'expedicions', label: 'Expedicions' },
   { id: 'incidencies', label: 'Incidències', roles: ['admin', 'management', 'manager'] }
@@ -37,6 +39,8 @@ function ObradorShell() {
         return <ObradorDashboardPage />;
       case 'recepcions':
         return <ObradorRecepcionsPage />;
+      case 'productes':
+        return <ObradorProductesPage />;
       case 'lots':
         return <ObradorLotsPage />;
       case 'expedicions':

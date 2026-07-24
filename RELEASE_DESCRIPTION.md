@@ -1,14 +1,39 @@
+## v2.5.1
+
+### PIG / Cuenta Resultados — cambios Sergi (3 de 4)
+
+- **CR GENERAL EISSS — Itinerario E.I:** 2 tablas editables (1º y 2º semestre) justo debajo de la minitabla; persistencia en Supabase; valores iniciales de Lizeth; se editan en Kronos antes de generar el Excel CR.
+- **TESORERÍA — layout Caixa / Fiare:** cuentas Holded con IBAN agrupadas por banco (Caixa / Fiare); columnas Compte · IBAN · Saldo; `TOTAL TESORERÍA CAIXA`, `TOTAL TESORERÍA FIARE`, `TOTAL TESORERÍA` y `TOTAL TESORERÍA - INVES` (total menos la cuenta cuyo nombre contiene **INNVESS**).
+- **TESORERÍA — previsiones editables:** debajo de los bancos, 2 tablas (ingresos por subv / subv. por aprobar) editables y persistentes, con totales recalculados.
+- **SQL en Supabase (requerido):**
+  - `database/create_pig_itinerario_ei.sql` + `database/seed_pig_itinerario_ei_2026.sql`
+  - `database/create_pig_tesoreria_previsiones.sql` + `database/seed_pig_tesoreria_previsiones_2026.sql`
+- **Pendiente (1 cambio):** queda **1 cambio más** en la hoja `TESORERÍA` (aún no implementado; se hará en una siguiente entrega).
+
+### Licitaciones — Paula + CPV
+
+- **Comentarios Paula (tarjetita roja):** al escribir y pulsar **Guardar**, desaparece el campo de escritura y solo queda la **tarjetita roja editable**. Si se vacía y se guarda, vuelve el campo blanco para escribir de nuevo (no se convierte en tarjeta mientras se escribe).
+- **Filtro por año:** selector Año (2025, 2026, 2027…) según plazo de oferta / detección; por defecto el año actual; opción «todos».
+- **Nuevas primero:** tras sincronizar (y en el listado), las licitaciones más recientes (`detected_at`) salen arriba; badge «Nueva» si aún no se habían visto.
+- **Nuevos códigos CPV de catering:** `55300000`, `55523000` (además de `55520000` / `55523100` ya existentes). Tras instalar: **Licitaciones → Sincronizar**.
+- **Comportamiento esperado:** no se importan adjudicadas / formalización / publicación agregada (solo vigentes).
+- **Corrección:** `formatMoney is not defined` al abrir Licitaciones (modo privacidad).
+
+### Obrador — Producte ↔ proveïdors i lot multi-recepció
+
+- **Pestanya Productes:** associar un o més proveïdors (i ingredient opcional) a cada producte elaborat.
+- **Creació de lot:** al seleccionar producte es filtren les recepcions d’aquests proveïdors; es poden marcar **diverses recepcions**.
+- **Traçabilitat:** el lot desa totes les recepcions; el QR públic pot mostrar la llista.
+- **SQL en Supabase (requerido):** `database/alter_obrador_lot_multi_recepcio.sql`.
+
+---
+
 ## v2.5.0
 
-### Licitaciones
+### Licitaciones (CPV) y base de la release
 
-- **Nuevos códigos CPV de catering:** ampliado el filtro de sincronización (TED · PSCP · PLACSP) para captar más oportunidades del sector:
-  - **55300000** — restaurante, preparación y suministro de comidas (general).
-  - **55523000** — catering para empresas e instituciones.
-  - Ya existían **55520000** (comidas desde el exterior) y **55523100** (catering escolar); se mantiene la cobertura anterior.
-- **Sincronizar tras actualizar:** en **Licitaciones → Sincronizar** para traer expedientes que antes no entraban por CPV.
-- **Qué sigue sin aparecer (comportamiento esperado):** las publicaciones en fase **Adjudicació**, **Formalització** o **Publicació agregada** (contratos menores en lote ya resueltos) no se importan: Kronos muestra **oportunidades vigentes** (anuncio previo o plazo de ofertas abierto), no histórico adjudicado.
-- **Corrección:** error `formatMoney is not defined` al abrir la página de Licitaciones (modo privacidad / formateo de importes).
+- Ampliación inicial de CPV catering y corrección `formatMoney` en Licitaciones.
+- Ver detalle acumulado en **v2.5.1**.
 
 ---
 

@@ -351,29 +351,48 @@ export function applyPigComparativaCuentaResultadosFormulas(ws, meta = {}) {
   }
 }
 
-/** TESORERÍA: TOTAL = SUMA saldos detalle; tablas derecha = SUMA importes. */
+/** TESORERÍA: TOTAL Caixa/Fiare + TOTAL general; previsiones debajo = SUMA importes. */
 export function applyPigTesoreriaCuentaResultadosFormulas(ws, meta = {}) {
-  if (!meta?.cuentaResultados && !(meta?.totalRows || []).length) return;
-  const balanceCol = 4;
-  if (
-    meta.detailDataStartRow != null &&
-    meta.detailDataEndRow != null &&
-    meta.detailDataEndRow >= meta.detailDataStartRow
-  ) {
-    for (const totalRow of meta.totalRows || []) {
-      const cached = ws[XLSX.utils.encode_cell({ r: totalRow, c: balanceCol })]?.v ?? 0;
+  const saldoCol = Number.isFinite(meta?.saldoCol) ? meta.saldoCol : 2;
+
+  for (const g of meta.bankGroups || []) {
+    if (g.totalRow == null || g.dataStartRow == null || g.dataEndRow == null) continue;
+    if (g.dataEndRow < g.dataStartRow) continue;
+    const cached = ws[XLSX.utils.encode_cell({ r: g.totalRow, c: saldoCol })]?.v ?? 0;
+    setFormulaCell(
+      ws,
+      g.totalRow,
+      saldoCol,
+      sumFormula(g.dataStartRow, saldoCol, g.dataEndRow, saldoCol),
+      cached
+    );
+  }
+
+  const groupTotalRows = (meta.bankGroups || []).map((g) => g.totalRow).filter((r) => r != null);
+  if (meta.grandTotalRow != null && groupTotalRows.length) {
+    const cached = ws[XLSX.utils.encode_cell({ r: meta.grandTotalRow, c: saldoCol })]?.v ?? 0;
+    setFormulaCell(ws, meta.grandTotalRow, saldoCol, sumCellsFormula(groupTotalRows, saldoCol), cached);
+  }
+
+  // TOTAL - INVES: resta comptes INNVESS del total (si coneixem les files)
+  if (meta.totalSinInvesRow != null && meta.grandTotalRow != null) {
+    const innvessRows = meta.innvessDataRows || [];
+    const cached = ws[XLSX.utils.encode_cell({ r: meta.totalSinInvesRow, c: saldoCol })]?.v ?? 0;
+    if (innvessRows.length) {
+      const innvessPart = sumCellsFormula(innvessRows, saldoCol);
       setFormulaCell(
         ws,
-        totalRow,
-        balanceCol,
-        sumFormula(meta.detailDataStartRow, balanceCol, meta.detailDataEndRow, balanceCol),
+        meta.totalSinInvesRow,
+        saldoCol,
+        `${cellRef(meta.grandTotalRow, saldoCol)}-(${innvessPart})`,
         cached
       );
     }
   }
 
-  const amountCol = 8; // TESORERIA_RIGHT_COL.amount
-  for (const t of meta.rightTables?.tables || []) {
+  const amountCol = 1;
+  const tables = meta.previsionesTables?.tables || meta.rightTables?.tables || [];
+  for (const t of tables) {
     if (t.totalRow == null || t.dataStartRow == null || t.dataEndRow == null) continue;
     if (t.dataEndRow < t.dataStartRow) continue;
     const col = Number.isFinite(t.amountCol) ? t.amountCol : amountCol;

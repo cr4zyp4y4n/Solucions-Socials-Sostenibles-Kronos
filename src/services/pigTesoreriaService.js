@@ -1,105 +1,18 @@
 import holdedApiV2Service from './holdedApiV2Service';
+import { previsionesToExcelBlocks } from './pigTesoreriaPrevisionesService';
 
 const TYPE_ORDER = ['bank', 'card', 'gateway', 'cash'];
 
-/** Columnas a la derecha del bloque Holded (A–F): G vacío, H–J tablas hardcodeadas. */
+/** @deprecated Mantener export por compatibilidad; las tablas van debajo (cols A–C). */
 export const TESORERIA_RIGHT_COL = {
   gap: 6,
-  label: 7,
-  amount: 8,
-  obs: 9
+  label: 0,
+  amount: 1,
+  obs: 2
 };
 
-/** Previsiones hardcodeadas (EISSS Cuenta Resultados) — valores Lizeth. */
-export const TESORERIA_CTA_RESULTADOS_RIGHT = {
-  ingresosPorSubv: {
-    title: 'PREVISIÓN DE TESORERIA - INGRESOS POR SUBV',
-    amountHeader: 'INGRESO PREVISTO',
-    totalLabel: 'TOTAL SUBVENCIONES POR COBRAR',
-    total: 69647.1,
-    rows: [
-      { label: 'E.I L2 01/09/25 - 31/12/25', amount: 15613.27 },
-      { label: 'ACOL 11/2023 - 12/2024', amount: 25017.03 },
-      { label: 'E.I L1 01/07/24 - 30/06/25', amount: 4200 },
-      { label: 'E.I L2 01/09/23 - 30/09/24', amount: 1706.29 },
-      { label: 'INVES (INVERSIÓN) 10/12/25 - 09/12/2026', amount: 19750 },
-      { label: 'E.I L1 01/07/25 - 31/12/25', amount: 3360.51 }
-    ],
-    obsBlocks: [
-      {
-        kind: 'header',
-        text: 'OBSERVACION DE SUBVENCIONES IMPUTADAS'
-      },
-      {
-        kind: 'note',
-        text: 'IMPULSEM 10.000 A IDONI 10 MESES, SE IMPUTA DE 01/01 AL 01/10 DE 2026'
-      },
-      {
-        kind: 'note',
-        text: 'E.I L2 KOIKI Y ESTRUCTURA PERIODO (01/04/25 A 31/08/25) EN 12 MESES DE 2.026'
-      },
-      {
-        kind: 'header',
-        text: 'OBSERVACION DE SUBVENCIONES QUE FALTA DINERO POR INGRESAR E IMPUTAR'
-      },
-      {
-        kind: 'note',
-        text: 'A espera de que acepten a David puede ser 1.300 aproximadamente adicional'
-      },
-      {
-        kind: 'note',
-        text: 'A LA ESPERA DE INGRESO YA SE ENVIO REQUERIMIENTO'
-      },
-      {
-        kind: 'note',
-        text: 'SOLICITARON REQUERIMIENTO (SE ENCUENTRA EN REVISIÓN)'
-      },
-      {
-        kind: 'note',
-        text: 'REQUERIMIENTO ENVIADO'
-      }
-    ]
-  },
-  porAprobar: {
-    title: 'PREVISIÓN DE SUBV. POR APROBAR',
-    amountHeader: 'INGRESO PREVISTO',
-    totalLabel: 'TOTAL PREV. SUBVENCIONES POR APROBAR',
-    total: 172703.88,
-    rows: [
-      {
-        label: 'E.I L1 ESTRUCTURALES 01/01/26 - 31/12/26',
-        amount: 33610.44,
-        obs: 'RESOLUCIÓN PROVISIONAL POR ESTE IMPORTE, FALTA RESOLUCIÓN FINAL'
-      },
-      {
-        label: 'ENFORTIM APROVADO ESPERA RESOLUCION FINAL 14/12/26 - 13/12/27',
-        amount: 6300,
-        obs: ''
-      },
-      {
-        label: 'CAMBIO CLIMATICO 14/12/2026 AL 31/03/2028',
-        amount: 80000,
-        obs: 'RESOLUCIÓN PROVISIONAL POR ESTE IMPORTE, SE DEBE ENVIAR REFORMULACIÓN'
-      },
-      {
-        label: 'IMPULSEM 2.026 - 2.027',
-        amount: null,
-        obs: 'POSTULACIÓN (NO TENEMOS AUN RESOLUCIÓN PROVISIONAL)'
-      },
-      {
-        label: 'E.I L2 ESTRUCTURAL 01/01/26 al 31/12/26',
-        amount: 52793.44,
-        obs: 'BRUNO DEBE POSTULARSE'
-      },
-      {
-        label: 'SINGULAR 26/27',
-        amount: null,
-        obs: ''
-      }
-    ],
-    obsHeader: 'OBSERVACION DE SUBVENCIONES QUE FALTA DINERO POR INGRESAR E IMPUTAR'
-  }
-};
+/** @deprecated Usar previsiones editables (pigTesoreriaPrevisionesService). */
+export const TESORERIA_CTA_RESULTADOS_RIGHT = null;
 
 function parseBalance(value) {
   const n = Number.parseFloat(String(value ?? '').replace(',', '.'));
@@ -118,102 +31,24 @@ function setAoaCell(aoa, rowIdx, colIdx, value) {
   row[colIdx] = value;
 }
 
-/**
- * Tablas hardcodeadas a la derecha (Cuenta Resultados).
- * Meta.rightTables: rangos para estilos.
- */
-export function appendTesoreriaCuentaResultadosRightTables(aoa, meta = {}) {
-  const { label: cLabel, amount: cAmount, obs: cObs } = TESORERIA_RIGHT_COL;
-  const minCols = cObs + 1;
-  const data = TESORERIA_CTA_RESULTADOS_RIGHT;
-  const startRow = meta.summaryStartRow ?? 2;
-  const rightMeta = {
-    startRow,
-    tables: []
-  };
+function spanishIbanEntity(iban) {
+  const clean = String(iban || '').replace(/\s/g, '').toUpperCase();
+  if (clean.length >= 8 && clean.startsWith('ES')) return clean.slice(4, 8);
+  return '';
+}
 
-  // —— Tabla 1: ingresos por subv ——
-  let r = startRow;
-  const t1 = data.ingresosPorSubv;
-  const t1Meta = {
-    titleRow: r,
-    dataStartRow: r + 1,
-    dataEndRow: -1,
-    totalRow: -1,
-    obsStartRow: r,
-    obsEndRow: -1,
-    obsHeaderRows: [],
-    kind: 'ingresos'
-  };
+/** Agrupa comptes Holded: Caixa (2100) / Fiare (1550) / altres. */
+export function classifyTreasuryBankGroup(account) {
+  const name = String(account?.name || '').toUpperCase();
+  const entity = spanishIbanEntity(account?.iban);
+  if (entity === '1550' || /\bFIARE\b/.test(name)) return 'fiare';
+  if (entity === '2100' || /CAIXA|CAIXABANK/.test(name)) return 'caixa';
+  return 'otros';
+}
 
-  setAoaCell(aoa, r, cLabel, t1.title);
-  setAoaCell(aoa, r, cAmount, t1.amountHeader);
-  r += 1;
-
-  t1Meta.dataStartRow = r;
-  for (const row of t1.rows) {
-    setAoaCell(aoa, r, cLabel, row.label);
-    setAoaCell(aoa, r, cAmount, row.amount);
-    r += 1;
-  }
-  t1Meta.dataEndRow = r - 1;
-
-  t1Meta.totalRow = r;
-  setAoaCell(aoa, r, cLabel, t1.totalLabel);
-  setAoaCell(aoa, r, cAmount, t1.total);
-  r += 1;
-
-  // Observaciones tabla 1 (columna obs, desde la misma fila de título)
-  let obsR = t1Meta.obsStartRow;
-  for (const block of t1.obsBlocks) {
-    setAoaCell(aoa, obsR, cObs, block.text);
-    if (block.kind === 'header') t1Meta.obsHeaderRows.push(obsR);
-    obsR += 1;
-  }
-  t1Meta.obsEndRow = obsR - 1;
-  rightMeta.tables.push(t1Meta);
-
-  // Hueco entre tablas
-  r = Math.max(r, obsR) + 2;
-
-  // —— Tabla 2: por aprobar ——
-  const t2 = data.porAprobar;
-  const t2Meta = {
-    titleRow: r,
-    dataStartRow: r + 1,
-    dataEndRow: -1,
-    totalRow: -1,
-    obsStartRow: r,
-    obsEndRow: -1,
-    obsHeaderRows: [r],
-    kind: 'porAprobar'
-  };
-
-  setAoaCell(aoa, r, cLabel, t2.title);
-  setAoaCell(aoa, r, cAmount, t2.amountHeader);
-  setAoaCell(aoa, r, cObs, t2.obsHeader);
-  r += 1;
-
-  t2Meta.dataStartRow = r;
-  for (const row of t2.rows) {
-    setAoaCell(aoa, r, cLabel, row.label);
-    setAoaCell(aoa, r, cAmount, row.amount === null || row.amount === undefined ? '' : row.amount);
-    setAoaCell(aoa, r, cObs, row.obs || '');
-    r += 1;
-  }
-  t2Meta.dataEndRow = r - 1;
-  t2Meta.obsEndRow = r - 1;
-
-  t2Meta.totalRow = r;
-  setAoaCell(aoa, r, cLabel, t2.totalLabel);
-  setAoaCell(aoa, r, cAmount, t2.total);
-
-  rightMeta.tables.push(t2Meta);
-  rightMeta.endRow = r;
-  rightMeta.minCols = minCols;
-
-  meta.rightTables = rightMeta;
-  return meta;
+export function isInnvessTreasuryAccount(account) {
+  const name = String(account?.name || '').toUpperCase();
+  return /INNVESS|INVESS/.test(name);
 }
 
 function sortTreasuryAccounts(accounts = []) {
@@ -244,78 +79,216 @@ export async function loadPigTreasuryAccounts({ company = 'solucions' } = {}) {
   }
 }
 
-export function buildPigTesoreriaSheetAoa({ title, accounts = [], errorMessage = '', cuentaResultados = false } = {}) {
+function appendBankTable(aoa, meta, { accounts, totalLabel, groupKey }) {
+  const headerRow = aoa.length;
+  aoa.push(['Compte', 'IBAN', 'Saldo']);
+  const dataStart = aoa.length;
+  let total = 0;
+  for (const account of accounts) {
+    const balance = parseBalance(account.balance);
+    total += balance;
+    const rowIdx = aoa.length;
+    aoa.push([
+      account.name || '(Sense nom)',
+      String(account.iban || '').replace(/\s/g, ''),
+      balance
+    ]);
+    if (isInnvessTreasuryAccount(account)) {
+      meta.innvessDataRows.push(rowIdx);
+    }
+  }
+  const dataEnd = aoa.length - 1;
+  const totalRow = aoa.length;
+  aoa.push([totalLabel, '', total]);
+
+  meta.bankGroups.push({
+    key: groupKey,
+    headerRow,
+    dataStartRow: dataStart,
+    dataEndRow: dataEnd >= dataStart ? dataEnd : dataStart - 1,
+    totalRow,
+    totalLabel
+  });
+  meta.totalRows.push(totalRow);
+  return total;
+}
+
+function appendPrevisionesBelow(aoa, meta, previsiones) {
+  const blocks = previsionesToExcelBlocks(previsiones);
+  const tables = [];
+
+  aoa.push(['', '', '']);
+  let r = aoa.length;
+
+  const writeBlock = (block, kind) => {
+    const titleRow = r;
+    setAoaCell(aoa, r, 0, block.title);
+    setAoaCell(aoa, r, 1, block.amountHeader);
+    setAoaCell(aoa, r, 2, block.obsHeader);
+    r += 1;
+
+    const dataStartRow = r;
+    for (const row of block.rows) {
+      setAoaCell(aoa, r, 0, row.concepto);
+      setAoaCell(aoa, r, 1, row.amount == null ? '' : row.amount);
+      setAoaCell(aoa, r, 2, row.observacion || '');
+      r += 1;
+    }
+    const dataEndRow = r - 1;
+    const totalRow = r;
+    setAoaCell(aoa, r, 0, block.totalLabel);
+    setAoaCell(aoa, r, 1, block.total);
+    setAoaCell(aoa, r, 2, block.totalObs || '');
+    r += 1;
+
+    tables.push({
+      kind,
+      titleRow,
+      dataStartRow,
+      dataEndRow: dataEndRow >= dataStartRow ? dataEndRow : dataStartRow - 1,
+      totalRow,
+      amountCol: 1,
+      obsCol: 2,
+      obsStartRow: titleRow,
+      obsEndRow: totalRow,
+      obsHeaderRows: [titleRow]
+    });
+  };
+
+  writeBlock(blocks.ingresosPorSubv, 'ingresos');
+  r += 2;
+  while (aoa.length < r) aoa.push(['', '', '']);
+  writeBlock(blocks.porAprobar, 'porAprobar');
+
+  meta.previsionesTables = {
+    startRow: tables[0]?.titleRow ?? 0,
+    endRow: tables[tables.length - 1]?.totalRow ?? 0,
+    tables,
+    minCols: 3
+  };
+  // Compat amb estils/fórmules antics
+  meta.rightTables = meta.previsionesTables;
+}
+
+/**
+ * Layout Lizeth: Caixa + Fiare + TOTAL + TOTAL - INVES (+ previsiones editables si CR).
+ */
+export function buildPigTesoreriaSheetAoa({
+  title,
+  accounts = [],
+  errorMessage = '',
+  cuentaResultados = false,
+  previsiones = null
+} = {}) {
   const aoa = [];
   const meta = {
     titleRow: 0,
     summaryStartRow: 2,
+    summaryEndRow: -1,
     detailHeaderRow: -1,
     detailDataStartRow: -1,
     detailDataEndRow: -1,
+    bankGroups: [],
     totalRows: [],
-    cuentaResultados: Boolean(cuentaResultados)
+    innvessDataRows: [],
+    grandTotalRow: -1,
+    totalSinInvesRow: -1,
+    saldoCol: 2,
+    cuentaResultados: Boolean(cuentaResultados),
+    previsionesTables: null,
+    rightTables: null
   };
 
-  aoa.push([title, '', '', '', '', '']);
-  aoa.push(['', '', '', '', '', '']);
+  aoa.push([title, '', '']);
+  aoa.push(['', '', '']);
 
   if (errorMessage) {
-    aoa.push([`Error API Holded: ${errorMessage}`, '', '', '', '', '']);
-    if (cuentaResultados) appendTesoreriaCuentaResultadosRightTables(aoa, meta);
+    aoa.push([`Error API Holded: ${errorMessage}`, '', '']);
+    if (cuentaResultados) appendPrevisionesBelow(aoa, meta, previsiones);
     return { aoa, meta };
   }
 
   if (!accounts.length) {
-    aoa.push(['(Cap compte bancari amb IBAN trobat a Holded)', '', '', '', '', '']);
-    if (cuentaResultados) appendTesoreriaCuentaResultadosRightTables(aoa, meta);
+    aoa.push(['(Cap compte bancari amb IBAN trobat a Holded)', '', '']);
+    if (cuentaResultados) appendPrevisionesBelow(aoa, meta, previsiones);
     return { aoa, meta };
   }
 
-  const balancesByCurrency = new Map();
-
+  const caixa = [];
+  const fiare = [];
+  const otros = [];
   for (const account of accounts) {
-    const balance = parseBalance(account.balance);
-    const currency = String(account.currency || 'EUR').trim() || 'EUR';
-    balancesByCurrency.set(currency, (balancesByCurrency.get(currency) || 0) + balance);
+    const g = classifyTreasuryBankGroup(account);
+    if (g === 'fiare') fiare.push(account);
+    else if (g === 'caixa') caixa.push(account);
+    else otros.push(account);
   }
 
-  // Bloc resum (estil PIG GENERAL: etiqueta a A, import a B)
-  for (const account of accounts) {
-    const label = account.name || '(Sense nom)';
-    aoa.push([label, '', '', '', '', '']);
-    aoa.push(['', parseBalance(account.balance), '', '', '', '']);
+  meta.summaryStartRow = aoa.length;
+  let totalCaixa = 0;
+  let totalFiare = 0;
+  let totalOtros = 0;
+
+  if (caixa.length) {
+    totalCaixa = appendBankTable(aoa, meta, {
+      accounts: caixa,
+      totalLabel: 'TOTAL TESORERÍA CAIXA',
+      groupKey: 'caixa'
+    });
+    aoa.push(['', '', '']);
   }
+
+  if (fiare.length) {
+    totalFiare = appendBankTable(aoa, meta, {
+      accounts: fiare,
+      totalLabel: 'TOTAL TESORERÍA FIARE',
+      groupKey: 'fiare'
+    });
+    aoa.push(['', '', '']);
+  }
+
+  if (otros.length) {
+    totalOtros = appendBankTable(aoa, meta, {
+      accounts: otros,
+      totalLabel: 'TOTAL TESORERÍA ALTRES',
+      groupKey: 'otros'
+    });
+    aoa.push(['', '', '']);
+  }
+
+  // Rangs de detall per fórmules (totes les files de comptes)
+  const allDataStarts = meta.bankGroups.map((g) => g.dataStartRow).filter((n) => n >= 0);
+  const allDataEnds = meta.bankGroups.map((g) => g.dataEndRow).filter((n) => n >= 0);
+  if (allDataStarts.length) {
+    meta.detailDataStartRow = Math.min(...allDataStarts);
+    meta.detailDataEndRow = Math.max(...allDataEnds);
+    meta.detailHeaderRow = meta.bankGroups[0]?.headerRow ?? -1;
+  }
+
+  const innvessSum = accounts
+    .filter(isInnvessTreasuryAccount)
+    .reduce((acc, a) => acc + parseBalance(a.balance), 0);
+
+  const grandTotal = totalCaixa + totalFiare + totalOtros;
+  const totalSinInves = grandTotal - innvessSum;
+
+  meta.grandTotalRow = aoa.length;
+  meta.totalRows.push(meta.grandTotalRow);
+  aoa.push(['TOTAL TESORERÍA', '', grandTotal]);
+
+  meta.totalSinInvesRow = aoa.length;
+  meta.totalRows.push(meta.totalSinInvesRow);
+  aoa.push(['TOTAL TESORERÍA - INVES', '', totalSinInves]);
 
   meta.summaryEndRow = aoa.length - 1;
-  aoa.push(['', '', '', '', '', '']);
-  aoa.push(['DETALL COMPTES BANCARIS (IBAN)', '', '', '', '', '']);
-  meta.detailHeaderRow = aoa.length;
-  aoa.push(['Compte', 'Divisa', 'IBAN', 'BIC', 'Saldo', 'Pend. conciliar']);
 
-  meta.detailDataStartRow = aoa.length;
-  for (const account of accounts) {
-    aoa.push([
-      account.name || '(Sense nom)',
-      String(account.currency || 'EUR'),
-      account.iban || '',
-      account.bic || '',
-      parseBalance(account.balance),
-      Number(account.transactions_pending_to_reconcile) || 0
-    ]);
-  }
-  meta.detailDataEndRow = aoa.length - 1;
-
-  aoa.push(['', '', '', '', '', '']);
-
-  const currencyKeys = [...balancesByCurrency.keys()].sort();
-  for (const currency of currencyKeys) {
-    const rowIdx = aoa.length;
-    meta.totalRows.push(rowIdx);
-    const suffix = currencyKeys.length > 1 ? ` (${currency})` : '';
-    aoa.push([`TOTAL TESORERÍA${suffix}`, '', '', '', balancesByCurrency.get(currency), '']);
-  }
-
-  if (cuentaResultados) appendTesoreriaCuentaResultadosRightTables(aoa, meta);
+  if (cuentaResultados) appendPrevisionesBelow(aoa, meta, previsiones);
 
   return { aoa, meta };
+}
+
+/** Compat: ja no s'usa (les taules van a sota). */
+export function appendTesoreriaCuentaResultadosRightTables(aoa, meta = {}, previsiones = null) {
+  appendPrevisionesBelow(aoa, meta, previsiones);
+  return meta;
 }

@@ -117,12 +117,65 @@ export async function getProveidors() {
   throw error;
 }
 
+export const LOT_MULTI_RECEPCIO_SCHEMA_SQL = 'database/alter_obrador_lot_multi_recepcio.sql';
+
 export async function getProductes() {
   const { data, error } = await supabase
     .from('obrador_productes')
-    .select('id, nom, caducitat_dies, temp_coccio, temp_conservacio, allergens')
+    .select(`
+      id, nom, caducitat_dies, temp_coccio, temp_conservacio, allergens,
+      obrador_producte_proveidors (
+        id, id_proveidor, ingredient_nom,
+        obrador_proveidors ( id, nom )
+      )
+    `)
     .eq('actiu', true)
     .order('nom');
+
+  if (!error) return data || [];
+
+  // Schema antic sense taula producte↔proveïdor
+  if (error?.code === 'PGRST200' || /obrador_producte_proveidors/i.test(error?.message || '')) {
+    const fallback = await supabase
+      .from('obrador_productes')
+      .select('id, nom, caducitat_dies, temp_coccio, temp_conservacio, allergens')
+      .eq('actiu', true)
+      .order('nom');
+    if (fallback.error) throw fallback.error;
+    return (fallback.data || []).map((p) => ({ ...p, obrador_producte_proveidors: [] }));
+  }
+
+  throw error;
+}
+
+/** Substitueix els proveïdors associats a un producte. */
+export async function setProducteProveidors(idProducte, files) {
+  const list = Array.isArray(files) ? files : [];
+  const { error: delError } = await supabase
+    .from('obrador_producte_proveidors')
+    .delete()
+    .eq('id_producte', idProducte);
+  if (delError) throw delError;
+
+  if (!list.length) return [];
+
+  const rows = list
+    .filter((f) => f?.id_proveidor)
+    .map((f) => ({
+      id_producte: idProducte,
+      id_proveidor: f.id_proveidor,
+      ingredient_nom: String(f.ingredient_nom || '').trim()
+    }));
+
+  if (!rows.length) return [];
+
+  const { data, error } = await supabase
+    .from('obrador_producte_proveidors')
+    .insert(rows)
+    .select(`
+      id, id_proveidor, ingredient_nom,
+      obrador_proveidors ( id, nom )
+    `);
   if (error) throw error;
   return data || [];
 }
@@ -166,9 +219,9 @@ export async function getRecepcions(limit = 50) {
   const { data, error } = await supabase
     .from('obrador_recepcions')
     .select(`
-      id, data_recepcio, lot_proveidor, temperatura_arribada,
+      id, id_proveidor, data_recepcio, lot_proveidor, temperatura_arribada,
       estat, caducitat, congelat, observacions, operari, id_operari,
-      obrador_proveidors ( nom )
+      obrador_proveidors ( id, nom )
     `)
     .order('data_recepcio', { ascending: false })
     .limit(limit);
@@ -193,14 +246,38 @@ export async function getLots(limit = 50) {
     .from('obrador_lots')
     .select(`
       id, codi_lot, data_produccio, temp_final_coccio,
-      estat, mostra_guardada, quantitat_kg, observacions,
+      estat, mostra_guardada, quantitat_kg, observacions, id_recepcio,
       obrador_productes ( nom ),
-      obrador_operaris ( nom )
+      obrador_operaris ( nom ),
+      obrador_lot_recepcions (
+        ordre, id_recepcio,
+        obrador_recepcions (
+          lot_proveidor, data_recepcio,
+          obrador_proveidors ( nom )
+        )
+      )
     `)
     .order('data_produccio', { ascending: false })
     .limit(limit);
-  if (error) throw error;
-  return data || [];
+
+  if (!error) return data || [];
+
+  if (error?.code === 'PGRST200' || /obrador_lot_recepcions/i.test(error?.message || '')) {
+    const fallback = await supabase
+      .from('obrador_lots')
+      .select(`
+        id, codi_lot, data_produccio, temp_final_coccio,
+        estat, mostra_guardada, quantitat_kg, observacions, id_recepcio,
+        obrador_productes ( nom ),
+        obrador_operaris ( nom )
+      `)
+      .order('data_produccio', { ascending: false })
+      .limit(limit);
+    if (fallback.error) throw fallback.error;
+    return (fallback.data || []).map((l) => ({ ...l, obrador_lot_recepcions: [] }));
+  }
+
+  throw error;
 }
 
 export async function getLotsActius(limit = 50) {
@@ -233,16 +310,22 @@ export async function getLotsPerIncidencia(limit = 50) {
 }
 
 export async function crearLot(dades) {
+  const ids = Array.isArray(dades.id_recepcions)
+    ? dades.id_recepcions.filter(Boolean)
+    : (dades.id_recepcio ? [dades.id_recepcio] : []);
+  const principal = ids[0] || dades.id_recepcio || null;
+
   const { data, error } = await supabase.rpc('obrador_crear_lot_i_etiqueta', {
     p_id_producte: dades.id_producte,
-    p_id_recepcio: dades.id_recepcio,
+    p_id_recepcio: principal,
     p_id_operari: dades.id_operari || null,
     p_quantitat_kg: dades.quantitat_kg ?? null,
     p_temp_final_coccio: dades.temp_final_coccio ?? null,
     p_mostra_guardada: Boolean(dades.mostra_guardada),
     p_observacions: dades.observacions || null,
     p_caducitat_dies: dades.caducitat_dies ?? 3,
-    p_allergens: dades.allergens || []
+    p_allergens: dades.allergens || [],
+    p_id_recepcions: ids.length ? ids : null
   });
   if (error) throw error;
   return {

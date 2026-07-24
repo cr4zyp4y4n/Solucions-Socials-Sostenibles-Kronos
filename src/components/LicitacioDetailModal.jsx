@@ -113,9 +113,23 @@ export default function LicitacioDetailModal({
     [hideSensitiveData]
   );
   const [draft, setDraft] = useState(row);
+  const [commentView, setCommentView] = useState(
+    () => (String(row?.notes_paula || '').trim() ? 'card' : 'compose')
+  );
+  const [composeText, setComposeText] = useState('');
+  const [cardText, setCardText] = useState(() => String(row?.notes_paula || ''));
 
   useEffect(() => {
     setDraft(row);
+    const saved = String(row?.notes_paula || '');
+    if (saved.trim()) {
+      setCommentView('card');
+      setCardText(saved);
+      setComposeText('');
+    } else {
+      setCommentView('compose');
+      setCardText('');
+    }
   }, [row]);
 
   if (!isOpen || !draft) return null;
@@ -142,8 +156,11 @@ export default function LicitacioDetailModal({
   };
 
   const handleSave = async () => {
-    await onSave(draft.id);
+    const notes = commentView === 'card' ? cardText : composeText;
+    await onSave(draft.id, { notes_paula: notes });
   };
+
+  const danger = colors.error || '#DC2626';
 
   return (
     <AnimatePresence>
@@ -396,18 +413,37 @@ export default function LicitacioDetailModal({
                   </InfoBlock>
                 </div>
                 <div style={{ gridColumn: '1 / -1' }}>
-                  <InfoBlock label="Notas Paula" colors={colors}>
-                    <textarea
-                      value={draft.notes_paula || ''}
-                      onChange={(e) => patchDraft({ notes_paula: e.target.value })}
-                      placeholder="Notas internas sobre esta licitación…"
-                      rows={4}
-                      style={{
-                        ...inputStyle,
-                        resize: 'vertical',
-                        minHeight: 100
-                      }}
-                    />
+                  <InfoBlock label="Comentarios Paula" colors={colors}>
+                    {commentView === 'card' ? (
+                      <textarea
+                        value={cardText}
+                        onChange={(e) => setCardText(e.target.value)}
+                        placeholder="Editar comentario…"
+                        rows={4}
+                        style={{
+                          ...inputStyle,
+                          background: `${danger}14`,
+                          border: `1px solid ${danger}44`,
+                          borderLeft: `4px solid ${danger}`,
+                          color: danger,
+                          fontWeight: 650,
+                          resize: 'vertical',
+                          minHeight: 100
+                        }}
+                      />
+                    ) : (
+                      <textarea
+                        value={composeText}
+                        onChange={(e) => setComposeText(e.target.value)}
+                        placeholder="Ej: Revisado, espera respuesta Sergi…"
+                        rows={4}
+                        style={{
+                          ...inputStyle,
+                          resize: 'vertical',
+                          minHeight: 100
+                        }}
+                      />
+                    )}
                   </InfoBlock>
                 </div>
               </div>

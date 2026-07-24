@@ -176,7 +176,7 @@ export default function TraceLotPage({ traceCode, staffUser = null, onStaffLogin
               <InfoRow label="Estat" value={ESTAT_LABELS[lot.estat] || lot.estat} />
             ) : null}
 
-            {(lot.proveidor || lot.data_recepcio || lot.lot_proveidor) ? (
+            {(lot.recepcions?.length || lot.proveidor || lot.data_recepcio || lot.lot_proveidor) ? (
               <>
                 <div style={{
                   marginTop: 8,
@@ -188,15 +188,41 @@ export default function TraceLotPage({ traceCode, staffUser = null, onStaffLogin
                 }}>
                   Matèria primera
                 </div>
-                {lot.proveidor ? (
-                  <InfoRow label="Proveïdor" value={lot.proveidor} />
-                ) : null}
-                {lot.data_recepcio ? (
-                  <InfoRow label="Recepció" value={formatData(lot.data_recepcio)} />
-                ) : null}
-                {lot.lot_proveidor ? (
-                  <InfoRow label="Lot proveïdor" value={lot.lot_proveidor} />
-                ) : null}
+                {Array.isArray(lot.recepcions) && lot.recepcions.length > 0 ? (
+                  lot.recepcions.map((r, idx) => (
+                    <div
+                      key={`rec-${idx}`}
+                      style={{
+                        padding: '8px 0',
+                        borderBottom: idx < lot.recepcions.length - 1
+                          ? `1px solid ${colors.border}`
+                          : 'none'
+                      }}
+                    >
+                      {r.proveidor ? (
+                        <InfoRow label="Proveïdor" value={r.proveidor} />
+                      ) : null}
+                      {r.data_recepcio ? (
+                        <InfoRow label="Recepció" value={formatData(r.data_recepcio)} />
+                      ) : null}
+                      {r.lot_proveidor ? (
+                        <InfoRow label="Lot proveïdor" value={r.lot_proveidor} />
+                      ) : null}
+                    </div>
+                  ))
+                ) : (
+                  <>
+                    {lot.proveidor ? (
+                      <InfoRow label="Proveïdor" value={lot.proveidor} />
+                    ) : null}
+                    {lot.data_recepcio ? (
+                      <InfoRow label="Recepció" value={formatData(lot.data_recepcio)} />
+                    ) : null}
+                    {lot.lot_proveidor ? (
+                      <InfoRow label="Lot proveïdor" value={lot.lot_proveidor} />
+                    ) : null}
+                  </>
+                )}
               </>
             ) : null}
           </div>

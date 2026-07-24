@@ -944,7 +944,12 @@ export async function fetchAll(options = {}) {
 }
 
 export async function loadLicitacions(filters = {}) {
-  let q = getSupabase().from(TABLE).select('*').order('termini_oferta', { ascending: true, nullsFirst: false });
+  // Nuevas primero (detected_at DESC); desempate por plazo de oferta.
+  let q = getSupabase()
+    .from(TABLE)
+    .select('*')
+    .order('detected_at', { ascending: false, nullsFirst: false })
+    .order('termini_oferta', { ascending: true, nullsFirst: false });
   if (filters.source) q = q.eq('source', filters.source);
   if (filters.sector) q = q.eq('sector', filters.sector);
   if (filters.estat_jc) q = q.eq('estat_jc', filters.estat_jc);

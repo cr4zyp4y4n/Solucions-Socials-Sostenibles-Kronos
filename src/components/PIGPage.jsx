@@ -26,9 +26,20 @@ import {
 } from '../services/pigEstructuraPurchasesService';
 import {
   buildPigTesoreriaSheetAoa,
-  loadPigTreasuryAccounts,
-  TESORERIA_RIGHT_COL
+  loadPigTreasuryAccounts
 } from '../services/pigTesoreriaService';
+import {
+  createEmptyItinerarioRow,
+  loadPigItinerarioEi,
+  PIG_ITINERARIO_EI_DEFAULTS,
+  upsertPigItinerarioEi
+} from '../services/pigItinerarioEiService';
+import {
+  createEmptyPrevisionRow,
+  loadPigTesoreriaPrevisiones,
+  PIG_TESORERIA_PREVISIONES_DEFAULTS,
+  upsertPigTesoreriaPrevisiones
+} from '../services/pigTesoreriaPrevisionesService';
 import {
   buildPigPresupuestosSheetAoa,
   loadPigPresupuestosPendientes
@@ -606,24 +617,18 @@ function styleGroupAccountsSheet({ ws, aoa, yellowRows = [] }) {
 }
 
 function stylePigTesoreriaSheet({ ws, aoa, meta = {} }) {
-  const hasRight = Boolean(meta?.rightTables?.tables?.length);
-  const colsLen = hasRight ? (TESORERIA_RIGHT_COL.obs + 1) : 6;
+  const previsiones = meta?.previsionesTables || meta?.rightTables;
+  const hasPrev = Boolean(previsiones?.tables?.length);
+  const colsLen = 3;
   ws['!sheetView'] = [{ showGridLines: false }];
   ws['!cols'] = [
-    { wch: 52 },
-    { wch: 22 },
-    { wch: 8 },
+    { wch: 58 },
     { wch: 28 },
-    { wch: 16 },
-    { wch: 14 },
-    { wch: 3 },
-    { wch: 48 },
-    { wch: 16 },
-    { wch: 62 }
-  ].slice(0, colsLen);
+    { wch: 16 }
+  ];
   ws['!rows'] = [];
   ws['!rows'][0] = { hpt: 18 };
-  ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: Math.min(5, colsLen - 1) } }];
+  ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: colsLen - 1 } }];
 
   const borderThin = {
     top: { style: 'thin', color: { rgb: '000000' } },
@@ -643,130 +648,103 @@ function stylePigTesoreriaSheet({ ws, aoa, meta = {} }) {
     border: borderThin
   };
   const yellow = makeFill('#FFFF00');
-  const purpleHeader = makeFill('#D5A6E6');
-  const pinkAmount = makeFill('#F8CBAD');
+  const greenTotal = makeFill('#C6EFCE');
+  const orangeHeader = makeFill('#F8CBAD');
+  const pinkHeader = makeFill('#F4B183');
+  const blueObs = makeFill('#DDEBF7');
   const blueObsHeader = makeFill('#9DC3E6');
-  const blueObsNote = makeFill('#DDEBF7');
-  const purpleObsHeader = makeFill('#C5A0D0');
 
-  setRangeStyle(ws, 0, 0, 0, Math.min(5, colsLen - 1), titleStyle);
+  setRangeStyle(ws, 0, 0, 0, colsLen - 1, titleStyle);
 
-  const summaryStart = meta.summaryStartRow ?? 2;
-  const summaryEnd = meta.summaryEndRow ?? (meta.detailHeaderRow > 0 ? meta.detailHeaderRow - 3 : aoa.length - 1);
-  for (let r = summaryStart; r <= summaryEnd; r++) {
-    const hasA = ws[XLSX.utils.encode_cell({ r, c: 0 })]?.v;
-    const hasB = ws[XLSX.utils.encode_cell({ r, c: 1 })]?.v !== undefined && ws[XLSX.utils.encode_cell({ r, c: 1 })]?.v !== '';
-    if (!hasA && !hasB) continue;
-    setCellStyle(ws, r, 0, { border: borderThin, alignment: { vertical: 'center' } });
-    if (hasA) setCellStyle(ws, r, 0, { font: { bold: true, name: 'Calibri' } });
-    if (hasB) setCellStyle(ws, r, 1, { border: borderThin, ...moneyStyle });
-  }
-
-  if (meta.detailHeaderRow >= 0) {
-    const sectionRow = meta.detailHeaderRow - 1;
-    if (sectionRow >= 0) {
-      setCellStyle(ws, sectionRow, 0, {
-        font: { bold: true, name: 'Calibri' },
-        alignment: { vertical: 'center' }
-      });
-    }
-    setRangeStyle(ws, meta.detailHeaderRow, 0, meta.detailHeaderRow, 5, headerStyle);
-
-    const dataStart = meta.detailDataStartRow >= 0 ? meta.detailDataStartRow : meta.detailHeaderRow + 1;
-    const dataEnd = meta.detailDataEndRow >= dataStart ? meta.detailDataEndRow : dataStart;
-    for (let r = dataStart; r <= dataEnd; r++) {
-      for (let c = 0; c < 6; c++) {
-        const style = { border: borderThin, alignment: { vertical: 'center' } };
-        if (c === 4) Object.assign(style, moneyStyle);
-        if (c === 5) Object.assign(style, { numFmt: '0', alignment: { horizontal: 'right' } });
-        setCellStyle(ws, r, c, style);
+  for (const g of meta.bankGroups || []) {
+    setRangeStyle(ws, g.headerRow, 0, g.headerRow, 2, headerStyle);
+    if (g.dataEndRow >= g.dataStartRow) {
+      for (let r = g.dataStartRow; r <= g.dataEndRow; r++) {
+        setCellStyle(ws, r, 0, { border: borderThin, font: { name: 'Calibri' }, alignment: { vertical: 'center' } });
+        setCellStyle(ws, r, 1, { border: borderThin, font: { name: 'Calibri' }, alignment: { vertical: 'center' } });
+        setCellStyle(ws, r, 2, { border: borderThin, ...moneyStyle, font: { name: 'Calibri' } });
       }
     }
-  }
-
-  for (const rowIdx of meta.totalRows || []) {
-    setRangeStyle(ws, rowIdx, 0, rowIdx, 5, {
+    setRangeStyle(ws, g.totalRow, 0, g.totalRow, 2, {
       font: { bold: true, name: 'Calibri' },
       border: borderThin
     });
-    setCellStyle(ws, rowIdx, 0, { alignment: { vertical: 'center' } });
-    setCellStyle(ws, rowIdx, 4, { ...moneyStyle, font: { bold: true, name: 'Calibri' } });
-    const label = String(ws[XLSX.utils.encode_cell({ r: rowIdx, c: 0 })]?.v || '');
-    if (label.toUpperCase().includes('TOTAL TESORER')) {
-      setRangeStyle(ws, rowIdx, 0, rowIdx, 5, {
-        font: { bold: true, name: 'Calibri' },
-        fill: yellow,
-        border: borderThin
-      });
-      setCellStyle(ws, rowIdx, 4, {
-        ...moneyStyle,
-        font: { bold: true, name: 'Calibri' },
-        fill: yellow
-      });
-    }
+    setCellStyle(ws, g.totalRow, 2, { ...moneyStyle, font: { bold: true, name: 'Calibri' }, border: borderThin });
   }
 
-  // Tablas hardcodeadas a la derecha (Cuenta Resultados)
-  if (hasRight) {
-    const { label: cLabel, amount: cAmount, obs: cObs } = TESORERIA_RIGHT_COL;
-    for (const t of meta.rightTables.tables) {
-      // Cabecera título + INGRESO PREVISTO
-      setCellStyle(ws, t.titleRow, cLabel, {
-        font: { bold: true, name: 'Calibri', color: { rgb: '000000' } },
-        fill: purpleHeader,
-        border: borderThin,
-        alignment: { horizontal: 'left', vertical: 'center', wrapText: true }
-      });
-      setCellStyle(ws, t.titleRow, cAmount, {
-        font: { bold: true, name: 'Calibri' },
-        fill: pinkAmount,
-        border: borderThin,
-        alignment: { horizontal: 'center', vertical: 'center', wrapText: true }
-      });
+  if (meta.grandTotalRow >= 0) {
+    setRangeStyle(ws, meta.grandTotalRow, 0, meta.grandTotalRow, 2, {
+      font: { bold: true, name: 'Calibri' },
+      fill: greenTotal,
+      border: borderThin
+    });
+    setCellStyle(ws, meta.grandTotalRow, 2, {
+      ...moneyStyle,
+      font: { bold: true, name: 'Calibri' },
+      fill: greenTotal,
+      border: borderThin
+    });
+  }
 
-      for (let r = t.dataStartRow; r <= t.dataEndRow; r++) {
-        setCellStyle(ws, r, cLabel, {
+  if (meta.totalSinInvesRow >= 0) {
+    setRangeStyle(ws, meta.totalSinInvesRow, 0, meta.totalSinInvesRow, 2, {
+      font: { bold: true, name: 'Calibri' },
+      fill: yellow,
+      border: borderThin
+    });
+    setCellStyle(ws, meta.totalSinInvesRow, 2, {
+      ...moneyStyle,
+      font: { bold: true, name: 'Calibri' },
+      fill: yellow,
+      border: borderThin
+    });
+  }
+
+  if (hasPrev) {
+    for (const t of previsiones.tables) {
+      const headerFill = t.kind === 'porAprobar' ? pinkHeader : orangeHeader;
+      for (const c of [0, 1, 2]) {
+        setCellStyle(ws, t.titleRow, c, {
+          font: { bold: true, name: 'Calibri', color: c === 2 && t.kind === 'porAprobar' ? { rgb: 'FFFFFF' } : { rgb: '000000' } },
+          fill: c === 2 ? (t.kind === 'porAprobar' ? makeFill('#C5A0D0') : blueObsHeader) : headerFill,
           border: borderThin,
-          font: { name: 'Calibri' },
-          alignment: { vertical: 'center', wrapText: true }
+          alignment: { horizontal: c === 0 ? 'left' : 'center', vertical: 'center', wrapText: true }
         });
-        setCellStyle(ws, r, cAmount, {
-          border: borderThin,
-          ...moneyStyle,
-          font: { name: 'Calibri' }
-        });
+      }
+
+      if (t.dataEndRow >= t.dataStartRow) {
+        for (let r = t.dataStartRow; r <= t.dataEndRow; r++) {
+          setCellStyle(ws, r, 0, {
+            border: borderThin,
+            font: { name: 'Calibri' },
+            alignment: { vertical: 'center', wrapText: true }
+          });
+          setCellStyle(ws, r, 1, { border: borderThin, ...moneyStyle, font: { name: 'Calibri' } });
+          setCellStyle(ws, r, 2, {
+            border: borderThin,
+            font: { name: 'Calibri' },
+            fill: blueObs,
+            alignment: { vertical: 'center', wrapText: true }
+          });
+        }
       }
 
       if (t.totalRow >= 0) {
-        setCellStyle(ws, t.totalRow, cLabel, {
+        setCellStyle(ws, t.totalRow, 0, {
           font: { bold: true, name: 'Calibri' },
-          fill: purpleHeader,
+          fill: headerFill,
           border: borderThin,
           alignment: { vertical: 'center', wrapText: true }
         });
-        setCellStyle(ws, t.totalRow, cAmount, {
+        setCellStyle(ws, t.totalRow, 1, {
           font: { bold: true, name: 'Calibri' },
-          fill: purpleHeader,
+          fill: headerFill,
           border: borderThin,
           ...moneyStyle
         });
-      }
-
-      // Observaciones
-      const obsHeaderSet = new Set(t.obsHeaderRows || []);
-      for (let r = t.obsStartRow; r <= t.obsEndRow; r++) {
-        const val = ws[XLSX.utils.encode_cell({ r, c: cObs })]?.v;
-        if (val === undefined || val === '') continue;
-        const isHeader = obsHeaderSet.has(r);
-        setCellStyle(ws, r, cObs, {
-          font: {
-            bold: isHeader,
-            name: 'Calibri',
-            color: isHeader && t.kind === 'porAprobar' ? { rgb: 'FFFFFF' } : { rgb: '000000' }
-          },
-          fill: isHeader
-            ? (t.kind === 'porAprobar' ? purpleObsHeader : blueObsHeader)
-            : blueObsNote,
+        setCellStyle(ws, t.totalRow, 2, {
+          font: { name: 'Calibri' },
+          fill: blueObs,
           border: borderThin,
           alignment: { vertical: 'center', wrapText: true }
         });
@@ -3374,6 +3352,59 @@ function applyPigGeneralEisssMiniTabla(aoa, { mensualMap, annualTotalsMap, month
   };
 }
 
+/**
+ * Tablas itinerario E.I bajo la minitabla (solo CR GENERAL).
+ * startCol = misma columna que la minitabla (LINEA).
+ */
+function applyPigGeneralItinerarioTables(aoa, { startCol, afterRow, itinerario, year }) {
+  const c0 = Number(startCol) || 0;
+  let row = Math.max(0, Number(afterRow) || 0) + 2;
+  const tables = [];
+  const yy = Number(year) || new Date().getFullYear();
+
+  const writeSemestre = (rows, title, withObs) => {
+    const headerRow = row;
+    ensureAoaCell(aoa, row, c0, 'LINEA');
+    ensureAoaCell(aoa, row, c0 + 1, title);
+    ensureAoaCell(aoa, row, c0 + 2, 'FECHA');
+    ensureAoaCell(aoa, row, c0 + 3, 'JORNADA');
+    ensureAoaCell(aoa, row, c0 + 4, 'Nº');
+    if (withObs) ensureAoaCell(aoa, row, c0 + 5, 'OBSERVACIONES');
+    row += 1;
+
+    const dataStart = row;
+    for (const item of rows || []) {
+      ensureAoaCell(aoa, row, c0, item.linea || '');
+      ensureAoaCell(aoa, row, c0 + 1, item.trabajador || '');
+      ensureAoaCell(aoa, row, c0 + 2, item.fecha || '');
+      ensureAoaCell(aoa, row, c0 + 3, item.jornada || '');
+      ensureAoaCell(aoa, row, c0 + 4, item.num_orden || '');
+      if (withObs) ensureAoaCell(aoa, row, c0 + 5, item.observaciones || '');
+      row += 1;
+    }
+    const dataEnd = row - 1;
+    tables.push({
+      headerRow,
+      dataStartRow: dataStart,
+      dataEndRow: dataEnd >= dataStart ? dataEnd : dataStart - 1,
+      withObs,
+      startCol: c0,
+      endCol: withObs ? c0 + 5 : c0 + 4
+    });
+    row += 2;
+  };
+
+  writeSemestre(itinerario?.semestre1, `INTINERARIO E.I 1 SEMESTRE ${yy}`, false);
+  writeSemestre(itinerario?.semestre2, `INTINERARIO E.I 2 SEMESTRE ${yy}`, true);
+
+  return {
+    startCol: c0,
+    endCol: c0 + 5,
+    tables,
+    endRow: row - 1
+  };
+}
+
 function applyPigGeneralEisssObservaciones(aoa, { obsCol }) {
   for (const [rowIdx, text] of PIG_GENERAL_EISSS_OBSERVACIONES) {
     ensureAoaCell(aoa, rowIdx, obsCol, text);
@@ -3720,7 +3751,15 @@ function buildGeneralAoa({ title, months, mensualMap, annualTotalsMap, monthLimi
   return { aoa, monthsLimited, lim, summaryLabels, formulaMeta };
 }
 
-function styleGeneralSheet({ ws, aoa, monthsLimited, withObservaciones = false, miniTablaMeta = null, sideCols = null }) {
+function styleGeneralSheet({
+  ws,
+  aoa,
+  monthsLimited,
+  withObservaciones = false,
+  miniTablaMeta = null,
+  itinerarioMeta = null,
+  sideCols = null
+}) {
   const resolvedSideCols = sideCols || getPigGeneralSideCols(monthsLimited);
   const totalCols = resolvedSideCols.totalCols;
   const obsCol = resolvedSideCols.obsCol;
@@ -3753,6 +3792,7 @@ function styleGeneralSheet({ ws, aoa, monthsLimited, withObservaciones = false, 
   const maxColIdx = Math.max(
     totalCols - 1,
     miniTablaMeta?.valueCol ?? 0,
+    itinerarioMeta?.endCol ?? 0,
     withObservaciones ? obsCol : 0
   );
   const colWidths = Array.from({ length: maxColIdx + 1 }, (_, i) => {
@@ -3761,6 +3801,12 @@ function styleGeneralSheet({ ws, aoa, monthsLimited, withObservaciones = false, 
     if (i === totalCols - 1) return { wch: 14 };
     if (miniTablaMeta && i === miniTablaMeta.labelCol) return { wch: 48 };
     if (miniTablaMeta && i === miniTablaMeta.valueCol) return { wch: 16 };
+    if (itinerarioMeta && i === itinerarioMeta.startCol) return { wch: 16 };
+    if (itinerarioMeta && i === itinerarioMeta.startCol + 1) return { wch: 36 };
+    if (itinerarioMeta && i === itinerarioMeta.startCol + 2) return { wch: 22 };
+    if (itinerarioMeta && i === itinerarioMeta.startCol + 3) return { wch: 10 };
+    if (itinerarioMeta && i === itinerarioMeta.startCol + 4) return { wch: 6 };
+    if (itinerarioMeta && i === itinerarioMeta.startCol + 5) return { wch: 42 };
     if (withObservaciones && i === obsCol) return { wch: 62 };
     return { wch: 3 };
   });
@@ -3859,6 +3905,35 @@ function styleGeneralSheet({ ws, aoa, monthsLimited, withObservaciones = false, 
     }
   }
 
+  if (itinerarioMeta?.tables?.length) {
+    const headerFill = makeFill('#E7E6E6');
+    for (const t of itinerarioMeta.tables) {
+      for (let c = t.startCol; c <= t.endCol; c++) {
+        setCellStyle(ws, t.headerRow, c, {
+          font: { bold: true, name: 'Calibri' },
+          fill: headerFill,
+          border: borderThin,
+          alignment: { horizontal: 'center', vertical: 'center', wrapText: true }
+        });
+      }
+      if (t.dataEndRow >= t.dataStartRow) {
+        for (let r = t.dataStartRow; r <= t.dataEndRow; r++) {
+          for (let c = t.startCol; c <= t.endCol; c++) {
+            setCellStyle(ws, r, c, {
+              border: borderThin,
+              font: { name: 'Calibri', sz: 10 },
+              alignment: {
+                horizontal: c === t.startCol + 1 || c === t.startCol + 5 ? 'left' : 'center',
+                vertical: 'center',
+                wrapText: true
+              }
+            });
+          }
+        }
+      }
+    }
+  }
+
   // (mantenemos también z para compatibilidad con lectores)
   for (let r = 0; r < aoa.length; r++) {
     const cellB = XLSX.utils.encode_cell({ r, c: 1 });
@@ -3895,6 +3970,21 @@ export default function PIGPage() {
   const [estimadosLoading, setEstimadosLoading] = useState(false);
   const [estimadosSaving, setEstimadosSaving] = useState(false);
   const [estimadosStatus, setEstimadosStatus] = useState('');
+  const [itinerarioEi, setItinerarioEi] = useState(() => ({
+    semestre1: PIG_ITINERARIO_EI_DEFAULTS.semestre1.map((r) => ({ ...r })),
+    semestre2: PIG_ITINERARIO_EI_DEFAULTS.semestre2.map((r) => ({ ...r }))
+  }));
+  const [itinerarioLoading, setItinerarioLoading] = useState(false);
+  const [itinerarioSaving, setItinerarioSaving] = useState(false);
+  const [itinerarioStatus, setItinerarioStatus] = useState('');
+  const [tesoreriaPrevisiones, setTesoreriaPrevisiones] = useState(() => ({
+    ingresos_por_subv: PIG_TESORERIA_PREVISIONES_DEFAULTS.ingresos_por_subv.map((r) => ({ ...r })),
+    por_aprobar: PIG_TESORERIA_PREVISIONES_DEFAULTS.por_aprobar.map((r) => ({ ...r })),
+    totalObsIngresos: PIG_TESORERIA_PREVISIONES_DEFAULTS.totalObsIngresos
+  }));
+  const [previsionesLoading, setPrevisionesLoading] = useState(false);
+  const [previsionesSaving, setPrevisionesSaving] = useState(false);
+  const [previsionesStatus, setPrevisionesStatus] = useState('');
 
   const loadEstimadosForYear = useCallback(async (year) => {
     const y = Number(year);
@@ -3930,10 +4020,46 @@ export default function PIGPage() {
     if (objetivos) setObjetivosComparativa(objetivos);
   }, []);
 
+  const loadItinerarioForYear = useCallback(async (year) => {
+    const y = Number(year);
+    if (!Number.isFinite(y)) return;
+    setItinerarioLoading(true);
+    setItinerarioStatus('');
+    const { itinerario, error: loadError, tableMissing } = await loadPigItinerarioEi({ year: y });
+    setItinerarioLoading(false);
+    if (loadError) {
+      setItinerarioStatus('No se pudo cargar el itinerario E.I.');
+      return;
+    }
+    if (tableMissing) {
+      setItinerarioStatus('Ejecuta database/create_pig_itinerario_ei.sql y seed_pig_itinerario_ei_2026.sql en Supabase.');
+    }
+    if (itinerario) setItinerarioEi(itinerario);
+  }, []);
+
+  const loadPrevisionesForYear = useCallback(async (year) => {
+    const y = Number(year);
+    if (!Number.isFinite(y)) return;
+    setPrevisionesLoading(true);
+    setPrevisionesStatus('');
+    const { previsiones, error: loadError, tableMissing } = await loadPigTesoreriaPrevisiones({ year: y });
+    setPrevisionesLoading(false);
+    if (loadError) {
+      setPrevisionesStatus('No se pudieron cargar las previsiones de TESORERÍA.');
+      return;
+    }
+    if (tableMissing) {
+      setPrevisionesStatus('Ejecuta database/create_pig_tesoreria_previsiones.sql y seed_pig_tesoreria_previsiones_2026.sql en Supabase.');
+    }
+    if (previsiones) setTesoreriaPrevisiones(previsiones);
+  }, []);
+
   useEffect(() => {
     loadEstimadosForYear(estimadosYear);
     loadObjetivosForYear(estimadosYear);
-  }, [estimadosYear, loadEstimadosForYear, loadObjetivosForYear]);
+    loadItinerarioForYear(estimadosYear);
+    loadPrevisionesForYear(estimadosYear);
+  }, [estimadosYear, loadEstimadosForYear, loadObjetivosForYear, loadItinerarioForYear, loadPrevisionesForYear]);
 
   const saveObjetivosComparativa = useCallback(async () => {
     const y = Number(estimadosYear);
@@ -3957,6 +4083,55 @@ export default function PIGPage() {
     setObjetivosStatus('Objetivos guardados.');
     return true;
   }, [objetivosComparativa, estimadosYear]);
+
+  const saveItinerarioEi = useCallback(async () => {
+    const y = Number(estimadosYear);
+    if (!Number.isFinite(y)) {
+      setItinerarioStatus('Introduce un año válido.');
+      return false;
+    }
+    setItinerarioSaving(true);
+    setItinerarioStatus('');
+    const { error: saveError } = await upsertPigItinerarioEi({ year: y, itinerario: itinerarioEi });
+    setItinerarioSaving(false);
+    if (saveError) {
+      const detail = String(saveError.message || saveError.details || '').trim();
+      setItinerarioStatus(
+        detail
+          ? `Error al guardar el itinerario: ${detail}`
+          : 'Error al guardar el itinerario. ¿Has ejecutado el SQL de Supabase?'
+      );
+      return false;
+    }
+    setItinerarioStatus('Itinerario E.I. guardado.');
+    return true;
+  }, [itinerarioEi, estimadosYear]);
+
+  const saveTesoreriaPrevisiones = useCallback(async () => {
+    const y = Number(estimadosYear);
+    if (!Number.isFinite(y)) {
+      setPrevisionesStatus('Introduce un año válido.');
+      return false;
+    }
+    setPrevisionesSaving(true);
+    setPrevisionesStatus('');
+    const { error: saveError } = await upsertPigTesoreriaPrevisiones({
+      year: y,
+      previsiones: tesoreriaPrevisiones
+    });
+    setPrevisionesSaving(false);
+    if (saveError) {
+      const detail = String(saveError.message || saveError.details || '').trim();
+      setPrevisionesStatus(
+        detail
+          ? `Error al guardar previsiones: ${detail}`
+          : 'Error al guardar previsiones. ¿Has ejecutado el SQL de Supabase?'
+      );
+      return false;
+    }
+    setPrevisionesStatus('Previsiones de TESORERÍA guardadas.');
+    return true;
+  }, [tesoreriaPrevisiones, estimadosYear]);
 
   const saveEstimadosSubv = useCallback(async () => {
     const y = Number(estimadosYear);
@@ -4013,6 +4188,9 @@ export default function PIGPage() {
       const yearForEstimados = Number(yearGuess || estimadosYear) || Number(estimadosYear);
       let estimadosForGenerate = estimadosSubv;
       let objetivosForGenerate = objetivosComparativa;
+      let itinerarioForGenerate = itinerarioEi;
+      let previsionesForGenerate = tesoreriaPrevisiones;
+
       if (!omitSubvenciones) {
         if (yearForEstimados && Number(yearForEstimados) !== Number(estimadosYear)) {
           const [{ estimados, error: loadEstError }, { objetivos, error: loadObjError }] = await Promise.all([
@@ -4025,8 +4203,19 @@ export default function PIGPage() {
           await Promise.all([saveEstimadosSubv(), saveObjetivosComparativa()]);
         }
       } else if (yearForEstimados && Number(yearForEstimados) === Number(estimadosYear)) {
-        // Objetivos de comparativa sí se pueden usar; estimados de subvención no.
-        await saveObjetivosComparativa();
+        // Objetivos + itinerario CR + previsiones TESORERÍA.
+        await Promise.all([
+          saveObjetivosComparativa(),
+          saveItinerarioEi(),
+          saveTesoreriaPrevisiones()
+        ]);
+      } else if (yearForEstimados) {
+        const [{ itinerario, error: itErr }, { previsiones, error: prErr }] = await Promise.all([
+          loadPigItinerarioEi({ year: yearForEstimados }),
+          loadPigTesoreriaPrevisiones({ year: yearForEstimados })
+        ]);
+        if (!itErr && itinerario) itinerarioForGenerate = itinerario;
+        if (!prErr && previsiones) previsionesForGenerate = previsiones;
       }
       const estimadosSlotsByLinea = omitSubvenciones
         ? { CATERING: [], IDONI: [], KOIKI: [], ESTRUCTURA: [] }
@@ -4107,6 +4296,7 @@ export default function PIGPage() {
         omitSubvenciones
       });
       let miniTablaMeta = null;
+      let itinerarioMeta = null;
       const sideColsFull = getPigGeneralSideCols(monthsFull);
       if (empresaMode !== 'MH') {
         if (!omitSubvenciones) {
@@ -4119,6 +4309,14 @@ export default function PIGPage() {
           labelCol: sideColsFull.miniLabelCol,
           valueCol: sideColsFull.miniValueCol
         });
+        if (omitSubvenciones && miniTablaMeta) {
+          itinerarioMeta = applyPigGeneralItinerarioTables(aoaFull, {
+            startCol: sideColsFull.miniLabelCol,
+            afterRow: miniTablaMeta.endRow,
+            itinerario: itinerarioForGenerate,
+            year: yearForEstimados || Number(estimadosYear)
+          });
+        }
       }
       const ws = XLSX.utils.aoa_to_sheet(aoaFull);
       styleGeneralSheet({
@@ -4127,6 +4325,7 @@ export default function PIGPage() {
         monthsLimited: monthsFull,
         withObservaciones: empresaMode !== 'MH' && !omitSubvenciones,
         miniTablaMeta,
+        itinerarioMeta,
         sideCols: sideColsFull
       });
 
@@ -4574,11 +4773,12 @@ export default function PIGPage() {
             title: titleTesoreria,
             accounts: treasuryAccounts,
             errorMessage: treasuryError?.message || '',
-            cuentaResultados: omitSubvenciones
+            cuentaResultados: omitSubvenciones,
+            previsiones: omitSubvenciones ? previsionesForGenerate : null
           });
           const wsTesoreria = XLSX.utils.aoa_to_sheet(aoaTesoreria);
           stylePigTesoreriaSheet({ ws: wsTesoreria, aoa: aoaTesoreria, meta: tesoreriaMeta });
-          if (omitSubvenciones) applyPigTesoreriaCuentaResultadosFormulas(wsTesoreria, tesoreriaMeta);
+          applyPigTesoreriaCuentaResultadosFormulas(wsTesoreria, tesoreriaMeta);
           XLSX.utils.book_append_sheet(wb, wsTesoreria, 'TESORERÍA');
         } catch (e) {
           console.error('Error generando hoja TESORERÍA:', e);
@@ -4640,7 +4840,20 @@ export default function PIGPage() {
       console.error(e);
       setError(e?.message || 'Error generando el Excel.');
     }
-  }, [anualFile, mensualFile, objetivosComparativa, pigEmpresa, estimadosSubv, estimadosYear, saveEstimadosSubv, saveObjetivosComparativa]);
+  }, [
+    anualFile,
+    mensualFile,
+    objetivosComparativa,
+    itinerarioEi,
+    tesoreriaPrevisiones,
+    pigEmpresa,
+    estimadosSubv,
+    estimadosYear,
+    saveEstimadosSubv,
+    saveObjetivosComparativa,
+    saveItinerarioEi,
+    saveTesoreriaPrevisiones
+  ]);
 
   return (
     <div style={{ padding: 24, background: colors.background, minHeight: '100vh', color: colors.text }}>
@@ -4978,6 +5191,298 @@ export default function PIGPage() {
             {objetivosStatus ? (
               <div style={{ marginTop: 8, fontSize: 12, fontWeight: 800, color: colors.textSecondary }}>
                 {objetivosStatus}
+              </div>
+            ) : null}
+          </div>
+        )}
+
+        {pigEmpresa !== 'MH' && (
+          <div style={{ padding: 14, borderRadius: 12, border: `1px solid ${colors.border}`, background: colors.surface }}>
+            <div style={{ fontSize: 13, fontWeight: 950, marginBottom: 4 }}>
+              Itinerario E.I (CR GENERAL EISSS)
+            </div>
+            <div style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 10, lineHeight: 1.35 }}>
+              Tablas editables debajo de la minitabla al generar <b>EISSS Cuenta Resultados</b>.
+              Mismo año que estimados/objetivos. Pulsa <b>Guardar itinerario</b> (o genera el Excel CR) para persistir.
+            </div>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+              <button
+                type="button"
+                onClick={saveItinerarioEi}
+                disabled={itinerarioSaving || itinerarioLoading}
+                style={{
+                  padding: '10px 14px',
+                  borderRadius: 10,
+                  border: `1px solid ${colors.primary}`,
+                  background: colors.primary,
+                  color: 'white',
+                  fontWeight: 900,
+                  cursor: itinerarioSaving || itinerarioLoading ? 'not-allowed' : 'pointer',
+                  opacity: itinerarioSaving || itinerarioLoading ? 0.7 : 1
+                }}
+              >
+                {itinerarioSaving ? 'Guardando…' : 'Guardar itinerario'}
+              </button>
+            </div>
+            {[
+              { key: 'semestre1', label: '1r semestre', withObs: false },
+              { key: 'semestre2', label: '2n semestre', withObs: true }
+            ].map((sem) => (
+              <div key={sem.key} style={{ marginBottom: 16 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                  <div style={{ fontSize: 12, fontWeight: 900 }}>{sem.label}</div>
+                  <button
+                    type="button"
+                    onClick={() => setItinerarioEi((prev) => ({
+                      ...prev,
+                      [sem.key]: [...(prev[sem.key] || []), createEmptyItinerarioRow()]
+                    }))}
+                    style={{
+                      padding: '6px 10px',
+                      borderRadius: 8,
+                      border: `1px solid ${colors.border}`,
+                      background: colors.background,
+                      color: colors.text,
+                      fontWeight: 800,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    + Fila
+                  </button>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {(itinerarioEi[sem.key] || []).map((row, idx) => (
+                    <div
+                      key={`${sem.key}-${idx}`}
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: sem.withObs ? '0.9fr 1.4fr 1fr 0.6fr 0.4fr 1.6fr auto' : '0.9fr 1.4fr 1fr 0.6fr 0.4fr auto',
+                        gap: 6,
+                        alignItems: 'center'
+                      }}
+                    >
+                      {['linea', 'trabajador', 'fecha', 'jornada', 'num_orden'].map((field) => (
+                        <input
+                          key={field}
+                          value={row[field] || ''}
+                          placeholder={field}
+                          disabled={itinerarioLoading}
+                          onChange={(e) => setItinerarioEi((prev) => {
+                            const next = [...(prev[sem.key] || [])];
+                            next[idx] = { ...next[idx], [field]: e.target.value };
+                            return { ...prev, [sem.key]: next };
+                          })}
+                          style={{
+                            padding: '8px 10px',
+                            borderRadius: 8,
+                            border: `1px solid ${colors.border}`,
+                            background: colors.background,
+                            color: colors.text,
+                            fontSize: 12,
+                            fontWeight: 700
+                          }}
+                        />
+                      ))}
+                      {sem.withObs ? (
+                        <input
+                          value={row.observaciones || ''}
+                          placeholder="observaciones"
+                          disabled={itinerarioLoading}
+                          onChange={(e) => setItinerarioEi((prev) => {
+                            const next = [...(prev[sem.key] || [])];
+                            next[idx] = { ...next[idx], observaciones: e.target.value };
+                            return { ...prev, [sem.key]: next };
+                          })}
+                          style={{
+                            padding: '8px 10px',
+                            borderRadius: 8,
+                            border: `1px solid ${colors.border}`,
+                            background: colors.background,
+                            color: colors.text,
+                            fontSize: 12,
+                            fontWeight: 700
+                          }}
+                        />
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={() => setItinerarioEi((prev) => ({
+                          ...prev,
+                          [sem.key]: (prev[sem.key] || []).filter((_, i) => i !== idx)
+                        }))}
+                        style={{
+                          padding: '8px 10px',
+                          borderRadius: 8,
+                          border: `1px solid ${colors.border}`,
+                          background: colors.background,
+                          color: colors.error || '#c0392b',
+                          fontWeight: 800,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+            {itinerarioStatus ? (
+              <div style={{ marginTop: 8, fontSize: 12, fontWeight: 800, color: colors.textSecondary }}>
+                {itinerarioStatus}
+              </div>
+            ) : null}
+          </div>
+        )}
+
+        {pigEmpresa !== 'MH' && (
+          <div style={{ padding: 14, borderRadius: 12, border: `1px solid ${colors.border}`, background: colors.surface }}>
+            <div style={{ fontSize: 13, fontWeight: 950, marginBottom: 4 }}>
+              Previsiones TESORERÍA (Cuenta Resultados)
+            </div>
+            <div style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 10, lineHeight: 1.35 }}>
+              Tablas debajo de Caixa/Fiare en la hoja <b>TESORERÍA</b> del Excel CR.
+              Pulsa <b>Guardar previsiones</b> (o genera el Excel CR) para persistir.
+            </div>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+              <button
+                type="button"
+                onClick={saveTesoreriaPrevisiones}
+                disabled={previsionesSaving || previsionesLoading}
+                style={{
+                  padding: '10px 14px',
+                  borderRadius: 10,
+                  border: `1px solid ${colors.primary}`,
+                  background: colors.primary,
+                  color: 'white',
+                  fontWeight: 900,
+                  cursor: previsionesSaving || previsionesLoading ? 'not-allowed' : 'pointer',
+                  opacity: previsionesSaving || previsionesLoading ? 0.7 : 1
+                }}
+              >
+                {previsionesSaving ? 'Guardando…' : 'Guardar previsiones'}
+              </button>
+            </div>
+            {[
+              { key: 'ingresos_por_subv', label: 'Ingresos por subvenciones' },
+              { key: 'por_aprobar', label: 'Subvenciones por aprobar' }
+            ].map((block) => (
+              <div key={block.key} style={{ marginBottom: 16 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                  <div style={{ fontSize: 12, fontWeight: 900 }}>{block.label}</div>
+                  <button
+                    type="button"
+                    onClick={() => setTesoreriaPrevisiones((prev) => ({
+                      ...prev,
+                      [block.key]: [...(prev[block.key] || []), createEmptyPrevisionRow()]
+                    }))}
+                    style={{
+                      padding: '6px 10px',
+                      borderRadius: 8,
+                      border: `1px solid ${colors.border}`,
+                      background: colors.background,
+                      color: colors.text,
+                      fontWeight: 800,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    + Fila
+                  </button>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {(tesoreriaPrevisiones[block.key] || []).map((row, idx) => (
+                    <div
+                      key={`${block.key}-${idx}`}
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: '1.4fr 0.7fr 1.6fr auto',
+                        gap: 6,
+                        alignItems: 'center'
+                      }}
+                    >
+                      <input
+                        value={row.concepto || ''}
+                        placeholder="Concepto"
+                        disabled={previsionesLoading}
+                        onChange={(e) => setTesoreriaPrevisiones((prev) => {
+                          const next = [...(prev[block.key] || [])];
+                          next[idx] = { ...next[idx], concepto: e.target.value };
+                          return { ...prev, [block.key]: next };
+                        })}
+                        style={{
+                          padding: '8px 10px',
+                          borderRadius: 8,
+                          border: `1px solid ${colors.border}`,
+                          background: colors.background,
+                          color: colors.text,
+                          fontSize: 12,
+                          fontWeight: 700
+                        }}
+                      />
+                      <input
+                        value={row.ingreso || ''}
+                        placeholder="Ingreso"
+                        disabled={previsionesLoading}
+                        onChange={(e) => setTesoreriaPrevisiones((prev) => {
+                          const next = [...(prev[block.key] || [])];
+                          next[idx] = { ...next[idx], ingreso: e.target.value };
+                          return { ...prev, [block.key]: next };
+                        })}
+                        style={{
+                          padding: '8px 10px',
+                          borderRadius: 8,
+                          border: `1px solid ${colors.border}`,
+                          background: colors.background,
+                          color: colors.text,
+                          fontSize: 12,
+                          fontWeight: 700
+                        }}
+                      />
+                      <input
+                        value={row.observacion || ''}
+                        placeholder="Observación"
+                        disabled={previsionesLoading}
+                        onChange={(e) => setTesoreriaPrevisiones((prev) => {
+                          const next = [...(prev[block.key] || [])];
+                          next[idx] = { ...next[idx], observacion: e.target.value };
+                          return { ...prev, [block.key]: next };
+                        })}
+                        style={{
+                          padding: '8px 10px',
+                          borderRadius: 8,
+                          border: `1px solid ${colors.border}`,
+                          background: colors.background,
+                          color: colors.text,
+                          fontSize: 12,
+                          fontWeight: 700
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setTesoreriaPrevisiones((prev) => ({
+                          ...prev,
+                          [block.key]: (prev[block.key] || []).filter((_, i) => i !== idx)
+                        }))}
+                        style={{
+                          padding: '8px 10px',
+                          borderRadius: 8,
+                          border: `1px solid ${colors.border}`,
+                          background: colors.background,
+                          color: colors.error || '#c0392b',
+                          fontWeight: 800,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+            {previsionesStatus ? (
+              <div style={{ marginTop: 8, fontSize: 12, fontWeight: 800, color: colors.textSecondary }}>
+                {previsionesStatus}
               </div>
             ) : null}
           </div>
