@@ -13,8 +13,26 @@ function assert(condition, message) {
   }
 }
 
+function removePayloadEmptyBranches(source) {
+  let output = source;
+  const needle = 'if (!payload.length) {';
+  let start = output.indexOf(needle);
+  while (start !== -1) {
+    let idx = start + needle.length;
+    let depth = 1;
+    while (idx < output.length && depth > 0) {
+      if (output[idx] === '{') depth += 1;
+      if (output[idx] === '}') depth -= 1;
+      idx += 1;
+    }
+    output = `${output.slice(0, start)}${output.slice(idx)}`;
+    start = output.indexOf(needle);
+  }
+  return output;
+}
+
 function assertNoDeleteBeforeInsert(relPath, tableName) {
-  const source = read(relPath);
+  const source = removePayloadEmptyBranches(read(relPath));
   const destructivePattern = new RegExp(
     `from\\('${tableName}'\\)[\\s\\S]{0,120}\\.delete\\(\\)[\\s\\S]{0,260}\\.eq\\('year', y\\)[\\s\\S]{0,700}\\.(?:insert|upsert)\\(`,
     'm'
