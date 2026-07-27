@@ -83,9 +83,29 @@ export const PIG_TESORERIA_PREVISIONES_DEFAULTS = {
 function parseEuroAmount(input) {
   const s = String(input ?? '').trim();
   if (!s) return null;
-  const normalized = s.replace(/\./g, '').replace(',', '.');
+  const normalized = normalizeDecimalText(s);
   const n = Number.parseFloat(normalized);
   return Number.isFinite(n) ? n : null;
+}
+
+function normalizeDecimalText(value) {
+  const text = String(value ?? '').trim().replace(/\s/g, '');
+  if (!text) return '';
+  if (text.includes(',')) return text.replace(/\./g, '').replace(',', '.');
+
+  const dotParts = text.split('.');
+  if (dotParts.length === 2) {
+    const [whole, fraction] = dotParts;
+    return fraction.length === 3 && whole.length <= 3
+      ? `${whole}${fraction}`
+      : text;
+  }
+  if (dotParts.length > 2) {
+    const last = dotParts[dotParts.length - 1];
+    if (last.length <= 2) return `${dotParts.slice(0, -1).join('')}.${last}`;
+    return dotParts.join('');
+  }
+  return text;
 }
 
 function formatEuroAmount(amount) {
@@ -160,13 +180,6 @@ export async function loadPigTesoreriaPrevisiones({ year }) {
     else previsiones.ingresos_por_subv.push(mapped);
   }
 
-  if (!previsiones.ingresos_por_subv.length) {
-    previsiones.ingresos_por_subv = cloneDefaults().ingresos_por_subv;
-  }
-  if (!previsiones.por_aprobar.length) {
-    previsiones.por_aprobar = cloneDefaults().por_aprobar;
-  }
-
   return { previsiones, error: null };
 }
 
@@ -196,18 +209,53 @@ export async function upsertPigTesoreriaPrevisiones({ year, previsiones }) {
     }))
   ];
 
-  const { error: deleteError } = await supabase
-    .from('pig_tesoreria_previsiones')
-    .delete()
-    .eq('year', y);
-  if (deleteError) return { error: deleteError };
+  if (!payload.length) {
+    const { error: deleteError } = await supabase
+      .from('pig_tesoreria_previsiones')
+      .delete()
+      .eq('year', y);
+    return { error: deleteError || null };
+  }
 
-  if (!payload.length) return { error: null };
-
-  const { error: insertError } = await supabase
+  const { data: existing, error: loadError } = await supabase
     .from('pig_tesoreria_previsiones')
-    .insert(payload);
-  if (insertError) return { error: insertError };
+    .select('id')
+    .eq('year', y)
+    .order('bloque', { ascending: true })
+    .order('sort_order', { ascending: true });
+  if (loadError) return { error: loadError };
+
+  const existingRows = Array.isArray(existing) ? existing : [];
+  const staleIds = [];
+
+  for (let idx = 0; idx < payload.length; idx++) {
+    const row = payload[idx];
+    const existingId = existingRows[idx]?.id;
+    if (existingId) {
+      const { error: updateError } = await supabase
+        .from('pig_tesoreria_previsiones')
+        .update(row)
+        .eq('id', existingId);
+      if (updateError) return { error: updateError };
+    } else {
+      const { error: insertError } = await supabase
+        .from('pig_tesoreria_previsiones')
+        .insert(row);
+      if (insertError) return { error: insertError };
+    }
+  }
+
+  for (let idx = payload.length; idx < existingRows.length; idx++) {
+    if (existingRows[idx]?.id) staleIds.push(existingRows[idx].id);
+  }
+
+  if (staleIds.length) {
+    const { error: deleteError } = await supabase
+      .from('pig_tesoreria_previsiones')
+      .delete()
+      .in('id', staleIds);
+    if (deleteError) return { error: deleteError };
+  }
   return { error: null };
 }
 

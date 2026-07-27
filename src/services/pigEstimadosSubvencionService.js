@@ -63,9 +63,29 @@ function clampMonth(value, fallback = 1) {
 function parseEuroAmount(input) {
   const s = String(input ?? '').trim();
   if (!s) return 0;
-  const normalized = s.replace(/\./g, '').replace(',', '.');
+  const normalized = normalizeDecimalText(s);
   const n = Number.parseFloat(normalized);
   return Number.isFinite(n) ? n : 0;
+}
+
+function normalizeDecimalText(value) {
+  const text = String(value ?? '').trim().replace(/\s/g, '');
+  if (!text) return '';
+  if (text.includes(',')) return text.replace(/\./g, '').replace(',', '.');
+
+  const dotParts = text.split('.');
+  if (dotParts.length === 2) {
+    const [whole, fraction] = dotParts;
+    return fraction.length === 3 && whole.length <= 3
+      ? `${whole}${fraction}`
+      : text;
+  }
+  if (dotParts.length > 2) {
+    const last = dotParts[dotParts.length - 1];
+    if (last.length <= 2) return `${dotParts.slice(0, -1).join('')}.${last}`;
+    return dotParts.join('');
+  }
+  return text;
 }
 
 function formatEuroAmount(amount) {
@@ -234,20 +254,40 @@ export async function upsertPigEstimadosSubvencion({ year, estimados }) {
     }
   }
 
-  const { error: deleteError } = await supabase
-    .from('pig_estimados_subvencion')
-    .delete()
-    .eq('year', y)
-    .in('linea', [...PIG_ESTIMADOS_LINEAS]);
-
-  if (deleteError) return { error: deleteError };
-
-  if (!payload.length) return { error: null };
+  if (!payload.length) {
+    const { error: deleteError } = await supabase
+      .from('pig_estimados_subvencion')
+      .delete()
+      .eq('year', y)
+      .in('linea', [...PIG_ESTIMADOS_LINEAS]);
+    return { error: deleteError || null };
+  }
 
   const { error: upsertError } = await supabase
     .from('pig_estimados_subvencion')
-    .insert(payload);
+    .upsert(payload, { onConflict: 'linea,year,slot,segment' });
 
   if (upsertError) return { error: upsertError };
+
+  const { data: existing, error: loadError } = await supabase
+    .from('pig_estimados_subvencion')
+    .select('id, linea, slot, segment')
+    .eq('year', y)
+    .in('linea', [...PIG_ESTIMADOS_LINEAS]);
+  if (loadError) return { error: loadError };
+
+  const activeKeys = new Set(payload.map((row) => `${row.linea}:${row.slot}:${row.segment}`));
+  const staleIds = (existing || [])
+    .filter((row) => !activeKeys.has(`${String(row.linea || '').toUpperCase()}:${Number(row.slot)}:${Number(row.segment)}`))
+    .map((row) => row.id)
+    .filter(Boolean);
+
+  if (staleIds.length) {
+    const { error: deleteError } = await supabase
+      .from('pig_estimados_subvencion')
+      .delete()
+      .in('id', staleIds);
+    if (deleteError) return { error: deleteError };
+  }
   return { error: null };
 }
