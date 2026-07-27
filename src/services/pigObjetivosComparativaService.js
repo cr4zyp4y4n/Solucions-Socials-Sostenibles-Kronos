@@ -21,9 +21,29 @@ const FIELD_MAP = [
 function parseEuroAmount(input) {
   const s = String(input ?? '').trim();
   if (!s) return 0;
-  const normalized = s.replace(/\./g, '').replace(',', '.');
+  const normalized = normalizeDecimalText(s);
   const n = Number.parseFloat(normalized);
   return Number.isFinite(n) ? n : 0;
+}
+
+function normalizeDecimalText(value) {
+  const text = String(value ?? '').trim().replace(/\s/g, '');
+  if (!text) return '';
+  if (text.includes(',')) return text.replace(/\./g, '').replace(',', '.');
+
+  const dotParts = text.split('.');
+  if (dotParts.length === 2) {
+    const [whole, fraction] = dotParts;
+    return fraction.length === 3 && whole.length <= 3
+      ? `${whole}${fraction}`
+      : text;
+  }
+  if (dotParts.length > 2) {
+    const last = dotParts[dotParts.length - 1];
+    if (last.length <= 2) return `${dotParts.slice(0, -1).join('')}.${last}`;
+    return dotParts.join('');
+  }
+  return text;
 }
 
 function formatEuroAmount(amount) {
@@ -95,17 +115,10 @@ export async function upsertPigObjetivosComparativa({ year, objetivos }) {
     amount: parseEuroAmount(normalized[key])
   }));
 
-  const { error: deleteError } = await supabase
+  const { error: upsertError } = await supabase
     .from('pig_objetivos_comparativa')
-    .delete()
-    .eq('year', y);
+    .upsert(payload, { onConflict: 'linea,year,variant' });
 
-  if (deleteError) return { error: deleteError };
-
-  const { error: insertError } = await supabase
-    .from('pig_objetivos_comparativa')
-    .insert(payload);
-
-  if (insertError) return { error: insertError };
+  if (upsertError) return { error: upsertError };
   return { error: null };
 }

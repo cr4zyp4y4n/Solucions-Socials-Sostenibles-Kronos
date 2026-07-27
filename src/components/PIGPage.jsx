@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Upload, Download, FileText, AlertCircle } from 'lucide-react';
 import * as XLSX from 'xlsx-js-style';
 import { useTheme } from './ThemeContext';
@@ -3985,13 +3985,19 @@ export default function PIGPage() {
   const [previsionesLoading, setPrevisionesLoading] = useState(false);
   const [previsionesSaving, setPrevisionesSaving] = useState(false);
   const [previsionesStatus, setPrevisionesStatus] = useState('');
+  const estimadosLoadSeq = useRef(0);
+  const objetivosLoadSeq = useRef(0);
+  const itinerarioLoadSeq = useRef(0);
+  const previsionesLoadSeq = useRef(0);
 
   const loadEstimadosForYear = useCallback(async (year) => {
     const y = Number(year);
     if (!Number.isFinite(y)) return;
+    const requestId = ++estimadosLoadSeq.current;
     setEstimadosLoading(true);
     setEstimadosStatus('');
     const { estimados, error: loadError, tableMissing } = await loadPigEstimadosSubvencion({ year: y });
+    if (requestId !== estimadosLoadSeq.current) return;
     setEstimadosLoading(false);
     if (loadError) {
       setEstimadosStatus('No se pudieron cargar los estimados guardados.');
@@ -4006,9 +4012,11 @@ export default function PIGPage() {
   const loadObjetivosForYear = useCallback(async (year) => {
     const y = Number(year);
     if (!Number.isFinite(y)) return;
+    const requestId = ++objetivosLoadSeq.current;
     setObjetivosLoading(true);
     setObjetivosStatus('');
     const { objetivos, error: loadError, tableMissing } = await loadPigObjetivosComparativa({ year: y });
+    if (requestId !== objetivosLoadSeq.current) return;
     setObjetivosLoading(false);
     if (loadError) {
       setObjetivosStatus('No se pudieron cargar los objetivos guardados.');
@@ -4023,9 +4031,11 @@ export default function PIGPage() {
   const loadItinerarioForYear = useCallback(async (year) => {
     const y = Number(year);
     if (!Number.isFinite(y)) return;
+    const requestId = ++itinerarioLoadSeq.current;
     setItinerarioLoading(true);
     setItinerarioStatus('');
     const { itinerario, error: loadError, tableMissing } = await loadPigItinerarioEi({ year: y });
+    if (requestId !== itinerarioLoadSeq.current) return;
     setItinerarioLoading(false);
     if (loadError) {
       setItinerarioStatus('No se pudo cargar el itinerario E.I.');
@@ -4040,9 +4050,11 @@ export default function PIGPage() {
   const loadPrevisionesForYear = useCallback(async (year) => {
     const y = Number(year);
     if (!Number.isFinite(y)) return;
+    const requestId = ++previsionesLoadSeq.current;
     setPrevisionesLoading(true);
     setPrevisionesStatus('');
     const { previsiones, error: loadError, tableMissing } = await loadPigTesoreriaPrevisiones({ year: y });
+    if (requestId !== previsionesLoadSeq.current) return;
     setPrevisionesLoading(false);
     if (loadError) {
       setPrevisionesStatus('No se pudieron cargar las previsiones de TESORERÍA.');
@@ -4156,13 +4168,28 @@ export default function PIGPage() {
     return true;
   }, [estimadosSubv, estimadosYear]);
 
-  const canGenerate = useMemo(() => Boolean(anualFile && mensualFile), [anualFile, mensualFile]);
+  const pigAuxBusy = estimadosLoading
+    || objetivosLoading
+    || itinerarioLoading
+    || previsionesLoading
+    || estimadosSaving
+    || objetivosSaving
+    || itinerarioSaving
+    || previsionesSaving;
+  const canGenerate = useMemo(
+    () => Boolean(anualFile && mensualFile) && !pigAuxBusy,
+    [anualFile, mensualFile, pigAuxBusy]
+  );
 
   const generateExcel = useCallback(async (opts = {}) => {
     try {
       setError('');
       if (!anualFile || !mensualFile) {
         setError('Sube los 2 archivos del PIG: anual y mensual (CSV o Excel).');
+        return;
+      }
+      if (pigAuxBusy) {
+        setError('Espera a que termine la carga/guardado de datos PIG antes de generar el Excel.');
         return;
       }
 
@@ -4197,23 +4224,39 @@ export default function PIGPage() {
             loadPigEstimadosSubvencion({ year: yearForEstimados }),
             loadPigObjetivosComparativa({ year: yearForEstimados })
           ]);
+          if (loadEstError || loadObjError) {
+            setError(`No se pudo cargar la configuración PIG de ${yearForEstimados}. No se ha generado el Excel.`);
+            return;
+          }
           if (!loadEstError && estimados) estimadosForGenerate = estimados;
           if (!loadObjError && objetivos) objetivosForGenerate = objetivos;
         } else {
-          await Promise.all([saveEstimadosSubv(), saveObjetivosComparativa()]);
+          const [estimadosSaved, objetivosSaved] = await Promise.all([saveEstimadosSubv(), saveObjetivosComparativa()]);
+          if (!estimadosSaved || !objetivosSaved) {
+            setError('No se pudo guardar la configuración PIG. No se ha generado el Excel.');
+            return;
+          }
         }
       } else if (yearForEstimados && Number(yearForEstimados) === Number(estimadosYear)) {
         // Objetivos + itinerario CR + previsiones TESORERÍA.
-        await Promise.all([
+        const [objetivosSaved, itinerarioSaved, previsionesSaved] = await Promise.all([
           saveObjetivosComparativa(),
           saveItinerarioEi(),
           saveTesoreriaPrevisiones()
         ]);
+        if (!objetivosSaved || !itinerarioSaved || !previsionesSaved) {
+          setError('No se pudieron guardar los datos de Cuenta Resultados. No se ha generado el Excel.');
+          return;
+        }
       } else if (yearForEstimados) {
         const [{ itinerario, error: itErr }, { previsiones, error: prErr }] = await Promise.all([
           loadPigItinerarioEi({ year: yearForEstimados }),
           loadPigTesoreriaPrevisiones({ year: yearForEstimados })
         ]);
+        if (itErr || prErr) {
+          setError(`No se pudieron cargar los datos de Cuenta Resultados de ${yearForEstimados}. No se ha generado el Excel.`);
+          return;
+        }
         if (!itErr && itinerario) itinerarioForGenerate = itinerario;
         if (!prErr && previsiones) previsionesForGenerate = previsiones;
       }
@@ -4849,6 +4892,7 @@ export default function PIGPage() {
     pigEmpresa,
     estimadosSubv,
     estimadosYear,
+    pigAuxBusy,
     saveEstimadosSubv,
     saveObjetivosComparativa,
     saveItinerarioEi,

@@ -24,9 +24,29 @@ function parseAmount(value) {
   }
   const text = String(value).trim();
   if (!text) return 0;
-  const normalized = text.replace(/\./g, '').replace(',', '.');
+  const normalized = normalizeDecimalText(text);
   const parsed = Number.parseFloat(normalized);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function normalizeDecimalText(value) {
+  const text = String(value ?? '').trim().replace(/\s/g, '');
+  if (!text) return '';
+  if (text.includes(',')) return text.replace(/\./g, '').replace(',', '.');
+
+  const dotParts = text.split('.');
+  if (dotParts.length === 2) {
+    const [whole, fraction] = dotParts;
+    return fraction.length === 3 && whole.length <= 3
+      ? `${whole}${fraction}`
+      : text;
+  }
+  if (dotParts.length > 2) {
+    const last = dotParts[dotParts.length - 1];
+    if (last.length <= 2) return `${dotParts.slice(0, -1).join('')}.${last}`;
+    return dotParts.join('');
+  }
+  return text;
 }
 
 function normalizeAccountNumber(value) {
@@ -130,8 +150,8 @@ function getEstimateSubtotal(doc) {
   const fromLines = sumLineSubtotals(doc);
   if (Math.abs(fromLines) > 0.005) return fromLines;
 
-  // Último recurso: no inventar IVA; si solo hay total, no lo usamos como subtotal.
-  return 0;
+  // Holded a veces solo envía total; usarlo evita descartar presupuestos válidos como importe cero.
+  return total;
 }
 
 function getEstimateTotal(doc) {
