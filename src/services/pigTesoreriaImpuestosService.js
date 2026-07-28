@@ -51,6 +51,11 @@ export function normalizeAccountCode(value) {
     .replace(/\D/g, '');
 }
 
+const REQUIRED_TAX_ACCOUNT_CODES = [
+  ...IMPUESTOS_MOD_303_ACCOUNTS.map((row) => row.code),
+  ...IMPUESTOS_A_PAGAR_ACCOUNTS.map((row) => row.code)
+].map(normalizeAccountCode);
+
 /**
  * Número de cuenta contable tal como lo devuelve Holded (campo `number`).
  * No usa `prefix` ni `id`: un prefijo "472" no es la cuenta 47200000.
@@ -92,16 +97,35 @@ export function extractHoldedAccountBalance(account) {
   return 0;
 }
 
+export function accountHasExplicitBalance(account) {
+  if (!account || typeof account !== 'object') return false;
+  if (account.balance != null && account.balance !== '') return true;
+  if (account.saldo != null && account.saldo !== '') return true;
+  if (account.balances?.balance != null && account.balances.balance !== '') return true;
+  if (account.debit != null || account.credit != null) return true;
+  if (account.debe != null || account.haber != null) return true;
+  if (account.amount != null && account.amount !== '') return true;
+  return false;
+}
+
 function buildBalanceMap(accounts = []) {
   const map = new Map();
+  const matchedRequestedCodes = new Set();
+  const matchedCodesWithBalance = new Set();
+  const required = new Set(REQUIRED_TAX_ACCOUNT_CODES);
+
   for (const account of accounts) {
     const code = extractHoldedAccountNumber(account);
     if (!code) continue;
+    const isRequested = required.has(code);
+    if (isRequested) matchedRequestedCodes.add(code);
+    if (isRequested && accountHasExplicitBalance(account)) matchedCodesWithBalance.add(code);
+
     const balance = extractHoldedAccountBalance(account);
     if (map.has(code)) map.set(code, map.get(code) + balance);
     else map.set(code, balance);
   }
-  return map;
+  return { map, matchedRequestedCodes, matchedCodesWithBalance };
 }
 
 /** Solo coincidencia exacta de número de cuenta (sin rellenar prefijos tipo 472 → 47200000). */
@@ -121,13 +145,30 @@ export function impuestosQuarterFromMonth(monthIndex) {
   return Math.floor(Math.min(Math.max(m, 0), 11) / 3) + 1;
 }
 
+function unavailableImpuestos(error) {
+  return {
+    unavailable: true,
+    errorMessage: error?.message || String(error || 'No se pudieron cargar saldos de impuestos.'),
+    mod303: [],
+    mod303Sum: null,
+    aPagar: [],
+    aPagarByCode: {}
+  };
+}
+
 /**
  * Carga saldos de cuentas fiscales desde Holded (accounting-accounts).
  */
 export async function loadPigImpuestosBalances({ company = 'solucions' } = {}) {
   try {
     const raw = await holdedApiV2Service.getAccountingAccounts(company);
-    const map = buildBalanceMap(raw || []);
+    const { map, matchedRequestedCodes, matchedCodesWithBalance } = buildBalanceMap(raw || []);
+    if (!matchedRequestedCodes.size) {
+      throw new Error('Holded no devolvió ninguna cuenta fiscal esperada (472/477/470/475/4751).');
+    }
+    if (!matchedCodesWithBalance.size) {
+      throw new Error('Holded devolvió cuentas fiscales sin campos de saldo; no se puede calcular IMPUESTOS con importes verificables.');
+    }
     const mod303 = IMPUESTOS_MOD_303_ACCOUNTS.map((row) => ({
       ...row,
       balance: balanceForCode(map, row.code)
@@ -148,12 +189,7 @@ export async function loadPigImpuestosBalances({ company = 'solucions' } = {}) {
     };
   } catch (error) {
     return {
-      impuestos: {
-        mod303: IMPUESTOS_MOD_303_ACCOUNTS.map((r) => ({ ...r, balance: 0 })),
-        mod303Sum: 0,
-        aPagar: IMPUESTOS_A_PAGAR_ACCOUNTS.map((r) => ({ ...r, balance: 0 })),
-        aPagarByCode: {}
-      },
+      impuestos: unavailableImpuestos(error),
       error
     };
   }

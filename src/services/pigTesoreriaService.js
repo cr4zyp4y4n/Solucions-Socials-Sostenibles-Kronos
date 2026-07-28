@@ -185,6 +185,35 @@ function appendPrevisionesBelow(aoa, meta, previsiones) {
 function appendImpuestosRight(aoa, meta, impuestos = null, { monthIndex } = {}) {
   const col = IMPUESTOS_COL;
   const quarter = impuestosQuarterFromMonth(monthIndex);
+
+  if (impuestos?.unavailable) {
+    const titleRow = 0;
+    const errorRow = 1;
+    setAoaCell(aoa, titleRow, col.code, 'IMPUESTOS');
+    setAoaCell(aoa, errorRow, col.code, 'No disponible');
+    setAoaCell(aoa, errorRow, col.desc, impuestos.errorMessage || 'No se pudieron cargar saldos de impuestos desde Holded.');
+    meta.impuestos = {
+      unavailable: true,
+      titleRow,
+      headerRow: errorRow,
+      errorRow,
+      startCol: col.code,
+      endCol: col.aPagar,
+      codeCol: col.code,
+      descCol: col.desc,
+      saldoCol: col.saldo,
+      aPagarCol: col.aPagar,
+      mod303SaldoStartRow: 2,
+      mod303SaldoEndRow: 1,
+      aPagarDataRows: [],
+      totalRow: null,
+      endRow: errorRow,
+      quarter
+    };
+    meta.minCols = Math.max(meta.minCols || 3, col.aPagar + 1);
+    return;
+  }
+
   const mod303Rows = impuestos?.mod303?.length
     ? impuestos.mod303
     : IMPUESTOS_MOD_303_ACCOUNTS.map((r) => ({ ...r, balance: 0 }));

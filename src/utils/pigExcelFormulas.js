@@ -402,6 +402,7 @@ export function applyPigTesoreriaCuentaResultadosFormulas(ws, meta = {}) {
 
   // IMPUESTOS: MOD 303 = SUM(saldos); si negativo → A PAGAR; TOTAL A PAGAR = SUM(H)
   const imp = meta.impuestos;
+  if (imp?.unavailable) return;
   if (imp?.mod303ResultRow != null && imp.mod303SaldoStartRow != null && imp.mod303SaldoEndRow != null) {
     const saldoCol = Number.isFinite(imp.saldoCol) ? imp.saldoCol : 6;
     const aPagarCol = Number.isFinite(imp.aPagarCol) ? imp.aPagarCol : 7;
