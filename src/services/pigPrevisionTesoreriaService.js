@@ -371,6 +371,36 @@ function aggregatePaymentEventsByMonth(events, targetYear) {
   return { months, count };
 }
 
+function normalizePaymentKind(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[\s_-]+/g, '');
+}
+
+export function paymentIsExplicitSale(payment) {
+  const candidates = [
+    payment?.docType,
+    payment?.doctype,
+    payment?.documentType,
+    payment?.document_type,
+    payment?.type,
+    payment?.document?.type,
+    payment?.document?.docType,
+    payment?.document?.documentType,
+    payment?.doc?.type,
+    payment?.relatedDocument?.type,
+    payment?.invoice?.type
+  ].map(normalizePaymentKind);
+
+  if (candidates.some((kind) => ['purchase', 'expense', 'bill', 'supplierinvoice'].includes(kind))) {
+    return false;
+  }
+
+  return candidates.some((kind) =>
+    ['invoice', 'sale', 'sales', 'salesinvoice', 'salesreceipt', 'receipt'].includes(kind)
+  );
+}
+
 /** Facturas de venta Holded v1 (documents/invoice) en un rango de años de emisión. */
 async function fetchHoldedV1SalesDocuments(company, fromYear, toYear) {
   const all = [];
@@ -404,18 +434,7 @@ async function fetchHoldedPaymentsCobradaByYear(company, targetYear) {
     for (const p of batch) {
       const d = parsePaymentDate(p?.date ?? p?.paymentDate ?? p?.payment_date ?? p?.created);
       if (!d || d.getFullYear() !== targetYear) continue;
-
-      const desc = String(p?.desc ?? p?.description ?? '').toLowerCase();
-      if (
-        desc &&
-        (desc.includes('purchase') ||
-          desc.includes('compra') ||
-          desc.includes('expense') ||
-          desc.includes('gasto') ||
-          desc.includes('proveedor'))
-      ) {
-        continue;
-      }
+      if (!paymentIsExplicitSale(p)) continue;
 
       const amt = parseAmount(p?.amount ?? p?.total ?? p?.value ?? p?.payment);
       if (amt <= 0.005) continue;
