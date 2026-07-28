@@ -774,7 +774,7 @@ const BebidaItem = ({ bebida, hojaId, onUpdate, canEdit, colors }) => {
   );
 };
 
-const HojaRutaPage = () => {
+const HojaRutaPage = ({ canAccessInventory = false }) => {
   const { colors, isDark } = useTheme();
   const { user } = useAuth();
   const { activeSection, navigateTo } = useNavigation();
@@ -1909,7 +1909,7 @@ const HojaRutaPage = () => {
                   <Utensils size={20} color={colors.primary} />
                   Equipamiento y Material
                 </h3>
-                {hojaActual?.id && (
+                {hojaActual?.id && canAccessInventory && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                     {(() => {
                       const items = Array.isArray(hojaActual?.equipamiento) ? hojaActual.equipamiento : [];
@@ -2699,6 +2699,7 @@ const HojaRutaPage = () => {
         isOpen={showViewModal}
         onClose={() => setShowViewModal(false)}
         hojaRuta={selectedHoja}
+        canAccessInventory={canAccessInventory}
       />
 
       <FirmaConfirmModal

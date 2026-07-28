@@ -80,9 +80,13 @@ export default function HojaRutaEquipamientoLinkPage() {
   const [aliasMap, setAliasMap] = useState(() => loadAliasMap());
   const [picker, setPicker] = useState({ normKey: null, query: '' }); // { normKey, query }
 
-  const hojaId = useMemo(() => {
-    return String(localStorage.getItem('selectedHojaRutaId') || '').trim();
-  }, []);
+  const [hojaId] = useState(() => {
+    const storedHojaId = String(localStorage.getItem('selectedHojaRutaId') || '').trim();
+    if (storedHojaId) {
+      localStorage.removeItem('selectedHojaRutaId');
+    }
+    return storedHojaId;
+  });
 
   const reload = async () => {
     if (!hojaId) {
@@ -211,7 +215,12 @@ export default function HojaRutaEquipamientoLinkPage() {
           <motion.button
             whileHover={{ scale: 1.03 }}
             whileTap={{ scale: 0.97 }}
-            onClick={() => navigateTo('hoja-ruta')}
+            onClick={() => {
+              if (hojaId) {
+                localStorage.setItem('selectedHojaRutaId', hojaId);
+              }
+              navigateTo('hoja-ruta');
+            }}
             style={{
               display: 'flex',
               alignItems: 'center',
