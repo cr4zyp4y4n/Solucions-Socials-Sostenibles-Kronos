@@ -1,0 +1,160 @@
+import holdedApiV2Service from './holdedApiV2Service';
+
+/** Columnas 0-based de la tabla IMPUESTOS (E–H), con D como hueco. */
+export const IMPUESTOS_COL = {
+  code: 4,
+  desc: 5,
+  saldo: 6,
+  aPagar: 7
+};
+
+/** Cuentas Holded del bloque MOD 303 (saldos en columna G). */
+export const IMPUESTOS_MOD_303_ACCOUNTS = [
+  {
+    code: '47200000',
+    description: 'Impuesto sobre el Iva - Soportado / Deducible (compras)'
+  },
+  {
+    code: '47700000',
+    description: 'Impuesto sobre el Iva - Repercutido / devengado (ventas)'
+  },
+  {
+    code: '47000000',
+    description: 'HACIENDA PUBLICA DEUDORA'
+  },
+  {
+    code: '47500000',
+    description: 'HACIENDA PÚB.ACREEDORA POR IVA'
+  }
+];
+
+/** Cuentas que van directo a A PAGAR (MOD 111 / 115). */
+export const IMPUESTOS_A_PAGAR_ACCOUNTS = [
+  { code: '47510000', description: 'IRPF TRABAJADORES', model: '111' },
+  { code: '47510001', description: 'IRPF PROFESIONALES', model: '111' },
+  { code: '47510020', description: 'IRPF ALQUILER', model: '115' }
+];
+
+function parseBalance(value) {
+  if (value == null || value === '') return 0;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+  const n = Number.parseFloat(String(value).replace(/\s/g, '').replace(',', '.'));
+  return Number.isFinite(n) ? n : 0;
+}
+
+/** Normaliza número de cuenta contable a dígitos (p. ej. 47200000). */
+export function normalizeAccountCode(value) {
+  return String(value ?? '')
+    .trim()
+    .replace(/\s/g, '')
+    .replace(/\.0+$/, '')
+    .replace(/\D/g, '');
+}
+
+/**
+ * Número de cuenta contable tal como lo devuelve Holded (campo `number`).
+ * No usa `prefix` ni `id`: un prefijo "472" no es la cuenta 47200000.
+ */
+export function extractHoldedAccountNumber(account) {
+  const candidates = [
+    account?.number,
+    account?.accountNumber,
+    account?.account_number,
+    account?.num,
+    account?.accNum,
+    account?.acc_num
+  ];
+  for (const c of candidates) {
+    const code = normalizeAccountCode(c);
+    if (code.length >= 6) return code;
+  }
+  return '';
+}
+
+/** @deprecated Usar extractHoldedAccountNumber */
+export function extractHoldedAccountCode(account) {
+  return extractHoldedAccountNumber(account);
+}
+
+export function extractHoldedAccountBalance(account) {
+  if (!account || typeof account !== 'object') return 0;
+  // Priorizar el saldo que muestra Holded en el plan contable
+  if (account.balance != null && account.balance !== '') return parseBalance(account.balance);
+  if (account.saldo != null && account.saldo !== '') return parseBalance(account.saldo);
+  if (account.balances?.balance != null) return parseBalance(account.balances.balance);
+  if (account.debit != null || account.credit != null) {
+    return parseBalance(account.debit) - parseBalance(account.credit);
+  }
+  if (account.debe != null || account.haber != null) {
+    return parseBalance(account.debe) - parseBalance(account.haber);
+  }
+  if (account.amount != null) return parseBalance(account.amount);
+  return 0;
+}
+
+function buildBalanceMap(accounts = []) {
+  const map = new Map();
+  for (const account of accounts) {
+    const code = extractHoldedAccountNumber(account);
+    if (!code) continue;
+    const balance = extractHoldedAccountBalance(account);
+    if (map.has(code)) map.set(code, map.get(code) + balance);
+    else map.set(code, balance);
+  }
+  return map;
+}
+
+/** Solo coincidencia exacta de número de cuenta (sin rellenar prefijos tipo 472 → 47200000). */
+function balanceForCode(map, code) {
+  const want = normalizeAccountCode(code);
+  if (!want) return 0;
+  if (map.has(want)) return map.get(want);
+  return 0;
+}
+
+/**
+ * Trimestre 1–4 a partir de mes 0-based (0=ene).
+ * @param {number} [monthIndex]
+ */
+export function impuestosQuarterFromMonth(monthIndex) {
+  const m = Number.isFinite(monthIndex) ? monthIndex : new Date().getMonth();
+  return Math.floor(Math.min(Math.max(m, 0), 11) / 3) + 1;
+}
+
+/**
+ * Carga saldos de cuentas fiscales desde Holded (accounting-accounts).
+ */
+export async function loadPigImpuestosBalances({ company = 'solucions' } = {}) {
+  try {
+    const raw = await holdedApiV2Service.getAccountingAccounts(company);
+    const map = buildBalanceMap(raw || []);
+    const mod303 = IMPUESTOS_MOD_303_ACCOUNTS.map((row) => ({
+      ...row,
+      balance: balanceForCode(map, row.code)
+    }));
+    const aPagar = IMPUESTOS_A_PAGAR_ACCOUNTS.map((row) => ({
+      ...row,
+      balance: balanceForCode(map, row.code)
+    }));
+    const mod303Sum = mod303.reduce((acc, r) => acc + (Number(r.balance) || 0), 0);
+    return {
+      impuestos: {
+        mod303,
+        mod303Sum,
+        aPagar,
+        aPagarByCode: Object.fromEntries(aPagar.map((r) => [r.code, r.balance]))
+      },
+      error: null
+    };
+  } catch (error) {
+    return {
+      impuestos: {
+        mod303: IMPUESTOS_MOD_303_ACCOUNTS.map((r) => ({ ...r, balance: 0 })),
+        mod303Sum: 0,
+        aPagar: IMPUESTOS_A_PAGAR_ACCOUNTS.map((r) => ({ ...r, balance: 0 })),
+        aPagarByCode: {}
+      },
+      error
+    };
+  }
+}

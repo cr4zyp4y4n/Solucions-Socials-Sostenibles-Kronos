@@ -1,14 +1,14 @@
 ## v2.5.1
 
-### PIG / Cuenta Resultados — cambios Sergi (3 de 4)
+### PIG / Cuenta Resultados — cambios Sergi (4 de 4)
 
 - **CR GENERAL EISSS — Itinerario E.I:** 2 tablas editables (1º y 2º semestre) justo debajo de la minitabla; persistencia en Supabase; valores iniciales de Lizeth; se editan en Kronos antes de generar el Excel CR.
 - **TESORERÍA — layout Caixa / Fiare:** cuentas Holded con IBAN agrupadas por banco (Caixa / Fiare); columnas Compte · IBAN · Saldo; `TOTAL TESORERÍA CAIXA`, `TOTAL TESORERÍA FIARE`, `TOTAL TESORERÍA` y `TOTAL TESORERÍA - INVES` (total menos la cuenta cuyo nombre contiene **INNVESS**).
 - **TESORERÍA — previsiones editables:** debajo de los bancos, 2 tablas (ingresos por subv / subv. por aprobar) editables y persistentes, con totales recalculados.
+- **TESORERÍA — IMPUESTOS (derecha):** tabla `IMPUESTOS` (cols E–H) con cuentas Holded (472/477/470/475 + IRPF 4751…); **MOD 303** = suma de saldos; si el resultado es **negativo** se refleja en **A PAGAR** y entra en `TOTAL PAGO IMPUESTOS nT TRIMESTRE`.
 - **SQL en Supabase (requerido):**
   - `database/create_pig_itinerario_ei.sql` + `database/seed_pig_itinerario_ei_2026.sql`
   - `database/create_pig_tesoreria_previsiones.sql` + `database/seed_pig_tesoreria_previsiones_2026.sql`
-- **Pendiente (1 cambio):** queda **1 cambio más** en la hoja `TESORERÍA` (aún no implementado; se hará en una siguiente entrega).
 
 ### Licitaciones — Paula + CPV
 

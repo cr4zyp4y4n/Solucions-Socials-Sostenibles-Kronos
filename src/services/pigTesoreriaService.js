@@ -1,5 +1,13 @@
 import holdedApiV2Service from './holdedApiV2Service';
 import { previsionesToExcelBlocks } from './pigTesoreriaPrevisionesService';
+import {
+  IMPUESTOS_COL,
+  IMPUESTOS_MOD_303_ACCOUNTS,
+  impuestosQuarterFromMonth,
+  loadPigImpuestosBalances
+} from './pigTesoreriaImpuestosService';
+
+export { loadPigImpuestosBalances };
 
 const TYPE_ORDER = ['bank', 'card', 'gateway', 'cash'];
 
@@ -171,14 +179,130 @@ function appendPrevisionesBelow(aoa, meta, previsiones) {
 }
 
 /**
- * Layout Lizeth: Caixa + Fiare + TOTAL + TOTAL - INVES (+ previsiones editables si CR).
+ * Tabla IMPUESTOS a la derecha (cols E–H), alineada arriba como en el Excel de Lizeth.
+ * MOD 303: suma en G; si el resultado es negativo → A PAGAR (H) y entra en el total.
+ */
+function appendImpuestosRight(aoa, meta, impuestos = null, { monthIndex } = {}) {
+  const col = IMPUESTOS_COL;
+  const quarter = impuestosQuarterFromMonth(monthIndex);
+  const mod303Rows = impuestos?.mod303?.length
+    ? impuestos.mod303
+    : IMPUESTOS_MOD_303_ACCOUNTS.map((r) => ({ ...r, balance: 0 }));
+  const aPagarByCode = impuestos?.aPagarByCode || {};
+
+  const titleRow = 0;
+  const headerRow = 1;
+  setAoaCell(aoa, titleRow, col.code, 'IMPUESTOS');
+  setAoaCell(aoa, headerRow, col.aPagar, 'A PAGAR');
+
+  let r = 2;
+  const mod303SaldoRows = [];
+  for (const row of mod303Rows) {
+    setAoaCell(aoa, r, col.code, row.code);
+    setAoaCell(aoa, r, col.desc, row.description);
+    setAoaCell(aoa, r, col.saldo, Number(row.balance) || 0);
+    mod303SaldoRows.push(r);
+    r += 1;
+  }
+
+  const mod303ResultRow = r;
+  const mod303Sum =
+    impuestos?.mod303Sum != null
+      ? Number(impuestos.mod303Sum) || 0
+      : mod303Rows.reduce((acc, row) => acc + (Number(row.balance) || 0), 0);
+  setAoaCell(aoa, mod303ResultRow, col.code, 'MOD 303');
+  setAoaCell(aoa, mod303ResultRow, col.saldo, mod303Sum);
+  // Si G (resultado 303) es negativo → reflejar en H (A PAGAR) para el total
+  const aPagar303 = mod303Sum < 0 ? mod303Sum : '';
+  setAoaCell(aoa, mod303ResultRow, col.aPagar, aPagar303);
+  r += 2;
+
+  const mod111HeaderRow = r;
+  setAoaCell(aoa, r, col.code, 'MOD 111');
+  setAoaCell(aoa, r, col.desc, 'Impuesto de Renta Personas Físicas Trabajadores y profesionales');
+  r += 1;
+
+  const aPagarDataRows = [];
+  const irpfTrabRow = r;
+  setAoaCell(aoa, r, col.code, '47510000');
+  setAoaCell(aoa, r, col.desc, 'IRPF TRABAJADORES');
+  setAoaCell(aoa, r, col.aPagar, Number(aPagarByCode['47510000']) || 0);
+  aPagarDataRows.push(r);
+  r += 1;
+
+  const irpfProfRow = r;
+  setAoaCell(aoa, r, col.code, '47510001');
+  setAoaCell(aoa, r, col.desc, 'IRPF PROFESIONALES');
+  setAoaCell(aoa, r, col.aPagar, Number(aPagarByCode['47510001']) || 0);
+  aPagarDataRows.push(r);
+  r += 2;
+
+  const mod115HeaderRow = r;
+  setAoaCell(aoa, r, col.code, 'MOD 115');
+  setAoaCell(aoa, r, col.desc, 'Impuesto arrendamientos');
+  r += 1;
+
+  const irpfAlqRow = r;
+  setAoaCell(aoa, r, col.code, '47510020');
+  setAoaCell(aoa, r, col.desc, 'IRPF ALQUILER');
+  setAoaCell(aoa, r, col.aPagar, Number(aPagarByCode['47510020']) || 0);
+  aPagarDataRows.push(r);
+  r += 2;
+
+  const mod202HeaderRow = r;
+  setAoaCell(aoa, r, col.code, 'MOD 202');
+  setAoaCell(aoa, r, col.desc, 'Impuesto sobre sociedades - Fraccionado');
+  r += 1;
+
+  const totalRow = r;
+  const aPagarValues = [
+    aPagar303 === '' ? 0 : Number(aPagar303) || 0,
+    Number(aPagarByCode['47510000']) || 0,
+    Number(aPagarByCode['47510001']) || 0,
+    Number(aPagarByCode['47510020']) || 0
+  ];
+  const totalAPagar = aPagarValues.reduce((acc, n) => acc + n, 0);
+  setAoaCell(aoa, totalRow, col.code, `TOTAL PAGO IMPUESTOS ${quarter}T TRIMESTRE`);
+  setAoaCell(aoa, totalRow, col.aPagar, totalAPagar);
+
+  meta.impuestos = {
+    titleRow,
+    headerRow,
+    startCol: col.code,
+    endCol: col.aPagar,
+    codeCol: col.code,
+    descCol: col.desc,
+    saldoCol: col.saldo,
+    aPagarCol: col.aPagar,
+    mod303SaldoStartRow: mod303SaldoRows[0] ?? 2,
+    mod303SaldoEndRow: mod303SaldoRows[mod303SaldoRows.length - 1] ?? 5,
+    mod303ResultRow,
+    mod111HeaderRow,
+    mod115HeaderRow,
+    mod202HeaderRow,
+    irpfTrabRow,
+    irpfProfRow,
+    irpfAlqRow,
+    aPagarDataRows,
+    totalRow,
+    endRow: totalRow,
+    quarter
+  };
+  meta.minCols = Math.max(meta.minCols || 3, col.aPagar + 1);
+}
+
+/**
+ * Layout Lizeth: Caixa + Fiare + TOTAL + TOTAL - INVES (+ previsiones editables si CR)
+ * + IMPUESTOS a la derecha (cols E–H).
  */
 export function buildPigTesoreriaSheetAoa({
   title,
   accounts = [],
   errorMessage = '',
   cuentaResultados = false,
-  previsiones = null
+  previsiones = null,
+  impuestos = null,
+  monthIndex = null
 } = {}) {
   const aoa = [];
   const meta = {
@@ -196,7 +320,9 @@ export function buildPigTesoreriaSheetAoa({
     saldoCol: 2,
     cuentaResultados: Boolean(cuentaResultados),
     previsionesTables: null,
-    rightTables: null
+    rightTables: null,
+    impuestos: null,
+    minCols: 3
   };
 
   aoa.push([title, '', '']);
@@ -204,12 +330,14 @@ export function buildPigTesoreriaSheetAoa({
 
   if (errorMessage) {
     aoa.push([`Error API Holded: ${errorMessage}`, '', '']);
+    appendImpuestosRight(aoa, meta, impuestos, { monthIndex });
     if (cuentaResultados) appendPrevisionesBelow(aoa, meta, previsiones);
     return { aoa, meta };
   }
 
   if (!accounts.length) {
     aoa.push(['(Cap compte bancari amb IBAN trobat a Holded)', '', '']);
+    appendImpuestosRight(aoa, meta, impuestos, { monthIndex });
     if (cuentaResultados) appendPrevisionesBelow(aoa, meta, previsiones);
     return { aoa, meta };
   }
@@ -282,6 +410,7 @@ export function buildPigTesoreriaSheetAoa({
 
   meta.summaryEndRow = aoa.length - 1;
 
+  appendImpuestosRight(aoa, meta, impuestos, { monthIndex });
   if (cuentaResultados) appendPrevisionesBelow(aoa, meta, previsiones);
 
   return { aoa, meta };

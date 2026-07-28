@@ -26,7 +26,8 @@ import {
 } from '../services/pigEstructuraPurchasesService';
 import {
   buildPigTesoreriaSheetAoa,
-  loadPigTreasuryAccounts
+  loadPigTreasuryAccounts,
+  loadPigImpuestosBalances
 } from '../services/pigTesoreriaService';
 import {
   createEmptyItinerarioRow,
@@ -49,6 +50,7 @@ import {
   loadPigFacturacionPendiente
 } from '../services/pigFacturacionPendienteService';
 import SectionHeader from './SectionHeader';
+import { buildPrevisionTesoreriaFromFiles } from '../services/pigPrevisionTesoreriaService';
 import {
   applyPigComparativaCuentaResultadosFormulas,
   applyPigDespesesMpFormulas,
@@ -616,19 +618,146 @@ function styleGroupAccountsSheet({ ws, aoa, yellowRows = [] }) {
   }
 }
 
+function stylePrevisionTesoreriaDetalleSheet({ ws, aoa }) {
+  ws['!sheetView'] = [{ showGridLines: false }];
+  ws['!cols'] = [{ wch: 34 }, { wch: 16 }, { wch: 72 }];
+  const borderThin = {
+    top: { style: 'thin', color: { rgb: '000000' } },
+    bottom: { style: 'thin', color: { rgb: '000000' } },
+    left: { style: 'thin', color: { rgb: '000000' } },
+    right: { style: 'thin', color: { rgb: '000000' } }
+  };
+  const moneyStyle = { numFmt: '#,##0.00;[Red]-#,##0.00', alignment: { horizontal: 'right' } };
+  const titleStyle = {
+    font: { bold: true, color: { rgb: 'C00000' }, sz: 12, name: 'Calibri' },
+    alignment: { horizontal: 'left', vertical: 'center' }
+  };
+  const monthStyle = {
+    font: { bold: true, sz: 11, name: 'Calibri', color: { rgb: '1F4E79' } },
+    fill: makeFill('#DDEBF7')
+  };
+  const headerStyle = {
+    font: { bold: true, name: 'Calibri' },
+    fill: makeFill('#E7E6E6'),
+    border: borderThin,
+    alignment: { horizontal: 'center', vertical: 'center' }
+  };
+
+  setRangeStyle(ws, 0, 0, 0, 2, titleStyle);
+
+  for (let r = 0; r < (aoa?.length || 0); r++) {
+    const label = String(aoa[r]?.[0] || '');
+    const col1 = aoa[r]?.[1];
+    const isMonthTitle =
+      /^(ENERO|FEBRERO|MARZO|ABRIL|MAYO|JUNIO|JULIO|AGOSTO|SEPTIEMBRE|OCTUBRE|NOVIEMBRE|DICIEMBRE)\s20\d{2}$/.test(
+        label
+      );
+    const isTableHeader = label === 'Concepto';
+
+    if (isMonthTitle) {
+      setRangeStyle(ws, r, 0, r, 2, monthStyle);
+      continue;
+    }
+    if (isTableHeader) {
+      for (let c = 0; c <= 2; c++) {
+        setCellStyle(ws, r, c, { ...headerStyle, alignment: { horizontal: c === 0 ? 'left' : 'center' } });
+      }
+      continue;
+    }
+    if (label && typeof col1 === 'number') {
+      setCellStyle(ws, r, 0, { border: borderThin, font: { name: 'Calibri' }, alignment: { wrapText: true } });
+      setCellStyle(ws, r, 1, { border: borderThin, ...moneyStyle, font: { name: 'Calibri' } });
+      setCellStyle(ws, r, 2, {
+        border: borderThin,
+        font: { name: 'Calibri', sz: 10 },
+        alignment: { vertical: 'center', wrapText: true }
+      });
+    }
+  }
+}
+
+function stylePrevisionTesoreriaSheet({ ws, aoa }) {
+  const colsLen = 10;
+  ws['!sheetView'] = [{ showGridLines: false }];
+  ws['!cols'] = [
+    { wch: 22 },
+    { wch: 14 },
+    { wch: 14 },
+    { wch: 16 },
+    { wch: 16 },
+    { wch: 18 },
+    { wch: 18 },
+    { wch: 14 },
+    { wch: 14 },
+    { wch: 52 }
+  ];
+  ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: colsLen - 1 } }];
+  const borderThin = {
+    top: { style: 'thin', color: { rgb: '000000' } },
+    bottom: { style: 'thin', color: { rgb: '000000' } },
+    left: { style: 'thin', color: { rgb: '000000' } },
+    right: { style: 'thin', color: { rgb: '000000' } }
+  };
+  const moneyStyle = { numFmt: '#,##0.00;[Red]-#,##0.00', alignment: { horizontal: 'right' } };
+  const titleStyle = {
+    font: { bold: true, color: { rgb: 'C00000' }, sz: 12, name: 'Calibri' },
+    alignment: { horizontal: 'center', vertical: 'center' }
+  };
+  const headerStyle = {
+    font: { bold: true, name: 'Calibri' },
+    alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+    fill: makeFill('#E7E6E6'),
+    border: borderThin
+  };
+
+  let headerRow = 0;
+  for (let r = 0; r < (aoa?.length || 0); r++) {
+    if (String(aoa[r]?.[0] || '').toUpperCase() === 'MES') {
+      headerRow = r;
+      break;
+    }
+  }
+
+  setRangeStyle(ws, 0, 0, 0, colsLen - 1, titleStyle);
+  setRangeStyle(ws, headerRow, 0, headerRow, colsLen - 1, headerStyle);
+
+  for (let r = headerRow + 1; r < (aoa?.length || 0); r++) {
+    setCellStyle(ws, r, 0, { border: borderThin, font: { bold: true, name: 'Calibri' } });
+    for (let c = 1; c <= 8; c++) {
+      setCellStyle(ws, r, c, { border: borderThin, ...moneyStyle, font: { name: 'Calibri' } });
+    }
+    setCellStyle(ws, r, 9, {
+      border: borderThin,
+      font: { name: 'Calibri', sz: 10 },
+      alignment: { vertical: 'center', wrapText: true }
+    });
+  }
+}
+
 function stylePigTesoreriaSheet({ ws, aoa, meta = {} }) {
   const previsiones = meta?.previsionesTables || meta?.rightTables;
   const hasPrev = Boolean(previsiones?.tables?.length);
-  const colsLen = 3;
+  const imp = meta?.impuestos;
   ws['!sheetView'] = [{ showGridLines: false }];
   ws['!cols'] = [
     { wch: 58 },
     { wch: 28 },
-    { wch: 16 }
+    { wch: 16 },
+    { wch: 3 },
+    { wch: 14 },
+    { wch: 58 },
+    { wch: 16 },
+    { wch: 14 }
   ];
   ws['!rows'] = [];
   ws['!rows'][0] = { hpt: 18 };
-  ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: colsLen - 1 } }];
+  ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 2 } }];
+  if (imp) {
+    ws['!merges'].push({
+      s: { r: imp.titleRow, c: imp.startCol },
+      e: { r: imp.titleRow, c: imp.endCol }
+    });
+  }
 
   const borderThin = {
     top: { style: 'thin', color: { rgb: '000000' } },
@@ -654,7 +783,7 @@ function stylePigTesoreriaSheet({ ws, aoa, meta = {} }) {
   const blueObs = makeFill('#DDEBF7');
   const blueObsHeader = makeFill('#9DC3E6');
 
-  setRangeStyle(ws, 0, 0, 0, colsLen - 1, titleStyle);
+  setRangeStyle(ws, 0, 0, 0, 2, titleStyle);
 
   for (const g of meta.bankGroups || []) {
     setRangeStyle(ws, g.headerRow, 0, g.headerRow, 2, headerStyle);
@@ -698,6 +827,69 @@ function stylePigTesoreriaSheet({ ws, aoa, meta = {} }) {
       fill: yellow,
       border: borderThin
     });
+  }
+
+  if (imp) {
+    const c0 = imp.startCol;
+    const c1 = imp.endCol;
+    const aPagarCol = imp.aPagarCol;
+    const saldoCol = imp.saldoCol;
+
+    setRangeStyle(ws, imp.titleRow, c0, imp.titleRow, c1, {
+      font: { bold: true, italic: true, color: { rgb: 'C00000' }, sz: 12, name: 'Calibri' },
+      alignment: { horizontal: 'center', vertical: 'center' }
+    });
+    setCellStyle(ws, imp.headerRow, aPagarCol, {
+      font: { bold: true, color: { rgb: 'C00000' }, name: 'Calibri' },
+      alignment: { horizontal: 'center', vertical: 'center' },
+      border: borderThin
+    });
+
+    for (let r = imp.mod303SaldoStartRow; r <= imp.mod303SaldoEndRow; r++) {
+      for (let c = c0; c <= c1; c++) {
+        const isMoney = c === saldoCol || c === aPagarCol;
+        setCellStyle(ws, r, c, {
+          border: borderThin,
+          font: { name: 'Calibri' },
+          ...(isMoney ? moneyStyle : { alignment: { vertical: 'center', wrapText: true } })
+        });
+      }
+    }
+
+    const modelHeaderRows = [imp.mod303ResultRow, imp.mod111HeaderRow, imp.mod115HeaderRow, imp.mod202HeaderRow];
+    for (const r of modelHeaderRows) {
+      if (r == null) continue;
+      for (let c = c0; c <= c1; c++) {
+        const isMoney = c === saldoCol || c === aPagarCol;
+        setCellStyle(ws, r, c, {
+          border: borderThin,
+          font: { bold: true, name: 'Calibri' },
+          ...(isMoney ? moneyStyle : { alignment: { vertical: 'center', wrapText: true } })
+        });
+      }
+    }
+
+    for (const r of imp.aPagarDataRows || []) {
+      for (let c = c0; c <= c1; c++) {
+        const isMoney = c === saldoCol || c === aPagarCol;
+        setCellStyle(ws, r, c, {
+          border: borderThin,
+          font: { name: 'Calibri' },
+          ...(isMoney ? moneyStyle : { alignment: { vertical: 'center', wrapText: true } })
+        });
+      }
+    }
+
+    if (imp.totalRow != null) {
+      for (let c = c0; c <= c1; c++) {
+        const isMoney = c === saldoCol || c === aPagarCol;
+        setCellStyle(ws, imp.totalRow, c, {
+          border: borderThin,
+          font: { bold: true, name: 'Calibri' },
+          ...(isMoney ? moneyStyle : { alignment: { vertical: 'center', wrapText: true } })
+        });
+      }
+    }
   }
 
   if (hasPrev) {
@@ -3985,6 +4177,10 @@ export default function PIGPage() {
   const [previsionesLoading, setPrevisionesLoading] = useState(false);
   const [previsionesSaving, setPrevisionesSaving] = useState(false);
   const [previsionesStatus, setPrevisionesStatus] = useState('');
+  const [previsionPig2026, setPrevisionPig2026] = useState(null);
+  const [previsionPig2025, setPrevisionPig2025] = useState(null);
+  const [previsionTesoreriaLoading, setPrevisionTesoreriaLoading] = useState(false);
+  const [previsionTesoreriaStatus, setPrevisionTesoreriaStatus] = useState('');
 
   const loadEstimadosForYear = useCallback(async (year) => {
     const y = Number(year);
@@ -4157,6 +4353,49 @@ export default function PIGPage() {
   }, [estimadosSubv, estimadosYear]);
 
   const canGenerate = useMemo(() => Boolean(anualFile && mensualFile), [anualFile, mensualFile]);
+  const canGeneratePrevisionTesoreria = useMemo(
+    () => Boolean(previsionPig2026 && previsionPig2025),
+    [previsionPig2026, previsionPig2025]
+  );
+
+  const generatePrevisionTesoreriaExcel = useCallback(async () => {
+    if (!previsionPig2026 || !previsionPig2025) {
+      setPrevisionTesoreriaStatus('Sube el PIG 2026 y el PIG 2025.');
+      return;
+    }
+    setPrevisionTesoreriaLoading(true);
+    setPrevisionTesoreriaStatus('');
+    try {
+      const result = await buildPrevisionTesoreriaFromFiles({
+        file2026: previsionPig2026,
+        file2025: previsionPig2025,
+        company: 'solucions'
+      });
+      const ws = XLSX.utils.aoa_to_sheet(result.aoa);
+      stylePrevisionTesoreriaSheet({ ws, aoa: result.aoa });
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'PREVISIÓN TESORERÍA');
+      const stamp = new Date().toISOString().slice(0, 10);
+      XLSX.writeFile(wb, `Prevision_Tesoreria_EISSS_${stamp}.xlsx`);
+      const srcLabel =
+        ['holded_payments', 'holded_v1', 'holded_v2'].includes(result.cobrada?.source)
+          ? `cobrada 2025 Holded (${result.cobrada.source})`
+          : result.cobrada?.source === 'comparativa'
+            ? 'referencia COMPARATIVA (fallback)'
+            : 'sin referencia 2025';
+      const cobros =
+        result.cobrada?.paymentEventCount != null
+          ? ` · ${result.cobrada.paymentEventCount} cobros`
+          : '';
+      const warn = result.meta?.warnings?.length ? ` · ${result.meta.warnings[0]}` : '';
+      setPrevisionTesoreriaStatus(`Excel generado (${srcLabel}${cobros})${warn}`);
+    } catch (e) {
+      console.error('Previsión tesorería:', e);
+      setPrevisionTesoreriaStatus(e?.message || 'Error al generar la previsión de tesorería.');
+    } finally {
+      setPrevisionTesoreriaLoading(false);
+    }
+  }, [previsionPig2026, previsionPig2025]);
 
   const generateExcel = useCallback(async (opts = {}) => {
     try {
@@ -4763,18 +5002,25 @@ export default function PIGPage() {
         try {
           const yyTes = yearGuess ? yearGuess.slice(2) : '';
           const titleTesoreria = `Cierre TESORERÍA  EI.SSS ${yyTes ? `01/01/${yyTes} A ${endOfMonthStr(lastIdx)}` : ''}`.trim();
-          const { accounts: treasuryAccounts, error: treasuryError } = await loadPigTreasuryAccounts({
-            company: 'solucions'
-          });
+          const [{ accounts: treasuryAccounts, error: treasuryError }, { impuestos, error: impuestosError }] =
+            await Promise.all([
+              loadPigTreasuryAccounts({ company: 'solucions' }),
+              loadPigImpuestosBalances({ company: 'solucions' })
+            ]);
           if (treasuryError) {
             console.warn('PIG TESORERÍA: no se pudieron cargar cuentas de Holded.', treasuryError);
+          }
+          if (impuestosError) {
+            console.warn('PIG TESORERÍA IMPUESTOS: no se pudieron cargar cuentas contables de Holded.', impuestosError);
           }
           const { aoa: aoaTesoreria, meta: tesoreriaMeta } = buildPigTesoreriaSheetAoa({
             title: titleTesoreria,
             accounts: treasuryAccounts,
             errorMessage: treasuryError?.message || '',
             cuentaResultados: omitSubvenciones,
-            previsiones: omitSubvenciones ? previsionesForGenerate : null
+            previsiones: omitSubvenciones ? previsionesForGenerate : null,
+            impuestos,
+            monthIndex: lastIdx
           });
           const wsTesoreria = XLSX.utils.aoa_to_sheet(aoaTesoreria);
           stylePigTesoreriaSheet({ ws: wsTesoreria, aoa: aoaTesoreria, meta: tesoreriaMeta });
@@ -4931,6 +5177,64 @@ export default function PIGPage() {
             />
           </label>
         </div>
+
+        {pigEmpresa !== 'MH' && (
+          <div style={{ padding: 14, borderRadius: 12, border: `1px solid ${colors.border}`, background: colors.surface }}>
+            <div style={{ fontSize: 13, fontWeight: 950, marginBottom: 4 }}>Previsión tesorería 18 meses (jun 2026 – dic 2027)</div>
+            <div style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 12, lineHeight: 1.4 }}>
+              Excel <b>independiente</b> del PIG. Sube el último PIG exportado de <b>2026</b> y el de <b>2025</b>.
+              Jun–dic 2026: valores fijos validados. 2027 entradas: cobrada Holded 2025 (mayo/junio = media 2025+2026; agosto = 0). Salidas: gastos CR 2025.
+            </div>
+            <div style={{ display: 'grid', gap: 10, marginBottom: 12 }}>
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 10, cursor: 'pointer', border: `1px solid ${colors.border}`, background: colors.background, fontWeight: 900, width: 'fit-content' }}>
+                <Upload size={18} />
+                {previsionPig2026 ? previsionPig2026.name : 'PIG 2026 (.xlsx)'}
+                <input
+                  type="file"
+                  accept=".xlsx,.xls,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                  style={{ display: 'none' }}
+                  onChange={(e) => setPrevisionPig2026(e.target.files?.[0] || null)}
+                />
+              </label>
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 10, cursor: 'pointer', border: `1px solid ${colors.border}`, background: colors.background, fontWeight: 900, width: 'fit-content' }}>
+                <Upload size={18} />
+                {previsionPig2025 ? previsionPig2025.name : 'PIG 2025 (.xlsx)'}
+                <input
+                  type="file"
+                  accept=".xlsx,.xls,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                  style={{ display: 'none' }}
+                  onChange={(e) => setPrevisionPig2025(e.target.files?.[0] || null)}
+                />
+              </label>
+            </div>
+            <button
+              type="button"
+              onClick={generatePrevisionTesoreriaExcel}
+              disabled={!canGeneratePrevisionTesoreria || previsionTesoreriaLoading}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 10,
+                padding: '10px 14px',
+                borderRadius: 10,
+                cursor: canGeneratePrevisionTesoreria && !previsionTesoreriaLoading ? 'pointer' : 'not-allowed',
+                border: `1px solid ${canGeneratePrevisionTesoreria ? colors.primary : colors.border}`,
+                background: canGeneratePrevisionTesoreria ? colors.primary : colors.surface,
+                color: canGeneratePrevisionTesoreria ? 'white' : colors.textSecondary,
+                fontWeight: 950,
+                opacity: canGeneratePrevisionTesoreria ? 1 : 0.7
+              }}
+            >
+              <Download size={18} />
+              {previsionTesoreriaLoading ? 'Generando…' : 'Generar previsión tesorería'}
+            </button>
+            {previsionTesoreriaStatus ? (
+              <div style={{ marginTop: 10, fontSize: 12, color: colors.textSecondary, lineHeight: 1.4 }}>
+                {previsionTesoreriaStatus}
+              </div>
+            ) : null}
+          </div>
+        )}
 
         {pigEmpresa !== 'MH' && (
           <div style={{ padding: 14, borderRadius: 12, border: `1px solid ${colors.border}`, background: colors.surface }}>

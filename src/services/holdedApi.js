@@ -745,9 +745,16 @@ class HoldedApiService {
     return this.makeRequest('/paymentmethods', {}, company);
   }
 
-  // Obtener pagos
-  async getPayments(page = 1, limit = 100, company = 'solucions') {
-    return this.makeRequest(`/payments?page=${page}&limit=${limit}`, {}, company);
+  // Obtener pagos (opcional: starttmp/endtmp en segundos Unix)
+  async getPayments(params = {}, company = 'solucions') {
+    const page = params?.page ?? 1;
+    const limit = params?.limit ?? 100;
+    const starttmp = params?.starttmp;
+    const endtmp = params?.endtmp;
+    let endpoint = `/payments?page=${page}&limit=${limit}`;
+    if (starttmp != null) endpoint += `&starttmp=${starttmp}`;
+    if (endtmp != null) endpoint += `&endtmp=${endtmp}`;
+    return this.makeRequest(endpoint, {}, company);
   }
 
   // Obtener impuestos
