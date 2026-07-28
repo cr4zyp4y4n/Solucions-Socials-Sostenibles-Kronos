@@ -10,6 +10,7 @@
     "make": "electron-forge make",
     "publish": "electron-forge publish",
     "lint": "echo \"No linting configured\"",
+    "test:obrador-critical": "node scripts/test-obrador-critical-regressions.mjs",
     "repair-electron": "node scripts/repair-electron.js",
     "build": "electron-forge make",
     "build-nsis": "electron-forge make && electron-builder --config.asar=false --config.directories.app=out/SSS\\ Kronos-win32-x64",
