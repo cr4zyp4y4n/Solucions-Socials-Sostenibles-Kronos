@@ -11,7 +11,9 @@ function extractFunction(source, name) {
   const marker = `export async function ${name}`;
   const start = source.indexOf(marker);
   if (start === -1) throw new Error(`No se encontró ${name}`);
-  const open = source.indexOf('{', start);
+  const signatureEnd = source.indexOf(') {', start);
+  if (signatureEnd === -1) throw new Error(`No se encontró la firma de ${name}`);
+  const open = signatureEnd + 2;
   if (open === -1) throw new Error(`No se encontró el cuerpo de ${name}`);
 
   let depth = 0;
