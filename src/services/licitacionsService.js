@@ -857,12 +857,12 @@ async function upsertLicitacions(records) {
   return { inserted: toInsert.length, updated: toUpdate.length, total: rows.length };
 }
 
-/** Elimina de Supabase licitaciones caducadas/cerradas sin seguimiento Interessant/Contactat. */
+/** Elimina de Supabase licitaciones caducadas/cerradas sin seguimiento comercial humano. */
 export async function purgeCaducadasLicitacions() {
   const db = getSupabase();
   const { data, error } = await db
     .from(TABLE)
-    .select('id, source, estat_contractacio, termini_oferta, estat_jc');
+    .select('id, source, estat_contractacio, termini_oferta, estat_jc, notes_paula, data_contacte, resultat_jc');
   if (error) throw error;
 
   const toDelete = (data || []).filter(shouldPurgeLicitacioFromDb).map((r) => r.id);

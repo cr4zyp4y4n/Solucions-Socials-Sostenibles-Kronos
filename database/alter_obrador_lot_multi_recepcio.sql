@@ -113,7 +113,12 @@ DECLARE
   v_ordre integer := 0;
   v_proveidors_producte uuid[];
   v_prov_count integer;
+  v_missing_proveidor uuid;
 BEGIN
+  IF NOT public.obrador_is_management_user() THEN
+    RAISE EXCEPTION 'No tens permisos per crear lots d''obrador.';
+  END IF;
+
   IF p_id_producte IS NULL THEN
     RAISE EXCEPTION 'Producte obligatori';
   END IF;
@@ -165,6 +170,23 @@ BEGIN
           'La recepció no correspon a un proveïdor associat a aquest producte.';
       END IF;
     END LOOP;
+
+    SELECT pp.id_proveidor
+    INTO v_missing_proveidor
+    FROM obrador_producte_proveidors pp
+    WHERE pp.id_producte = p_id_producte
+      AND NOT EXISTS (
+        SELECT 1
+        FROM obrador_recepcions r
+        WHERE r.id = ANY (v_ids)
+          AND r.id_proveidor = pp.id_proveidor
+      )
+    LIMIT 1;
+
+    IF v_missing_proveidor IS NOT NULL THEN
+      RAISE EXCEPTION
+        'Cal seleccionar almenys una recepció per cada proveïdor associat al producte.';
+    END IF;
   END IF;
 
   INSERT INTO obrador_lots (

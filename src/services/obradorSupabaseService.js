@@ -151,13 +151,12 @@ export async function getProductes() {
 /** Substitueix els proveïdors associats a un producte. */
 export async function setProducteProveidors(idProducte, files) {
   const list = Array.isArray(files) ? files : [];
-  const { error: delError } = await supabase
+  const { data: existingRows, error: existingError } = await supabase
     .from('obrador_producte_proveidors')
-    .delete()
+    .select('id')
     .eq('id_producte', idProducte);
-  if (delError) throw delError;
-
-  if (!list.length) return [];
+  if (existingError) throw existingError;
+  const previousIds = (existingRows || []).map((row) => row?.id).filter(Boolean);
 
   const rows = list
     .filter((f) => f?.id_proveidor)
@@ -167,16 +166,36 @@ export async function setProducteProveidors(idProducte, files) {
       ingredient_nom: String(f.ingredient_nom || '').trim()
     }));
 
-  if (!rows.length) return [];
+  if (!rows.length) {
+    if (previousIds.length) {
+      const { error: delError } = await supabase
+        .from('obrador_producte_proveidors')
+        .delete()
+        .in('id', previousIds);
+      if (delError) throw delError;
+    }
+    return [];
+  }
 
   const { data, error } = await supabase
     .from('obrador_producte_proveidors')
-    .insert(rows)
+    .upsert(rows, { onConflict: 'id_producte,id_proveidor,ingredient_nom' })
     .select(`
       id, id_proveidor, ingredient_nom,
       obrador_proveidors ( id, nom )
     `);
   if (error) throw error;
+
+  const keepIds = new Set((data || []).map((row) => row?.id).filter(Boolean));
+  const staleIds = previousIds.filter((id) => !keepIds.has(id));
+  if (staleIds.length) {
+    const { error: delError } = await supabase
+      .from('obrador_producte_proveidors')
+      .delete()
+      .in('id', staleIds);
+    if (delError) throw delError;
+  }
+
   return data || [];
 }
 
