@@ -104,6 +104,43 @@ function cloneDefaults() {
   };
 }
 
+async function replacePrevisionesForYearSafely(year, payload) {
+  const { data: existingRows, error: selectError } = await supabase
+    .from('pig_tesoreria_previsiones')
+    .select('id')
+    .eq('year', year);
+
+  if (selectError) return { error: selectError };
+
+  const previousIds = (existingRows || [])
+    .map((row) => row?.id)
+    .filter(Boolean);
+
+  if (!payload.length) {
+    if (!previousIds.length) return { error: null };
+    const { error: deleteError } = await supabase
+      .from('pig_tesoreria_previsiones')
+      .delete()
+      .in('id', previousIds);
+    return { error: deleteError || null };
+  }
+
+  const { error: insertError } = await supabase
+    .from('pig_tesoreria_previsiones')
+    .insert(payload);
+  if (insertError) return { error: insertError };
+
+  if (previousIds.length) {
+    const { error: deleteError } = await supabase
+      .from('pig_tesoreria_previsiones')
+      .delete()
+      .in('id', previousIds);
+    if (deleteError) return { error: deleteError };
+  }
+
+  return { error: null };
+}
+
 export function createEmptyPrevisionRow() {
   return { concepto: '', ingreso: '', observacion: '' };
 }
@@ -196,19 +233,7 @@ export async function upsertPigTesoreriaPrevisiones({ year, previsiones }) {
     }))
   ];
 
-  const { error: deleteError } = await supabase
-    .from('pig_tesoreria_previsiones')
-    .delete()
-    .eq('year', y);
-  if (deleteError) return { error: deleteError };
-
-  if (!payload.length) return { error: null };
-
-  const { error: insertError } = await supabase
-    .from('pig_tesoreria_previsiones')
-    .insert(payload);
-  if (insertError) return { error: insertError };
-  return { error: null };
+  return replacePrevisionesForYearSafely(y, payload);
 }
 
 /** Normaliza previsiones UI → filas numéricas para el Excel. */
