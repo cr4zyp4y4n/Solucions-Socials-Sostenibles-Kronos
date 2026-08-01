@@ -4439,15 +4439,23 @@ export default function PIGPage() {
           if (!loadEstError && estimados) estimadosForGenerate = estimados;
           if (!loadObjError && objetivos) objetivosForGenerate = objetivos;
         } else {
-          await Promise.all([saveEstimadosSubv(), saveObjetivosComparativa()]);
+          const saveResults = await Promise.all([saveEstimadosSubv(), saveObjetivosComparativa()]);
+          if (saveResults.some((ok) => ok === false)) {
+            setError('No se pudo guardar la configuración PIG. Revisa el aviso del bloque antes de generar el Excel.');
+            return;
+          }
         }
       } else if (yearForEstimados && Number(yearForEstimados) === Number(estimadosYear)) {
         // Objetivos + itinerario CR + previsiones TESORERÍA.
-        await Promise.all([
+        const saveResults = await Promise.all([
           saveObjetivosComparativa(),
           saveItinerarioEi(),
           saveTesoreriaPrevisiones()
         ]);
+        if (saveResults.some((ok) => ok === false)) {
+          setError('No se pudo guardar la configuración CR/TESORERÍA. Revisa el aviso del bloque antes de generar el Excel.');
+          return;
+        }
       } else if (yearForEstimados) {
         const [{ itinerario, error: itErr }, { previsiones, error: prErr }] = await Promise.all([
           loadPigItinerarioEi({ year: yearForEstimados }),
@@ -5019,7 +5027,9 @@ export default function PIGPage() {
             errorMessage: treasuryError?.message || '',
             cuentaResultados: omitSubvenciones,
             previsiones: omitSubvenciones ? previsionesForGenerate : null,
-            impuestos,
+            impuestos: impuestosError
+              ? { errorMessage: impuestosError.message || 'No se pudieron cargar saldos fiscales.' }
+              : impuestos,
             monthIndex: lastIdx
           });
           const wsTesoreria = XLSX.utils.aoa_to_sheet(aoaTesoreria);

@@ -27,10 +27,21 @@ export function isLicitacioVigent(row) {
 }
 
 /** Borrar de BBDD solo caducadas sin seguimiento comercial activo. */
+export function hasLicitacioSeguiment(row) {
+  if (!row) return false;
+  const jc = String(row.estat_jc || '');
+  return Boolean(
+    jc === 'Interessant'
+    || jc === 'Contactat'
+    || String(row.notes_paula || '').trim()
+    || row.data_contacte
+    || String(row.resultat_jc || '').trim()
+  );
+}
+
 export function shouldPurgeLicitacioFromDb(row) {
   if (!row) return false;
   if (isLicitacioVigent(row)) return false;
-  const jc = String(row.estat_jc || '');
-  if (jc === 'Interessant' || jc === 'Contactat') return false;
+  if (hasLicitacioSeguiment(row)) return false;
   return true;
 }

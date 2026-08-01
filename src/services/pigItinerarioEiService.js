@@ -102,6 +102,43 @@ function cloneDefaults() {
   };
 }
 
+async function replaceItinerarioForYearSafely(year, payload) {
+  const { data: existingRows, error: selectError } = await supabase
+    .from('pig_itinerario_ei')
+    .select('id')
+    .eq('year', year);
+
+  if (selectError) return { error: selectError };
+
+  const previousIds = (existingRows || [])
+    .map((row) => row?.id)
+    .filter(Boolean);
+
+  if (!payload.length) {
+    if (!previousIds.length) return { error: null };
+    const { error: deleteError } = await supabase
+      .from('pig_itinerario_ei')
+      .delete()
+      .in('id', previousIds);
+    return { error: deleteError || null };
+  }
+
+  const { error: insertError } = await supabase
+    .from('pig_itinerario_ei')
+    .insert(payload);
+  if (insertError) return { error: insertError };
+
+  if (previousIds.length) {
+    const { error: deleteError } = await supabase
+      .from('pig_itinerario_ei')
+      .delete()
+      .in('id', previousIds);
+    if (deleteError) return { error: deleteError };
+  }
+
+  return { error: null };
+}
+
 function mapDbRow(row) {
   return {
     linea: String(row.linea || ''),
@@ -189,17 +226,5 @@ export async function upsertPigItinerarioEi({ year, itinerario }) {
     }))
   ];
 
-  const { error: deleteError } = await supabase
-    .from('pig_itinerario_ei')
-    .delete()
-    .eq('year', y);
-  if (deleteError) return { error: deleteError };
-
-  if (!payload.length) return { error: null };
-
-  const { error: insertError } = await supabase
-    .from('pig_itinerario_ei')
-    .insert(payload);
-  if (insertError) return { error: insertError };
-  return { error: null };
+  return replaceItinerarioForYearSafely(y, payload);
 }

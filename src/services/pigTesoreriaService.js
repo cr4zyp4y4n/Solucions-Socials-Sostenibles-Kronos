@@ -185,15 +185,21 @@ function appendPrevisionesBelow(aoa, meta, previsiones) {
 function appendImpuestosRight(aoa, meta, impuestos = null, { monthIndex } = {}) {
   const col = IMPUESTOS_COL;
   const quarter = impuestosQuarterFromMonth(monthIndex);
-  const mod303Rows = impuestos?.mod303?.length
-    ? impuestos.mod303
-    : IMPUESTOS_MOD_303_ACCOUNTS.map((r) => ({ ...r, balance: 0 }));
-  const aPagarByCode = impuestos?.aPagarByCode || {};
 
   const titleRow = 0;
   const headerRow = 1;
   setAoaCell(aoa, titleRow, col.code, 'IMPUESTOS');
   setAoaCell(aoa, headerRow, col.aPagar, 'A PAGAR');
+
+  if (impuestos?.errorMessage) {
+    setAoaCell(aoa, 2, col.code, `Error API Holded: ${impuestos.errorMessage}`);
+    return;
+  }
+
+  const mod303Rows = impuestos?.mod303?.length
+    ? impuestos.mod303
+    : IMPUESTOS_MOD_303_ACCOUNTS.map((r) => ({ ...r, balance: 0 }));
+  const aPagarByCode = impuestos?.aPagarByCode || {};
 
   let r = 2;
   const mod303SaldoRows = [];

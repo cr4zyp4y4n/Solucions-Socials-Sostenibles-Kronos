@@ -129,6 +129,7 @@ export default function LicitacioDetailModal({
     } else {
       setCommentView('compose');
       setCardText('');
+      setComposeText('');
     }
   }, [row]);
 
