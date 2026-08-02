@@ -11,7 +11,22 @@ function functionBody(source, functionName) {
   const marker = `export async function ${functionName}`;
   const start = source.indexOf(marker);
   if (start === -1) throw new Error(`No se encuentra ${functionName}`);
-  const braceStart = source.indexOf('{', start);
+  const paramsStart = source.indexOf('(', start);
+  if (paramsStart === -1) throw new Error(`No se encuentran parametros de ${functionName}`);
+  let paramsDepth = 0;
+  let paramsEnd = -1;
+  for (let i = paramsStart; i < source.length; i += 1) {
+    if (source[i] === '(') paramsDepth += 1;
+    if (source[i] === ')') {
+      paramsDepth -= 1;
+      if (paramsDepth === 0) {
+        paramsEnd = i;
+        break;
+      }
+    }
+  }
+  if (paramsEnd === -1) throw new Error(`No se pudo cerrar parametros de ${functionName}`);
+  const braceStart = source.indexOf('{', paramsEnd);
   let depth = 0;
   for (let i = braceStart; i < source.length; i += 1) {
     if (source[i] === '{') depth += 1;
