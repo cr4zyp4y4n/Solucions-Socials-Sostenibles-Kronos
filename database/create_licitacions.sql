@@ -68,7 +68,14 @@ CREATE POLICY "licitacions_update_authenticated"
 
 DROP POLICY IF EXISTS "licitacions_delete_authenticated" ON public.licitacions;
 CREATE POLICY "licitacions_delete_authenticated"
-  ON public.licitacions FOR DELETE TO authenticated USING (true);
+  ON public.licitacions FOR DELETE TO authenticated USING (
+    EXISTS (
+      SELECT 1
+      FROM public.user_profiles up
+      WHERE up.id = auth.uid()
+        AND lower(coalesce(up.role, '')) IN ('admin', 'management', 'manager')
+    )
+  );
 
 -- Trigger updated_at (reutilitza la funció del projecte si existeix)
 CREATE OR REPLACE FUNCTION public.licitacions_set_updated_at()
