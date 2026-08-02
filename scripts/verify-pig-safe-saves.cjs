@@ -120,4 +120,25 @@ assert(
   'generateExcel debe abortar si falla el guardado previo de Cuenta Resultados'
 );
 
+const previsionTesoreria = read('src/services/pigPrevisionTesoreriaService.js');
+const parseAmountStart = previsionTesoreria.indexOf('function parseAmount(value)');
+const parseAmountEnd = previsionTesoreria.indexOf('function absExpense', parseAmountStart);
+const parseAmount = previsionTesoreria.slice(parseAmountStart, parseAmountEnd);
+assert(
+  parseAmount.includes('const lastComma = text.lastIndexOf') && parseAmount.includes('const lastDot = text.lastIndexOf'),
+  'parseAmount debe detectar el separador decimal por posicion'
+);
+assert(
+  !parseAmount.includes("String(value).replace(/\\s/g, '').replace(/\\./g, '').replace(',', '.')"),
+  'parseAmount no debe eliminar todos los puntos porque corrompe decimales US'
+);
+assert(
+  !previsionTesoreria.includes("source: 'comparativa'"),
+  'La COMPARATIVA PIG no debe usarse como fuente de cobros reales'
+);
+assert(
+  previsionTesoreria.includes('contiene facturación, no cobros, y no se usa para proyectar caja'),
+  'La previsión debe advertir cuando descarta COMPARATIVA como proxy de cobros'
+);
+
 console.log('OK: guardados PIG evitan delete-before-write en payloads no vacios.');
