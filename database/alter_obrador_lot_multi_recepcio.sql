@@ -114,6 +114,10 @@ DECLARE
   v_proveidors_producte uuid[];
   v_prov_count integer;
 BEGIN
+  IF NOT public.obrador_is_management_user() THEN
+    RAISE EXCEPTION 'No tens permisos per crear lots d''obrador.';
+  END IF;
+
   IF p_id_producte IS NULL THEN
     RAISE EXCEPTION 'Producte obligatori';
   END IF;

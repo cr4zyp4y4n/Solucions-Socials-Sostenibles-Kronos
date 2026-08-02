@@ -4430,31 +4430,36 @@ export default function PIGPage() {
       let itinerarioForGenerate = itinerarioEi;
       let previsionesForGenerate = tesoreriaPrevisiones;
 
+      if (estimadosLoading || objetivosLoading || itinerarioLoading || previsionesLoading) {
+        setError('Espera a que terminen de cargar los datos auxiliares del PIG antes de generar el Excel.');
+        return;
+      }
+
+      if (yearForEstimados && Number(yearForEstimados) !== Number(estimadosYear)) {
+        setError(`El archivo mensual parece ser de ${yearForEstimados}, pero el año editable seleccionado es ${estimadosYear}. Cambia el año editable y espera a que cargue antes de generar el Excel.`);
+        return;
+      }
+
       if (!omitSubvenciones) {
-        if (yearForEstimados && Number(yearForEstimados) !== Number(estimadosYear)) {
-          const [{ estimados, error: loadEstError }, { objetivos, error: loadObjError }] = await Promise.all([
-            loadPigEstimadosSubvencion({ year: yearForEstimados }),
-            loadPigObjetivosComparativa({ year: yearForEstimados })
-          ]);
-          if (!loadEstError && estimados) estimadosForGenerate = estimados;
-          if (!loadObjError && objetivos) objetivosForGenerate = objetivos;
-        } else {
-          await Promise.all([saveEstimadosSubv(), saveObjetivosComparativa()]);
+        const [estimadosSaved, objetivosSaved] = await Promise.all([
+          saveEstimadosSubv(),
+          saveObjetivosComparativa()
+        ]);
+        if (!estimadosSaved || !objetivosSaved) {
+          setError('No se generó el Excel porque falló el guardado previo de estimados u objetivos.');
+          return;
         }
-      } else if (yearForEstimados && Number(yearForEstimados) === Number(estimadosYear)) {
+      } else {
         // Objetivos + itinerario CR + previsiones TESORERÍA.
-        await Promise.all([
+        const [objetivosSaved, itinerarioSaved, previsionesSaved] = await Promise.all([
           saveObjetivosComparativa(),
           saveItinerarioEi(),
           saveTesoreriaPrevisiones()
         ]);
-      } else if (yearForEstimados) {
-        const [{ itinerario, error: itErr }, { previsiones, error: prErr }] = await Promise.all([
-          loadPigItinerarioEi({ year: yearForEstimados }),
-          loadPigTesoreriaPrevisiones({ year: yearForEstimados })
-        ]);
-        if (!itErr && itinerario) itinerarioForGenerate = itinerario;
-        if (!prErr && previsiones) previsionesForGenerate = previsiones;
+        if (!objetivosSaved || !itinerarioSaved || !previsionesSaved) {
+          setError('No se generó el Excel porque falló el guardado previo de objetivos, itinerario o previsiones.');
+          return;
+        }
       }
       const estimadosSlotsByLinea = omitSubvenciones
         ? { CATERING: [], IDONI: [], KOIKI: [], ESTRUCTURA: [] }
@@ -5095,6 +5100,10 @@ export default function PIGPage() {
     pigEmpresa,
     estimadosSubv,
     estimadosYear,
+    estimadosLoading,
+    objetivosLoading,
+    itinerarioLoading,
+    previsionesLoading,
     saveEstimadosSubv,
     saveObjetivosComparativa,
     saveItinerarioEi,

@@ -48,8 +48,32 @@ const CR_LABELS = {
 function parseAmount(value) {
   if (value == null || value === '') return 0;
   if (typeof value === 'number' && Number.isFinite(value)) return value;
-  const n = Number.parseFloat(String(value).replace(/\s/g, '').replace(/\./g, '').replace(',', '.'));
-  return Number.isFinite(n) ? n : 0;
+  const raw = String(value).trim();
+  if (!raw) return 0;
+
+  const isParenthesizedNegative = /^\(.*\)$/.test(raw);
+  let text = raw
+    .replace(/[€$]/g, '')
+    .replace(/\s/g, '')
+    .replace(/^\((.*)\)$/, '$1');
+
+  const lastComma = text.lastIndexOf(',');
+  const lastDot = text.lastIndexOf('.');
+  if (lastComma !== -1 && lastDot !== -1) {
+    text = lastComma > lastDot
+      ? text.replace(/\./g, '').replace(',', '.')
+      : text.replace(/,/g, '');
+  } else if (lastComma !== -1) {
+    const commaThousands = /^[-+]?\d{1,3}(,\d{3})+$/.test(text);
+    text = commaThousands ? text.replace(/,/g, '') : text.replace(',', '.');
+  } else if (lastDot !== -1) {
+    const dotThousands = /^[-+]?\d{1,3}(\.\d{3})+$/.test(text);
+    text = dotThousands ? text.replace(/\./g, '') : text;
+  }
+
+  const n = Number.parseFloat(text);
+  const parsed = isParenthesizedNegative ? -Math.abs(n) : n;
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function absExpense(value) {
@@ -432,7 +456,7 @@ async function fetchHoldedPaymentsCobradaByYear(company, targetYear) {
 
 /**
  * Facturación cobrada por mes (fecha de cobro). Solucions.
- * Prioridad: pagos Holded v1 → facturas venta v1 → v2 → COMPARATIVA PIG (solo si year=2025).
+ * Prioridad: pagos Holded v1 → facturas venta v1 → v2.
  */
 export async function loadFacturacionCobradaByYear({
   year = 2025,
@@ -501,12 +525,12 @@ export async function loadFacturacionCobradaByYear({
       const proxy = parseComparativaBase2025(comparativaAoa);
       if (proxy.some((v) => v > 0)) {
         return {
-          months: proxy,
-          source: 'comparativa',
+          months: new Array(12).fill(0),
+          source: 'none',
           invoiceCount,
           paymentEventCount,
           warning:
-            'No se detectaron cobros 2025 en Holded (pagos/facturas). Se usa BASE 2025 COMPARATIVA del PIG 2025 (facturación, no cobro).'
+            'No se detectaron cobros 2025 en Holded. La BASE 2025 COMPARATIVA contiene facturación, no cobros, y no se usa para proyectar caja.'
         };
       }
     }

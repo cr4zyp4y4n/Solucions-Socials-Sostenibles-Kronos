@@ -32,6 +32,10 @@ DECLARE
   v_data_caducitat date;
   v_codi_qr text;
 BEGIN
+  IF NOT public.obrador_is_management_user() THEN
+    RAISE EXCEPTION 'No tens permisos per crear lots d''obrador.';
+  END IF;
+
   SELECT *
   INTO v_recepcio
   FROM obrador_recepcions
@@ -121,6 +125,10 @@ DECLARE
   v_lot_final obrador_lots%ROWTYPE;
   v_expedicio obrador_expedicions%ROWTYPE;
 BEGIN
+  IF NOT public.obrador_is_portal_staff_user() THEN
+    RAISE EXCEPTION 'No tens permisos per crear expedicions d''obrador.';
+  END IF;
+
   SELECT *
   INTO v_lot
   FROM obrador_lots
