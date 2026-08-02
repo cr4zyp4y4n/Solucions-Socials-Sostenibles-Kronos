@@ -8,9 +8,29 @@ function read(relativePath) {
 }
 
 function functionBody(source, functionName) {
-  const marker = `export async function ${functionName}`;
-  const start = source.indexOf(marker);
+  let marker = `export async function ${functionName}`;
+  let start = source.indexOf(marker);
+  if (start === -1) {
+    marker = `const ${functionName} = useCallback(async`;
+    start = source.indexOf(marker);
+  }
   if (start === -1) throw new Error(`No se encuentra ${functionName}`);
+
+  if (marker.includes('useCallback')) {
+    const arrowBodyStart = source.indexOf('=> {', start);
+    if (arrowBodyStart === -1) throw new Error(`No se encuentra el cuerpo de ${functionName}`);
+    const braceStart = source.indexOf('{', arrowBodyStart);
+    let depth = 0;
+    for (let i = braceStart; i < source.length; i += 1) {
+      if (source[i] === '{') depth += 1;
+      if (source[i] === '}') {
+        depth -= 1;
+        if (depth === 0) return source.slice(braceStart, i + 1);
+      }
+    }
+    throw new Error(`No se pudo extraer ${functionName}`);
+  }
+
   const paramsStart = source.indexOf('(', start);
   if (paramsStart === -1) throw new Error(`No se encuentran parametros de ${functionName}`);
   let paramsDepth = 0;
