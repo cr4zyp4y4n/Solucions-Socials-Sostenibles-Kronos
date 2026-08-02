@@ -98,4 +98,26 @@ assertOrder(estimados, [
   ['borrado de obsoletos', ".in('id', obsoleteIds)"]
 ]);
 
+const pigPage = read('src/components/PIGPage.jsx');
+const generateExcel = functionBody(pigPage, 'generateExcel');
+assert(
+  generateExcel.includes('estimadosLoading || objetivosLoading || itinerarioLoading || previsionesLoading'),
+  'generateExcel debe bloquearse mientras cargan datos auxiliares'
+);
+assert(
+  generateExcel.includes('Number(yearForEstimados) !== Number(estimadosYear)')
+    && generateExcel.includes('El archivo mensual parece ser de'),
+  'generateExcel debe abortar si el año del archivo no coincide con el año editable'
+);
+assert(
+  generateExcel.includes('const [estimadosSaved, objetivosSaved]')
+    && generateExcel.includes('No se generó el Excel porque falló el guardado previo de estimados u objetivos.'),
+  'generateExcel debe abortar si falla el guardado previo de estimados/objetivos'
+);
+assert(
+  generateExcel.includes('const [objetivosSaved, itinerarioSaved, previsionesSaved]')
+    && generateExcel.includes('No se generó el Excel porque falló el guardado previo de objetivos, itinerario o previsiones.'),
+  'generateExcel debe abortar si falla el guardado previo de Cuenta Resultados'
+);
+
 console.log('OK: guardados PIG evitan delete-before-write en payloads no vacios.');
