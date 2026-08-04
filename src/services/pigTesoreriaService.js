@@ -184,16 +184,41 @@ function appendPrevisionesBelow(aoa, meta, previsiones) {
  */
 function appendImpuestosRight(aoa, meta, impuestos = null, { monthIndex } = {}) {
   const col = IMPUESTOS_COL;
+  const titleRow = 0;
+  const headerRow = 1;
+  setAoaCell(aoa, titleRow, col.code, 'IMPUESTOS');
+  setAoaCell(aoa, headerRow, col.aPagar, 'A PAGAR');
+
+  if (!impuestos) {
+    const unavailableRow = 2;
+    setAoaCell(aoa, unavailableRow, col.code, 'No disponible');
+    setAoaCell(aoa, unavailableRow, col.desc, 'No se pudieron cargar saldos fiscales desde Holded');
+    meta.impuestos = {
+      titleRow,
+      headerRow,
+      startCol: col.code,
+      endCol: col.aPagar,
+      codeCol: col.code,
+      descCol: col.desc,
+      saldoCol: col.saldo,
+      aPagarCol: col.aPagar,
+      mod303SaldoStartRow: unavailableRow,
+      mod303SaldoEndRow: unavailableRow,
+      aPagarDataRows: [],
+      totalRow: null,
+      endRow: unavailableRow,
+      quarter: impuestosQuarterFromMonth(monthIndex),
+      unavailable: true
+    };
+    meta.minCols = Math.max(meta.minCols || 3, col.aPagar + 1);
+    return;
+  }
+
   const quarter = impuestosQuarterFromMonth(monthIndex);
   const mod303Rows = impuestos?.mod303?.length
     ? impuestos.mod303
     : IMPUESTOS_MOD_303_ACCOUNTS.map((r) => ({ ...r, balance: 0 }));
   const aPagarByCode = impuestos?.aPagarByCode || {};
-
-  const titleRow = 0;
-  const headerRow = 1;
-  setAoaCell(aoa, titleRow, col.code, 'IMPUESTOS');
-  setAoaCell(aoa, headerRow, col.aPagar, 'A PAGAR');
 
   let r = 2;
   const mod303SaldoRows = [];
