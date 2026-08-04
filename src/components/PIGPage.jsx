@@ -4439,15 +4439,21 @@ export default function PIGPage() {
           if (!loadEstError && estimados) estimadosForGenerate = estimados;
           if (!loadObjError && objetivos) objetivosForGenerate = objetivos;
         } else {
-          await Promise.all([saveEstimadosSubv(), saveObjetivosComparativa()]);
+          const saveResults = await Promise.all([saveEstimadosSubv(), saveObjetivosComparativa()]);
+          if (saveResults.some((ok) => ok === false)) {
+            throw new Error('No se ha generado el Excel porque falló un autoguardado previo.');
+          }
         }
       } else if (yearForEstimados && Number(yearForEstimados) === Number(estimadosYear)) {
         // Objetivos + itinerario CR + previsiones TESORERÍA.
-        await Promise.all([
+        const saveResults = await Promise.all([
           saveObjetivosComparativa(),
           saveItinerarioEi(),
           saveTesoreriaPrevisiones()
         ]);
+        if (saveResults.some((ok) => ok === false)) {
+          throw new Error('No se ha generado el Excel porque falló un autoguardado previo.');
+        }
       } else if (yearForEstimados) {
         const [{ itinerario, error: itErr }, { previsiones, error: prErr }] = await Promise.all([
           loadPigItinerarioEi({ year: yearForEstimados }),
