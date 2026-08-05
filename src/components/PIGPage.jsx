@@ -5002,10 +5002,15 @@ export default function PIGPage() {
         try {
           const yyTes = yearGuess ? yearGuess.slice(2) : '';
           const titleTesoreria = `Cierre TESORERÍA  EI.SSS ${yyTes ? `01/01/${yyTes} A ${endOfMonthStr(lastIdx)}` : ''}`.trim();
+          const yearForImpuestos = Number(yearGuess) || Number(estimadosYear) || new Date().getFullYear();
           const [{ accounts: treasuryAccounts, error: treasuryError }, { impuestos, error: impuestosError }] =
             await Promise.all([
               loadPigTreasuryAccounts({ company: 'solucions' }),
-              loadPigImpuestosBalances({ company: 'solucions' })
+              loadPigImpuestosBalances({
+                company: 'solucions',
+                year: yearForImpuestos,
+                monthIndex: lastIdx
+              })
             ]);
           if (treasuryError) {
             console.warn('PIG TESORERÍA: no se pudieron cargar cuentas de Holded.', treasuryError);

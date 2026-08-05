@@ -76,18 +76,35 @@ export function extractHoldedAccountCode(account) {
   return extractHoldedAccountNumber(account);
 }
 
+/**
+ * Saldo como en el plan contable de Holded: Debe − Haber.
+ * Si no hay debe/haber, usa `balance` / `saldo`.
+ */
 export function extractHoldedAccountBalance(account) {
   if (!account || typeof account !== 'object') return 0;
-  // Priorizar el saldo que muestra Holded en el plan contable
+
+  const hasDebit =
+    account.debit != null
+    || account.debe != null
+    || account.balances?.debit != null;
+  const hasCredit =
+    account.credit != null
+    || account.haber != null
+    || account.balances?.credit != null;
+
+  if (hasDebit || hasCredit) {
+    const debit = parseBalance(
+      account.debit ?? account.debe ?? account.balances?.debit ?? 0
+    );
+    const credit = parseBalance(
+      account.credit ?? account.haber ?? account.balances?.credit ?? 0
+    );
+    return debit - credit;
+  }
+
   if (account.balance != null && account.balance !== '') return parseBalance(account.balance);
   if (account.saldo != null && account.saldo !== '') return parseBalance(account.saldo);
   if (account.balances?.balance != null) return parseBalance(account.balances.balance);
-  if (account.debit != null || account.credit != null) {
-    return parseBalance(account.debit) - parseBalance(account.credit);
-  }
-  if (account.debe != null || account.haber != null) {
-    return parseBalance(account.debe) - parseBalance(account.haber);
-  }
   if (account.amount != null) return parseBalance(account.amount);
   return 0;
 }
@@ -98,8 +115,9 @@ function buildBalanceMap(accounts = []) {
     const code = extractHoldedAccountNumber(account);
     if (!code) continue;
     const balance = extractHoldedAccountBalance(account);
-    if (map.has(code)) map.set(code, map.get(code) + balance);
-    else map.set(code, balance);
+    // Exact match only: si Holded repite la misma cuenta, nos quedamos con el último saldo
+    // (no sumar padre+hijos: cada código es independiente).
+    map.set(code, balance);
   }
   return map;
 }
@@ -121,28 +139,78 @@ export function impuestosQuarterFromMonth(monthIndex) {
   return Math.floor(Math.min(Math.max(m, 0), 11) / 3) + 1;
 }
 
+function pad2(n) {
+  return String(n).padStart(2, '0');
+}
+
 /**
- * Carga saldos de cuentas fiscales desde Holded (accounting-accounts).
+ * Rango ISO para el plan contable Holded (ambos obligatorios y distintos).
+ * Por defecto: 01/01/{year} → último día del mes del PIG.
  */
-export async function loadPigImpuestosBalances({ company = 'solucions' } = {}) {
+export function buildImpuestosDateRange({ year, monthIndex } = {}) {
+  const y = Number(year);
+  const m = Number.isFinite(monthIndex) ? Math.min(11, Math.max(0, monthIndex)) : 11;
+  const yearSafe = Number.isFinite(y) && y >= 2000 && y <= 2100 ? y : new Date().getFullYear();
+  const endDay = new Date(yearSafe, m + 1, 0).getDate();
+  const start_date = `${yearSafe}-01-01`;
+  const end_date = `${yearSafe}-${pad2(m + 1)}-${pad2(endDay)}`;
+  if (start_date === end_date) {
+    // Holded exige fechas distintas: usar al menos 2 días
+    return { start_date, end_date: `${yearSafe}-01-02` };
+  }
+  return { start_date, end_date };
+}
+
+/**
+ * Carga saldos de cuentas fiscales desde Holded (accounting-accounts)
+ * para el periodo del PIG (ene → último mes con datos).
+ */
+export async function loadPigImpuestosBalances({
+  company = 'solucions',
+  year,
+  monthIndex
+} = {}) {
   try {
-    const raw = await holdedApiV2Service.getAccountingAccounts(company);
+    const { start_date, end_date } = buildImpuestosDateRange({ year, monthIndex });
+    const raw = await holdedApiV2Service.getAccountingAccounts(company, {
+      start_date,
+      end_date,
+      include_empty: true
+    });
     const map = buildBalanceMap(raw || []);
     const mod303 = IMPUESTOS_MOD_303_ACCOUNTS.map((row) => ({
       ...row,
       balance: balanceForCode(map, row.code)
     }));
-    const aPagar = IMPUESTOS_A_PAGAR_ACCOUNTS.map((row) => ({
-      ...row,
-      balance: balanceForCode(map, row.code)
-    }));
+    const aPagar = IMPUESTOS_A_PAGAR_ACCOUNTS.map((row) => {
+      const balance = balanceForCode(map, row.code);
+      // Columna A PAGAR: solo lo que se debe a Hacienda (saldo acreedor = negativo en Debe−Haber).
+      const aPagarAmount = balance < 0 ? Math.abs(balance) : 0;
+      return {
+        ...row,
+        balance,
+        aPagar: aPagarAmount
+      };
+    });
     const mod303Sum = mod303.reduce((acc, r) => acc + (Number(r.balance) || 0), 0);
+
+    console.log('[PIG TESORERÍA IMPUESTOS] Saldos Holded', {
+      start_date,
+      end_date,
+      mod303: mod303.map((r) => ({ code: r.code, balance: r.balance })),
+      aPagar: aPagar.map((r) => ({ code: r.code, balance: r.balance, aPagar: r.aPagar })),
+      mod303Sum,
+      accountsLoaded: (raw || []).length
+    });
+
     return {
       impuestos: {
         mod303,
         mod303Sum,
         aPagar,
-        aPagarByCode: Object.fromEntries(aPagar.map((r) => [r.code, r.balance]))
+        aPagarByCode: Object.fromEntries(aPagar.map((r) => [r.code, r.aPagar])),
+        start_date,
+        end_date
       },
       error: null
     };

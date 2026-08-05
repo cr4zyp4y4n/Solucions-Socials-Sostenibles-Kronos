@@ -91,8 +91,13 @@ class HoldedApiV2Service {
     return this.fetchAllPages('/payroll-records', { year }, company);
   }
 
-  async getAccountingAccounts(company = 'solucions') {
-    return this.fetchAllPages('/accounting-accounts', {}, company);
+  /**
+   * Plan de cuentas Holded v2.
+   * Con `start_date` + `end_date` (ISO YYYY-MM-DD, distintos) Holded rellena debit/credit/balance del periodo.
+   * Sin fechas, los saldos no coinciden con el plan contable de la UI.
+   */
+  async getAccountingAccounts(company = 'solucions', params = {}) {
+    return this.fetchAllPages('/accounting-accounts', params || {}, company);
   }
 
   async getInvoices(company = 'solucions') {
