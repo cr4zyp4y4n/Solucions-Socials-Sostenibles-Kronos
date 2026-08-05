@@ -3454,15 +3454,22 @@ const PIG_GENERAL_MINITABLE_LABELS = [
 ];
 const PIG_GENERAL_MINITABLE_TOTAL_LABEL = 'TOTAL RESULTADO SIN SUBV.';
 
-function getPigGeneralSideCols(monthsLimited = []) {
+function getPigGeneralSideCols(monthsLimited = [], { withObservaciones = false, withItinerario = false } = {}) {
   const lim = Math.max(1, Math.min(12, monthsLimited.length || 12));
   const totalCols = 1 + lim + 1;
+  const miniLabelCol = totalCols + 1;
+  const miniValueCol = totalCols + 2;
+  const itinerarioStartCol = miniLabelCol;
+  const itinerarioEndCol = itinerarioStartCol + 5;
+  const obsCol = withItinerario
+    ? itinerarioEndCol + 2
+    : totalCols + 4;
   return {
     totalCols,
     monthlyLastCol: totalCols - 1,
-    miniLabelCol: totalCols + 1,
-    miniValueCol: totalCols + 2,
-    obsCol: totalCols + 4
+    miniLabelCol,
+    miniValueCol,
+    obsCol: withObservaciones ? obsCol : totalCols + 4
   };
 }
 
@@ -4432,14 +4439,20 @@ export default function PIGPage() {
 
       if (!omitSubvenciones) {
         if (yearForEstimados && Number(yearForEstimados) !== Number(estimadosYear)) {
-          const [{ estimados, error: loadEstError }, { objetivos, error: loadObjError }] = await Promise.all([
+          const [
+            { estimados, error: loadEstError },
+            { objetivos, error: loadObjError },
+            { itinerario, error: loadItError }
+          ] = await Promise.all([
             loadPigEstimadosSubvencion({ year: yearForEstimados }),
-            loadPigObjetivosComparativa({ year: yearForEstimados })
+            loadPigObjetivosComparativa({ year: yearForEstimados }),
+            loadPigItinerarioEi({ year: yearForEstimados })
           ]);
           if (!loadEstError && estimados) estimadosForGenerate = estimados;
           if (!loadObjError && objetivos) objetivosForGenerate = objetivos;
+          if (!loadItError && itinerario) itinerarioForGenerate = itinerario;
         } else {
-          await Promise.all([saveEstimadosSubv(), saveObjetivosComparativa()]);
+          await Promise.all([saveEstimadosSubv(), saveObjetivosComparativa(), saveItinerarioEi()]);
         }
       } else if (yearForEstimados && Number(yearForEstimados) === Number(estimadosYear)) {
         // Objetivos + itinerario CR + previsiones TESORERÍA.
@@ -4536,7 +4549,10 @@ export default function PIGPage() {
       });
       let miniTablaMeta = null;
       let itinerarioMeta = null;
-      const sideColsFull = getPigGeneralSideCols(monthsFull);
+      const sideColsFull = getPigGeneralSideCols(monthsFull, {
+        withObservaciones: empresaMode !== 'MH' && !omitSubvenciones,
+        withItinerario: empresaMode !== 'MH'
+      });
       if (empresaMode !== 'MH') {
         if (!omitSubvenciones) {
           applyPigGeneralEisssObservaciones(aoaFull, { obsCol: sideColsFull.obsCol });
@@ -4548,7 +4564,7 @@ export default function PIGPage() {
           labelCol: sideColsFull.miniLabelCol,
           valueCol: sideColsFull.miniValueCol
         });
-        if (omitSubvenciones && miniTablaMeta) {
+        if (miniTablaMeta) {
           itinerarioMeta = applyPigGeneralItinerarioTables(aoaFull, {
             startCol: sideColsFull.miniLabelCol,
             afterRow: miniTablaMeta.endRow,
@@ -4587,7 +4603,11 @@ export default function PIGPage() {
         omitSubvenciones
       });
       let miniTablaMetaNov = null;
-      const sideColsNov = getPigGeneralSideCols(monthsNov);
+      const sideColsNov = getPigGeneralSideCols(monthsNov, {
+        withObservaciones: false,
+        withItinerario: empresaMode !== 'MH'
+      });
+      let itinerarioMetaNov = null;
       if (empresaMode !== 'MH') {
         miniTablaMetaNov = applyPigGeneralEisssMiniTabla(aoaNov, {
           mensualMap: mensual,
@@ -4596,6 +4616,14 @@ export default function PIGPage() {
           labelCol: sideColsNov.miniLabelCol,
           valueCol: sideColsNov.miniValueCol
         });
+        if (miniTablaMetaNov) {
+          itinerarioMetaNov = applyPigGeneralItinerarioTables(aoaNov, {
+            startCol: sideColsNov.miniLabelCol,
+            afterRow: miniTablaMetaNov.endRow,
+            itinerario: itinerarioForGenerate,
+            year: yearForEstimados || Number(estimadosYear)
+          });
+        }
       }
       const wsNov = XLSX.utils.aoa_to_sheet(aoaNov);
       styleGeneralSheet({
@@ -4603,6 +4631,7 @@ export default function PIGPage() {
         aoa: aoaNov,
         monthsLimited: monthsNov,
         miniTablaMeta: miniTablaMetaNov,
+        itinerarioMeta: itinerarioMetaNov,
         sideCols: sideColsNov
       });
       XLSX.utils.book_append_sheet(wb, wsNov, sheetNamePrev);
@@ -5508,11 +5537,11 @@ export default function PIGPage() {
         {pigEmpresa !== 'MH' && (
           <div style={{ padding: 14, borderRadius: 12, border: `1px solid ${colors.border}`, background: colors.surface }}>
             <div style={{ fontSize: 13, fontWeight: 950, marginBottom: 4 }}>
-              Itinerario E.I (CR GENERAL EISSS)
+              Itinerario E.I (PIG / CR GENERAL EISSS)
             </div>
             <div style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 10, lineHeight: 1.35 }}>
-              Tablas editables debajo de la minitabla al generar <b>EISSS Cuenta Resultados</b>.
-              Mismo año que estimados/objetivos. Pulsa <b>Guardar itinerario</b> (o genera el Excel CR) para persistir.
+              Tablas editables debajo de la minitabla al generar <b>PIG GENERAL EISSS</b> o <b>EISSS Cuenta Resultados</b>.
+              Mismo año que estimados/objetivos. Pulsa <b>Guardar itinerario</b> (o genera el Excel) para persistir.
             </div>
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
               <button
