@@ -234,20 +234,43 @@ export async function upsertPigEstimadosSubvencion({ year, estimados }) {
     }
   }
 
+  const { data: existingRows, error: selectError } = await supabase
+    .from('pig_estimados_subvencion')
+    .select('id, linea, slot, segment')
+    .eq('year', y)
+    .in('linea', [...PIG_ESTIMADOS_LINEAS]);
+
+  if (selectError) return { error: selectError };
+
+  if (payload.length) {
+    const { error: upsertError } = await supabase
+      .from('pig_estimados_subvencion')
+      .upsert(payload, { onConflict: 'linea,year,slot,segment' });
+
+    if (upsertError) return { error: upsertError };
+
+    const payloadKeys = new Set(
+      payload.map((row) => `${row.linea}|${row.slot}|${row.segment}`)
+    );
+    const staleIds = (existingRows || [])
+      .filter((row) => !payloadKeys.has(`${String(row.linea || '').toUpperCase()}|${Number(row.slot)}|${Number(row.segment)}`))
+      .map((row) => row.id)
+      .filter(Boolean);
+
+    if (staleIds.length) {
+      const { error: deleteError } = await supabase
+        .from('pig_estimados_subvencion')
+        .delete()
+        .in('id', staleIds);
+      if (deleteError) return { error: deleteError };
+    }
+    return { error: null };
+  }
+
   const { error: deleteError } = await supabase
     .from('pig_estimados_subvencion')
     .delete()
     .eq('year', y)
     .in('linea', [...PIG_ESTIMADOS_LINEAS]);
-
-  if (deleteError) return { error: deleteError };
-
-  if (!payload.length) return { error: null };
-
-  const { error: upsertError } = await supabase
-    .from('pig_estimados_subvencion')
-    .insert(payload);
-
-  if (upsertError) return { error: upsertError };
-  return { error: null };
+  return { error: deleteError || null };
 }
