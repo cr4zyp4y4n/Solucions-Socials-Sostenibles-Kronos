@@ -15,7 +15,9 @@ function functionBody(source, functionName) {
   const marker = `export async function ${functionName}`;
   const start = source.indexOf(marker);
   assert(start >= 0, `${functionName}: no se encontro la funcion`);
-  const open = source.indexOf('{', start);
+  const signatureEnd = source.indexOf(') {', start);
+  assert(signatureEnd >= 0, `${functionName}: no se encontro la firma`);
+  const open = signatureEnd + 2;
   assert(open >= 0, `${functionName}: no se encontro el cuerpo`);
 
   let depth = 0;
