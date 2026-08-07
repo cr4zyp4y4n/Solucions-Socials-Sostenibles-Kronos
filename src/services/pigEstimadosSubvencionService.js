@@ -234,20 +234,50 @@ export async function upsertPigEstimadosSubvencion({ year, estimados }) {
     }
   }
 
-  const { error: deleteError } = await supabase
-    .from('pig_estimados_subvencion')
-    .delete()
-    .eq('year', y)
-    .in('linea', [...PIG_ESTIMADOS_LINEAS]);
+  if (!payload.length) {
+    const { data: existingRows, error: selectError } = await supabase
+      .from('pig_estimados_subvencion')
+      .select('id')
+      .eq('year', y)
+      .in('linea', [...PIG_ESTIMADOS_LINEAS]);
+    if (selectError) return { error: selectError };
 
-  if (deleteError) return { error: deleteError };
-
-  if (!payload.length) return { error: null };
+    const oldIds = (existingRows || []).map((row) => row.id).filter(Boolean);
+    if (!oldIds.length) return { error: null };
+    const { error: deleteError } = await supabase
+      .from('pig_estimados_subvencion')
+      .delete()
+      .in('id', oldIds);
+    return { error: deleteError || null };
+  }
 
   const { error: upsertError } = await supabase
     .from('pig_estimados_subvencion')
-    .insert(payload);
+    .upsert(payload, { onConflict: 'linea,year,slot,segment' });
 
   if (upsertError) return { error: upsertError };
+
+  const payloadKeys = new Set(
+    payload.map((row) => `${row.linea}::${row.slot}::${row.segment}`)
+  );
+  const { data: existingRows, error: selectError } = await supabase
+    .from('pig_estimados_subvencion')
+    .select('id,linea,slot,segment')
+    .eq('year', y)
+    .in('linea', [...PIG_ESTIMADOS_LINEAS]);
+  if (selectError) return { error: selectError };
+
+  const obsoleteIds = (existingRows || [])
+    .filter((row) => !payloadKeys.has(`${row.linea}::${row.slot}::${row.segment}`))
+    .map((row) => row.id)
+    .filter(Boolean);
+  if (obsoleteIds.length) {
+    const { error: deleteError } = await supabase
+      .from('pig_estimados_subvencion')
+      .delete()
+      .in('id', obsoleteIds);
+    if (deleteError) return { error: deleteError };
+  }
+
   return { error: null };
 }

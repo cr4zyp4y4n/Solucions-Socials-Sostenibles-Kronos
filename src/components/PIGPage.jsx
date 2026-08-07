@@ -4436,6 +4436,12 @@ export default function PIGPage() {
       let objetivosForGenerate = objetivosComparativa;
       let itinerarioForGenerate = itinerarioEi;
       let previsionesForGenerate = tesoreriaPrevisiones;
+      const ensureAutosaves = async (saves, label) => {
+        const results = await Promise.all(saves.map((save) => save()));
+        if (results.some((ok) => !ok)) {
+          throw new Error(`${label}: no se ha generado el Excel porque falló un guardado previo.`);
+        }
+      };
 
       if (!omitSubvenciones) {
         if (yearForEstimados && Number(yearForEstimados) !== Number(estimadosYear)) {
@@ -4452,15 +4458,17 @@ export default function PIGPage() {
           if (!loadObjError && objetivos) objetivosForGenerate = objetivos;
           if (!loadItError && itinerario) itinerarioForGenerate = itinerario;
         } else {
-          await Promise.all([saveEstimadosSubv(), saveObjetivosComparativa(), saveItinerarioEi()]);
+          await ensureAutosaves(
+            [saveEstimadosSubv, saveObjetivosComparativa, saveItinerarioEi],
+            'PIG EISSS'
+          );
         }
       } else if (yearForEstimados && Number(yearForEstimados) === Number(estimadosYear)) {
         // Objetivos + itinerario CR + previsiones TESORERÍA.
-        await Promise.all([
-          saveObjetivosComparativa(),
-          saveItinerarioEi(),
-          saveTesoreriaPrevisiones()
-        ]);
+        await ensureAutosaves(
+          [saveObjetivosComparativa, saveItinerarioEi, saveTesoreriaPrevisiones],
+          'Cuenta Resultados EISSS'
+        );
       } else if (yearForEstimados) {
         const [{ itinerario, error: itErr }, { previsiones, error: prErr }] = await Promise.all([
           loadPigItinerarioEi({ year: yearForEstimados }),
