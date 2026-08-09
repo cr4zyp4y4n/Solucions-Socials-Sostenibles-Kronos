@@ -16,7 +16,8 @@
     updated_at timestamptz not null default now(),
     constraint pig_itinerario_ei_pkey primary key (id),
     constraint pig_itinerario_ei_year_chk check (year >= 2000 and year <= 2100),
-    constraint pig_itinerario_ei_semestre_chk check (semestre in (1, 2))
+    constraint pig_itinerario_ei_semestre_chk check (semestre in (1, 2)),
+    constraint pig_itinerario_ei_unique unique (year, semestre, sort_order)
   );
 
   create index if not exists idx_pig_itinerario_ei_year_sem
