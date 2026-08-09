@@ -196,18 +196,34 @@ export async function upsertPigTesoreriaPrevisiones({ year, previsiones }) {
     }))
   ];
 
-  const { error: deleteError } = await supabase
+  if (payload.length > 0) {
+    const { error: upsertError } = await supabase
+      .from('pig_tesoreria_previsiones')
+      .upsert(payload, { onConflict: 'year,bloque,sort_order' });
+    if (upsertError) return { error: upsertError };
+  }
+
+  const activeKeys = new Set(
+    payload.map((row) => `${row.bloque}|${row.sort_order}`)
+  );
+  const { data: existing, error: loadExistingError } = await supabase
     .from('pig_tesoreria_previsiones')
-    .delete()
+    .select('id, bloque, sort_order')
     .eq('year', y);
-  if (deleteError) return { error: deleteError };
+  if (loadExistingError) return { error: loadExistingError };
 
-  if (!payload.length) return { error: null };
+  const staleIds = (existing || [])
+    .filter((row) => !activeKeys.has(`${row.bloque}|${row.sort_order}`))
+    .map((row) => row.id)
+    .filter(Boolean);
 
-  const { error: insertError } = await supabase
-    .from('pig_tesoreria_previsiones')
-    .insert(payload);
-  if (insertError) return { error: insertError };
+  if (staleIds.length > 0) {
+    const { error: deleteError } = await supabase
+      .from('pig_tesoreria_previsiones')
+      .delete()
+      .in('id', staleIds);
+    if (deleteError) return { error: deleteError };
+  }
   return { error: null };
 }
 

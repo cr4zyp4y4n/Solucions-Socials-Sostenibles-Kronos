@@ -109,6 +109,22 @@ export function extractHoldedAccountBalance(account) {
   return 0;
 }
 
+function hasHoldedAccountBalanceField(account) {
+  if (!account || typeof account !== 'object') return false;
+  return (
+    account.debit != null
+    || account.debe != null
+    || account.balances?.debit != null
+    || account.credit != null
+    || account.haber != null
+    || account.balances?.credit != null
+    || account.balance != null
+    || account.saldo != null
+    || account.balances?.balance != null
+    || account.amount != null
+  );
+}
+
 function buildBalanceMap(accounts = []) {
   const map = new Map();
   for (const account of accounts) {
@@ -178,6 +194,27 @@ export async function loadPigImpuestosBalances({
       include_empty: true
     });
     const map = buildBalanceMap(raw || []);
+    const targetCodes = [
+      ...IMPUESTOS_MOD_303_ACCOUNTS.map((row) => normalizeAccountCode(row.code)),
+      ...IMPUESTOS_A_PAGAR_ACCOUNTS.map((row) => normalizeAccountCode(row.code))
+    ];
+    const accountsByCode = new Map();
+    for (const account of raw || []) {
+      const code = extractHoldedAccountNumber(account);
+      if (code) accountsByCode.set(code, account);
+    }
+    const missingCodes = targetCodes.filter((code) => !accountsByCode.has(code));
+    const accountsWithoutBalance = targetCodes.filter((code) => {
+      const account = accountsByCode.get(code);
+      return account && !hasHoldedAccountBalanceField(account);
+    });
+    if (missingCodes.length > 0 || accountsWithoutBalance.length > 0) {
+      const detail = [
+        missingCodes.length ? `cuentas no devueltas: ${missingCodes.join(', ')}` : '',
+        accountsWithoutBalance.length ? `cuentas sin saldo explícito: ${accountsWithoutBalance.join(', ')}` : ''
+      ].filter(Boolean).join('; ');
+      throw new Error(`Holded no devolvió saldos fiscales completos (${detail}).`);
+    }
     const mod303 = IMPUESTOS_MOD_303_ACCOUNTS.map((row) => ({
       ...row,
       balance: balanceForCode(map, row.code)
@@ -216,12 +253,7 @@ export async function loadPigImpuestosBalances({
     };
   } catch (error) {
     return {
-      impuestos: {
-        mod303: IMPUESTOS_MOD_303_ACCOUNTS.map((r) => ({ ...r, balance: 0 })),
-        mod303Sum: 0,
-        aPagar: IMPUESTOS_A_PAGAR_ACCOUNTS.map((r) => ({ ...r, balance: 0 })),
-        aPagarByCode: {}
-      },
+      impuestos: null,
       error
     };
   }
