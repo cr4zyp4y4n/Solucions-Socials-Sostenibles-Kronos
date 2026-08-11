@@ -4436,6 +4436,15 @@ export default function PIGPage() {
       let objetivosForGenerate = objetivosComparativa;
       let itinerarioForGenerate = itinerarioEi;
       let previsionesForGenerate = tesoreriaPrevisiones;
+      const ensureAutosaves = async (saves) => {
+        const results = await Promise.all(saves.map(({ save }) => save()));
+        const failed = results
+          .map((ok, idx) => (ok ? null : saves[idx].label))
+          .filter(Boolean);
+        if (failed.length) {
+          throw new Error(`No se ha generado el Excel porque falló el autoguardado de: ${failed.join(', ')}.`);
+        }
+      };
 
       if (!omitSubvenciones) {
         if (yearForEstimados && Number(yearForEstimados) !== Number(estimadosYear)) {
@@ -4452,14 +4461,18 @@ export default function PIGPage() {
           if (!loadObjError && objetivos) objetivosForGenerate = objetivos;
           if (!loadItError && itinerario) itinerarioForGenerate = itinerario;
         } else {
-          await Promise.all([saveEstimadosSubv(), saveObjetivosComparativa(), saveItinerarioEi()]);
+          await ensureAutosaves([
+            { label: 'estimados de subvención', save: saveEstimadosSubv },
+            { label: 'objetivos', save: saveObjetivosComparativa },
+            { label: 'itinerario E.I.', save: saveItinerarioEi }
+          ]);
         }
       } else if (yearForEstimados && Number(yearForEstimados) === Number(estimadosYear)) {
         // Objetivos + itinerario CR + previsiones TESORERÍA.
-        await Promise.all([
-          saveObjetivosComparativa(),
-          saveItinerarioEi(),
-          saveTesoreriaPrevisiones()
+        await ensureAutosaves([
+          { label: 'objetivos', save: saveObjetivosComparativa },
+          { label: 'itinerario E.I.', save: saveItinerarioEi },
+          { label: 'previsiones de tesorería', save: saveTesoreriaPrevisiones }
         ]);
       } else if (yearForEstimados) {
         const [{ itinerario, error: itErr }, { previsiones, error: prErr }] = await Promise.all([
