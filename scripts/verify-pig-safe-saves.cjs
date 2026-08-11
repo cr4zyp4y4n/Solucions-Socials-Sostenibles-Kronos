@@ -10,7 +10,8 @@ function read(relPath) {
 function extractFunction(source, name) {
   const start = source.indexOf(`export async function ${name}`);
   if (start < 0) throw new Error(`No se encuentra ${name}`);
-  const braceStart = source.indexOf('{', start);
+  const signatureEnd = source.indexOf(') {', start);
+  const braceStart = signatureEnd >= 0 ? source.indexOf('{', signatureEnd) : source.indexOf('{', start);
   if (braceStart < 0) throw new Error(`No se encuentra el cuerpo de ${name}`);
 
   let depth = 0;
