@@ -234,20 +234,43 @@ export async function upsertPigEstimadosSubvencion({ year, estimados }) {
     }
   }
 
-  const { error: deleteError } = await supabase
-    .from('pig_estimados_subvencion')
-    .delete()
-    .eq('year', y)
-    .in('linea', [...PIG_ESTIMADOS_LINEAS]);
-
-  if (deleteError) return { error: deleteError };
-
-  if (!payload.length) return { error: null };
+  if (!payload.length) {
+    const { error: deleteError } = await supabase
+      .from('pig_estimados_subvencion')
+      .delete()
+      .eq('year', y)
+      .in('linea', [...PIG_ESTIMADOS_LINEAS]);
+    return { error: deleteError || null };
+  }
 
   const { error: upsertError } = await supabase
     .from('pig_estimados_subvencion')
-    .insert(payload);
+    .upsert(payload, { onConflict: 'linea,year,slot,segment' });
 
   if (upsertError) return { error: upsertError };
+
+  const activeKeys = new Set(payload.map((row) => `${row.linea}:${row.slot}:${row.segment}`));
+  const stalePairs = [];
+  for (const linea of PIG_ESTIMADOS_LINEAS) {
+    for (const slot of [1, 2]) {
+      for (const segment of [1, 2]) {
+        if (!activeKeys.has(`${linea}:${slot}:${segment}`)) {
+          stalePairs.push({ linea, slot, segment });
+        }
+      }
+    }
+  }
+
+  for (const stale of stalePairs) {
+    const { error: deleteError } = await supabase
+      .from('pig_estimados_subvencion')
+      .delete()
+      .eq('year', y)
+      .eq('linea', stale.linea)
+      .eq('slot', stale.slot)
+      .eq('segment', stale.segment);
+    if (deleteError) return { error: deleteError };
+  }
+
   return { error: null };
 }

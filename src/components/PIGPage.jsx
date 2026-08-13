@@ -4436,6 +4436,16 @@ export default function PIGPage() {
       let objetivosForGenerate = objetivosComparativa;
       let itinerarioForGenerate = itinerarioEi;
       let previsionesForGenerate = tesoreriaPrevisiones;
+      const getPigErrorDetail = (error) => String(error?.message || error?.details || '').trim();
+      const throwLoadError = (label, error) => {
+        const detail = getPigErrorDetail(error);
+        throw new Error(detail ? `No se pudo cargar ${label}: ${detail}` : `No se pudo cargar ${label}.`);
+      };
+      const assertAutosaves = (results, label) => {
+        if (results.some((ok) => ok !== true)) {
+          throw new Error(`No se ha generado el Excel porque falló el autoguardado de ${label}.`);
+        }
+      };
 
       if (!omitSubvenciones) {
         if (yearForEstimados && Number(yearForEstimados) !== Number(estimadosYear)) {
@@ -4448,24 +4458,31 @@ export default function PIGPage() {
             loadPigObjetivosComparativa({ year: yearForEstimados }),
             loadPigItinerarioEi({ year: yearForEstimados })
           ]);
+          if (loadEstError) throwLoadError('estimados de subvención', loadEstError);
+          if (loadObjError) throwLoadError('objetivos de comparativa', loadObjError);
+          if (loadItError) throwLoadError('itinerario E.I.', loadItError);
           if (!loadEstError && estimados) estimadosForGenerate = estimados;
           if (!loadObjError && objetivos) objetivosForGenerate = objetivos;
           if (!loadItError && itinerario) itinerarioForGenerate = itinerario;
         } else {
-          await Promise.all([saveEstimadosSubv(), saveObjetivosComparativa(), saveItinerarioEi()]);
+          const saveResults = await Promise.all([saveEstimadosSubv(), saveObjetivosComparativa(), saveItinerarioEi()]);
+          assertAutosaves(saveResults, 'estimados, objetivos e itinerario');
         }
       } else if (yearForEstimados && Number(yearForEstimados) === Number(estimadosYear)) {
         // Objetivos + itinerario CR + previsiones TESORERÍA.
-        await Promise.all([
+        const saveResults = await Promise.all([
           saveObjetivosComparativa(),
           saveItinerarioEi(),
           saveTesoreriaPrevisiones()
         ]);
+        assertAutosaves(saveResults, 'objetivos, itinerario y previsiones de tesorería');
       } else if (yearForEstimados) {
         const [{ itinerario, error: itErr }, { previsiones, error: prErr }] = await Promise.all([
           loadPigItinerarioEi({ year: yearForEstimados }),
           loadPigTesoreriaPrevisiones({ year: yearForEstimados })
         ]);
+        if (itErr) throwLoadError('itinerario E.I.', itErr);
+        if (prErr) throwLoadError('previsiones de tesorería', prErr);
         if (!itErr && itinerario) itinerarioForGenerate = itinerario;
         if (!prErr && previsiones) previsionesForGenerate = previsiones;
       }
