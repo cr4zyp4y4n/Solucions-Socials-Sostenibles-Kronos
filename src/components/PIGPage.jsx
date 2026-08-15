@@ -4360,6 +4360,7 @@ export default function PIGPage() {
   }, [estimadosSubv, estimadosYear]);
 
   const canGenerate = useMemo(() => Boolean(anualFile && mensualFile), [anualFile, mensualFile]);
+  const auxiliaryPigDataLoading = objetivosLoading || estimadosLoading || itinerarioLoading || previsionesLoading;
   const canGeneratePrevisionTesoreria = useMemo(
     () => Boolean(previsionPig2026 && previsionPig2025),
     [previsionPig2026, previsionPig2025]
@@ -4411,6 +4412,10 @@ export default function PIGPage() {
         setError('Sube los 2 archivos del PIG: anual y mensual (CSV o Excel).');
         return;
       }
+      if (auxiliaryPigDataLoading) {
+        setError('Espera a que terminen de cargar objetivos, estimados, itinerario y previsiones antes de generar el Excel.');
+        return;
+      }
 
       const cuentaResultados = Boolean(opts?.cuentaResultados);
       // Cuenta Resultados = mismo flujo EISSS, sin subvenciones de Holded ni estimados.
@@ -4448,24 +4453,36 @@ export default function PIGPage() {
             loadPigObjetivosComparativa({ year: yearForEstimados }),
             loadPigItinerarioEi({ year: yearForEstimados })
           ]);
+          if (loadEstError || loadObjError || loadItError) {
+            throw new Error('No se pudieron cargar los datos auxiliares del año del CSV. No se ha generado el Excel.');
+          }
           if (!loadEstError && estimados) estimadosForGenerate = estimados;
           if (!loadObjError && objetivos) objetivosForGenerate = objetivos;
           if (!loadItError && itinerario) itinerarioForGenerate = itinerario;
         } else {
-          await Promise.all([saveEstimadosSubv(), saveObjetivosComparativa(), saveItinerarioEi()]);
+          const saveResults = await Promise.all([saveEstimadosSubv(), saveObjetivosComparativa(), saveItinerarioEi()]);
+          if (!saveResults.every(Boolean)) {
+            throw new Error('No se pudieron autoguardar estimados, objetivos o itinerario. No se ha generado el Excel.');
+          }
         }
       } else if (yearForEstimados && Number(yearForEstimados) === Number(estimadosYear)) {
         // Objetivos + itinerario CR + previsiones TESORERÍA.
-        await Promise.all([
+        const saveResults = await Promise.all([
           saveObjetivosComparativa(),
           saveItinerarioEi(),
           saveTesoreriaPrevisiones()
         ]);
+        if (!saveResults.every(Boolean)) {
+          throw new Error('No se pudieron autoguardar objetivos, itinerario o previsiones. No se ha generado el Excel.');
+        }
       } else if (yearForEstimados) {
         const [{ itinerario, error: itErr }, { previsiones, error: prErr }] = await Promise.all([
           loadPigItinerarioEi({ year: yearForEstimados }),
           loadPigTesoreriaPrevisiones({ year: yearForEstimados })
         ]);
+        if (itErr || prErr) {
+          throw new Error('No se pudieron cargar itinerario o previsiones del año del CSV. No se ha generado el Excel.');
+        }
         if (!itErr && itinerario) itinerarioForGenerate = itinerario;
         if (!prErr && previsiones) previsionesForGenerate = previsiones;
       }
@@ -5046,6 +5063,7 @@ export default function PIGPage() {
           }
           if (impuestosError) {
             console.warn('PIG TESORERÍA IMPUESTOS: no se pudieron cargar cuentas contables de Holded.', impuestosError);
+            throw new Error('No se pudieron cargar los impuestos desde Holded. No se ha generado el Excel para evitar importes a cero incorrectos.');
           }
           const { aoa: aoaTesoreria, meta: tesoreriaMeta } = buildPigTesoreriaSheetAoa({
             title: titleTesoreria,
@@ -5062,6 +5080,7 @@ export default function PIGPage() {
           XLSX.utils.book_append_sheet(wb, wsTesoreria, 'TESORERÍA');
         } catch (e) {
           console.error('Error generando hoja TESORERÍA:', e);
+          throw e;
         }
 
         try {
@@ -5132,7 +5151,8 @@ export default function PIGPage() {
     saveEstimadosSubv,
     saveObjetivosComparativa,
     saveItinerarioEi,
-    saveTesoreriaPrevisiones
+    saveTesoreriaPrevisiones,
+    auxiliaryPigDataLoading
   ]);
 
   return (

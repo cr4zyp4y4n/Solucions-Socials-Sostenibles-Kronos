@@ -78,7 +78,7 @@ export function extractHoldedAccountCode(account) {
 
 /**
  * Saldo como en el plan contable de Holded: Debe − Haber.
- * Si no hay debe/haber, usa `balance` / `saldo`.
+ * Si Holded trae D/C vacíos o a cero pero también saldo acumulado, usa `balance` / `saldo`.
  */
 export function extractHoldedAccountBalance(account) {
   if (!account || typeof account !== 'object') return 0;
@@ -99,7 +99,14 @@ export function extractHoldedAccountBalance(account) {
     const credit = parseBalance(
       account.credit ?? account.haber ?? account.balances?.credit ?? 0
     );
-    return debit - credit;
+    const net = debit - credit;
+    if (net !== 0) return net;
+
+    const balance = parseBalance(account.balance ?? account.saldo ?? account.balances?.balance);
+    if (balance !== 0) return balance;
+    const amount = parseBalance(account.amount);
+    if (amount !== 0) return amount;
+    return 0;
   }
 
   if (account.balance != null && account.balance !== '') return parseBalance(account.balance);
