@@ -17,6 +17,7 @@ const objetivos = read('src/services/pigObjetivosComparativaService.js');
 const estimados = read('src/services/pigEstimadosSubvencionService.js');
 const itinerario = read('src/services/pigItinerarioEiService.js');
 const previsiones = read('src/services/pigTesoreriaPrevisionesService.js');
+const impuestos = read('src/services/pigTesoreriaImpuestosService.js');
 const pigPage = read('src/components/PIGPage.jsx');
 
 for (const [name, source] of [
@@ -66,6 +67,11 @@ assert(
   pigPage.includes('No se pudieron cargar los impuestos desde Holded')
     && /if \(impuestosError\)[\s\S]*throw new Error\('No se pudieron cargar los impuestos desde Holded/.test(pigPage),
   'PIGPage: generateExcel debe abortar si falla la carga de impuestos'
+);
+
+assert(
+  /const net = debit - credit;[\s\S]*if \(net !== 0\) return net;[\s\S]*const balance = parseBalance\(account\.balance \?\? account\.saldo \?\? account\.balances\?\.balance\);[\s\S]*if \(balance !== 0\) return balance;/.test(impuestos),
+  'impuestos: debe usar balance/saldo si debit-credit netea 0'
 );
 
 console.log('OK: invariantes críticos PIG protegidos.');
