@@ -4436,6 +4436,9 @@ export default function PIGPage() {
       let objetivosForGenerate = objetivosComparativa;
       let itinerarioForGenerate = itinerarioEi;
       let previsionesForGenerate = tesoreriaPrevisiones;
+      const failExcelIf = (condition, message) => {
+        if (condition) throw new Error(message);
+      };
 
       if (!omitSubvenciones) {
         if (yearForEstimados && Number(yearForEstimados) !== Number(estimadosYear)) {
@@ -4448,24 +4451,35 @@ export default function PIGPage() {
             loadPigObjetivosComparativa({ year: yearForEstimados }),
             loadPigItinerarioEi({ year: yearForEstimados })
           ]);
+          failExcelIf(loadEstError, `No se pudieron cargar los estimados de ${yearForEstimados}.`);
+          failExcelIf(loadObjError, `No se pudieron cargar los objetivos de ${yearForEstimados}.`);
+          failExcelIf(loadItError, `No se pudo cargar el itinerario E.I. de ${yearForEstimados}.`);
           if (!loadEstError && estimados) estimadosForGenerate = estimados;
           if (!loadObjError && objetivos) objetivosForGenerate = objetivos;
           if (!loadItError && itinerario) itinerarioForGenerate = itinerario;
         } else {
-          await Promise.all([saveEstimadosSubv(), saveObjetivosComparativa(), saveItinerarioEi()]);
+          const [estimadosSaved, objetivosSaved, itinerarioSaved] = await Promise.all([
+            saveEstimadosSubv(),
+            saveObjetivosComparativa(),
+            saveItinerarioEi()
+          ]);
+          failExcelIf(!estimadosSaved || !objetivosSaved || !itinerarioSaved, 'No se generó el Excel porque falló el autoguardado PIG.');
         }
       } else if (yearForEstimados && Number(yearForEstimados) === Number(estimadosYear)) {
         // Objetivos + itinerario CR + previsiones TESORERÍA.
-        await Promise.all([
+        const [objetivosSaved, itinerarioSaved, previsionesSaved] = await Promise.all([
           saveObjetivosComparativa(),
           saveItinerarioEi(),
           saveTesoreriaPrevisiones()
         ]);
+        failExcelIf(!objetivosSaved || !itinerarioSaved || !previsionesSaved, 'No se generó el Excel CR porque falló el autoguardado PIG.');
       } else if (yearForEstimados) {
         const [{ itinerario, error: itErr }, { previsiones, error: prErr }] = await Promise.all([
           loadPigItinerarioEi({ year: yearForEstimados }),
           loadPigTesoreriaPrevisiones({ year: yearForEstimados })
         ]);
+        failExcelIf(itErr, `No se pudo cargar el itinerario E.I. de ${yearForEstimados}.`);
+        failExcelIf(prErr, `No se pudieron cargar las previsiones de TESORERÍA de ${yearForEstimados}.`);
         if (!itErr && itinerario) itinerarioForGenerate = itinerario;
         if (!prErr && previsiones) previsionesForGenerate = previsiones;
       }
