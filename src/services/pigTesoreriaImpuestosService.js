@@ -38,7 +38,17 @@ export const IMPUESTOS_A_PAGAR_ACCOUNTS = [
 function parseBalance(value) {
   if (value == null || value === '') return 0;
   if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
-  const n = Number.parseFloat(String(value).replace(/\s/g, '').replace(',', '.'));
+  const raw = String(value).replace(/\s/g, '').replace(/[€$]/g, '');
+  const normalized = (() => {
+    if (raw.includes(',') && raw.includes('.')) {
+      return raw.lastIndexOf('.') > raw.lastIndexOf(',')
+        ? raw.replace(/,/g, '')
+        : raw.replace(/\./g, '').replace(',', '.');
+    }
+    if (raw.includes(',')) return raw.replace(/\./g, '').replace(',', '.');
+    return raw;
+  })();
+  const n = Number.parseFloat(normalized);
   return Number.isFinite(n) ? n : 0;
 }
 
@@ -69,6 +79,25 @@ export function extractHoldedAccountNumber(account) {
     if (code.length >= 6) return code;
   }
   return '';
+}
+
+function hasExplicitHoldedAccountBalance(account) {
+  return Boolean(
+    account
+      && typeof account === 'object'
+      && (
+        account.debit != null
+        || account.debe != null
+        || account.balances?.debit != null
+        || account.credit != null
+        || account.haber != null
+        || account.balances?.credit != null
+        || account.balance != null
+        || account.saldo != null
+        || account.balances?.balance != null
+        || account.amount != null
+      )
+  );
 }
 
 /** @deprecated Usar extractHoldedAccountNumber */
@@ -117,7 +146,10 @@ function buildBalanceMap(accounts = []) {
     const balance = extractHoldedAccountBalance(account);
     // Exact match only: si Holded repite la misma cuenta, nos quedamos con el último saldo
     // (no sumar padre+hijos: cada código es independiente).
-    map.set(code, balance);
+    map.set(code, {
+      balance,
+      hasExplicitBalance: hasExplicitHoldedAccountBalance(account)
+    });
   }
   return map;
 }
@@ -126,8 +158,18 @@ function buildBalanceMap(accounts = []) {
 function balanceForCode(map, code) {
   const want = normalizeAccountCode(code);
   if (!want) return 0;
-  if (map.has(want)) return map.get(want);
+  if (map.has(want)) return map.get(want).balance;
   return 0;
+}
+
+function missingRequiredFiscalAccounts(map) {
+  return [...IMPUESTOS_MOD_303_ACCOUNTS, ...IMPUESTOS_A_PAGAR_ACCOUNTS]
+    .filter((row) => {
+      const code = normalizeAccountCode(row.code);
+      const account = map.get(code);
+      return !account || !account.hasExplicitBalance;
+    })
+    .map((row) => row.code);
 }
 
 /**
@@ -177,7 +219,16 @@ export async function loadPigImpuestosBalances({
       end_date,
       include_empty: true
     });
+    if (!Array.isArray(raw) || raw.length === 0) {
+      throw new Error('Holded no ha devuelto el plan contable para calcular IMPUESTOS.');
+    }
     const map = buildBalanceMap(raw || []);
+    const missingAccounts = missingRequiredFiscalAccounts(map);
+    if (missingAccounts.length) {
+      throw new Error(
+        `Holded no ha devuelto saldos verificables para las cuentas fiscales: ${missingAccounts.join(', ')}.`
+      );
+    }
     const mod303 = IMPUESTOS_MOD_303_ACCOUNTS.map((row) => ({
       ...row,
       balance: balanceForCode(map, row.code)
@@ -216,12 +267,7 @@ export async function loadPigImpuestosBalances({
     };
   } catch (error) {
     return {
-      impuestos: {
-        mod303: IMPUESTOS_MOD_303_ACCOUNTS.map((r) => ({ ...r, balance: 0 })),
-        mod303Sum: 0,
-        aPagar: IMPUESTOS_A_PAGAR_ACCOUNTS.map((r) => ({ ...r, balance: 0 })),
-        aPagarByCode: {}
-      },
+      impuestos: null,
       error
     };
   }
