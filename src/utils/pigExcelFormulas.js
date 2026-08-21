@@ -415,13 +415,13 @@ export function applyPigTesoreriaCuentaResultadosFormulas(ws, meta = {}) {
     );
     const gRef = cellRef(imp.mod303ResultRow, saldoCol);
     const cachedAPagar303 = ws[XLSX.utils.encode_cell({ r: imp.mod303ResultRow, c: aPagarCol })]?.v;
-    const cachedNeg = typeof cachedAPagar303 === 'number' ? cachedAPagar303 : Number(cached303) < 0 ? Number(cached303) : 0;
+    const cachedAPagar = typeof cachedAPagar303 === 'number' ? cachedAPagar303 : Number(cached303) < 0 ? Math.abs(Number(cached303)) : 0;
     setFormulaCell(
       ws,
       imp.mod303ResultRow,
       aPagarCol,
-      `IF(${gRef}<0,${gRef},0)`,
-      cachedNeg
+      `IF(${gRef}<0,ABS(${gRef}),0)`,
+      cachedAPagar
     );
     if (imp.totalRow != null) {
       const sumStart = imp.mod303SaldoStartRow;
