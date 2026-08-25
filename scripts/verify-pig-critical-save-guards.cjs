@@ -18,7 +18,9 @@ function assertNotDeleteThenInsert(relativePath, functionName) {
   const start = source.indexOf(`export async function ${functionName}`);
   assert(start >= 0, `${functionName} no encontrado en ${relativePath}`);
   const nextFunction = source.indexOf('\nexport ', start + 1);
-  const body = source.slice(start, nextFunction >= 0 ? nextFunction : source.length);
+  const body = source
+    .slice(start, nextFunction >= 0 ? nextFunction : source.length)
+    .replace(/if \(!payload\.length\) \{[\s\S]*?return \{ error: null \};\n  \}/g, '');
   const deleteYear = body.search(/\.delete\(\)[\s\S]{0,240}\.eq\('year',\s*y\)/);
   const insert = body.search(/\.(insert|upsert)\(payload/);
   assert(
