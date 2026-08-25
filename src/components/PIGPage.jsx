@@ -4411,6 +4411,10 @@ export default function PIGPage() {
         setError('Sube los 2 archivos del PIG: anual y mensual (CSV o Excel).');
         return;
       }
+      if (estimadosLoading || objetivosLoading || itinerarioLoading || previsionesLoading) {
+        setError('Espera a que terminen de cargarse los datos editables PIG antes de generar el Excel.');
+        return;
+      }
 
       const cuentaResultados = Boolean(opts?.cuentaResultados);
       // Cuenta Resultados = mismo flujo EISSS, sin subvenciones de Holded ni estimados.
@@ -4448,24 +4452,40 @@ export default function PIGPage() {
             loadPigObjetivosComparativa({ year: yearForEstimados }),
             loadPigItinerarioEi({ year: yearForEstimados })
           ]);
+          if (loadEstError || loadObjError || loadItError) {
+            setError('No se pudieron cargar todos los datos editables PIG del año del archivo. No se generó el Excel.');
+            return;
+          }
           if (!loadEstError && estimados) estimadosForGenerate = estimados;
           if (!loadObjError && objetivos) objetivosForGenerate = objetivos;
           if (!loadItError && itinerario) itinerarioForGenerate = itinerario;
         } else {
-          await Promise.all([saveEstimadosSubv(), saveObjetivosComparativa(), saveItinerarioEi()]);
+          const saveResults = await Promise.all([saveEstimadosSubv(), saveObjetivosComparativa(), saveItinerarioEi()]);
+          if (saveResults.some((ok) => !ok)) {
+            setError('No se pudieron guardar todos los datos editables PIG. No se generó el Excel.');
+            return;
+          }
         }
       } else if (yearForEstimados && Number(yearForEstimados) === Number(estimadosYear)) {
         // Objetivos + itinerario CR + previsiones TESORERÍA.
-        await Promise.all([
+        const saveResults = await Promise.all([
           saveObjetivosComparativa(),
           saveItinerarioEi(),
           saveTesoreriaPrevisiones()
         ]);
+        if (saveResults.some((ok) => !ok)) {
+          setError('No se pudieron guardar todos los datos editables de Cuenta Resultados. No se generó el Excel.');
+          return;
+        }
       } else if (yearForEstimados) {
         const [{ itinerario, error: itErr }, { previsiones, error: prErr }] = await Promise.all([
           loadPigItinerarioEi({ year: yearForEstimados }),
           loadPigTesoreriaPrevisiones({ year: yearForEstimados })
         ]);
+        if (itErr || prErr) {
+          setError('No se pudieron cargar los datos editables de Cuenta Resultados del año del archivo. No se generó el Excel.');
+          return;
+        }
         if (!itErr && itinerario) itinerarioForGenerate = itinerario;
         if (!prErr && previsiones) previsionesForGenerate = previsiones;
       }
@@ -5129,6 +5149,10 @@ export default function PIGPage() {
     pigEmpresa,
     estimadosSubv,
     estimadosYear,
+    estimadosLoading,
+    objetivosLoading,
+    itinerarioLoading,
+    previsionesLoading,
     saveEstimadosSubv,
     saveObjetivosComparativa,
     saveItinerarioEi,
