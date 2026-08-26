@@ -213,7 +213,7 @@ function appendImpuestosRight(aoa, meta, impuestos = null, { monthIndex } = {}) 
   setAoaCell(aoa, mod303ResultRow, col.code, 'MOD 303');
   setAoaCell(aoa, mod303ResultRow, col.saldo, mod303Sum);
   // Si G (resultado 303) es negativo → reflejar en H (A PAGAR) para el total
-  const aPagar303 = mod303Sum < 0 ? mod303Sum : '';
+  const aPagar303 = mod303Sum < 0 ? Math.abs(mod303Sum) : '';
   setAoaCell(aoa, mod303ResultRow, col.aPagar, aPagar303);
   r += 2;
 
