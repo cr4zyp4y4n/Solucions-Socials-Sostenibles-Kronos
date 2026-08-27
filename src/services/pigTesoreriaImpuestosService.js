@@ -38,7 +38,23 @@ export const IMPUESTOS_A_PAGAR_ACCOUNTS = [
 function parseBalance(value) {
   if (value == null || value === '') return 0;
   if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
-  const n = Number.parseFloat(String(value).replace(/\s/g, '').replace(',', '.'));
+  const raw = String(value).replace(/\s/g, '').trim();
+  const normalized = (() => {
+    if (raw.includes(',') && raw.includes('.')) {
+      return raw.lastIndexOf('.') > raw.lastIndexOf(',')
+        ? raw.replace(/,/g, '')
+        : raw.replace(/\./g, '').replace(',', '.');
+    }
+    if (raw.includes(',')) return raw.replace(/\./g, '').replace(',', '.');
+    const dots = (raw.match(/\./g) || []).length;
+    if (dots === 1) {
+      const [a, b] = raw.split('.');
+      if (b?.length === 3) return `${a}${b}`;
+    }
+    if (dots > 1) return raw.replace(/\./g, '');
+    return raw;
+  })();
+  const n = Number.parseFloat(normalized);
   return Number.isFinite(n) ? n : 0;
 }
 
@@ -69,6 +85,22 @@ export function extractHoldedAccountNumber(account) {
     if (code.length >= 6) return code;
   }
   return '';
+}
+
+export function hasExplicitHoldedAccountBalance(account) {
+  if (!account || typeof account !== 'object') return false;
+  return (
+    account.debit != null
+    || account.debe != null
+    || account.balances?.debit != null
+    || account.credit != null
+    || account.haber != null
+    || account.balances?.credit != null
+    || (account.balance != null && account.balance !== '')
+    || (account.saldo != null && account.saldo !== '')
+    || (account.balances?.balance != null && account.balances.balance !== '')
+    || (account.amount != null && account.amount !== '')
+  );
 }
 
 /** @deprecated Usar extractHoldedAccountNumber */
@@ -114,6 +146,7 @@ function buildBalanceMap(accounts = []) {
   for (const account of accounts) {
     const code = extractHoldedAccountNumber(account);
     if (!code) continue;
+    if (!hasExplicitHoldedAccountBalance(account)) continue;
     const balance = extractHoldedAccountBalance(account);
     // Exact match only: si Holded repite la misma cuenta, nos quedamos con el último saldo
     // (no sumar padre+hijos: cada código es independiente).
@@ -125,9 +158,16 @@ function buildBalanceMap(accounts = []) {
 /** Solo coincidencia exacta de número de cuenta (sin rellenar prefijos tipo 472 → 47200000). */
 function balanceForCode(map, code) {
   const want = normalizeAccountCode(code);
-  if (!want) return 0;
-  if (map.has(want)) return map.get(want);
-  return 0;
+  if (!want || !map.has(want)) return null;
+  return map.get(want);
+}
+
+function requireBalance(map, row) {
+  const balance = balanceForCode(map, row.code);
+  if (balance == null) {
+    throw new Error(`Holded no devolvió saldo explícito para la cuenta fiscal ${row.code}.`);
+  }
+  return balance;
 }
 
 /**
@@ -180,10 +220,10 @@ export async function loadPigImpuestosBalances({
     const map = buildBalanceMap(raw || []);
     const mod303 = IMPUESTOS_MOD_303_ACCOUNTS.map((row) => ({
       ...row,
-      balance: balanceForCode(map, row.code)
+      balance: requireBalance(map, row)
     }));
     const aPagar = IMPUESTOS_A_PAGAR_ACCOUNTS.map((row) => {
-      const balance = balanceForCode(map, row.code);
+      const balance = requireBalance(map, row);
       // Columna A PAGAR: solo lo que se debe a Hacienda (saldo acreedor = negativo en Debe−Haber).
       const aPagarAmount = balance < 0 ? Math.abs(balance) : 0;
       return {

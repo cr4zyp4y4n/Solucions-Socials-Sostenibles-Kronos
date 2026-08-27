@@ -212,8 +212,8 @@ function appendImpuestosRight(aoa, meta, impuestos = null, { monthIndex } = {}) 
       : mod303Rows.reduce((acc, row) => acc + (Number(row.balance) || 0), 0);
   setAoaCell(aoa, mod303ResultRow, col.code, 'MOD 303');
   setAoaCell(aoa, mod303ResultRow, col.saldo, mod303Sum);
-  // Si G (resultado 303) es negativo → reflejar en H (A PAGAR) para el total
-  const aPagar303 = mod303Sum < 0 ? mod303Sum : '';
+  // Si G (resultado 303) es acreedor (negativo en Debe-Haber), en A PAGAR debe ir positivo.
+  const aPagar303 = mod303Sum < 0 ? Math.abs(mod303Sum) : '';
   setAoaCell(aoa, mod303ResultRow, col.aPagar, aPagar303);
   r += 2;
 

@@ -189,17 +189,31 @@ export async function upsertPigItinerarioEi({ year, itinerario }) {
     }))
   ];
 
+  if (!payload.length) {
+    const { error: deleteError } = await supabase
+      .from('pig_itinerario_ei')
+      .delete()
+      .eq('year', y);
+    return { error: deleteError || null };
+  }
+
+  const { data: insertedRows, error: insertError } = await supabase
+    .from('pig_itinerario_ei')
+    .insert(payload)
+    .select('id');
+  if (insertError) return { error: insertError };
+
+  const insertedIds = (insertedRows || []).map((row) => row.id).filter(Boolean);
+  if (insertedIds.length !== payload.length) {
+    return { error: new Error('No se pudieron confirmar todas las filas nuevas del itinerario.') };
+  }
+
   const { error: deleteError } = await supabase
     .from('pig_itinerario_ei')
     .delete()
-    .eq('year', y);
+    .eq('year', y)
+    .not('id', 'in', `(${insertedIds.join(',')})`);
   if (deleteError) return { error: deleteError };
 
-  if (!payload.length) return { error: null };
-
-  const { error: insertError } = await supabase
-    .from('pig_itinerario_ei')
-    .insert(payload);
-  if (insertError) return { error: insertError };
   return { error: null };
 }

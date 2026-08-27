@@ -121,6 +121,15 @@ function tramoHasAmount(tramo) {
   return Boolean(String(tramo?.amount ?? '').trim()) || parseEuroAmount(tramo?.amount) !== 0;
 }
 
+function estimadoKey(row) {
+  return [
+    String(row?.linea || '').toUpperCase(),
+    Number(row?.year),
+    Number(row?.slot),
+    Number(row?.segment)
+  ].join('|');
+}
+
 export function buildMonthlyAmountsFromTramos(tramos = [], monthsLen = 12) {
   const months = new Array(12).fill(0);
   const len = Math.max(1, Math.min(12, Number(monthsLen) || 12));
@@ -234,20 +243,35 @@ export async function upsertPigEstimadosSubvencion({ year, estimados }) {
     }
   }
 
-  const { error: deleteError } = await supabase
+  if (payload.length) {
+    const { error: upsertError } = await supabase
+      .from('pig_estimados_subvencion')
+      .upsert(payload, { onConflict: 'linea,year,slot,segment' });
+
+    if (upsertError) return { error: upsertError };
+  }
+
+  const { data: existingRows, error: selectError } = await supabase
     .from('pig_estimados_subvencion')
-    .delete()
+    .select('id, linea, year, slot, segment')
     .eq('year', y)
     .in('linea', [...PIG_ESTIMADOS_LINEAS]);
 
-  if (deleteError) return { error: deleteError };
+  if (selectError) return { error: selectError };
 
-  if (!payload.length) return { error: null };
+  const keep = new Set(payload.map(estimadoKey));
+  const staleIds = (existingRows || [])
+    .filter((row) => !keep.has(estimadoKey(row)))
+    .map((row) => row.id)
+    .filter(Boolean);
 
-  const { error: upsertError } = await supabase
-    .from('pig_estimados_subvencion')
-    .insert(payload);
+  if (staleIds.length) {
+    const { error: deleteError } = await supabase
+      .from('pig_estimados_subvencion')
+      .delete()
+      .in('id', staleIds);
+    if (deleteError) return { error: deleteError };
+  }
 
-  if (upsertError) return { error: upsertError };
   return { error: null };
 }
