@@ -95,16 +95,9 @@ export async function upsertPigObjetivosComparativa({ year, objetivos }) {
     amount: parseEuroAmount(normalized[key])
   }));
 
-  const { error: deleteError } = await supabase
-    .from('pig_objetivos_comparativa')
-    .delete()
-    .eq('year', y);
-
-  if (deleteError) return { error: deleteError };
-
   const { error: insertError } = await supabase
     .from('pig_objetivos_comparativa')
-    .insert(payload);
+    .upsert(payload, { onConflict: 'linea,year,variant' });
 
   if (insertError) return { error: insertError };
   return { error: null };
