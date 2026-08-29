@@ -4436,6 +4436,17 @@ export default function PIGPage() {
       let objetivosForGenerate = objetivosComparativa;
       let itinerarioForGenerate = itinerarioEi;
       let previsionesForGenerate = tesoreriaPrevisiones;
+      const assertAllOk = (results, message) => {
+        if (!results.every(Boolean)) {
+          throw new Error(`${message} No se ha generado el Excel para evitar exportar datos sin persistir.`);
+        }
+      };
+      const throwLoadError = (error, message) => {
+        if (error) {
+          const detail = String(error.message || error.details || error).trim();
+          throw new Error(detail ? `${message}: ${detail}` : message);
+        }
+      };
 
       if (!omitSubvenciones) {
         if (yearForEstimados && Number(yearForEstimados) !== Number(estimadosYear)) {
@@ -4448,24 +4459,31 @@ export default function PIGPage() {
             loadPigObjetivosComparativa({ year: yearForEstimados }),
             loadPigItinerarioEi({ year: yearForEstimados })
           ]);
+          throwLoadError(loadEstError, `No se pudieron cargar estimados ${yearForEstimados}`);
+          throwLoadError(loadObjError, `No se pudieron cargar objetivos ${yearForEstimados}`);
+          throwLoadError(loadItError, `No se pudo cargar itinerario E.I. ${yearForEstimados}`);
           if (!loadEstError && estimados) estimadosForGenerate = estimados;
           if (!loadObjError && objetivos) objetivosForGenerate = objetivos;
           if (!loadItError && itinerario) itinerarioForGenerate = itinerario;
         } else {
-          await Promise.all([saveEstimadosSubv(), saveObjetivosComparativa(), saveItinerarioEi()]);
+          const saveResults = await Promise.all([saveEstimadosSubv(), saveObjetivosComparativa(), saveItinerarioEi()]);
+          assertAllOk(saveResults, 'No se pudieron guardar estimados, objetivos o itinerario.');
         }
       } else if (yearForEstimados && Number(yearForEstimados) === Number(estimadosYear)) {
         // Objetivos + itinerario CR + previsiones TESORERÍA.
-        await Promise.all([
+        const saveResults = await Promise.all([
           saveObjetivosComparativa(),
           saveItinerarioEi(),
           saveTesoreriaPrevisiones()
         ]);
+        assertAllOk(saveResults, 'No se pudieron guardar objetivos, itinerario o previsiones.');
       } else if (yearForEstimados) {
         const [{ itinerario, error: itErr }, { previsiones, error: prErr }] = await Promise.all([
           loadPigItinerarioEi({ year: yearForEstimados }),
           loadPigTesoreriaPrevisiones({ year: yearForEstimados })
         ]);
+        throwLoadError(itErr, `No se pudo cargar itinerario E.I. ${yearForEstimados}`);
+        throwLoadError(prErr, `No se pudieron cargar previsiones de TESORERÍA ${yearForEstimados}`);
         if (!itErr && itinerario) itinerarioForGenerate = itinerario;
         if (!prErr && previsiones) previsionesForGenerate = previsiones;
       }
@@ -5046,6 +5064,12 @@ export default function PIGPage() {
           }
           if (impuestosError) {
             console.warn('PIG TESORERÍA IMPUESTOS: no se pudieron cargar cuentas contables de Holded.', impuestosError);
+            const detail = String(impuestosError.message || impuestosError).trim();
+            throw new Error(
+              detail
+                ? `No se pudieron cargar impuestos desde Holded: ${detail}`
+                : 'No se pudieron cargar impuestos desde Holded.'
+            );
           }
           const { aoa: aoaTesoreria, meta: tesoreriaMeta } = buildPigTesoreriaSheetAoa({
             title: titleTesoreria,

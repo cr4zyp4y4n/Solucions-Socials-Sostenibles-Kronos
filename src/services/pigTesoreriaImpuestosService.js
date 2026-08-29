@@ -35,6 +35,11 @@ export const IMPUESTOS_A_PAGAR_ACCOUNTS = [
   { code: '47510020', description: 'IRPF ALQUILER', model: '115' }
 ];
 
+const IMPUESTOS_REQUIRED_ACCOUNT_CODES = [
+  ...IMPUESTOS_MOD_303_ACCOUNTS,
+  ...IMPUESTOS_A_PAGAR_ACCOUNTS
+].map((row) => row.code);
+
 function parseBalance(value) {
   if (value == null || value === '') return 0;
   if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
@@ -109,6 +114,20 @@ export function extractHoldedAccountBalance(account) {
   return 0;
 }
 
+function hasRecognizedBalanceField(account) {
+  if (!account || typeof account !== 'object') return false;
+  return account.debit != null
+    || account.debe != null
+    || account.credit != null
+    || account.haber != null
+    || account.balance != null
+    || account.saldo != null
+    || account.amount != null
+    || account.balances?.debit != null
+    || account.balances?.credit != null
+    || account.balances?.balance != null;
+}
+
 function buildBalanceMap(accounts = []) {
   const map = new Map();
   for (const account of accounts) {
@@ -120,6 +139,24 @@ function buildBalanceMap(accounts = []) {
     map.set(code, balance);
   }
   return map;
+}
+
+function assertImpuestosAccountsLoaded(accounts = []) {
+  const byCode = new Map();
+  for (const account of accounts || []) {
+    const code = extractHoldedAccountNumber(account);
+    if (code) byCode.set(code, account);
+  }
+
+  const matchedCodes = IMPUESTOS_REQUIRED_ACCOUNT_CODES.filter((code) => byCode.has(code));
+  if (!matchedCodes.length) {
+    throw new Error('Holded no ha devuelto ninguna cuenta fiscal para IMPUESTOS.');
+  }
+
+  const withoutBalance = matchedCodes.filter((code) => !hasRecognizedBalanceField(byCode.get(code)));
+  if (withoutBalance.length) {
+    throw new Error(`Holded no ha devuelto saldos verificables para IMPUESTOS (${withoutBalance.join(', ')}).`);
+  }
 }
 
 /** Solo coincidencia exacta de número de cuenta (sin rellenar prefijos tipo 472 → 47200000). */
@@ -177,6 +214,7 @@ export async function loadPigImpuestosBalances({
       end_date,
       include_empty: true
     });
+    assertImpuestosAccountsLoaded(raw || []);
     const map = buildBalanceMap(raw || []);
     const mod303 = IMPUESTOS_MOD_303_ACCOUNTS.map((row) => ({
       ...row,
@@ -216,12 +254,7 @@ export async function loadPigImpuestosBalances({
     };
   } catch (error) {
     return {
-      impuestos: {
-        mod303: IMPUESTOS_MOD_303_ACCOUNTS.map((r) => ({ ...r, balance: 0 })),
-        mod303Sum: 0,
-        aPagar: IMPUESTOS_A_PAGAR_ACCOUNTS.map((r) => ({ ...r, balance: 0 })),
-        aPagarByCode: {}
-      },
+      impuestos: null,
       error
     };
   }
