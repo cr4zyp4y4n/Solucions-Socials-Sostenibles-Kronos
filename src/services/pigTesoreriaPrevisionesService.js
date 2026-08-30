@@ -196,18 +196,43 @@ export async function upsertPigTesoreriaPrevisiones({ year, previsiones }) {
     }))
   ];
 
+  if (!payload.length) {
+    const { error: deleteError } = await supabase
+      .from('pig_tesoreria_previsiones')
+      .delete()
+      .eq('year', y);
+    return { error: deleteError || null };
+  }
+
+  const { data: oldRows, error: selectError } = await supabase
+    .from('pig_tesoreria_previsiones')
+    .select('id')
+    .eq('year', y);
+  if (selectError) return { error: selectError };
+
+  const { data: insertedRows, error: insertError } = await supabase
+    .from('pig_tesoreria_previsiones')
+    .insert(payload)
+    .select('id');
+  if (insertError) return { error: insertError };
+
+  const oldIds = (oldRows || []).map((row) => row.id).filter(Boolean);
+  if (!oldIds.length) return { error: null };
+
   const { error: deleteError } = await supabase
     .from('pig_tesoreria_previsiones')
     .delete()
-    .eq('year', y);
-  if (deleteError) return { error: deleteError };
-
-  if (!payload.length) return { error: null };
-
-  const { error: insertError } = await supabase
-    .from('pig_tesoreria_previsiones')
-    .insert(payload);
-  if (insertError) return { error: insertError };
+    .in('id', oldIds);
+  if (deleteError) {
+    const insertedIds = (insertedRows || []).map((row) => row.id).filter(Boolean);
+    if (insertedIds.length) {
+      await supabase
+        .from('pig_tesoreria_previsiones')
+        .delete()
+        .in('id', insertedIds);
+    }
+    return { error: deleteError };
+  }
   return { error: null };
 }
 
