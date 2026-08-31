@@ -4436,6 +4436,15 @@ export default function PIGPage() {
       let objetivosForGenerate = objetivosComparativa;
       let itinerarioForGenerate = itinerarioEi;
       let previsionesForGenerate = tesoreriaPrevisiones;
+      const failGeneration = (message, error = null) => {
+        const detail = String(error?.message || error?.details || '').trim();
+        throw new Error(detail ? `${message}: ${detail}` : message);
+      };
+      const requireSuccessfulSaves = (results, message) => {
+        if ((results || []).some((ok) => ok === false)) {
+          failGeneration(message);
+        }
+      };
 
       if (!omitSubvenciones) {
         if (yearForEstimados && Number(yearForEstimados) !== Number(estimadosYear)) {
@@ -4448,26 +4457,43 @@ export default function PIGPage() {
             loadPigObjetivosComparativa({ year: yearForEstimados }),
             loadPigItinerarioEi({ year: yearForEstimados })
           ]);
-          if (!loadEstError && estimados) estimadosForGenerate = estimados;
-          if (!loadObjError && objetivos) objetivosForGenerate = objetivos;
-          if (!loadItError && itinerario) itinerarioForGenerate = itinerario;
+          if (loadEstError) {
+            failGeneration(`No se pudieron cargar los estimados PIG del año ${yearForEstimados}`, loadEstError);
+          }
+          if (loadObjError) {
+            failGeneration(`No se pudieron cargar los objetivos PIG del año ${yearForEstimados}`, loadObjError);
+          }
+          if (loadItError) {
+            failGeneration(`No se pudo cargar el itinerario E.I. del año ${yearForEstimados}`, loadItError);
+          }
+          if (estimados) estimadosForGenerate = estimados;
+          if (objetivos) objetivosForGenerate = objetivos;
+          if (itinerario) itinerarioForGenerate = itinerario;
         } else {
-          await Promise.all([saveEstimadosSubv(), saveObjetivosComparativa(), saveItinerarioEi()]);
+          const saveResults = await Promise.all([saveEstimadosSubv(), saveObjetivosComparativa(), saveItinerarioEi()]);
+          requireSuccessfulSaves(saveResults, 'No se pudo generar el Excel porque falló el autoguardado PIG');
         }
       } else if (yearForEstimados && Number(yearForEstimados) === Number(estimadosYear)) {
         // Objetivos + itinerario CR + previsiones TESORERÍA.
-        await Promise.all([
+        const saveResults = await Promise.all([
           saveObjetivosComparativa(),
           saveItinerarioEi(),
           saveTesoreriaPrevisiones()
         ]);
+        requireSuccessfulSaves(saveResults, 'No se pudo generar la Cuenta de Resultados porque falló el autoguardado PIG');
       } else if (yearForEstimados) {
         const [{ itinerario, error: itErr }, { previsiones, error: prErr }] = await Promise.all([
           loadPigItinerarioEi({ year: yearForEstimados }),
           loadPigTesoreriaPrevisiones({ year: yearForEstimados })
         ]);
-        if (!itErr && itinerario) itinerarioForGenerate = itinerario;
-        if (!prErr && previsiones) previsionesForGenerate = previsiones;
+        if (itErr) {
+          failGeneration(`No se pudo cargar el itinerario E.I. del año ${yearForEstimados}`, itErr);
+        }
+        if (prErr) {
+          failGeneration(`No se pudieron cargar las previsiones de TESORERÍA del año ${yearForEstimados}`, prErr);
+        }
+        if (itinerario) itinerarioForGenerate = itinerario;
+        if (previsiones) previsionesForGenerate = previsiones;
       }
       const estimadosSlotsByLinea = omitSubvenciones
         ? { CATERING: [], IDONI: [], KOIKI: [], ESTRUCTURA: [] }
@@ -5046,6 +5072,10 @@ export default function PIGPage() {
           }
           if (impuestosError) {
             console.warn('PIG TESORERÍA IMPUESTOS: no se pudieron cargar cuentas contables de Holded.', impuestosError);
+            failGeneration('No se pudo generar el Excel porque IMPUESTOS no se cargó desde Holded', impuestosError);
+          }
+          if (!impuestos) {
+            failGeneration('No se pudo generar el Excel porque IMPUESTOS no tiene saldos verificables');
           }
           const { aoa: aoaTesoreria, meta: tesoreriaMeta } = buildPigTesoreriaSheetAoa({
             title: titleTesoreria,
@@ -5062,6 +5092,7 @@ export default function PIGPage() {
           XLSX.utils.book_append_sheet(wb, wsTesoreria, 'TESORERÍA');
         } catch (e) {
           console.error('Error generando hoja TESORERÍA:', e);
+          throw e;
         }
 
         try {
