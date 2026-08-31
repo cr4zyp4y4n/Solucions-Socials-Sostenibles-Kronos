@@ -71,6 +71,22 @@ export function extractHoldedAccountNumber(account) {
   return '';
 }
 
+function hasExplicitHoldedAccountBalance(account) {
+  if (!account || typeof account !== 'object') return false;
+  return (
+    account.debit != null
+    || account.debe != null
+    || account.balances?.debit != null
+    || account.credit != null
+    || account.haber != null
+    || account.balances?.credit != null
+    || (account.balance != null && account.balance !== '')
+    || (account.saldo != null && account.saldo !== '')
+    || account.balances?.balance != null
+    || account.amount != null
+  );
+}
+
 /** @deprecated Usar extractHoldedAccountNumber */
 export function extractHoldedAccountCode(account) {
   return extractHoldedAccountNumber(account);
@@ -130,6 +146,28 @@ function balanceForCode(map, code) {
   return 0;
 }
 
+function assertFiscalBalancesAvailable(accounts = []) {
+  const fiscalCodes = new Set(
+    [...IMPUESTOS_MOD_303_ACCOUNTS, ...IMPUESTOS_A_PAGAR_ACCOUNTS]
+      .map((row) => normalizeAccountCode(row.code))
+      .filter(Boolean)
+  );
+  let matchedFiscalAccounts = 0;
+
+  for (const account of accounts || []) {
+    const code = extractHoldedAccountNumber(account);
+    if (!fiscalCodes.has(code)) continue;
+    matchedFiscalAccounts += 1;
+    if (!hasExplicitHoldedAccountBalance(account)) {
+      throw new Error(`Holded no devolvió saldo verificable para la cuenta fiscal ${code}.`);
+    }
+  }
+
+  if (!matchedFiscalAccounts) {
+    throw new Error('Holded no devolvió cuentas fiscales verificables para IMPUESTOS.');
+  }
+}
+
 /**
  * Trimestre 1–4 a partir de mes 0-based (0=ene).
  * @param {number} [monthIndex]
@@ -177,6 +215,7 @@ export async function loadPigImpuestosBalances({
       end_date,
       include_empty: true
     });
+    assertFiscalBalancesAvailable(raw || []);
     const map = buildBalanceMap(raw || []);
     const mod303 = IMPUESTOS_MOD_303_ACCOUNTS.map((row) => ({
       ...row,
@@ -216,12 +255,7 @@ export async function loadPigImpuestosBalances({
     };
   } catch (error) {
     return {
-      impuestos: {
-        mod303: IMPUESTOS_MOD_303_ACCOUNTS.map((r) => ({ ...r, balance: 0 })),
-        mod303Sum: 0,
-        aPagar: IMPUESTOS_A_PAGAR_ACCOUNTS.map((r) => ({ ...r, balance: 0 })),
-        aPagarByCode: {}
-      },
+      impuestos: null,
       error
     };
   }
