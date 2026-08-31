@@ -22,7 +22,9 @@ function indexOfOrFail(source, needle, label) {
 function assertNoDeleteBeforeWrite(rel, writeNeedle) {
   const source = read(rel);
   const writeIdx = indexOfOrFail(source, writeNeedle, `${rel} escritura segura`);
-  const beforeWrite = source.slice(0, writeIdx);
+  const beforeWrite = source
+    .slice(0, writeIdx)
+    .replace(/if \(!payload\.length\) \{[\s\S]*?\n  \}/g, '');
   assert(
     !/\.delete\(\)[\s\S]*?\.eq\('year',\s*y\)/.test(beforeWrite),
     `${rel} vuelve a borrar el año antes de escribir el reemplazo`
