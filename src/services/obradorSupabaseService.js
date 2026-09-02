@@ -151,13 +151,6 @@ export async function getProductes() {
 /** Substitueix els proveïdors associats a un producte. */
 export async function setProducteProveidors(idProducte, files) {
   const list = Array.isArray(files) ? files : [];
-  const { error: delError } = await supabase
-    .from('obrador_producte_proveidors')
-    .delete()
-    .eq('id_producte', idProducte);
-  if (delError) throw delError;
-
-  if (!list.length) return [];
 
   const rows = list
     .filter((f) => f?.id_proveidor)
@@ -167,16 +160,34 @@ export async function setProducteProveidors(idProducte, files) {
       ingredient_nom: String(f.ingredient_nom || '').trim()
     }));
 
-  if (!rows.length) return [];
+  if (!rows.length) {
+    const { error: delError } = await supabase
+      .from('obrador_producte_proveidors')
+      .delete()
+      .eq('id_producte', idProducte);
+    if (delError) throw delError;
+    return [];
+  }
 
   const { data, error } = await supabase
     .from('obrador_producte_proveidors')
-    .insert(rows)
+    .upsert(rows, { onConflict: 'id_producte,id_proveidor,ingredient_nom' })
     .select(`
       id, id_proveidor, ingredient_nom,
       obrador_proveidors ( id, nom )
     `);
   if (error) throw error;
+
+  const savedIds = (data || []).map((row) => row.id).filter(Boolean);
+  if (savedIds.length) {
+    const { error: delError } = await supabase
+      .from('obrador_producte_proveidors')
+      .delete()
+      .eq('id_producte', idProducte)
+      .not('id', 'in', `(${savedIds.join(',')})`);
+    if (delError) throw delError;
+  }
+
   return data || [];
 }
 
