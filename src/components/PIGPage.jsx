@@ -4437,6 +4437,20 @@ export default function PIGPage() {
       let itinerarioForGenerate = itinerarioEi;
       let previsionesForGenerate = tesoreriaPrevisiones;
 
+      const ensureAuxDataReady = () => {
+        if (estimadosLoading || objetivosLoading || itinerarioLoading || previsionesLoading) {
+          throw new Error('Espera a que terminen de cargar los datos auxiliares del PIG antes de generar el Excel.');
+        }
+      };
+      const ensureSavesSucceeded = async (saveFns, message) => {
+        const results = await Promise.all(saveFns.map((saveFn) => saveFn()));
+        if (results.some((ok) => ok !== true)) {
+          throw new Error(message);
+        }
+      };
+
+      ensureAuxDataReady();
+
       if (!omitSubvenciones) {
         if (yearForEstimados && Number(yearForEstimados) !== Number(estimadosYear)) {
           const [
@@ -4448,24 +4462,34 @@ export default function PIGPage() {
             loadPigObjetivosComparativa({ year: yearForEstimados }),
             loadPigItinerarioEi({ year: yearForEstimados })
           ]);
+          const loadError = loadEstError || loadObjError || loadItError;
+          if (loadError) {
+            throw new Error(`No se pudieron cargar los datos auxiliares del año ${yearForEstimados}: ${loadError.message || loadError.details || loadError}`);
+          }
           if (!loadEstError && estimados) estimadosForGenerate = estimados;
           if (!loadObjError && objetivos) objetivosForGenerate = objetivos;
           if (!loadItError && itinerario) itinerarioForGenerate = itinerario;
         } else {
-          await Promise.all([saveEstimadosSubv(), saveObjetivosComparativa(), saveItinerarioEi()]);
+          await ensureSavesSucceeded(
+            [saveEstimadosSubv, saveObjetivosComparativa, saveItinerarioEi],
+            'No se ha generado el Excel porque falló el autoguardado de datos auxiliares PIG.'
+          );
         }
       } else if (yearForEstimados && Number(yearForEstimados) === Number(estimadosYear)) {
         // Objetivos + itinerario CR + previsiones TESORERÍA.
-        await Promise.all([
-          saveObjetivosComparativa(),
-          saveItinerarioEi(),
-          saveTesoreriaPrevisiones()
-        ]);
+        await ensureSavesSucceeded(
+          [saveObjetivosComparativa, saveItinerarioEi, saveTesoreriaPrevisiones],
+          'No se ha generado la Cuenta de Resultados porque falló el autoguardado de datos auxiliares.'
+        );
       } else if (yearForEstimados) {
         const [{ itinerario, error: itErr }, { previsiones, error: prErr }] = await Promise.all([
           loadPigItinerarioEi({ year: yearForEstimados }),
           loadPigTesoreriaPrevisiones({ year: yearForEstimados })
         ]);
+        const loadError = itErr || prErr;
+        if (loadError) {
+          throw new Error(`No se pudieron cargar los datos auxiliares de tesorería del año ${yearForEstimados}: ${loadError.message || loadError.details || loadError}`);
+        }
         if (!itErr && itinerario) itinerarioForGenerate = itinerario;
         if (!prErr && previsiones) previsionesForGenerate = previsiones;
       }
@@ -5044,8 +5068,8 @@ export default function PIGPage() {
           if (treasuryError) {
             console.warn('PIG TESORERÍA: no se pudieron cargar cuentas de Holded.', treasuryError);
           }
-          if (impuestosError) {
-            console.warn('PIG TESORERÍA IMPUESTOS: no se pudieron cargar cuentas contables de Holded.', impuestosError);
+          if (impuestosError || !impuestos) {
+            throw new Error(`No se ha generado la hoja TESORERÍA porque no se pudieron cargar saldos fiscales verificables de Holded: ${impuestosError?.message || impuestosError?.details || 'sin datos de impuestos'}`);
           }
           const { aoa: aoaTesoreria, meta: tesoreriaMeta } = buildPigTesoreriaSheetAoa({
             title: titleTesoreria,
@@ -5062,6 +5086,7 @@ export default function PIGPage() {
           XLSX.utils.book_append_sheet(wb, wsTesoreria, 'TESORERÍA');
         } catch (e) {
           console.error('Error generando hoja TESORERÍA:', e);
+          throw e;
         }
 
         try {
@@ -5129,6 +5154,10 @@ export default function PIGPage() {
     pigEmpresa,
     estimadosSubv,
     estimadosYear,
+    estimadosLoading,
+    objetivosLoading,
+    itinerarioLoading,
+    previsionesLoading,
     saveEstimadosSubv,
     saveObjetivosComparativa,
     saveItinerarioEi,

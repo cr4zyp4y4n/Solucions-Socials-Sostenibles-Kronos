@@ -38,8 +38,38 @@ export const IMPUESTOS_A_PAGAR_ACCOUNTS = [
 function parseBalance(value) {
   if (value == null || value === '') return 0;
   if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
-  const n = Number.parseFloat(String(value).replace(/\s/g, '').replace(',', '.'));
+  const raw = String(value).replace(/\s/g, '');
+  const lastComma = raw.lastIndexOf(',');
+  const lastDot = raw.lastIndexOf('.');
+  let normalized = raw;
+  if (lastComma >= 0 && lastDot >= 0) {
+    normalized = lastComma > lastDot
+      ? raw.replace(/\./g, '').replace(',', '.')
+      : raw.replace(/,/g, '');
+  } else if (lastComma >= 0) {
+    normalized = raw.replace(/\./g, '').replace(',', '.');
+  }
+  const n = Number.parseFloat(normalized);
   return Number.isFinite(n) ? n : 0;
+}
+
+function hasExplicitBalance(account) {
+  return Boolean(
+    account
+    && typeof account === 'object'
+    && (
+      account.debit != null
+      || account.debe != null
+      || account.credit != null
+      || account.haber != null
+      || account.balances?.debit != null
+      || account.balances?.credit != null
+      || account.balance != null
+      || account.saldo != null
+      || account.balances?.balance != null
+      || account.amount != null
+    )
+  );
 }
 
 /** Normaliza número de cuenta contable a dígitos (p. ej. 47200000). */
@@ -114,6 +144,7 @@ function buildBalanceMap(accounts = []) {
   for (const account of accounts) {
     const code = extractHoldedAccountNumber(account);
     if (!code) continue;
+    if (!hasExplicitBalance(account)) continue;
     const balance = extractHoldedAccountBalance(account);
     // Exact match only: si Holded repite la misma cuenta, nos quedamos con el último saldo
     // (no sumar padre+hijos: cada código es independiente).
@@ -177,7 +208,18 @@ export async function loadPigImpuestosBalances({
       end_date,
       include_empty: true
     });
+    if (!Array.isArray(raw)) {
+      throw new Error('Holded no devolvió el plan contable en formato válido.');
+    }
     const map = buildBalanceMap(raw || []);
+    const fiscalCodes = [
+      ...IMPUESTOS_MOD_303_ACCOUNTS.map((row) => normalizeAccountCode(row.code)),
+      ...IMPUESTOS_A_PAGAR_ACCOUNTS.map((row) => normalizeAccountCode(row.code))
+    ];
+    const hasAnyFiscalBalance = fiscalCodes.some((code) => map.has(code));
+    if (!hasAnyFiscalBalance) {
+      throw new Error('Holded no devolvió saldos verificables para las cuentas fiscales del PIG.');
+    }
     const mod303 = IMPUESTOS_MOD_303_ACCOUNTS.map((row) => ({
       ...row,
       balance: balanceForCode(map, row.code)
@@ -216,12 +258,7 @@ export async function loadPigImpuestosBalances({
     };
   } catch (error) {
     return {
-      impuestos: {
-        mod303: IMPUESTOS_MOD_303_ACCOUNTS.map((r) => ({ ...r, balance: 0 })),
-        mod303Sum: 0,
-        aPagar: IMPUESTOS_A_PAGAR_ACCOUNTS.map((r) => ({ ...r, balance: 0 })),
-        aPagarByCode: {}
-      },
+      impuestos: null,
       error
     };
   }
