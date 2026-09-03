@@ -234,20 +234,36 @@ export async function upsertPigEstimadosSubvencion({ year, estimados }) {
     }
   }
 
-  const { error: deleteError } = await supabase
-    .from('pig_estimados_subvencion')
-    .delete()
-    .eq('year', y)
-    .in('linea', [...PIG_ESTIMADOS_LINEAS]);
+  if (payload.length) {
+    const { error: upsertError } = await supabase
+      .from('pig_estimados_subvencion')
+      .upsert(payload, { onConflict: 'linea,year,slot,segment' });
+    if (upsertError) return { error: upsertError };
+  }
 
-  if (deleteError) return { error: deleteError };
+  const keepKeys = new Set(
+    payload.map((row) => `${row.linea}:${row.slot}:${row.segment}`)
+  );
+  const staleCombinations = [];
+  for (const linea of PIG_ESTIMADOS_LINEAS) {
+    for (const slot of [1, 2]) {
+      for (const segment of [1, 2]) {
+        const key = `${linea}:${slot}:${segment}`;
+        if (!keepKeys.has(key)) staleCombinations.push({ linea, slot, segment });
+      }
+    }
+  }
 
-  if (!payload.length) return { error: null };
+  for (const row of staleCombinations) {
+    const { error: deleteError } = await supabase
+      .from('pig_estimados_subvencion')
+      .delete()
+      .eq('year', y)
+      .eq('linea', row.linea)
+      .eq('slot', row.slot)
+      .eq('segment', row.segment);
+    if (deleteError) return { error: deleteError };
+  }
 
-  const { error: upsertError } = await supabase
-    .from('pig_estimados_subvencion')
-    .insert(payload);
-
-  if (upsertError) return { error: upsertError };
   return { error: null };
 }

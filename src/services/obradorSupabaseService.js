@@ -151,13 +151,11 @@ export async function getProductes() {
 /** Substitueix els proveïdors associats a un producte. */
 export async function setProducteProveidors(idProducte, files) {
   const list = Array.isArray(files) ? files : [];
-  const { error: delError } = await supabase
+  const { data: existingRows, error: readError } = await supabase
     .from('obrador_producte_proveidors')
-    .delete()
+    .select('id, id_proveidor, ingredient_nom')
     .eq('id_producte', idProducte);
-  if (delError) throw delError;
-
-  if (!list.length) return [];
+  if (readError) throw readError;
 
   const rows = list
     .filter((f) => f?.id_proveidor)
@@ -167,17 +165,35 @@ export async function setProducteProveidors(idProducte, files) {
       ingredient_nom: String(f.ingredient_nom || '').trim()
     }));
 
-  if (!rows.length) return [];
+  const rowKey = (row) => `${row.id_proveidor || ''}:${String(row.ingredient_nom || '').trim()}`;
+  const newKeys = new Set(rows.map(rowKey));
+  const staleIds = (existingRows || [])
+    .filter((row) => !newKeys.has(rowKey(row)))
+    .map((row) => row.id)
+    .filter(Boolean);
 
-  const { data, error } = await supabase
-    .from('obrador_producte_proveidors')
-    .insert(rows)
-    .select(`
-      id, id_proveidor, ingredient_nom,
-      obrador_proveidors ( id, nom )
-    `);
-  if (error) throw error;
-  return data || [];
+  let data = [];
+  if (rows.length) {
+    const { data: upsertedRows, error } = await supabase
+      .from('obrador_producte_proveidors')
+      .upsert(rows, { onConflict: 'id_producte,id_proveidor,ingredient_nom' })
+      .select(`
+        id, id_proveidor, ingredient_nom,
+        obrador_proveidors ( id, nom )
+      `);
+    if (error) throw error;
+    data = upsertedRows || [];
+  }
+
+  if (staleIds.length) {
+    const { error: delError } = await supabase
+      .from('obrador_producte_proveidors')
+      .delete()
+      .in('id', staleIds);
+    if (delError) throw delError;
+  }
+
+  return data;
 }
 
 export async function getOperaris() {
