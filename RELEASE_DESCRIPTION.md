@@ -1,3 +1,29 @@
+## v2.5.4
+
+### Fichaje — recordatorios SMS 24/7 + cierre automático
+
+- **Worker en Supabase (sin Kronos abierto):** `pg_cron` + Edge Function `fichaje-sms-recordatorios` revisan horarios activos cada ~5 min y envían SMS vía el portal de firma (Twilio).
+- **Entrada olvidada:** si pasa la hora de entrada + tolerancia (p. ej. 09:15) sin fichaje, SMS de recordatorio (máx. 1/día).
+- **Salida en 2 pasos:** a hora de salida + tolerancia (p. ej. **17:15**) solo SMS para que la persona cierre; **+5 min** (p. ej. **17:20**) si sigue abierto → cierre automático con esa hora y aviso pendiente.
+- **Días anteriores abiertos:** el worker cierra fichajes sin salida de fechas pasadas (ya no depende de abrir Kronos).
+- **Panel fichajes:** KPI «Sin fichar hoy», banner de recordatorios SMS, badges en tarjetas (`Sin entrada` / `Sin salida` / estado SMS) y filtro dedicado.
+- **Kronos Fichaje + portal-fichajes:** banner «Cierre automático de jornada» al validar código / fichar, con botón Entendido.
+- **SQL en Supabase (requerido si no se aplicó aún):**
+  - `database/create_fichajes_sms_recordatorios.sql`
+  - `database/alter_cerrar_fichaje_automaticamente_hora_salida.sql`
+  - `database/cron_fichaje_sms_recordatorios.sql` (+ secrets Vault / Edge Function)
+  - Seeds / fixes de equipo según necesidad (`seed_fichajes_sms_horarios_equipo.sql`, `fix_brian_fichaje_codigo_solucions.sql`)
+- **Guía:** `docs/FICHAJE_SMS_RECORDATORIOS.md`
+
+### PIG
+
+- **TESORERÍA — TOTAL − INVES − BCREDIT:** el neto operativo resta también la cuenta Caixa **BCREDIT** (saldo Holded), en PIG Normal y en CR; la previsión 18 meses ancla la caja de junio a esa etiqueta.
+- **TESORERÍA PIG Normal — caja a corto editable:** debajo de los bancos, bloque manual (previsión de pagos, ingresos y total a fecha) persistente en Supabase; **no** se incluye en el Excel CR.
+- **SQL (requerido):** `database/create_pig_tesoreria_caja_corto.sql`.
+- Ajustes previos de PIG normal / tesorería-impuestos (commits anteriores en `master`).
+
+---
+
 ## v2.5.2
 
 ### PIG / Tesorería — previsión 18 meses + ajuste impuestos

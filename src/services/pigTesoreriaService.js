@@ -1,5 +1,6 @@
 import holdedApiV2Service from './holdedApiV2Service';
 import { previsionesToExcelBlocks } from './pigTesoreriaPrevisionesService';
+import { cajaCortoToExcelBlock } from './pigTesoreriaCajaCortoService';
 import {
   IMPUESTOS_COL,
   IMPUESTOS_MOD_303_ACCOUNTS,
@@ -59,6 +60,12 @@ export function isInnvessTreasuryAccount(account) {
   return /INNVESS|INVESS/.test(name);
 }
 
+/** Cuenta Caixa BCREDIT (línea / no disponible operativamente). */
+export function isBcreditTreasuryAccount(account) {
+  const name = String(account?.name || '').toUpperCase();
+  return /\bBCREDIT\b/.test(name);
+}
+
 function sortTreasuryAccounts(accounts = []) {
   return [...accounts].sort((a, b) => {
     const ta = TYPE_ORDER.indexOf(String(a?.type || ''));
@@ -103,6 +110,9 @@ function appendBankTable(aoa, meta, { accounts, totalLabel, groupKey }) {
     ]);
     if (isInnvessTreasuryAccount(account)) {
       meta.innvessDataRows.push(rowIdx);
+    }
+    if (isBcreditTreasuryAccount(account)) {
+      meta.bcreditDataRows.push(rowIdx);
     }
   }
   const dataEnd = aoa.length - 1;
@@ -176,6 +186,87 @@ function appendPrevisionesBelow(aoa, meta, previsiones) {
   };
   // Compat amb estils/fórmules antics
   meta.rightTables = meta.previsionesTables;
+}
+
+/**
+ * Bloque editable PIG Normal (no CR): previsión pagos + ingresos + total caja a corto.
+ * Importes en col B (como en el Excel de Lizeth).
+ */
+function appendCajaCortoBelow(aoa, meta, cajaCorto) {
+  const block = cajaCortoToExcelBlock(cajaCorto);
+  const amountCol = 1;
+
+  aoa.push(['', '', '']);
+  aoa.push(['', '', '']);
+  let r = aoa.length;
+
+  const titlePagosRow = r;
+  setAoaCell(aoa, r, 0, block.tituloPagos);
+  setAoaCell(aoa, r, 1, '');
+  setAoaCell(aoa, r, 2, '');
+  r += 1;
+
+  const pagosDataStart = r;
+  for (const row of block.pagosRows) {
+    setAoaCell(aoa, r, 0, row.concepto);
+    setAoaCell(aoa, r, amountCol, row.amount == null ? '' : row.amount);
+    setAoaCell(aoa, r, 2, '');
+    r += 1;
+  }
+  const pagosDataEnd = r - 1;
+  const pagosTotalRow = r;
+  setAoaCell(aoa, r, 0, 'TOTAL');
+  setAoaCell(aoa, r, amountCol, block.totalPagos);
+  setAoaCell(aoa, r, 2, '');
+  r += 1;
+
+  r += 1;
+  while (aoa.length < r) aoa.push(['', '', '']);
+
+  const titleIngresosRow = r;
+  setAoaCell(aoa, r, 0, block.tituloIngresos);
+  setAoaCell(aoa, r, 1, '');
+  setAoaCell(aoa, r, 2, '');
+  r += 1;
+
+  const ingresosDataStart = r;
+  for (const row of block.ingresosRows) {
+    setAoaCell(aoa, r, 0, row.concepto);
+    setAoaCell(aoa, r, amountCol, row.amount == null ? '' : row.amount);
+    setAoaCell(aoa, r, 2, '');
+    r += 1;
+  }
+  const ingresosDataEnd = r - 1;
+
+  r += 1;
+  while (aoa.length < r) aoa.push(['', '', '']);
+
+  const totalFinalRow = r;
+  const totalSinInvesCached =
+    meta.totalSinInvesRow >= 0
+      ? Number(aoa[meta.totalSinInvesRow]?.[2]) || 0
+      : 0;
+  const totalFinalCached = totalSinInvesCached - block.totalPagos + block.totalIngresos;
+  setAoaCell(aoa, r, 0, block.totalLabel);
+  setAoaCell(aoa, r, amountCol, totalFinalCached);
+  setAoaCell(aoa, r, 2, '');
+
+  meta.cajaCorto = {
+    titlePagosRow,
+    pagosDataStartRow: pagosDataStart,
+    pagosDataEndRow: pagosDataEnd >= pagosDataStart ? pagosDataEnd : pagosDataStart - 1,
+    pagosTotalRow,
+    titleIngresosRow,
+    ingresosDataStartRow: ingresosDataStart,
+    ingresosDataEndRow: ingresosDataEnd >= ingresosDataStart ? ingresosDataEnd : ingresosDataStart - 1,
+    totalFinalRow,
+    amountCol,
+    merges: [
+      { s: { r: titlePagosRow, c: 0 }, e: { r: titlePagosRow, c: 1 } },
+      { s: { r: titleIngresosRow, c: 0 }, e: { r: titleIngresosRow, c: 1 } },
+      { s: { r: totalFinalRow, c: 0 }, e: { r: totalFinalRow, c: 0 } }
+    ]
+  };
 }
 
 /**
@@ -292,7 +383,8 @@ function appendImpuestosRight(aoa, meta, impuestos = null, { monthIndex } = {}) 
 }
 
 /**
- * Layout Lizeth: Caixa + Fiare + TOTAL + TOTAL - INVES (+ previsiones editables si CR)
+ * Layout Lizeth: Caixa + Fiare + TOTAL + TOTAL - INVES - BCREDIT
+ * + previsiones subv (solo CR) | caja a corto editable (solo PIG Normal)
  * + IMPUESTOS a la derecha (cols E–H).
  */
 export function buildPigTesoreriaSheetAoa({
@@ -301,6 +393,7 @@ export function buildPigTesoreriaSheetAoa({
   errorMessage = '',
   cuentaResultados = false,
   previsiones = null,
+  cajaCorto = null,
   impuestos = null,
   monthIndex = null
 } = {}) {
@@ -315,12 +408,14 @@ export function buildPigTesoreriaSheetAoa({
     bankGroups: [],
     totalRows: [],
     innvessDataRows: [],
+    bcreditDataRows: [],
     grandTotalRow: -1,
     totalSinInvesRow: -1,
     saldoCol: 2,
     cuentaResultados: Boolean(cuentaResultados),
     previsionesTables: null,
     rightTables: null,
+    cajaCorto: null,
     impuestos: null,
     minCols: 3
   };
@@ -332,6 +427,7 @@ export function buildPigTesoreriaSheetAoa({
     aoa.push([`Error API Holded: ${errorMessage}`, '', '']);
     appendImpuestosRight(aoa, meta, impuestos, { monthIndex });
     if (cuentaResultados) appendPrevisionesBelow(aoa, meta, previsiones);
+    else appendCajaCortoBelow(aoa, meta, cajaCorto);
     return { aoa, meta };
   }
 
@@ -339,6 +435,7 @@ export function buildPigTesoreriaSheetAoa({
     aoa.push(['(Cap compte bancari amb IBAN trobat a Holded)', '', '']);
     appendImpuestosRight(aoa, meta, impuestos, { monthIndex });
     if (cuentaResultados) appendPrevisionesBelow(aoa, meta, previsiones);
+    else appendCajaCortoBelow(aoa, meta, cajaCorto);
     return { aoa, meta };
   }
 
@@ -396,9 +493,12 @@ export function buildPigTesoreriaSheetAoa({
   const innvessSum = accounts
     .filter(isInnvessTreasuryAccount)
     .reduce((acc, a) => acc + parseBalance(a.balance), 0);
+  const bcreditSum = accounts
+    .filter(isBcreditTreasuryAccount)
+    .reduce((acc, a) => acc + parseBalance(a.balance), 0);
 
   const grandTotal = totalCaixa + totalFiare + totalOtros;
-  const totalSinInves = grandTotal - innvessSum;
+  const totalSinInvesBcredit = grandTotal - innvessSum - bcreditSum;
 
   meta.grandTotalRow = aoa.length;
   meta.totalRows.push(meta.grandTotalRow);
@@ -406,12 +506,13 @@ export function buildPigTesoreriaSheetAoa({
 
   meta.totalSinInvesRow = aoa.length;
   meta.totalRows.push(meta.totalSinInvesRow);
-  aoa.push(['TOTAL TESORERÍA - INVES', '', totalSinInves]);
+  aoa.push(['TOTAL TESORERÍA - INVES - BCREDIT', '', totalSinInvesBcredit]);
 
   meta.summaryEndRow = aoa.length - 1;
 
   appendImpuestosRight(aoa, meta, impuestos, { monthIndex });
   if (cuentaResultados) appendPrevisionesBelow(aoa, meta, previsiones);
+  else appendCajaCortoBelow(aoa, meta, cajaCorto);
 
   return { aoa, meta };
 }

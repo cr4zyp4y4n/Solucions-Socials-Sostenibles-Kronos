@@ -42,6 +42,12 @@ import {
   upsertPigTesoreriaPrevisiones
 } from '../services/pigTesoreriaPrevisionesService';
 import {
+  createEmptyCajaCortoRow,
+  loadPigTesoreriaCajaCorto,
+  PIG_TESORERIA_CAJA_CORTO_DEFAULTS,
+  upsertPigTesoreriaCajaCorto
+} from '../services/pigTesoreriaCajaCortoService';
+import {
   buildPigPresupuestosSheetAoa,
   loadPigPresupuestosPendientes
 } from '../services/pigPresupuestosService';
@@ -737,6 +743,7 @@ function stylePrevisionTesoreriaSheet({ ws, aoa }) {
 function stylePigTesoreriaSheet({ ws, aoa, meta = {} }) {
   const previsiones = meta?.previsionesTables || meta?.rightTables;
   const hasPrev = Boolean(previsiones?.tables?.length);
+  const caja = meta?.cajaCorto;
   const imp = meta?.impuestos;
   ws['!sheetView'] = [{ showGridLines: false }];
   ws['!cols'] = [
@@ -757,6 +764,9 @@ function stylePigTesoreriaSheet({ ws, aoa, meta = {} }) {
       s: { r: imp.titleRow, c: imp.startCol },
       e: { r: imp.titleRow, c: imp.endCol }
     });
+  }
+  if (caja?.merges?.length) {
+    for (const m of caja.merges) ws['!merges'].push(m);
   }
 
   const borderThin = {
@@ -941,6 +951,59 @@ function stylePigTesoreriaSheet({ ws, aoa, meta = {} }) {
           alignment: { vertical: 'center', wrapText: true }
         });
       }
+    }
+  }
+
+  if (caja) {
+    const amt = Number.isFinite(caja.amountCol) ? caja.amountCol : 1;
+    const titleRows = [caja.titlePagosRow, caja.titleIngresosRow].filter((r) => r != null);
+    for (const r of titleRows) {
+      setRangeStyle(ws, r, 0, r, 1, {
+        font: { bold: true, name: 'Calibri' },
+        alignment: { horizontal: 'left', vertical: 'center', wrapText: true }
+      });
+    }
+
+    const styleDataBlock = (start, end) => {
+      if (start == null || end == null || end < start) return;
+      for (let r = start; r <= end; r++) {
+        setCellStyle(ws, r, 0, {
+          border: borderThin,
+          font: { name: 'Calibri' },
+          alignment: { vertical: 'center', wrapText: true }
+        });
+        setCellStyle(ws, r, amt, { border: borderThin, ...moneyStyle, font: { name: 'Calibri' } });
+      }
+    };
+    styleDataBlock(caja.pagosDataStartRow, caja.pagosDataEndRow);
+    styleDataBlock(caja.ingresosDataStartRow, caja.ingresosDataEndRow);
+
+    if (caja.pagosTotalRow != null) {
+      setCellStyle(ws, caja.pagosTotalRow, 0, {
+        font: { bold: true, name: 'Calibri' },
+        fill: orangeHeader,
+        border: borderThin,
+        alignment: { vertical: 'center' }
+      });
+      setCellStyle(ws, caja.pagosTotalRow, amt, {
+        font: { bold: true, name: 'Calibri' },
+        fill: orangeHeader,
+        border: borderThin,
+        ...moneyStyle
+      });
+    }
+
+    if (caja.totalFinalRow != null) {
+      setCellStyle(ws, caja.totalFinalRow, 0, {
+        font: { bold: true, name: 'Calibri' },
+        border: borderThin,
+        alignment: { vertical: 'center', wrapText: true }
+      });
+      setCellStyle(ws, caja.totalFinalRow, amt, {
+        font: { bold: true, name: 'Calibri' },
+        border: borderThin,
+        ...moneyStyle
+      });
     }
   }
 }
@@ -4184,6 +4247,16 @@ export default function PIGPage() {
   const [previsionesLoading, setPrevisionesLoading] = useState(false);
   const [previsionesSaving, setPrevisionesSaving] = useState(false);
   const [previsionesStatus, setPrevisionesStatus] = useState('');
+  const [tesoreriaCajaCorto, setTesoreriaCajaCorto] = useState(() => ({
+    tituloPagos: PIG_TESORERIA_CAJA_CORTO_DEFAULTS.tituloPagos,
+    tituloIngresos: PIG_TESORERIA_CAJA_CORTO_DEFAULTS.tituloIngresos,
+    fechaTotal: PIG_TESORERIA_CAJA_CORTO_DEFAULTS.fechaTotal,
+    pagos: PIG_TESORERIA_CAJA_CORTO_DEFAULTS.pagos.map((r) => ({ ...r })),
+    ingresos: PIG_TESORERIA_CAJA_CORTO_DEFAULTS.ingresos.map((r) => ({ ...r }))
+  }));
+  const [cajaCortoLoading, setCajaCortoLoading] = useState(false);
+  const [cajaCortoSaving, setCajaCortoSaving] = useState(false);
+  const [cajaCortoStatus, setCajaCortoStatus] = useState('');
   const [previsionPig2026, setPrevisionPig2026] = useState(null);
   const [previsionPig2025, setPrevisionPig2025] = useState(null);
   const [previsionTesoreriaLoading, setPrevisionTesoreriaLoading] = useState(false);
@@ -4257,12 +4330,30 @@ export default function PIGPage() {
     if (previsiones) setTesoreriaPrevisiones(previsiones);
   }, []);
 
+  const loadCajaCortoForYear = useCallback(async (year) => {
+    const y = Number(year);
+    if (!Number.isFinite(y)) return;
+    setCajaCortoLoading(true);
+    setCajaCortoStatus('');
+    const { cajaCorto, error: loadError, tableMissing } = await loadPigTesoreriaCajaCorto({ year: y });
+    setCajaCortoLoading(false);
+    if (loadError) {
+      setCajaCortoStatus('No se pudo cargar la previsión de caja a corto plazo.');
+      return;
+    }
+    if (tableMissing) {
+      setCajaCortoStatus('Ejecuta database/create_pig_tesoreria_caja_corto.sql en Supabase.');
+    }
+    if (cajaCorto) setTesoreriaCajaCorto(cajaCorto);
+  }, []);
+
   useEffect(() => {
     loadEstimadosForYear(estimadosYear);
     loadObjetivosForYear(estimadosYear);
     loadItinerarioForYear(estimadosYear);
     loadPrevisionesForYear(estimadosYear);
-  }, [estimadosYear, loadEstimadosForYear, loadObjetivosForYear, loadItinerarioForYear, loadPrevisionesForYear]);
+    loadCajaCortoForYear(estimadosYear);
+  }, [estimadosYear, loadEstimadosForYear, loadObjetivosForYear, loadItinerarioForYear, loadPrevisionesForYear, loadCajaCortoForYear]);
 
   const saveObjetivosComparativa = useCallback(async () => {
     const y = Number(estimadosYear);
@@ -4335,6 +4426,32 @@ export default function PIGPage() {
     setPrevisionesStatus('Previsiones de TESORERÍA guardadas.');
     return true;
   }, [tesoreriaPrevisiones, estimadosYear]);
+
+  const saveTesoreriaCajaCorto = useCallback(async () => {
+    const y = Number(estimadosYear);
+    if (!Number.isFinite(y)) {
+      setCajaCortoStatus('Introduce un año válido.');
+      return false;
+    }
+    setCajaCortoSaving(true);
+    setCajaCortoStatus('');
+    const { error: saveError } = await upsertPigTesoreriaCajaCorto({
+      year: y,
+      cajaCorto: tesoreriaCajaCorto
+    });
+    setCajaCortoSaving(false);
+    if (saveError) {
+      const detail = String(saveError.message || saveError.details || '').trim();
+      setCajaCortoStatus(
+        detail
+          ? `Error al guardar caja a corto: ${detail}`
+          : 'Error al guardar. ¿Has ejecutado database/create_pig_tesoreria_caja_corto.sql?'
+      );
+      return false;
+    }
+    setCajaCortoStatus('Previsión de caja a corto guardada.');
+    return true;
+  }, [tesoreriaCajaCorto, estimadosYear]);
 
   const saveEstimadosSubv = useCallback(async () => {
     const y = Number(estimadosYear);
@@ -4436,26 +4553,35 @@ export default function PIGPage() {
       let objetivosForGenerate = objetivosComparativa;
       let itinerarioForGenerate = itinerarioEi;
       let previsionesForGenerate = tesoreriaPrevisiones;
+      let cajaCortoForGenerate = tesoreriaCajaCorto;
 
       if (!omitSubvenciones) {
         if (yearForEstimados && Number(yearForEstimados) !== Number(estimadosYear)) {
           const [
             { estimados, error: loadEstError },
             { objetivos, error: loadObjError },
-            { itinerario, error: loadItError }
+            { itinerario, error: loadItError },
+            { cajaCorto, error: loadCajaError }
           ] = await Promise.all([
             loadPigEstimadosSubvencion({ year: yearForEstimados }),
             loadPigObjetivosComparativa({ year: yearForEstimados }),
-            loadPigItinerarioEi({ year: yearForEstimados })
+            loadPigItinerarioEi({ year: yearForEstimados }),
+            loadPigTesoreriaCajaCorto({ year: yearForEstimados })
           ]);
           if (!loadEstError && estimados) estimadosForGenerate = estimados;
           if (!loadObjError && objetivos) objetivosForGenerate = objetivos;
           if (!loadItError && itinerario) itinerarioForGenerate = itinerario;
+          if (!loadCajaError && cajaCorto) cajaCortoForGenerate = cajaCorto;
         } else {
-          await Promise.all([saveEstimadosSubv(), saveObjetivosComparativa(), saveItinerarioEi()]);
+          await Promise.all([
+            saveEstimadosSubv(),
+            saveObjetivosComparativa(),
+            saveItinerarioEi(),
+            saveTesoreriaCajaCorto()
+          ]);
         }
       } else if (yearForEstimados && Number(yearForEstimados) === Number(estimadosYear)) {
-        // Objetivos + itinerario CR + previsiones TESORERÍA.
+        // Objetivos + itinerario CR + previsiones TESORERÍA (sin caja corto).
         await Promise.all([
           saveObjetivosComparativa(),
           saveItinerarioEi(),
@@ -5053,6 +5179,7 @@ export default function PIGPage() {
             errorMessage: treasuryError?.message || '',
             cuentaResultados: omitSubvenciones,
             previsiones: omitSubvenciones ? previsionesForGenerate : null,
+            cajaCorto: omitSubvenciones ? null : cajaCortoForGenerate,
             impuestos,
             monthIndex: lastIdx
           });
@@ -5126,13 +5253,15 @@ export default function PIGPage() {
     objetivosComparativa,
     itinerarioEi,
     tesoreriaPrevisiones,
+    tesoreriaCajaCorto,
     pigEmpresa,
     estimadosSubv,
     estimadosYear,
     saveEstimadosSubv,
     saveObjetivosComparativa,
     saveItinerarioEi,
-    saveTesoreriaPrevisiones
+    saveTesoreriaPrevisiones,
+    saveTesoreriaCajaCorto
   ]);
 
   return (
@@ -5668,6 +5797,188 @@ export default function PIGPage() {
             {itinerarioStatus ? (
               <div style={{ marginTop: 8, fontSize: 12, fontWeight: 800, color: colors.textSecondary }}>
                 {itinerarioStatus}
+              </div>
+            ) : null}
+          </div>
+        )}
+
+        {pigEmpresa !== 'MH' && (
+          <div style={{ padding: 14, borderRadius: 12, border: `1px solid ${colors.border}`, background: colors.surface }}>
+            <div style={{ fontSize: 13, fontWeight: 950, marginBottom: 4 }}>
+              Previsión caja a corto (PIG Normal)
+            </div>
+            <div style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 10, lineHeight: 1.35 }}>
+              Solo aparece en el Excel <b>PIG Normal</b> (no en CR), debajo de los bancos en <b>TESORERÍA</b>.
+              Lizeth introduce títulos, importes y la fecha del total. El Excel calcula:{' '}
+              <b>TOTAL − INVES − BCREDIT − pagos + ingresos</b>.
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 0.6fr', gap: 8, marginBottom: 12 }}>
+              <input
+                value={tesoreriaCajaCorto.tituloPagos || ''}
+                placeholder="Título previsión pagos"
+                disabled={cajaCortoLoading}
+                onChange={(e) => setTesoreriaCajaCorto((prev) => ({ ...prev, tituloPagos: e.target.value }))}
+                style={{
+                  padding: '8px 10px',
+                  borderRadius: 8,
+                  border: `1px solid ${colors.border}`,
+                  background: colors.background,
+                  color: colors.text,
+                  fontSize: 12,
+                  fontWeight: 700
+                }}
+              />
+              <input
+                value={tesoreriaCajaCorto.tituloIngresos || ''}
+                placeholder="Título ingresos previstos"
+                disabled={cajaCortoLoading}
+                onChange={(e) => setTesoreriaCajaCorto((prev) => ({ ...prev, tituloIngresos: e.target.value }))}
+                style={{
+                  padding: '8px 10px',
+                  borderRadius: 8,
+                  border: `1px solid ${colors.border}`,
+                  background: colors.background,
+                  color: colors.text,
+                  fontSize: 12,
+                  fontWeight: 700
+                }}
+              />
+              <input
+                value={tesoreriaCajaCorto.fechaTotal || ''}
+                placeholder="Fecha total (ej. 06/09)"
+                disabled={cajaCortoLoading}
+                onChange={(e) => setTesoreriaCajaCorto((prev) => ({ ...prev, fechaTotal: e.target.value }))}
+                style={{
+                  padding: '8px 10px',
+                  borderRadius: 8,
+                  border: `1px solid ${colors.border}`,
+                  background: colors.background,
+                  color: colors.text,
+                  fontSize: 12,
+                  fontWeight: 700
+                }}
+              />
+            </div>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+              <button
+                type="button"
+                onClick={saveTesoreriaCajaCorto}
+                disabled={cajaCortoSaving || cajaCortoLoading}
+                style={{
+                  padding: '10px 14px',
+                  borderRadius: 10,
+                  border: `1px solid ${colors.primary}`,
+                  background: colors.primary,
+                  color: 'white',
+                  fontWeight: 900,
+                  cursor: cajaCortoSaving || cajaCortoLoading ? 'not-allowed' : 'pointer',
+                  opacity: cajaCortoSaving || cajaCortoLoading ? 0.7 : 1
+                }}
+              >
+                {cajaCortoSaving ? 'Guardando…' : 'Guardar caja a corto'}
+              </button>
+            </div>
+            {[
+              { key: 'pagos', label: 'Pagos previstos' },
+              { key: 'ingresos', label: 'Ingresos previstos' }
+            ].map((block) => (
+              <div key={block.key} style={{ marginBottom: 16 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                  <div style={{ fontSize: 12, fontWeight: 900 }}>{block.label}</div>
+                  <button
+                    type="button"
+                    onClick={() => setTesoreriaCajaCorto((prev) => ({
+                      ...prev,
+                      [block.key]: [...(prev[block.key] || []), createEmptyCajaCortoRow()]
+                    }))}
+                    style={{
+                      padding: '6px 10px',
+                      borderRadius: 8,
+                      border: `1px solid ${colors.border}`,
+                      background: colors.background,
+                      color: colors.text,
+                      fontWeight: 800,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    + Fila
+                  </button>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {(tesoreriaCajaCorto[block.key] || []).map((row, idx) => (
+                    <div
+                      key={`${block.key}-${idx}`}
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: '1.6fr 0.7fr auto',
+                        gap: 6,
+                        alignItems: 'center'
+                      }}
+                    >
+                      <input
+                        value={row.concepto || ''}
+                        placeholder="Concepto"
+                        disabled={cajaCortoLoading}
+                        onChange={(e) => setTesoreriaCajaCorto((prev) => {
+                          const next = [...(prev[block.key] || [])];
+                          next[idx] = { ...next[idx], concepto: e.target.value };
+                          return { ...prev, [block.key]: next };
+                        })}
+                        style={{
+                          padding: '8px 10px',
+                          borderRadius: 8,
+                          border: `1px solid ${colors.border}`,
+                          background: colors.background,
+                          color: colors.text,
+                          fontSize: 12,
+                          fontWeight: 700
+                        }}
+                      />
+                      <input
+                        value={row.importe || ''}
+                        placeholder="Importe"
+                        disabled={cajaCortoLoading}
+                        onChange={(e) => setTesoreriaCajaCorto((prev) => {
+                          const next = [...(prev[block.key] || [])];
+                          next[idx] = { ...next[idx], importe: e.target.value };
+                          return { ...prev, [block.key]: next };
+                        })}
+                        style={{
+                          padding: '8px 10px',
+                          borderRadius: 8,
+                          border: `1px solid ${colors.border}`,
+                          background: colors.background,
+                          color: colors.text,
+                          fontSize: 12,
+                          fontWeight: 700
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setTesoreriaCajaCorto((prev) => ({
+                          ...prev,
+                          [block.key]: (prev[block.key] || []).filter((_, i) => i !== idx)
+                        }))}
+                        style={{
+                          padding: '8px 10px',
+                          borderRadius: 8,
+                          border: `1px solid ${colors.border}`,
+                          background: colors.background,
+                          color: colors.error || '#c0392b',
+                          fontWeight: 800,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+            {cajaCortoStatus ? (
+              <div style={{ marginTop: 8, fontSize: 12, fontWeight: 800, color: colors.textSecondary }}>
+                {cajaCortoStatus}
               </div>
             ) : null}
           </div>

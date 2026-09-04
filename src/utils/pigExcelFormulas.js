@@ -374,17 +374,17 @@ export function applyPigTesoreriaCuentaResultadosFormulas(ws, meta = {}) {
     setFormulaCell(ws, meta.grandTotalRow, saldoCol, sumCellsFormula(groupTotalRows, saldoCol), cached);
   }
 
-  // TOTAL - INVES: resta comptes INNVESS del total (si coneixem les files)
+  // TOTAL - INVES - BCREDIT: resta comptes INNVESS i BCREDIT del total
   if (meta.totalSinInvesRow != null && meta.grandTotalRow != null) {
-    const innvessRows = meta.innvessDataRows || [];
+    const deductRows = [...(meta.innvessDataRows || []), ...(meta.bcreditDataRows || [])];
     const cached = ws[XLSX.utils.encode_cell({ r: meta.totalSinInvesRow, c: saldoCol })]?.v ?? 0;
-    if (innvessRows.length) {
-      const innvessPart = sumCellsFormula(innvessRows, saldoCol);
+    if (deductRows.length) {
+      const deductPart = sumCellsFormula(deductRows, saldoCol);
       setFormulaCell(
         ws,
         meta.totalSinInvesRow,
         saldoCol,
-        `${cellRef(meta.grandTotalRow, saldoCol)}-(${innvessPart})`,
+        `${cellRef(meta.grandTotalRow, saldoCol)}-(${deductPart})`,
         cached
       );
     }
@@ -398,6 +398,42 @@ export function applyPigTesoreriaCuentaResultadosFormulas(ws, meta = {}) {
     const col = Number.isFinite(t.amountCol) ? t.amountCol : amountCol;
     const cached = ws[XLSX.utils.encode_cell({ r: t.totalRow, c: col })]?.v ?? 0;
     setFormulaCell(ws, t.totalRow, col, sumFormula(t.dataStartRow, col, t.dataEndRow, col), cached);
+  }
+
+  // PIG Normal: TOTAL pagos + TOTAL PREVISIÓN = (TOTAL - INVES - BCREDIT) - pagos + ingresos
+  const caja = meta.cajaCorto;
+  if (caja && !meta.cuentaResultados) {
+    const col = Number.isFinite(caja.amountCol) ? caja.amountCol : amountCol;
+    if (
+      caja.pagosTotalRow != null
+      && caja.pagosDataStartRow != null
+      && caja.pagosDataEndRow != null
+      && caja.pagosDataEndRow >= caja.pagosDataStartRow
+    ) {
+      const cachedPagos = ws[XLSX.utils.encode_cell({ r: caja.pagosTotalRow, c: col })]?.v ?? 0;
+      setFormulaCell(
+        ws,
+        caja.pagosTotalRow,
+        col,
+        sumFormula(caja.pagosDataStartRow, col, caja.pagosDataEndRow, col),
+        cachedPagos
+      );
+    }
+    if (caja.totalFinalRow != null && meta.totalSinInvesRow != null && caja.pagosTotalRow != null) {
+      const saldoCol = Number.isFinite(meta.saldoCol) ? meta.saldoCol : 2;
+      const ingresosParts =
+        caja.ingresosDataEndRow >= caja.ingresosDataStartRow
+          ? sumFormula(caja.ingresosDataStartRow, col, caja.ingresosDataEndRow, col)
+          : '0';
+      const cachedFinal = ws[XLSX.utils.encode_cell({ r: caja.totalFinalRow, c: col })]?.v ?? 0;
+      setFormulaCell(
+        ws,
+        caja.totalFinalRow,
+        col,
+        `${cellRef(meta.totalSinInvesRow, saldoCol)}-${cellRef(caja.pagosTotalRow, col)}+(${ingresosParts})`,
+        cachedFinal
+      );
+    }
   }
 
   // IMPUESTOS: MOD 303 = SUM(saldos); si negativo → A PAGAR; TOTAL A PAGAR = SUM(H)

@@ -160,11 +160,15 @@ export function parseCrGeneralMonthly(aoa = []) {
   return { byMonth, columns, error: null };
 }
 
-/** Cierre de tesorería (TOTAL TESORERÍA − INVES) en la hoja TESORERÍA del PIG. */
+/** Cierre de tesorería (TOTAL TESORERÍA − INVES − BCREDIT) en la hoja TESORERÍA del PIG. */
 export function parseTesoreriaCajaFinal(aoa = []) {
   for (const row of aoa) {
     const label = String(row?.[0] || '').toUpperCase();
-    if (label.includes('TOTAL TESORERÍA - INVES') || label.includes('TOTAL TESORERIA - INVES')) {
+    // Preferir etiqueta nueva; también matchea la antigua "… - INVES" (substring).
+    if (
+      label.includes('TOTAL TESORERÍA - INVES') ||
+      label.includes('TOTAL TESORERIA - INVES')
+    ) {
       return parseAmount(row[2]);
     }
   }
@@ -720,7 +724,7 @@ export function buildPrevisionTesoreria18Meses({
       'CAJA FINAL',
       cajaFinal,
       year === 2026 && month === 6
-        ? 'Anclada al cierre TESORERÍA junio PIG (TOTAL − INVES)'
+        ? 'Anclada al cierre TESORERÍA junio PIG (TOTAL − INVES − BCREDIT)'
         : 'Caja inicial + Entradas − Salidas total'
     ]);
 
@@ -759,7 +763,7 @@ export function buildPrevisionTesoreriaExcelAoa({ rows = [], meta = {} } = {}) {
   const aoa = [];
   aoa.push(['PREVISIÓN DE TESORERÍA EI.SSS · jun 2026 – dic 2027']);
   aoa.push([
-    `Caja final junio (TESORERÍA − INVES, PIG): ${fmtEuro(meta.cajaFinalJun ?? 0)}`
+    `Caja final junio (TESORERÍA − INVES − BCREDIT, PIG): ${fmtEuro(meta.cajaFinalJun ?? 0)}`
   ]);
   aoa.push([
     `Caja inicial junio (cierre mayo, calculada): ${fmtEuro(meta.cajaInicialJun ?? 0)}`
