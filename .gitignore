@@ -96,3 +96,6 @@ out/
 
 # Build
 dist/
+
+# Supabase CLI (caché local: project-ref, versiones, pooler…)
+supabase/.temp/
