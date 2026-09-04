@@ -15,12 +15,15 @@
   - Seeds / fixes de equipo según necesidad (`seed_fichajes_sms_horarios_equipo.sql`, `fix_brian_fichaje_codigo_solucions.sql`)
 - **Guía:** `docs/FICHAJE_SMS_RECORDATORIOS.md`
 
-### PIG
+---
 
-- **TESORERÍA — TOTAL − INVES − BCREDIT:** el neto operativo resta también la cuenta Caixa **BCREDIT** (saldo Holded), en PIG Normal y en CR; la previsión 18 meses ancla la caja de junio a esa etiqueta.
-- **TESORERÍA PIG Normal — caja a corto editable:** debajo de los bancos, bloque manual (previsión de pagos, ingresos y total a fecha) persistente en Supabase; **no** se incluye en el Excel CR.
+## v2.5.5 (en preparación)
+
+### PIG / Tesorería
+
+- **TOTAL − INVES − BCREDIT:** el neto operativo resta también la cuenta Caixa **BCREDIT** (saldo Holded), en PIG Normal y en CR; la previsión 18 meses ancla la caja de junio a esa etiqueta.
+- **Caja a corto editable (solo PIG Normal):** debajo de los bancos, bloque manual (previsión de pagos, ingresos y total a fecha) persistente en Supabase; **no** se incluye en el Excel CR.
 - **SQL (requerido):** `database/create_pig_tesoreria_caja_corto.sql`.
-- Ajustes previos de PIG normal / tesorería-impuestos (commits anteriores en `master`).
 
 ---
 
