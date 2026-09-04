@@ -6,6 +6,7 @@ import {
   ChevronRight,
   Clock,
   Coffee,
+  MessageSquare,
   Umbrella,
   User
 } from 'lucide-react';
@@ -14,11 +15,19 @@ import Sensitive from '../Sensitive';
 import { formatDateShortMadrid, formatTimeMadrid } from '../../utils/timeUtils';
 import { empleadoEstadoFlow, estadoPanelColor } from './panelFichajesHelpers';
 
-export default function PanelEmpleadoCard({ empleado, resumen, index = 0, onOpen }) {
+function smsBadgeMeta(envio, colors, tipoLabel = 'SMS') {
+  if (!envio) return { label: `${tipoLabel} pend.`, color: colors.warning };
+  if (envio.delivery === 'sms') return { label: `${tipoLabel} ok`, color: colors.success };
+  if (envio.delivery === 'error') return { label: `${tipoLabel} error`, color: colors.error };
+  return { label: tipoLabel, color: colors.textSecondary };
+}
+
+export default function PanelEmpleadoCard({ empleado, resumen, alertaSms = null, index = 0, onOpen }) {
   const { colors } = useTheme();
   const nombre = empleado.nombreCompleto || empleado.name || 'Empleado';
   const flow = empleadoEstadoFlow(resumen);
   const tone = estadoPanelColor(flow.key, colors);
+  const tieneOlvido = !!(alertaSms?.faltaEntrada || alertaSms?.faltaSalida);
 
   return (
     <motion.li
@@ -38,22 +47,23 @@ export default function PanelEmpleadoCard({ empleado, resumen, index = 0, onOpen
           flexDirection: 'column',
           textAlign: 'left',
           borderRadius: 12,
-          border: `1px solid ${colors.border}`,
+          border: `1px solid ${tieneOlvido ? `${colors.warning}88` : colors.border}`,
           background: colors.surface,
           padding: '15px 16px',
           cursor: 'pointer',
           fontFamily: 'inherit',
           color: colors.text,
           transition: 'border-color 0.15s, box-shadow 0.15s',
-          boxSizing: 'border-box'
+          boxSizing: 'border-box',
+          boxShadow: tieneOlvido ? `0 0 0 1px ${colors.warning}22` : 'none'
         }}
         onMouseEnter={(e) => {
-          e.currentTarget.style.borderColor = `${colors.primary}55`;
+          e.currentTarget.style.borderColor = tieneOlvido ? colors.warning : `${colors.primary}55`;
           e.currentTarget.style.boxShadow = `0 4px 16px ${colors.primary}10`;
         }}
         onMouseLeave={(e) => {
-          e.currentTarget.style.borderColor = colors.border;
-          e.currentTarget.style.boxShadow = 'none';
+          e.currentTarget.style.borderColor = tieneOlvido ? `${colors.warning}88` : colors.border;
+          e.currentTarget.style.boxShadow = tieneOlvido ? `0 0 0 1px ${colors.warning}22` : 'none';
         }}
       >
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, minHeight: 68 }}>
@@ -102,6 +112,84 @@ export default function PanelEmpleadoCard({ empleado, resumen, index = 0, onOpen
                 >
                   {flow.label}
                 </span>
+                {alertaSms?.faltaEntrada ? (
+                  <span
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 700,
+                      padding: '3px 8px',
+                      borderRadius: 6,
+                      background: `${colors.warning}18`,
+                      color: colors.warning
+                    }}
+                  >
+                    Sin entrada
+                  </span>
+                ) : null}
+                {alertaSms?.faltaSalida ? (
+                  <span
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 700,
+                      padding: '3px 8px',
+                      borderRadius: 6,
+                      background: `${colors.error}16`,
+                      color: colors.error
+                    }}
+                  >
+                    Sin salida
+                  </span>
+                ) : null}
+                {alertaSms?.faltaEntrada ? (
+                  (() => {
+                    const meta = smsBadgeMeta(alertaSms.smsEntrada, colors, 'SMS');
+
+                    return (
+                      <span
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 600,
+                          padding: '3px 8px',
+                          borderRadius: 6,
+                          background: `${meta.color}14`,
+                          color: meta.color,
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 4
+                        }}
+                        title={alertaSms.smsEntrada?.cuerpo || 'Recordatorio SMS entrada'}
+                      >
+                        <MessageSquare size={11} />
+                        {meta.label}
+                      </span>
+                    );
+                  })()
+                ) : null}
+                {alertaSms?.faltaSalida ? (
+                  (() => {
+                    const meta = smsBadgeMeta(alertaSms.smsSalida, colors, 'SMS sal.');
+
+                    return (
+                      <span
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 700,
+                          padding: '3px 8px',
+                          borderRadius: 6,
+                          background: `${meta.color}14`,
+                          color: meta.color,
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 4
+                        }}
+                        title={alertaSms.smsSalida?.cuerpo || 'Recordatorio SMS salida'}
+                      >
+                        <MessageSquare size={11} />
+                        {meta.label}
+                      </span>
+                    );
+                  })()
+                ) : null}
               </div>
               <div
                 style={{

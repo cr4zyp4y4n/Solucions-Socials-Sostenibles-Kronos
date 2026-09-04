@@ -4,6 +4,7 @@ import {
   Activity,
   ChevronLeft,
   ChevronRight,
+  MessageSquare,
   RefreshCw,
   Search
 } from 'lucide-react';
@@ -11,7 +12,6 @@ import {
   startOfMonth,
   endOfMonth,
   startOfYear,
-  endOfYear,
   format,
   addMonths,
   parseISO,
@@ -20,6 +20,9 @@ import {
 } from 'date-fns';
 import { es } from 'date-fns/locale';
 import fichajeSupabaseService from '../services/fichajeSupabaseService';
+import fichajeSmsRecordatoriosService, {
+  nowPartsInMadrid
+} from '../services/fichajeSmsRecordatoriosService';
 import holdedEmployeesService from '../services/holdedEmployeesService';
 import { useTheme } from './ThemeContext';
 import SectionHeader from './SectionHeader';
@@ -34,6 +37,7 @@ import { KronosButton, KronosCard, KronosChip, KronosInput } from './kronos';
 
 const FILTERS = [
   { id: 'todos', label: 'Todos' },
+  { id: 'sin_fichar', label: 'Sin fichar hoy' },
   { id: 'trabajando', label: 'Trabajando' },
   { id: 'vacaciones', label: 'Vacaciones' },
   { id: 'baja', label: 'De baja' },
@@ -115,6 +119,7 @@ const PanelFichajesPage = () => {
   const [fichajesMes, setFichajesMes] = useState([]);
   const [vacacionesMes, setVacacionesMes] = useState([]);
   const [bajasMes, setBajasMes] = useState([]);
+  const [alertasSmsHoy, setAlertasSmsHoy] = useState({});
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [estadoFilter, setEstadoFilter] = useState('todos');
@@ -140,6 +145,7 @@ const PanelFichajesPage = () => {
       const end = endOfMonth(mesReferencia);
       const endVacaciones = endOfMonth(addMonths(mesReferencia, 2));
       const startVacaciones = startOfYear(mesReferencia);
+      const { fecha: hoyMadrid } = nowPartsInMadrid();
 
       const [fichRes, vacRes, bajasRes] = await Promise.all([
         fichajeSupabaseService.obtenerTodosFichajes({ fechaInicio: start, fechaFin: end }),
@@ -147,14 +153,48 @@ const PanelFichajesPage = () => {
         fichajeSupabaseService.obtenerBajasEnRango(start, endVacaciones)
       ]);
 
-      setFichajesMes(fichRes.success ? fichRes.data || [] : []);
-      setVacacionesMes(vacRes.success ? vacRes.data || [] : []);
-      setBajasMes(bajasRes.success ? bajasRes.data || [] : []);
+      const fichajes = fichRes.success ? fichRes.data || [] : [];
+      const vacaciones = vacRes.success ? vacRes.data || [] : [];
+      const bajas = bajasRes.success ? bajasRes.data || [] : [];
+
+      setFichajesMes(fichajes);
+      setVacacionesMes(vacaciones);
+      setBajasMes(bajas);
+
+      const fichajesHoy = fichajes.filter((f) => f.fecha === hoyMadrid);
+      // También pedir fichajes de hoy si el mes visto no es el actual
+      let fichajesHoyFull = fichajesHoy;
+      if (format(mesReferencia, 'yyyy-MM') !== hoyMadrid.slice(0, 7)) {
+        const dia = parseISO(hoyMadrid);
+        const hoyRes = await fichajeSupabaseService.obtenerTodosFichajes({
+          fechaInicio: dia,
+          fechaFin: dia
+        });
+        fichajesHoyFull = hoyRes.success ? hoyRes.data || [] : [];
+      }
+
+      const vacacionesHoyIds = new Set(
+        vacaciones.filter((v) => v.fecha === hoyMadrid).map((v) => v.empleado_id)
+      );
+      const bajasHoyIds = new Set();
+      bajas.forEach((b) => {
+        if (hoyMadrid >= b.fecha_inicio && hoyMadrid <= b.fecha_fin) {
+          bajasHoyIds.add(b.empleado_id);
+        }
+      });
+
+      const alertRes = await fichajeSmsRecordatoriosService.cargarAlertasHoy({
+        fichajesHoy: fichajesHoyFull,
+        vacacionesHoyIds,
+        bajasHoyIds
+      });
+      setAlertasSmsHoy(alertRes.alertas || {});
     } catch (err) {
       console.error('Error cargando datos del panel:', err);
       setFichajesMes([]);
       setVacacionesMes([]);
       setBajasMes([]);
+      setAlertasSmsHoy({});
     } finally {
       setLoading(false);
     }
@@ -174,17 +214,24 @@ const PanelFichajesPage = () => {
   );
 
   const stats = useMemo(
-    () => computePanelStats(empleados, resumenPorEmpleado),
-    [empleados, resumenPorEmpleado]
+    () => computePanelStats(empleados, resumenPorEmpleado, alertasSmsHoy),
+    [empleados, resumenPorEmpleado, alertasSmsHoy]
   );
+
+  const alertasLista = useMemo(() => {
+    return Object.values(alertasSmsHoy).sort((a, b) =>
+      String(a.nombre || a.empleadoId).localeCompare(String(b.nombre || b.empleadoId), 'es')
+    );
+  }, [alertasSmsHoy]);
 
   const empleadosVisibles = useMemo(() => {
     const filtered = filterEmpleadosPanel(empleados, resumenPorEmpleado, {
       search: searchTerm,
-      estadoFilter
+      estadoFilter,
+      alertasSmsHoy
     });
-    return sortEmpleadosPanel(filtered, resumenPorEmpleado);
-  }, [empleados, resumenPorEmpleado, searchTerm, estadoFilter]);
+    return sortEmpleadosPanel(filtered, resumenPorEmpleado, alertasSmsHoy);
+  }, [empleados, resumenPorEmpleado, searchTerm, estadoFilter, alertasSmsHoy]);
 
   const mesLabel = format(mesReferencia, 'MMMM yyyy', { locale: es });
   const esMesActual = format(mesReferencia, 'yyyy-MM') === format(new Date(), 'yyyy-MM');
@@ -254,6 +301,7 @@ const PanelFichajesPage = () => {
       >
         {[
           { label: 'Empleados', value: stats.total, tone: colors.text },
+          { label: 'Sin fichar hoy', value: stats.sinFicharHoy, tone: colors.warning },
           { label: 'Trabajando', value: stats.trabajando, tone: colors.warning },
           { label: 'De baja', value: stats.deBaja, tone: colors.error },
           { label: 'Horas mes', value: `${stats.horasMes}h`, tone: colors.primary }
@@ -264,6 +312,71 @@ const PanelFichajesPage = () => {
           </KronosCard>
         ))}
       </div>
+
+      {alertasLista.length > 0 ? (
+        <KronosCard
+          style={{
+            padding: '14px 16px',
+            marginBottom: 18,
+            border: `1px solid ${colors.warning}55`,
+            background: `${colors.warning}10`
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              marginBottom: 10,
+              fontWeight: 700,
+              fontSize: 14,
+              color: colors.warning
+            }}
+          >
+            <MessageSquare size={16} />
+            Recordatorios SMS · {alertasLista.length} sin fichar hoy
+          </div>
+          <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'grid', gap: 8 }}>
+            {alertasLista.map((a) => {
+              const emp = empleados.find((e) => e.id === a.empleadoId);
+              const label = emp?.nombreCompleto || a.nombre || a.empleadoId;
+              return (
+                <li
+                  key={a.empleadoId}
+                  style={{
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: 8,
+                    fontSize: 13
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => emp && setSelectedEmpleado(emp)}
+                    style={{
+                      border: 'none',
+                      background: 'transparent',
+                      padding: 0,
+                      cursor: emp ? 'pointer' : 'default',
+                      fontWeight: 600,
+                      color: colors.text,
+                      fontFamily: 'inherit',
+                      textAlign: 'left'
+                    }}
+                  >
+                    {label}
+                  </button>
+                  <span style={{ color: colors.textSecondary, fontSize: 12 }}>
+                    {a.avisos.join(' · ')}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        </KronosCard>
+      ) : null}
 
       <div style={{ display: 'grid', gap: 12, marginBottom: 18 }}>
         <div style={{ position: 'relative' }}>
@@ -329,6 +442,7 @@ const PanelFichajesPage = () => {
                 key={empleado.id}
                 empleado={empleado}
                 resumen={resumenPorEmpleado[empleado.id] || {}}
+                alertaSms={alertasSmsHoy[empleado.id] || null}
                 index={index}
                 onOpen={setSelectedEmpleado}
               />

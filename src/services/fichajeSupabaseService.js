@@ -118,13 +118,18 @@ class FichajeSupabaseService {
    * @param {string} motivo - Motivo del cierre automático (opcional)
    * @returns {Promise<Object>} Fichaje cerrado
    */
-  async cerrarFichajeAutomaticamente(fichajeId, motivo = null) {
+  async cerrarFichajeAutomaticamente(fichajeId, motivo = null, horaSalidaLocal = null) {
     try {
       // Preferir RPC que hace todo en un UPDATE (solo 1 registro en auditoría)
-      const { data, error } = await supabase.rpc('cerrar_fichaje_automaticamente', {
+      const payload = {
         p_fichaje_id: fichajeId,
         p_motivo: motivo || null
-      });
+      };
+      if (horaSalidaLocal) {
+        payload.p_hora_salida_local = horaSalidaLocal;
+      }
+
+      const { data, error } = await supabase.rpc('cerrar_fichaje_automaticamente', payload);
 
       if (!error) {
         const fichajeCerrado = data && data.length > 0 ? data[0] : null;
@@ -148,8 +153,9 @@ class FichajeSupabaseService {
               valor_original: {
                 hora_salida: null,
                 cerrado_automaticamente: true,
+                aviso_visto: false,
                 motivo: motivoCierre,
-                aviso: '⚠️ Este fichaje fue cerrado automáticamente porque se detectó que el empleado olvidó fichar la salida.'
+                aviso: 'Este fichaje se cerró automáticamente porque no registraste la salida a tiempo.'
               }
             })
             .eq('id', fichajeId);
@@ -160,6 +166,64 @@ class FichajeSupabaseService {
       throw error;
     } catch (error) {
       console.error('Error cerrando fichaje automáticamente:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Fichajes cerrados automáticamente con aviso pendiente (últimos 14 días).
+   */
+  async obtenerCierresAutomaticosPendientesAviso(empleadoId, diasAtras = 14) {
+    try {
+      const desde = new Date();
+      desde.setDate(desde.getDate() - diasAtras);
+      const desdeStr = desde.toISOString().split('T')[0];
+
+      const { data, error } = await supabase
+        .from('fichajes')
+        .select('id, fecha, hora_entrada, hora_salida, valor_original, es_modificado')
+        .eq('empleado_id', empleadoId)
+        .eq('es_modificado', true)
+        .gte('fecha', desdeStr)
+        .not('hora_salida', 'is', null)
+        .order('fecha', { ascending: false });
+
+      if (error) throw error;
+
+      const pendientes = (data || []).filter((f) => {
+        const vo = f.valor_original || {};
+        return vo.cerrado_automaticamente === true && vo.aviso_visto !== true;
+      });
+
+      return { success: true, data: pendientes };
+    } catch (error) {
+      console.error('Error obteniendo cierres auto pendientes de aviso:', error);
+      return { success: false, error: error.message, data: [] };
+    }
+  }
+
+  /**
+   * Marca el aviso de cierre automático como visto (valor_original.aviso_visto = true).
+   */
+  async marcarCierreAutoAvisado(fichajeId) {
+    try {
+      const { data: row, error: getErr } = await supabase
+        .from('fichajes')
+        .select('id, valor_original')
+        .eq('id', fichajeId)
+        .maybeSingle();
+      if (getErr) throw getErr;
+      if (!row) return { success: false, error: 'Fichaje no encontrado' };
+
+      const vo = { ...(row.valor_original || {}), aviso_visto: true };
+      const { error } = await supabase
+        .from('fichajes')
+        .update({ valor_original: vo })
+        .eq('id', fichajeId);
+      if (error) throw error;
+      return { success: true };
+    } catch (error) {
+      console.error('Error marcando aviso cierre auto:', error);
       return { success: false, error: error.message };
     }
   }

@@ -355,7 +355,11 @@ class FichajeService {
       hoyLimpio.setHours(0, 0, 0, 0);
       
       // PRIMERO: Verificar y cerrar fichajes olvidados (del mismo día o anteriores)
+      // (Kronos abierto). El worker de Supabase también cierra por horario sin app.
       await this.verificarYcerrarFichajesOlvidados(empleadoId);
+
+      const { data: cierresAutoAviso } =
+        await fichajeSupabaseService.obtenerCierresAutomaticosPendientesAviso(empleadoId);
       
       // Obtener fichaje del día
       const { data: fichaje } = await fichajeSupabaseService.obtenerFichajeDia(empleadoId, hoy);
@@ -369,7 +373,8 @@ class FichajeService {
             puedeFicharSalida: false,
             puedeIniciarPausa: false,
             puedeFinalizarPausa: false,
-            pausaActiva: null
+            pausaActiva: null,
+            cierresAutoAviso: cierresAutoAviso || []
           }
         };
       }
@@ -391,7 +396,8 @@ class FichajeService {
           puedeIniciarPausa: !fichaje.hora_salida && !pausaActiva,
           puedeFinalizarPausa: !!pausaActiva,
           pausaActiva: pausaActiva,
-          pausas: pausas || []
+          pausas: pausas || [],
+          cierresAutoAviso: cierresAutoAviso || []
         }
       };
     } catch (error) {

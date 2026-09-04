@@ -1,11 +1,17 @@
-export function filterEmpleadosPanel(empleados, resumenPorEmpleado, { search = '', estadoFilter = 'todos' } = {}) {
+export function filterEmpleadosPanel(
+  empleados,
+  resumenPorEmpleado,
+  { search = '', estadoFilter = 'todos', alertasSmsHoy = {} } = {}
+) {
   const q = String(search || '').trim().toLowerCase();
   return (empleados || []).filter((emp) => {
     const r = resumenPorEmpleado[emp.id] || {};
+    const alerta = alertasSmsHoy[emp.id];
     if (estadoFilter === 'trabajando' && !r.trabajandoAhora) return false;
     if (estadoFilter === 'baja' && !r.estaDeBaja) return false;
     if (estadoFilter === 'vacaciones' && !r.estaEnVacaciones) return false;
     if (estadoFilter === 'activos' && (r.estaDeBaja || r.estaEnVacaciones)) return false;
+    if (estadoFilter === 'sin_fichar' && !(alerta?.faltaEntrada || alerta?.faltaSalida)) return false;
     if (!q) return true;
     const nombre = String(emp.nombreCompleto || emp.name || '').toLowerCase();
     const email = String(emp.email || '').toLowerCase();
@@ -13,10 +19,16 @@ export function filterEmpleadosPanel(empleados, resumenPorEmpleado, { search = '
   });
 }
 
-export function sortEmpleadosPanel(empleados, resumenPorEmpleado) {
+export function sortEmpleadosPanel(empleados, resumenPorEmpleado, alertasSmsHoy = {}) {
   return [...empleados].sort((a, b) => {
     const ra = resumenPorEmpleado[a.id] || {};
     const rb = resumenPorEmpleado[b.id] || {};
+    const aa = alertasSmsHoy[a.id];
+    const ab = alertasSmsHoy[b.id];
+    const aOlvido = !!(aa?.faltaEntrada || aa?.faltaSalida);
+    const bOlvido = !!(ab?.faltaEntrada || ab?.faltaSalida);
+    if (aOlvido && !bOlvido) return -1;
+    if (!aOlvido && bOlvido) return 1;
     if (ra.trabajandoAhora && !rb.trabajandoAhora) return -1;
     if (!ra.trabajandoAhora && rb.trabajandoAhora) return 1;
     if (ra.estaDeBaja && !rb.estaDeBaja) return -1;
@@ -27,16 +39,19 @@ export function sortEmpleadosPanel(empleados, resumenPorEmpleado) {
   });
 }
 
-export function computePanelStats(empleados, resumenPorEmpleado) {
+export function computePanelStats(empleados, resumenPorEmpleado, alertasSmsHoy = {}) {
   let trabajando = 0;
   let deBaja = 0;
   let enVacaciones = 0;
   let horasMes = 0;
+  let sinFicharHoy = 0;
   (empleados || []).forEach((emp) => {
     const r = resumenPorEmpleado[emp.id] || {};
+    const a = alertasSmsHoy[emp.id];
     if (r.trabajandoAhora) trabajando += 1;
     if (r.estaDeBaja) deBaja += 1;
     if (r.estaEnVacaciones) enVacaciones += 1;
+    if (a?.faltaEntrada || a?.faltaSalida) sinFicharHoy += 1;
     horasMes += parseFloat(r.horasTotales || 0);
   });
   return {
@@ -44,6 +59,7 @@ export function computePanelStats(empleados, resumenPorEmpleado) {
     trabajando,
     deBaja,
     enVacaciones,
+    sinFicharHoy,
     horasMes: horasMes.toFixed(1)
   };
 }

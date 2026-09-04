@@ -771,6 +771,63 @@ const FichajePage = () => {
             </motion.div>
           )}
 
+          {/* Aviso: jornada(s) cerrada(s) automáticamente por olvido de salida */}
+          {empleadoInfo && estadoFichaje?.cierresAutoAviso?.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              style={{
+                padding: '14px 16px',
+                marginBottom: '20px',
+                borderRadius: 10,
+                border: `1px solid ${colors.warning}88`,
+                backgroundColor: `${colors.warning}14`,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 10
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                <AlertCircle size={20} color={colors.warning} style={{ flexShrink: 0, marginTop: 2 }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, fontSize: 14, color: colors.text, marginBottom: 4 }}>
+                    Cierre automático de jornada
+                  </div>
+                  {estadoFichaje.cierresAutoAviso.map((c) => (
+                    <div key={c.id} style={{ fontSize: 13, color: colors.textSecondary, marginBottom: 4 }}>
+                      El <strong style={{ color: colors.text }}>{formatDateMadrid(c.fecha)}</strong> se cerró
+                      automáticamente porque no registraste la salida
+                      {c.hora_salida ? ` (salida aplicada: ${formatTimeMadrid(c.hora_salida)})` : ''}.
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={async () => {
+                  for (const c of estadoFichaje.cierresAutoAviso) {
+                    await fichajeSupabaseService.marcarCierreAutoAvisado(c.id);
+                  }
+                  await loadEstadoFichaje();
+                }}
+                style={{
+                  alignSelf: 'flex-end',
+                  padding: '8px 14px',
+                  borderRadius: 8,
+                  border: `1px solid ${colors.warning}`,
+                  background: colors.surface,
+                  color: colors.text,
+                  fontWeight: 600,
+                  fontSize: 12,
+                  cursor: 'pointer',
+                  fontFamily: 'inherit'
+                }}
+              >
+                Entendido
+              </button>
+            </motion.div>
+          )}
+
           {/* Mensajes */}
           <AnimatePresence>
         {error && (

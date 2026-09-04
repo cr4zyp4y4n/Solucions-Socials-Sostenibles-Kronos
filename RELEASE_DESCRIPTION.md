@@ -1,3 +1,20 @@
+## v2.5.2
+
+### PIG / Tesorería — previsión 18 meses + ajuste impuestos
+
+- **Nueva hoja `PREVISIÓN TESORERÍA`:** el PIG de EISSS exporta una previsión independiente de **18 meses** desde **junio 2026 hasta diciembre 2027**.
+- **Entrada necesaria para generar la previsión:** se combinan el **PIG 2026** y el **PIG 2025** para construir la hoja.
+- **Layout simplificado:** se elimina la hoja auxiliar `DETALLE FUENTES`; solo queda `PREVISIÓN TESORERÍA` con columnas de **caja inicial**, **entradas**, **total mes**, **salidas**, **salidas total**, **caja final** y **observaciones**.
+- **Junio-diciembre 2026 hardcodeados:** se incorporan los valores validados por Sergi para el arranque de la previsión, incluida la corrección de agosto.
+- **Lógica 2027 automatizada:** las **entradas** se calculan con la **facturación cobrada real de Holded 2025** por mes; en **mayo y junio** se usa la **media 2025 + 2026**; en **agosto 2027** las entradas son **0**.
+- **Salidas 2027 desde CR 2025:** los gastos salen del **Cuenta de Resultados PIG 2025**; en **mayo y junio** se usa la media de **CR 2025 + CR 2026**.
+- **Fórmulas encadenadas en Excel:** la **caja inicial** de cada mes toma la **caja final** del mes anterior y se recalculan automáticamente `TOTAL MES`, `SALIDAS TOTAL` y `CAJA FINAL`.
+- **Cobros Holded reales:** la previsión usa pagos reales consultando `/payments` en Holded, en lugar de reutilizar la facturación emitida.
+- **IMPUESTOS — corrección de saldos exactos Holded:** la tabla de `TESORERÍA` ya no mezcla prefijos contables como `470` o `472` con cuentas completas `47000000` / `47200000`; ahora usa coincidencia exacta por número de cuenta y prioriza el `balance` real devuelto por Holded.
+- **Resultado esperado en MOD 303:** se corrigen importes como `47200000`, `47000000` y la suma de `MOD 303`, evitando que aparezcan saldos de cuentas agrupadoras en lugar de las cuentas fiscales exactas.
+
+---
+
 ## v2.5.1
 
 ### PIG / Cuenta Resultados — cambios Sergi (4 de 4)

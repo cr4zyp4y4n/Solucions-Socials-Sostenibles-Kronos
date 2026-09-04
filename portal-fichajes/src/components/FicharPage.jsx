@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { LogIn, LogOut, Loader2, MapPin, CheckCircle, AlertCircle } from 'lucide-react';
 import * as fichajePortalService from '../services/fichajePortalService';
-import { formatTimeMadrid } from '../utils/timeUtils';
+import { formatTimeMadrid, formatDateShortMadrid } from '../utils/timeUtils';
 import { colors } from '../theme';
 
 /**
@@ -12,6 +12,7 @@ export default function FicharPage({ user }) {
   const [codigo, setCodigo] = useState('');
   const [empleado, setEmpleado] = useState(null);
   const [estadoDia, setEstadoDia] = useState(null);
+  const [cierresAutoAviso, setCierresAutoAviso] = useState([]);
   const [loading, setLoading] = useState(false);
   const [validandoCodigo, setValidandoCodigo] = useState(false);
   const [error, setError] = useState('');
@@ -58,6 +59,8 @@ export default function FicharPage({ user }) {
     if (!empleado?.empleadoId) return;
     const res = await fichajePortalService.obtenerFichajeDia(empleado.empleadoId, new Date());
     setEstadoDia(res.data || null);
+    const avisos = await fichajePortalService.obtenerCierresAutomaticosPendientesAviso(empleado.empleadoId);
+    setCierresAutoAviso(avisos.data || []);
   };
 
   useEffect(() => {
@@ -103,6 +106,8 @@ export default function FicharPage({ user }) {
         setTimeout(() => setSuccess(''), 2000);
         const resDia = await fichajePortalService.obtenerFichajeDia(res.data.empleadoId, new Date());
         setEstadoDia(resDia.data || null);
+        const avisos = await fichajePortalService.obtenerCierresAutomaticosPendientesAviso(res.data.empleadoId);
+        setCierresAutoAviso(avisos.data || []);
       } else {
         setError(res.error || 'Código no válido');
       }
@@ -169,6 +174,7 @@ export default function FicharPage({ user }) {
   const clearEmpleado = () => {
     setEmpleado(null);
     setEstadoDia(null);
+    setCierresAutoAviso([]);
     setCodigo('');
     setError('');
     setSuccess('');
@@ -271,6 +277,57 @@ export default function FicharPage({ user }) {
               </div>
             )}
           </div>
+
+          {cierresAutoAviso.length > 0 ? (
+            <div
+              style={{
+                background: `${colors.warning}14`,
+                border: `1px solid ${colors.warning}88`,
+                borderRadius: 12,
+                padding: 14,
+                marginBottom: 16,
+              }}
+            >
+              <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                <AlertCircle size={18} color={colors.warning} style={{ flexShrink: 0, marginTop: 2 }} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 700, fontSize: 14, color: colors.text, marginBottom: 6 }}>
+                    Cierre automático de jornada
+                  </div>
+                  {cierresAutoAviso.map((c) => (
+                    <div key={c.id} style={{ fontSize: 13, color: colors.textSecondary, marginBottom: 4 }}>
+                      El <strong style={{ color: colors.text }}>{formatDateShortMadrid(c.fecha)}</strong> se
+                      cerró automáticamente porque no registraste la salida
+                      {c.hora_salida ? ` (${formatTimeMadrid(c.hora_salida)})` : ''}.
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      for (const c of cierresAutoAviso) {
+                        await fichajePortalService.marcarCierreAutoAvisado(c.id);
+                      }
+                      setCierresAutoAviso([]);
+                    }}
+                    style={{
+                      marginTop: 8,
+                      padding: '8px 12px',
+                      borderRadius: 8,
+                      border: `1px solid ${colors.warning}`,
+                      background: colors.card,
+                      fontWeight: 600,
+                      fontSize: 12,
+                      cursor: 'pointer',
+                      fontFamily: 'inherit',
+                      color: colors.text,
+                    }}
+                  >
+                    Entendido
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {!estadoDia ? (
