@@ -1,4 +1,4 @@
--- Estimados de subvención mensuales por línea PIG (CATERING / IDONI / KOIKI).
+-- Estimados de subvención mensuales por línea PIG (CATERING / IDONI / KOIKI / ESTRUCTURA).
 -- Cada slot admite hasta 2 tramos (importe + rango de meses).
 
 create table if not exists public.pig_estimados_subvencion (
@@ -13,7 +13,7 @@ create table if not exists public.pig_estimados_subvencion (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint pig_estimados_subvencion_pkey primary key (id),
-  constraint pig_estimados_subvencion_linea_chk check (linea in ('CATERING','IDONI','KOIKI')),
+  constraint pig_estimados_subvencion_linea_chk check (linea in ('CATERING','IDONI','KOIKI','ESTRUCTURA')),
   constraint pig_estimados_subvencion_year_chk check (year >= 2000 and year <= 2100),
   constraint pig_estimados_subvencion_slot_chk check (slot >= 1 and slot <= 5),
   constraint pig_estimados_subvencion_segment_chk check (segment >= 1 and segment <= 2),

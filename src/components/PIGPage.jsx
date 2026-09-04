@@ -4436,6 +4436,19 @@ export default function PIGPage() {
       let objetivosForGenerate = objetivosComparativa;
       let itinerarioForGenerate = itinerarioEi;
       let previsionesForGenerate = tesoreriaPrevisiones;
+      const describeAsyncError = (label, err) => {
+        const detail = String(err?.message || err?.details || '').trim();
+        return detail ? `${label}: ${detail}` : label;
+      };
+      const assertAllSaved = (results, label) => {
+        if (!results.every(Boolean)) {
+          throw new Error(`${label}. Revisa los mensajes de guardado antes de exportar.`);
+        }
+      };
+
+      if (estimadosLoading || objetivosLoading || itinerarioLoading || previsionesLoading) {
+        throw new Error('Espera a que terminen de cargar los datos auxiliares del PIG antes de exportar.');
+      }
 
       if (!omitSubvenciones) {
         if (yearForEstimados && Number(yearForEstimados) !== Number(estimadosYear)) {
@@ -4448,24 +4461,39 @@ export default function PIGPage() {
             loadPigObjetivosComparativa({ year: yearForEstimados }),
             loadPigItinerarioEi({ year: yearForEstimados })
           ]);
+          if (loadEstError || loadObjError || loadItError) {
+            throw new Error([
+              loadEstError && describeAsyncError('No se pudieron cargar los estimados del año del CSV', loadEstError),
+              loadObjError && describeAsyncError('No se pudieron cargar los objetivos del año del CSV', loadObjError),
+              loadItError && describeAsyncError('No se pudo cargar el itinerario del año del CSV', loadItError)
+            ].filter(Boolean).join(' · '));
+          }
           if (!loadEstError && estimados) estimadosForGenerate = estimados;
           if (!loadObjError && objetivos) objetivosForGenerate = objetivos;
           if (!loadItError && itinerario) itinerarioForGenerate = itinerario;
         } else {
-          await Promise.all([saveEstimadosSubv(), saveObjetivosComparativa(), saveItinerarioEi()]);
+          const saveResults = await Promise.all([saveEstimadosSubv(), saveObjetivosComparativa(), saveItinerarioEi()]);
+          assertAllSaved(saveResults, 'No se pudo autoguardar la configuración PIG');
         }
       } else if (yearForEstimados && Number(yearForEstimados) === Number(estimadosYear)) {
         // Objetivos + itinerario CR + previsiones TESORERÍA.
-        await Promise.all([
+        const saveResults = await Promise.all([
           saveObjetivosComparativa(),
           saveItinerarioEi(),
           saveTesoreriaPrevisiones()
         ]);
+        assertAllSaved(saveResults, 'No se pudo autoguardar la configuración de Cuenta Resultados');
       } else if (yearForEstimados) {
         const [{ itinerario, error: itErr }, { previsiones, error: prErr }] = await Promise.all([
           loadPigItinerarioEi({ year: yearForEstimados }),
           loadPigTesoreriaPrevisiones({ year: yearForEstimados })
         ]);
+        if (itErr || prErr) {
+          throw new Error([
+            itErr && describeAsyncError('No se pudo cargar el itinerario del año del CSV', itErr),
+            prErr && describeAsyncError('No se pudieron cargar las previsiones de TESORERÍA del año del CSV', prErr)
+          ].filter(Boolean).join(' · '));
+        }
         if (!itErr && itinerario) itinerarioForGenerate = itinerario;
         if (!prErr && previsiones) previsionesForGenerate = previsiones;
       }
@@ -5046,6 +5074,7 @@ export default function PIGPage() {
           }
           if (impuestosError) {
             console.warn('PIG TESORERÍA IMPUESTOS: no se pudieron cargar cuentas contables de Holded.', impuestosError);
+            throw new Error(describeAsyncError('No se pudieron cargar saldos verificables de IMPUESTOS desde Holded', impuestosError));
           }
           const { aoa: aoaTesoreria, meta: tesoreriaMeta } = buildPigTesoreriaSheetAoa({
             title: titleTesoreria,
@@ -5129,6 +5158,10 @@ export default function PIGPage() {
     pigEmpresa,
     estimadosSubv,
     estimadosYear,
+    estimadosLoading,
+    objetivosLoading,
+    itinerarioLoading,
+    previsionesLoading,
     saveEstimadosSubv,
     saveObjetivosComparativa,
     saveItinerarioEi,

@@ -400,7 +400,7 @@ export function applyPigTesoreriaCuentaResultadosFormulas(ws, meta = {}) {
     setFormulaCell(ws, t.totalRow, col, sumFormula(t.dataStartRow, col, t.dataEndRow, col), cached);
   }
 
-  // IMPUESTOS: MOD 303 = SUM(saldos); si negativo → A PAGAR; TOTAL A PAGAR = SUM(H)
+  // IMPUESTOS: MOD 303 = SUM(saldos); si negativo → ABS en A PAGAR; TOTAL A PAGAR = SUM(H)
   const imp = meta.impuestos;
   if (imp?.mod303ResultRow != null && imp.mod303SaldoStartRow != null && imp.mod303SaldoEndRow != null) {
     const saldoCol = Number.isFinite(imp.saldoCol) ? imp.saldoCol : 6;
@@ -415,12 +415,12 @@ export function applyPigTesoreriaCuentaResultadosFormulas(ws, meta = {}) {
     );
     const gRef = cellRef(imp.mod303ResultRow, saldoCol);
     const cachedAPagar303 = ws[XLSX.utils.encode_cell({ r: imp.mod303ResultRow, c: aPagarCol })]?.v;
-    const cachedNeg = typeof cachedAPagar303 === 'number' ? cachedAPagar303 : Number(cached303) < 0 ? Number(cached303) : 0;
+    const cachedNeg = typeof cachedAPagar303 === 'number' ? cachedAPagar303 : Number(cached303) < 0 ? Math.abs(Number(cached303)) : 0;
     setFormulaCell(
       ws,
       imp.mod303ResultRow,
       aPagarCol,
-      `IF(${gRef}<0,${gRef},0)`,
+      `IF(${gRef}<0,ABS(${gRef}),0)`,
       cachedNeg
     );
     if (imp.totalRow != null) {
