@@ -189,17 +189,35 @@ export async function upsertPigItinerarioEi({ year, itinerario }) {
     }))
   ];
 
-  const { error: deleteError } = await supabase
+  if (!payload.length) {
+    const { error: deleteError } = await supabase
+      .from('pig_itinerario_ei')
+      .delete()
+      .eq('year', y);
+    return { error: deleteError || null };
+  }
+
+  const { data: existingRows, error: selectError } = await supabase
     .from('pig_itinerario_ei')
-    .delete()
+    .select('id')
     .eq('year', y);
-  if (deleteError) return { error: deleteError };
+  if (selectError) return { error: selectError };
 
-  if (!payload.length) return { error: null };
-
-  const { error: insertError } = await supabase
+  const { data: insertedRows, error: insertError } = await supabase
     .from('pig_itinerario_ei')
-    .insert(payload);
+    .insert(payload)
+    .select('id');
   if (insertError) return { error: insertError };
+
+  const oldIds = (existingRows || []).map((row) => row.id).filter(Boolean);
+  if (oldIds.length) {
+    const { error: deleteError } = await supabase
+      .from('pig_itinerario_ei')
+      .delete()
+      .in('id', oldIds);
+    if (deleteError) return { error: deleteError };
+  }
+
+  if (!insertedRows?.length) return { error: new Error('No se insertó el itinerario E.I.') };
   return { error: null };
 }
