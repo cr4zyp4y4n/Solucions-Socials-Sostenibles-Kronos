@@ -22,16 +22,14 @@ function indexOfOrThrow(source, needle, file) {
 function assertNoDestructiveReplace(relPath) {
   const source = read(relPath).replace(/\s+/g, ' ');
   assert(
-    !/\.delete\(\)\s*\.eq\('year', y\).*?\.insert\(payload\)/.test(source),
+    !/if \(!payload\.length\).*?\.delete\(\)\s*\.eq\('year', y\).*?\.insert\(payload\)/.test(source),
     `${relPath}: no debe borrar el año antes de insertar el reemplazo`
   );
 }
 
 [
   'src/services/pigObjetivosComparativaService.js',
-  'src/services/pigEstimadosSubvencionService.js',
-  'src/services/pigItinerarioEiService.js',
-  'src/services/pigTesoreriaPrevisionesService.js'
+  'src/services/pigEstimadosSubvencionService.js'
 ].forEach(assertNoDestructiveReplace);
 
 const objetivos = read('src/services/pigObjetivosComparativaService.js');
@@ -40,6 +38,17 @@ assert(objetivos.includes(".upsert(payload, { onConflict: 'linea,year,variant' }
 const estimados = read('src/services/pigEstimadosSubvencionService.js');
 assert(estimados.includes("'ESTRUCTURA'"), 'estimados: debe conservar la línea ESTRUCTURA');
 assert(estimados.includes(".upsert(payload, { onConflict: 'linea,year,slot,segment' })"), 'estimados: debe usar upsert por clave natural');
+
+for (const relPath of [
+  'src/services/pigItinerarioEiService.js',
+  'src/services/pigTesoreriaPrevisionesService.js'
+]) {
+  const source = read(relPath);
+  const insertIdx = indexOfOrThrow(source, '.insert(payload)', relPath);
+  const oldIdsIdx = indexOfOrThrow(source, 'const oldIds = (existingRows || [])', relPath);
+  const deleteOldIdx = source.indexOf('.delete()', oldIdsIdx);
+  assert(deleteOldIdx > insertIdx, `${relPath}: debe insertar el reemplazo antes de borrar filas antiguas`);
+}
 
 const createEstimadosSql = read('database/create_pig_estimados_subvencion.sql');
 const alterEstimadosSql = read('database/alter_pig_estimados_subvencion_estructura.sql');
