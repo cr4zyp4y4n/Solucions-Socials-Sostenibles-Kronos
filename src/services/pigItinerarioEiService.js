@@ -189,17 +189,23 @@ export async function upsertPigItinerarioEi({ year, itinerario }) {
     }))
   ];
 
-  const { error: deleteError } = await supabase
-    .from('pig_itinerario_ei')
-    .delete()
-    .eq('year', y);
-  if (deleteError) return { error: deleteError };
+  if (payload.length) {
+    const { error: upsertError } = await supabase
+      .from('pig_itinerario_ei')
+      .upsert(payload, { onConflict: 'year,semestre,sort_order' });
+    if (upsertError) return { error: upsertError };
+  }
 
-  if (!payload.length) return { error: null };
+  for (const [semestre, keepCount] of [[1, s1.length], [2, s2.length]]) {
+    let query = supabase
+      .from('pig_itinerario_ei')
+      .delete()
+      .eq('year', y)
+      .eq('semestre', semestre);
+    if (keepCount > 0) query = query.gt('sort_order', keepCount);
 
-  const { error: insertError } = await supabase
-    .from('pig_itinerario_ei')
-    .insert(payload);
-  if (insertError) return { error: insertError };
+    const { error: deleteError } = await query;
+    if (deleteError) return { error: deleteError };
+  }
   return { error: null };
 }
