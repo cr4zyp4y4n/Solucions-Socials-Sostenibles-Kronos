@@ -13,7 +13,8 @@ create table if not exists public.pig_tesoreria_caja_corto (
   updated_at timestamptz not null default now(),
   constraint pig_tesoreria_caja_corto_pkey primary key (id),
   constraint pig_tesoreria_caja_corto_year_chk check (year >= 2000 and year <= 2100),
-  constraint pig_tesoreria_caja_corto_bloque_chk check (bloque in ('pagos', 'ingresos', 'meta'))
+  constraint pig_tesoreria_caja_corto_bloque_chk check (bloque in ('pagos', 'ingresos', 'meta')),
+  constraint pig_tesoreria_caja_corto_unique unique (year, bloque, sort_order)
 );
 
 create index if not exists idx_pig_tesoreria_caja_corto_year_bloque

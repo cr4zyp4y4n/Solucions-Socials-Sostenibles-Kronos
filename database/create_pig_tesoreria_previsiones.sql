@@ -12,7 +12,8 @@ create table if not exists public.pig_tesoreria_previsiones (
   updated_at timestamptz not null default now(),
   constraint pig_tesoreria_previsiones_pkey primary key (id),
   constraint pig_tesoreria_previsiones_year_chk check (year >= 2000 and year <= 2100),
-  constraint pig_tesoreria_previsiones_bloque_chk check (bloque in ('ingresos_por_subv', 'por_aprobar'))
+  constraint pig_tesoreria_previsiones_bloque_chk check (bloque in ('ingresos_por_subv', 'por_aprobar')),
+  constraint pig_tesoreria_previsiones_unique unique (year, bloque, sort_order)
 );
 
 create index if not exists idx_pig_tesoreria_previsiones_year_bloque

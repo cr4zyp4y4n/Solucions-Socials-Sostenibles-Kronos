@@ -158,16 +158,26 @@ export async function upsertPigTesoreriaCajaCorto({ year, cajaCorto }) {
     }))
   ];
 
-  const { error: deleteError } = await supabase
+  const { error: upsertError } = await supabase
     .from('pig_tesoreria_caja_corto')
-    .delete()
-    .eq('year', y);
-  if (deleteError) return { error: deleteError };
+    .upsert(payload, { onConflict: 'year,bloque,sort_order' });
+  if (upsertError) return { error: upsertError };
 
-  const { error: insertError } = await supabase
-    .from('pig_tesoreria_caja_corto')
-    .insert(payload);
-  if (insertError) return { error: insertError };
+  for (const [bloque, keepCount] of [
+    ['pagos', pagos.length],
+    ['ingresos', ingresos.length]
+  ]) {
+    let query = supabase
+      .from('pig_tesoreria_caja_corto')
+      .delete()
+      .eq('year', y)
+      .eq('bloque', bloque);
+    if (keepCount > 0) query = query.gt('sort_order', keepCount);
+
+    const { error: deleteError } = await query;
+    if (deleteError) return { error: deleteError };
+  }
+
   return { error: null };
 }
 
