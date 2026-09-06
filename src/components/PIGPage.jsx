@@ -4554,46 +4554,69 @@ export default function PIGPage() {
       let itinerarioForGenerate = itinerarioEi;
       let previsionesForGenerate = tesoreriaPrevisiones;
       let cajaCortoForGenerate = tesoreriaCajaCorto;
+      const assertNoPigPersistenceErrors = (results, label) => {
+        const failed = (results || []).some((ok) => ok !== true);
+        if (failed) {
+          throw new Error(`No se pudo guardar ${label}. Revisa el aviso del bloque correspondiente y vuelve a generar el Excel.`);
+        }
+      };
+      const assertNoPigLoadErrors = (results, label) => {
+        const failed = (results || []).find((result) => result?.error);
+        if (failed) {
+          const detail = String(failed.error?.message || failed.error?.details || '').trim();
+          throw new Error(
+            detail
+              ? `No se pudo cargar ${label}: ${detail}`
+              : `No se pudo cargar ${label}.`
+          );
+        }
+      };
 
       if (!omitSubvenciones) {
         if (yearForEstimados && Number(yearForEstimados) !== Number(estimadosYear)) {
-          const [
-            { estimados, error: loadEstError },
-            { objetivos, error: loadObjError },
-            { itinerario, error: loadItError },
-            { cajaCorto, error: loadCajaError }
-          ] = await Promise.all([
+          const loadResults = await Promise.all([
             loadPigEstimadosSubvencion({ year: yearForEstimados }),
             loadPigObjetivosComparativa({ year: yearForEstimados }),
             loadPigItinerarioEi({ year: yearForEstimados }),
             loadPigTesoreriaCajaCorto({ year: yearForEstimados })
           ]);
-          if (!loadEstError && estimados) estimadosForGenerate = estimados;
-          if (!loadObjError && objetivos) objetivosForGenerate = objetivos;
-          if (!loadItError && itinerario) itinerarioForGenerate = itinerario;
-          if (!loadCajaError && cajaCorto) cajaCortoForGenerate = cajaCorto;
+          assertNoPigLoadErrors(loadResults, `datos PIG ${yearForEstimados}`);
+          const [
+            { estimados },
+            { objetivos },
+            { itinerario },
+            { cajaCorto }
+          ] = loadResults;
+          if (estimados) estimadosForGenerate = estimados;
+          if (objetivos) objetivosForGenerate = objetivos;
+          if (itinerario) itinerarioForGenerate = itinerario;
+          if (cajaCorto) cajaCortoForGenerate = cajaCorto;
         } else {
-          await Promise.all([
+          const saveResults = await Promise.all([
             saveEstimadosSubv(),
             saveObjetivosComparativa(),
             saveItinerarioEi(),
             saveTesoreriaCajaCorto()
           ]);
+          assertNoPigPersistenceErrors(saveResults, 'los datos PIG editables');
         }
       } else if (yearForEstimados && Number(yearForEstimados) === Number(estimadosYear)) {
         // Objetivos + itinerario CR + previsiones TESORERÍA (sin caja corto).
-        await Promise.all([
+        const saveResults = await Promise.all([
           saveObjetivosComparativa(),
           saveItinerarioEi(),
           saveTesoreriaPrevisiones()
         ]);
+        assertNoPigPersistenceErrors(saveResults, 'los datos de Cuenta Resultados');
       } else if (yearForEstimados) {
-        const [{ itinerario, error: itErr }, { previsiones, error: prErr }] = await Promise.all([
+        const loadResults = await Promise.all([
           loadPigItinerarioEi({ year: yearForEstimados }),
           loadPigTesoreriaPrevisiones({ year: yearForEstimados })
         ]);
-        if (!itErr && itinerario) itinerarioForGenerate = itinerario;
-        if (!prErr && previsiones) previsionesForGenerate = previsiones;
+        assertNoPigLoadErrors(loadResults, `datos de Cuenta Resultados ${yearForEstimados}`);
+        const [{ itinerario }, { previsiones }] = loadResults;
+        if (itinerario) itinerarioForGenerate = itinerario;
+        if (previsiones) previsionesForGenerate = previsiones;
       }
       const estimadosSlotsByLinea = omitSubvenciones
         ? { CATERING: [], IDONI: [], KOIKI: [], ESTRUCTURA: [] }
