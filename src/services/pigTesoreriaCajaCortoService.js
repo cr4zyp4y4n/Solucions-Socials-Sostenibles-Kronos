@@ -158,16 +158,33 @@ export async function upsertPigTesoreriaCajaCorto({ year, cajaCorto }) {
     }))
   ];
 
-  const { error: deleteError } = await supabase
+  if (!payload.length) {
+    const { error: deleteError } = await supabase
+      .from('pig_tesoreria_caja_corto')
+      .delete()
+      .eq('year', y);
+    return { error: deleteError || null };
+  }
+
+  const { data: existingRows, error: selectError } = await supabase
     .from('pig_tesoreria_caja_corto')
-    .delete()
+    .select('id')
     .eq('year', y);
-  if (deleteError) return { error: deleteError };
+  if (selectError) return { error: selectError };
 
   const { error: insertError } = await supabase
     .from('pig_tesoreria_caja_corto')
     .insert(payload);
   if (insertError) return { error: insertError };
+
+  const oldIds = (existingRows || []).map((row) => row.id).filter(Boolean);
+  if (oldIds.length) {
+    const { error: deleteError } = await supabase
+      .from('pig_tesoreria_caja_corto')
+      .delete()
+      .in('id', oldIds);
+    if (deleteError) return { error: deleteError };
+  }
   return { error: null };
 }
 
