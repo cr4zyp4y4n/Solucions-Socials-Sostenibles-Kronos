@@ -4568,30 +4568,52 @@ export default function PIGPage() {
             loadPigItinerarioEi({ year: yearForEstimados }),
             loadPigTesoreriaCajaCorto({ year: yearForEstimados })
           ]);
+          const loadErrors = [
+            loadEstError && `estimados (${loadEstError.message || loadEstError.details || 'error desconocido'})`,
+            loadObjError && `objetivos (${loadObjError.message || loadObjError.details || 'error desconocido'})`,
+            loadItError && `itinerario (${loadItError.message || loadItError.details || 'error desconocido'})`,
+            loadCajaError && `caja a corto (${loadCajaError.message || loadCajaError.details || 'error desconocido'})`
+          ].filter(Boolean);
+          if (loadErrors.length) {
+            throw new Error(`No se generó el Excel porque falló la carga de datos PIG del año ${yearForEstimados}: ${loadErrors.join('; ')}.`);
+          }
           if (!loadEstError && estimados) estimadosForGenerate = estimados;
           if (!loadObjError && objetivos) objetivosForGenerate = objetivos;
           if (!loadItError && itinerario) itinerarioForGenerate = itinerario;
           if (!loadCajaError && cajaCorto) cajaCortoForGenerate = cajaCorto;
         } else {
-          await Promise.all([
+          const saveResults = await Promise.all([
             saveEstimadosSubv(),
             saveObjetivosComparativa(),
             saveItinerarioEi(),
             saveTesoreriaCajaCorto()
           ]);
+          if (saveResults.some((ok) => ok !== true)) {
+            throw new Error('No se generó el Excel porque falló algún autoguardado PIG. Revisa los avisos de estimados, objetivos, itinerario o caja a corto.');
+          }
         }
       } else if (yearForEstimados && Number(yearForEstimados) === Number(estimadosYear)) {
         // Objetivos + itinerario CR + previsiones TESORERÍA (sin caja corto).
-        await Promise.all([
+        const saveResults = await Promise.all([
           saveObjetivosComparativa(),
           saveItinerarioEi(),
           saveTesoreriaPrevisiones()
         ]);
+        if (saveResults.some((ok) => ok !== true)) {
+          throw new Error('No se generó la Cuenta de Resultados porque falló algún autoguardado PIG. Revisa los avisos de objetivos, itinerario o previsiones de tesorería.');
+        }
       } else if (yearForEstimados) {
         const [{ itinerario, error: itErr }, { previsiones, error: prErr }] = await Promise.all([
           loadPigItinerarioEi({ year: yearForEstimados }),
           loadPigTesoreriaPrevisiones({ year: yearForEstimados })
         ]);
+        const loadErrors = [
+          itErr && `itinerario (${itErr.message || itErr.details || 'error desconocido'})`,
+          prErr && `previsiones (${prErr.message || prErr.details || 'error desconocido'})`
+        ].filter(Boolean);
+        if (loadErrors.length) {
+          throw new Error(`No se generó la Cuenta de Resultados porque falló la carga de datos PIG del año ${yearForEstimados}: ${loadErrors.join('; ')}.`);
+        }
         if (!itErr && itinerario) itinerarioForGenerate = itinerario;
         if (!prErr && previsiones) previsionesForGenerate = previsiones;
       }
@@ -5172,6 +5194,10 @@ export default function PIGPage() {
           }
           if (impuestosError) {
             console.warn('PIG TESORERÍA IMPUESTOS: no se pudieron cargar cuentas contables de Holded.', impuestosError);
+            throw new Error(`No se generó el Excel porque no se pudieron cargar impuestos desde Holded: ${impuestosError.message || impuestosError.details || 'error desconocido'}.`);
+          }
+          if (!impuestos) {
+            throw new Error('No se generó el Excel porque Holded no devolvió saldos fiscales verificables para IMPUESTOS.');
           }
           const { aoa: aoaTesoreria, meta: tesoreriaMeta } = buildPigTesoreriaSheetAoa({
             title: titleTesoreria,
@@ -5189,6 +5215,7 @@ export default function PIGPage() {
           XLSX.utils.book_append_sheet(wb, wsTesoreria, 'TESORERÍA');
         } catch (e) {
           console.error('Error generando hoja TESORERÍA:', e);
+          throw e;
         }
 
         try {
