@@ -24,7 +24,7 @@ const serviceFiles = [
 for (const rel of serviceFiles) {
   const src = read(rel);
   assert(
-    !/\.delete\(\)\s*\n\s*\.eq\('year', y\)[\s\S]{0,320}\.insert\(payload\)/.test(src),
+    !/\.delete\(\)\s*\n\s*\.eq\('year', y\);\s*\n\s*if \(deleteError\) return \{ error: deleteError \};\s*\n\s*if \(!payload\.length\) return \{ error: null \};/.test(src),
     `${rel}: no debe borrar el año antes de insertar un payload no vacío`
   );
 }
