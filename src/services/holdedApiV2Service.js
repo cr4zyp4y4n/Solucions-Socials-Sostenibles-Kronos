@@ -92,6 +92,21 @@ class HoldedApiV2Service {
   }
 
   /**
+   * Registros de salario / líquido a pagar (Holded v2).
+   * Preferible a /payroll-records (404 en algunas cuentas).
+   * Filtrar por fecha en cliente: start_date/end_date no siempre aplica.
+   */
+  async getSalaryRecords(params = {}, company = 'solucions') {
+    return this.fetchAllPages('/salary-records', params || {}, company);
+  }
+
+  async getSalaryRecordById(id, company = 'solucions') {
+    const sid = String(id || '').trim();
+    if (!sid) return null;
+    return this.makeRequest(`/salary-records/${sid}`, {}, company);
+  }
+
+  /**
    * Plan de cuentas Holded v2.
    * Con `start_date` + `end_date` (ISO YYYY-MM-DD, distintos) Holded rellena debit/credit/balance del periodo.
    * Sin fechas, los saldos no coinciden con el plan contable de la UI.

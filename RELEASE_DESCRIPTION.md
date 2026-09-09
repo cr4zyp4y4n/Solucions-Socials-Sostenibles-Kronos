@@ -1,3 +1,15 @@
+## v2.5.6
+
+### PIG / Tesorería
+
+- **TOTAL − INVES − BCREDIT:** el neto operativo resta también la cuenta Caixa **BCREDIT** (saldo Holded), en PIG Normal y en CR; la previsión 18 meses ancla la caja de junio a esa etiqueta.
+- **Caja a corto (solo PIG Normal):** debajo de los bancos en Excel; persistente en Supabase; **no** se incluye en el Excel CR.
+- **Auto Holded al generar PIG Normal:** rellena NÓMINAS (465*), SS (476), AUTÓNOMOS (642 «AUTONOMO») y FINANCIACIONES/TARJETAS (170 + 520) con el mes de hoy del año anterior.
+- **UI manual:** solo **proveedores domiciliados** y **proveedores del X al X de X** (concepto + importe).
+- **SQL (requerido):** `database/create_pig_tesoreria_caja_corto.sql`.
+
+---
+
 ## v2.5.4
 
 ### Fichaje — recordatorios SMS 24/7 + cierre automático
@@ -17,15 +29,6 @@
 
 ---
 
-## v2.5.5 (en preparación)
-
-### PIG / Tesorería
-
-- **TOTAL − INVES − BCREDIT:** el neto operativo resta también la cuenta Caixa **BCREDIT** (saldo Holded), en PIG Normal y en CR; la previsión 18 meses ancla la caja de junio a esa etiqueta.
-- **Caja a corto editable (solo PIG Normal):** debajo de los bancos, bloque manual (previsión de pagos, ingresos y total a fecha) persistente en Supabase; **no** se incluye en el Excel CR.
-- **SQL (requerido):** `database/create_pig_tesoreria_caja_corto.sql`.
-
----
 
 ## v2.5.2
 

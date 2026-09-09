@@ -42,11 +42,14 @@ import {
   upsertPigTesoreriaPrevisiones
 } from '../services/pigTesoreriaPrevisionesService';
 import {
-  createEmptyCajaCortoRow,
   loadPigTesoreriaCajaCorto,
   PIG_TESORERIA_CAJA_CORTO_DEFAULTS,
   upsertPigTesoreriaCajaCorto
 } from '../services/pigTesoreriaCajaCortoService';
+import {
+  applyCajaCortoNominasSsSuggestion,
+  suggestCajaCortoNominasSsFromHolded
+} from '../services/pigTesoreriaCajaCortoHoldedService';
 import {
   buildPigPresupuestosSheetAoa,
   loadPigPresupuestosPendientes
@@ -4344,7 +4347,20 @@ export default function PIGPage() {
     if (tableMissing) {
       setCajaCortoStatus('Ejecuta database/create_pig_tesoreria_caja_corto.sql en Supabase.');
     }
-    if (cajaCorto) setTesoreriaCajaCorto(cajaCorto);
+    if (cajaCorto) {
+      const pagos = [...(cajaCorto.pagos || [])];
+      if (!pagos.some((r) => /DOMICILIAD/i.test(String(r?.concepto || '')))) {
+        pagos.splice(1, 0, { concepto: 'PROVEEDORES DOMICILIADOS', importe: '' });
+      }
+      if (!pagos.some((r) => /PROVEEDORES/i.test(String(r?.concepto || '')) && !/DOMICILIAD/i.test(String(r?.concepto || '')))) {
+        const afterDom = pagos.findIndex((r) => /DOMICILIAD/i.test(String(r?.concepto || '')));
+        pagos.splice(afterDom >= 0 ? afterDom + 1 : 1, 0, {
+          concepto: 'PROVEEDORES 1 AL 5 DE SEPTIEMBRE',
+          importe: ''
+        });
+      }
+      setTesoreriaCajaCorto({ ...cajaCorto, pagos });
+    }
   }, []);
 
   useEffect(() => {
@@ -4576,9 +4592,42 @@ export default function PIGPage() {
           await Promise.all([
             saveEstimadosSubv(),
             saveObjetivosComparativa(),
-            saveItinerarioEi(),
-            saveTesoreriaCajaCorto()
+            saveItinerarioEi()
           ]);
+        }
+
+        // PIG Normal: rellenar NÓMINAS/SS/AUTÓNOMOS/FINANC. desde Holded al generar (sin botón manual).
+        if (empresaMode !== 'MH' && Number.isFinite(yearForEstimados)) {
+          try {
+            const { suggestion, error: sugError } = await suggestCajaCortoNominasSsFromHolded({
+              year: yearForEstimados,
+              monthIndex: new Date().getMonth(),
+              company: 'solucions'
+            });
+            if (!sugError && suggestion) {
+              cajaCortoForGenerate = applyCajaCortoNominasSsSuggestion(cajaCortoForGenerate, suggestion);
+              setTesoreriaCajaCorto(cajaCortoForGenerate);
+              const parts = [];
+              if (suggestion.nominasNeto != null) parts.push(`NÓMINAS ${suggestion.nominasNeto}€`);
+              if (suggestion.segurosSociales != null) parts.push(`SS ${suggestion.segurosSociales}€`);
+              if (suggestion.autonomos != null) parts.push(`AUTÓNOMOS ${suggestion.autonomos}€`);
+              if (suggestion.financiaciones != null) parts.push(`FINANC. ${suggestion.financiaciones}€`);
+              setCajaCortoStatus(
+                `Auto Holded ${suggestion.label}: ${parts.join(' · ') || 'sin importes'}. Guardado con el Excel.`
+              );
+            } else if (sugError) {
+              console.warn('PIG caja a corto Holded:', sugError);
+              setCajaCortoStatus(
+                `Excel OK; no se pudo auto-rellenar caja a corto: ${sugError.message || sugError}`
+              );
+            }
+          } catch (e) {
+            console.warn('PIG caja a corto Holded:', e);
+          }
+          await upsertPigTesoreriaCajaCorto({
+            year: yearForEstimados,
+            cajaCorto: cajaCortoForGenerate
+          });
         }
       } else if (yearForEstimados && Number(yearForEstimados) === Number(estimadosYear)) {
         // Objetivos + itinerario CR + previsiones TESORERÍA (sin caja corto).
@@ -5805,59 +5854,11 @@ export default function PIGPage() {
         {pigEmpresa !== 'MH' && (
           <div style={{ padding: 14, borderRadius: 12, border: `1px solid ${colors.border}`, background: colors.surface }}>
             <div style={{ fontSize: 13, fontWeight: 950, marginBottom: 4 }}>
-              Previsión caja a corto (PIG Normal)
+              Proveedores caja a corto (PIG Normal)
             </div>
             <div style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 10, lineHeight: 1.35 }}>
-              Solo aparece en el Excel <b>PIG Normal</b> (no en CR), debajo de los bancos en <b>TESORERÍA</b>.
-              Lizeth introduce títulos, importes y la fecha del total. El Excel calcula:{' '}
-              <b>TOTAL − INVES − BCREDIT − pagos + ingresos</b>.
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 0.6fr', gap: 8, marginBottom: 12 }}>
-              <input
-                value={tesoreriaCajaCorto.tituloPagos || ''}
-                placeholder="Título previsión pagos"
-                disabled={cajaCortoLoading}
-                onChange={(e) => setTesoreriaCajaCorto((prev) => ({ ...prev, tituloPagos: e.target.value }))}
-                style={{
-                  padding: '8px 10px',
-                  borderRadius: 8,
-                  border: `1px solid ${colors.border}`,
-                  background: colors.background,
-                  color: colors.text,
-                  fontSize: 12,
-                  fontWeight: 700
-                }}
-              />
-              <input
-                value={tesoreriaCajaCorto.tituloIngresos || ''}
-                placeholder="Título ingresos previstos"
-                disabled={cajaCortoLoading}
-                onChange={(e) => setTesoreriaCajaCorto((prev) => ({ ...prev, tituloIngresos: e.target.value }))}
-                style={{
-                  padding: '8px 10px',
-                  borderRadius: 8,
-                  border: `1px solid ${colors.border}`,
-                  background: colors.background,
-                  color: colors.text,
-                  fontSize: 12,
-                  fontWeight: 700
-                }}
-              />
-              <input
-                value={tesoreriaCajaCorto.fechaTotal || ''}
-                placeholder="Fecha total (ej. 06/09)"
-                disabled={cajaCortoLoading}
-                onChange={(e) => setTesoreriaCajaCorto((prev) => ({ ...prev, fechaTotal: e.target.value }))}
-                style={{
-                  padding: '8px 10px',
-                  borderRadius: 8,
-                  border: `1px solid ${colors.border}`,
-                  background: colors.background,
-                  color: colors.text,
-                  fontSize: 12,
-                  fontWeight: 700
-                }}
-              />
+              Solo estos dos importes son manuales. El resto (nóminas, SS, autónomos, financiaciones)
+              se rellena solo al <b>generar el PIG Normal</b> desde Holded.
             </div>
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
               <button
@@ -5875,54 +5876,41 @@ export default function PIGPage() {
                   opacity: cajaCortoSaving || cajaCortoLoading ? 0.7 : 1
                 }}
               >
-                {cajaCortoSaving ? 'Guardando…' : 'Guardar caja a corto'}
+                {cajaCortoSaving ? 'Guardando…' : 'Guardar proveedores'}
               </button>
             </div>
-            {[
-              { key: 'pagos', label: 'Pagos previstos' },
-              { key: 'ingresos', label: 'Ingresos previstos' }
-            ].map((block) => (
-              <div key={block.key} style={{ marginBottom: 16 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                  <div style={{ fontSize: 12, fontWeight: 900 }}>{block.label}</div>
-                  <button
-                    type="button"
-                    onClick={() => setTesoreriaCajaCorto((prev) => ({
-                      ...prev,
-                      [block.key]: [...(prev[block.key] || []), createEmptyCajaCortoRow()]
-                    }))}
-                    style={{
-                      padding: '6px 10px',
-                      borderRadius: 8,
-                      border: `1px solid ${colors.border}`,
-                      background: colors.background,
-                      color: colors.text,
-                      fontWeight: 800,
-                      cursor: 'pointer'
-                    }}
-                  >
-                    + Fila
-                  </button>
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {(tesoreriaCajaCorto[block.key] || []).map((row, idx) => (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {(() => {
+                const pagos = tesoreriaCajaCorto.pagos || [];
+                const domIdx = pagos.findIndex((r) => /DOMICILIAD/i.test(String(r?.concepto || '')));
+                const rangoIdx = pagos.findIndex(
+                  (r) => /PROVEEDORES/i.test(String(r?.concepto || ''))
+                    && !/DOMICILIAD/i.test(String(r?.concepto || ''))
+                );
+                const slots = [
+                  { idx: domIdx, placeholder: 'PROVEEDORES DOMICILIADOS' },
+                  { idx: rangoIdx, placeholder: 'PROVEEDORES 1 AL 5 DE SEPTIEMBRE' }
+                ].filter((s) => s.idx >= 0);
+                return slots.map(({ idx, placeholder }) => {
+                  const row = pagos[idx] || {};
+                  return (
                     <div
-                      key={`${block.key}-${idx}`}
+                      key={`proveedor-${idx}`}
                       style={{
                         display: 'grid',
-                        gridTemplateColumns: '1.6fr 0.7fr auto',
+                        gridTemplateColumns: '1.6fr 0.7fr',
                         gap: 6,
                         alignItems: 'center'
                       }}
                     >
                       <input
                         value={row.concepto || ''}
-                        placeholder="Concepto"
+                        placeholder={placeholder}
                         disabled={cajaCortoLoading}
                         onChange={(e) => setTesoreriaCajaCorto((prev) => {
-                          const next = [...(prev[block.key] || [])];
+                          const next = [...(prev.pagos || [])];
                           next[idx] = { ...next[idx], concepto: e.target.value };
-                          return { ...prev, [block.key]: next };
+                          return { ...prev, pagos: next };
                         })}
                         style={{
                           padding: '8px 10px',
@@ -5939,9 +5927,9 @@ export default function PIGPage() {
                         placeholder="Importe"
                         disabled={cajaCortoLoading}
                         onChange={(e) => setTesoreriaCajaCorto((prev) => {
-                          const next = [...(prev[block.key] || [])];
+                          const next = [...(prev.pagos || [])];
                           next[idx] = { ...next[idx], importe: e.target.value };
-                          return { ...prev, [block.key]: next };
+                          return { ...prev, pagos: next };
                         })}
                         style={{
                           padding: '8px 10px',
@@ -5953,29 +5941,11 @@ export default function PIGPage() {
                           fontWeight: 700
                         }}
                       />
-                      <button
-                        type="button"
-                        onClick={() => setTesoreriaCajaCorto((prev) => ({
-                          ...prev,
-                          [block.key]: (prev[block.key] || []).filter((_, i) => i !== idx)
-                        }))}
-                        style={{
-                          padding: '8px 10px',
-                          borderRadius: 8,
-                          border: `1px solid ${colors.border}`,
-                          background: colors.background,
-                          color: colors.error || '#c0392b',
-                          fontWeight: 800,
-                          cursor: 'pointer'
-                        }}
-                      >
-                        ×
-                      </button>
                     </div>
-                  ))}
-                </div>
-              </div>
-            ))}
+                  );
+                });
+              })()}
+            </div>
             {cajaCortoStatus ? (
               <div style={{ marginTop: 8, fontSize: 12, fontWeight: 800, color: colors.textSecondary }}>
                 {cajaCortoStatus}

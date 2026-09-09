@@ -10,7 +10,8 @@ export const PIG_TESORERIA_CAJA_CORTO_DEFAULTS = {
     { concepto: 'PROVEEDORES DOMICILIADOS', importe: '' },
     { concepto: 'PROVEEDORES 1 AL 5 DE SEPTIEMBRE', importe: '' },
     { concepto: 'SEGUROS SOCIALES', importe: '' },
-    { concepto: 'AUTONOMOS', importe: '' }
+    { concepto: 'AUTONOMOS', importe: '' },
+    { concepto: 'FINANCIACIONES Y TARJETAS (170+520)', importe: '' }
   ],
   ingresos: [{ concepto: 'PREVISIÓN DE INGRESOS AGOSTO', importe: '' }]
 };
