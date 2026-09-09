@@ -4568,32 +4568,52 @@ export default function PIGPage() {
             loadPigItinerarioEi({ year: yearForEstimados }),
             loadPigTesoreriaCajaCorto({ year: yearForEstimados })
           ]);
-          if (!loadEstError && estimados) estimadosForGenerate = estimados;
-          if (!loadObjError && objetivos) objetivosForGenerate = objetivos;
-          if (!loadItError && itinerario) itinerarioForGenerate = itinerario;
-          if (!loadCajaError && cajaCorto) cajaCortoForGenerate = cajaCorto;
+          const loadErrors = [loadEstError, loadObjError, loadItError, loadCajaError].filter(Boolean);
+          if (loadErrors.length || !estimados || !objetivos || !itinerario || !cajaCorto) {
+            const detail = loadErrors.map((err) => err?.message || err?.details || String(err)).filter(Boolean).join(' · ');
+            setError(detail ? `No se pudo generar el PIG: ${detail}` : 'No se pudo cargar la configuración PIG del año del archivo.');
+            return;
+          }
+          estimadosForGenerate = estimados;
+          objetivosForGenerate = objetivos;
+          itinerarioForGenerate = itinerario;
+          cajaCortoForGenerate = cajaCorto;
         } else {
-          await Promise.all([
+          const saveResults = await Promise.all([
             saveEstimadosSubv(),
             saveObjetivosComparativa(),
             saveItinerarioEi(),
             saveTesoreriaCajaCorto()
           ]);
+          if (saveResults.some((ok) => ok !== true)) {
+            setError('No se pudo generar el PIG: corrige primero los errores de guardado.');
+            return;
+          }
         }
       } else if (yearForEstimados && Number(yearForEstimados) === Number(estimadosYear)) {
         // Objetivos + itinerario CR + previsiones TESORERÍA (sin caja corto).
-        await Promise.all([
+        const saveResults = await Promise.all([
           saveObjetivosComparativa(),
           saveItinerarioEi(),
           saveTesoreriaPrevisiones()
         ]);
+        if (saveResults.some((ok) => ok !== true)) {
+          setError('No se pudo generar la cuenta de resultados: corrige primero los errores de guardado.');
+          return;
+        }
       } else if (yearForEstimados) {
         const [{ itinerario, error: itErr }, { previsiones, error: prErr }] = await Promise.all([
           loadPigItinerarioEi({ year: yearForEstimados }),
           loadPigTesoreriaPrevisiones({ year: yearForEstimados })
         ]);
-        if (!itErr && itinerario) itinerarioForGenerate = itinerario;
-        if (!prErr && previsiones) previsionesForGenerate = previsiones;
+        const loadErrors = [itErr, prErr].filter(Boolean);
+        if (loadErrors.length || !itinerario || !previsiones) {
+          const detail = loadErrors.map((err) => err?.message || err?.details || String(err)).filter(Boolean).join(' · ');
+          setError(detail ? `No se pudo generar la cuenta de resultados: ${detail}` : 'No se pudo cargar la configuración PIG del año del archivo.');
+          return;
+        }
+        itinerarioForGenerate = itinerario;
+        previsionesForGenerate = previsiones;
       }
       const estimadosSlotsByLinea = omitSubvenciones
         ? { CATERING: [], IDONI: [], KOIKI: [], ESTRUCTURA: [] }
@@ -5172,6 +5192,12 @@ export default function PIGPage() {
           }
           if (impuestosError) {
             console.warn('PIG TESORERÍA IMPUESTOS: no se pudieron cargar cuentas contables de Holded.', impuestosError);
+            setError(`No se pudo generar el PIG: IMPUESTOS no tiene saldos fiscales verificables (${impuestosError.message || impuestosError}).`);
+            return;
+          }
+          if (!impuestos) {
+            setError('No se pudo generar el PIG: IMPUESTOS no tiene saldos fiscales verificables.');
+            return;
           }
           const { aoa: aoaTesoreria, meta: tesoreriaMeta } = buildPigTesoreriaSheetAoa({
             title: titleTesoreria,

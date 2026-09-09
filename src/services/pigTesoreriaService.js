@@ -24,7 +24,23 @@ export const TESORERIA_RIGHT_COL = {
 export const TESORERIA_CTA_RESULTADOS_RIGHT = null;
 
 function parseBalance(value) {
-  const n = Number.parseFloat(String(value ?? '').replace(',', '.'));
+  const s = String(value ?? '').replace(/\s/g, '').trim();
+  const normalized = (() => {
+    if (s.includes(',') && s.includes('.')) {
+      return s.lastIndexOf('.') > s.lastIndexOf(',')
+        ? s.replace(/,/g, '')
+        : s.replace(/\./g, '').replace(',', '.');
+    }
+    if (s.includes(',')) return s.replace(/\./g, '').replace(',', '.');
+    const dots = (s.match(/\./g) || []).length;
+    if (dots >= 2) return s.replace(/\./g, '');
+    if (dots === 1) {
+      const [a, b] = s.split('.');
+      if (b && b.length === 3) return `${a}${b}`;
+    }
+    return s;
+  })();
+  const n = Number.parseFloat(normalized);
   return Number.isFinite(n) ? n : 0;
 }
 
@@ -303,8 +319,8 @@ function appendImpuestosRight(aoa, meta, impuestos = null, { monthIndex } = {}) 
       : mod303Rows.reduce((acc, row) => acc + (Number(row.balance) || 0), 0);
   setAoaCell(aoa, mod303ResultRow, col.code, 'MOD 303');
   setAoaCell(aoa, mod303ResultRow, col.saldo, mod303Sum);
-  // Si G (resultado 303) es negativo → reflejar en H (A PAGAR) para el total
-  const aPagar303 = mod303Sum < 0 ? mod303Sum : '';
+  // Si G (resultado 303) es negativo, H muestra el importe positivo a pagar.
+  const aPagar303 = mod303Sum < 0 ? Math.abs(mod303Sum) : '';
   setAoaCell(aoa, mod303ResultRow, col.aPagar, aPagar303);
   r += 2;
 
