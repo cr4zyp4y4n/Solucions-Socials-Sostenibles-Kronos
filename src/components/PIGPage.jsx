@@ -51,6 +51,15 @@ import {
   suggestCajaCortoNominasSsFromHolded
 } from '../services/pigTesoreriaCajaCortoHoldedService';
 import {
+  createEmptyCrSubvEjerciciosAnterioresRow,
+  crSubvEjerciciosAnterioresToExcelRows,
+  loadPigCrSubvEjerciciosAnteriores,
+  PIG_CR_SUBV_EJERCICIOS_ANTERIORES_TITLE,
+  PIG_CR_SUBV_EJERCICIOS_ANTERIORES_TOTAL_LABEL,
+  sumCrSubvEjerciciosAnteriores,
+  upsertPigCrSubvEjerciciosAnteriores
+} from '../services/pigCrSubvEjerciciosAnterioresService';
+import {
   buildPigPresupuestosSheetAoa,
   loadPigPresupuestosPendientes
 } from '../services/pigPresupuestosService';
@@ -3889,7 +3898,16 @@ function stylePigEstructuraSheet({ ws, aoa, meta = null }) {
   }
 }
 
-function buildGeneralAoa({ title, months, mensualMap, annualTotalsMap, monthLimit, cuentasMensuales = [], omitSubvenciones = false }) {
+function buildGeneralAoa({
+  title,
+  months,
+  mensualMap,
+  annualTotalsMap,
+  monthLimit,
+  cuentasMensuales = [],
+  omitSubvenciones = false,
+  subvEjerciciosAnterioresRows = []
+}) {
   const lim = Math.max(1, Math.min(12, Number(monthLimit || 12)));
   const monthsLimited = months.slice(0, lim);
   const cuentas = omitSubvenciones ? filterCuentasSinSubvenciones(cuentasMensuales) : cuentasMensuales;
@@ -3941,6 +3959,24 @@ function buildGeneralAoa({ title, months, mensualMap, annualTotalsMap, monthLimi
   const aoa = [];
   aoa.push([title, '', '']);
   aoa.push(['', '', '']);
+
+  // Bloque manual CR: título fijo + filas Lizeth + TOTAL (NO entran en summaryLabels ni totales del PIG).
+  if (omitSubvenciones) {
+    aoa.push([PIG_CR_SUBV_EJERCICIOS_ANTERIORES_TITLE, '', '']);
+    const manualRows = Array.isArray(subvEjerciciosAnterioresRows) ? subvEjerciciosAnterioresRows : [];
+    let blockTotal = 0;
+    for (const row of manualRows) {
+      const concepto = String(row?.concepto || '').trim();
+      const amount = row?.amount;
+      if (!concepto && (amount == null || !Number.isFinite(Number(amount)))) continue;
+      const n = amount != null && Number.isFinite(Number(amount)) ? Number(amount) : 0;
+      blockTotal += n;
+      aoa.push([concepto || '—', '', '']);
+      aoa.push(['', n, '']);
+    }
+    aoa.push([PIG_CR_SUBV_EJERCICIOS_ANTERIORES_TOTAL_LABEL, '', '']);
+    aoa.push(['', blockTotal, '']);
+  }
 
   const summaryValueRows = [];
   // Resumen (label + valor) -> si monthLimit<12, recalculamos desde mensual; si no, usamos anual.
@@ -4106,11 +4142,21 @@ function styleGeneralSheet({
     const lbl = ws[XLSX.utils.encode_cell({ r, c: 0 })]?.v;
     if (!lbl) continue;
     const label = String(lbl);
-    if (isMainLine(label) || /^[a-z]\)\s+/i.test(label) || /EXCEDENTE|RESULTADO TOTAL/.test(label)) {
+    if (
+      label === PIG_CR_SUBV_EJERCICIOS_ANTERIORES_TITLE
+      || label === PIG_CR_SUBV_EJERCICIOS_ANTERIORES_TOTAL_LABEL
+      || isMainLine(label)
+      || /^[a-z]\)\s+/i.test(label)
+      || /EXCEDENTE|RESULTADO TOTAL|Estimado Subvenciones|SUBV EISSS|IMPULSEM/i.test(label)
+    ) {
       setCellStyle(ws, r, 0, labelBold);
       const valueRow = r + 1;
       if (valueRow <= summaryEnd && !ws[XLSX.utils.encode_cell({ r: valueRow, c: 0 })]?.v) {
-        if (isMainLine(label) || /EXCEDENTE|RESULTADO TOTAL/.test(label)) {
+        if (
+          label === PIG_CR_SUBV_EJERCICIOS_ANTERIORES_TOTAL_LABEL
+          || isMainLine(label)
+          || /EXCEDENTE|RESULTADO TOTAL/.test(label)
+        ) {
           setCellStyle(ws, valueRow, 1, labelBold);
         }
       }
@@ -4260,6 +4306,12 @@ export default function PIGPage() {
   const [cajaCortoLoading, setCajaCortoLoading] = useState(false);
   const [cajaCortoSaving, setCajaCortoSaving] = useState(false);
   const [cajaCortoStatus, setCajaCortoStatus] = useState('');
+  const [crSubvEjAnteriores, setCrSubvEjAnteriores] = useState(() => [
+    createEmptyCrSubvEjerciciosAnterioresRow()
+  ]);
+  const [crSubvEjAnterioresLoading, setCrSubvEjAnterioresLoading] = useState(false);
+  const [crSubvEjAnterioresSaving, setCrSubvEjAnterioresSaving] = useState(false);
+  const [crSubvEjAnterioresStatus, setCrSubvEjAnterioresStatus] = useState('');
   const [previsionPig2026, setPrevisionPig2026] = useState(null);
   const [previsionPig2025, setPrevisionPig2025] = useState(null);
   const [previsionTesoreriaLoading, setPrevisionTesoreriaLoading] = useState(false);
@@ -4363,13 +4415,43 @@ export default function PIGPage() {
     }
   }, []);
 
+  const loadCrSubvEjAnterioresForYear = useCallback(async (year) => {
+    const y = Number(year);
+    if (!Number.isFinite(y)) return;
+    setCrSubvEjAnterioresLoading(true);
+    setCrSubvEjAnterioresStatus('');
+    const { rows, error: loadError, tableMissing } = await loadPigCrSubvEjerciciosAnteriores({ year: y });
+    setCrSubvEjAnterioresLoading(false);
+    if (loadError) {
+      setCrSubvEjAnterioresStatus('No se pudieron cargar las subvenciones de ejercicios anteriores.');
+      return;
+    }
+    if (tableMissing) {
+      setCrSubvEjAnterioresStatus(
+        'Ejecuta database/create_pig_cr_subv_ejercicios_anteriores.sql en Supabase.'
+      );
+    }
+    if (rows) {
+      setCrSubvEjAnteriores(rows.length ? rows : [createEmptyCrSubvEjerciciosAnterioresRow()]);
+    }
+  }, []);
+
   useEffect(() => {
     loadEstimadosForYear(estimadosYear);
     loadObjetivosForYear(estimadosYear);
     loadItinerarioForYear(estimadosYear);
     loadPrevisionesForYear(estimadosYear);
     loadCajaCortoForYear(estimadosYear);
-  }, [estimadosYear, loadEstimadosForYear, loadObjetivosForYear, loadItinerarioForYear, loadPrevisionesForYear, loadCajaCortoForYear]);
+    loadCrSubvEjAnterioresForYear(estimadosYear);
+  }, [
+    estimadosYear,
+    loadEstimadosForYear,
+    loadObjetivosForYear,
+    loadItinerarioForYear,
+    loadPrevisionesForYear,
+    loadCajaCortoForYear,
+    loadCrSubvEjAnterioresForYear
+  ]);
 
   const saveObjetivosComparativa = useCallback(async () => {
     const y = Number(estimadosYear);
@@ -4468,6 +4550,32 @@ export default function PIGPage() {
     setCajaCortoStatus('Previsión de caja a corto guardada.');
     return true;
   }, [tesoreriaCajaCorto, estimadosYear]);
+
+  const saveCrSubvEjAnteriores = useCallback(async () => {
+    const y = Number(estimadosYear);
+    if (!Number.isFinite(y)) {
+      setCrSubvEjAnterioresStatus('Introduce un año válido.');
+      return false;
+    }
+    setCrSubvEjAnterioresSaving(true);
+    setCrSubvEjAnterioresStatus('');
+    const { error: saveError } = await upsertPigCrSubvEjerciciosAnteriores({
+      year: y,
+      rows: crSubvEjAnteriores
+    });
+    setCrSubvEjAnterioresSaving(false);
+    if (saveError) {
+      const detail = String(saveError.message || saveError.details || '').trim();
+      setCrSubvEjAnterioresStatus(
+        detail
+          ? `Error al guardar: ${detail}`
+          : 'Error al guardar. ¿Has ejecutado database/create_pig_cr_subv_ejercicios_anteriores.sql?'
+      );
+      return false;
+    }
+    setCrSubvEjAnterioresStatus('Subvenciones ejercicios anteriores guardadas.');
+    return true;
+  }, [crSubvEjAnteriores, estimadosYear]);
 
   const saveEstimadosSubv = useCallback(async () => {
     const y = Number(estimadosYear);
@@ -4570,6 +4678,7 @@ export default function PIGPage() {
       let itinerarioForGenerate = itinerarioEi;
       let previsionesForGenerate = tesoreriaPrevisiones;
       let cajaCortoForGenerate = tesoreriaCajaCorto;
+      let crSubvEjAnterioresForGenerate = crSubvEjAnteriores;
 
       if (!omitSubvenciones) {
         if (yearForEstimados && Number(yearForEstimados) !== Number(estimadosYear)) {
@@ -4630,19 +4739,26 @@ export default function PIGPage() {
           });
         }
       } else if (yearForEstimados && Number(yearForEstimados) === Number(estimadosYear)) {
-        // Objetivos + itinerario CR + previsiones TESORERÍA (sin caja corto).
+        // Objetivos + itinerario CR + previsiones TESORERÍA + subv. ejercicios anteriores.
         await Promise.all([
           saveObjetivosComparativa(),
           saveItinerarioEi(),
-          saveTesoreriaPrevisiones()
+          saveTesoreriaPrevisiones(),
+          saveCrSubvEjAnteriores()
         ]);
       } else if (yearForEstimados) {
-        const [{ itinerario, error: itErr }, { previsiones, error: prErr }] = await Promise.all([
+        const [
+          { itinerario, error: itErr },
+          { previsiones, error: prErr },
+          { rows: crSubvRows, error: crSubvErr }
+        ] = await Promise.all([
           loadPigItinerarioEi({ year: yearForEstimados }),
-          loadPigTesoreriaPrevisiones({ year: yearForEstimados })
+          loadPigTesoreriaPrevisiones({ year: yearForEstimados }),
+          loadPigCrSubvEjerciciosAnteriores({ year: yearForEstimados })
         ]);
         if (!itErr && itinerario) itinerarioForGenerate = itinerario;
         if (!prErr && previsiones) previsionesForGenerate = previsiones;
+        if (!crSubvErr && crSubvRows) crSubvEjAnterioresForGenerate = crSubvRows;
       }
       const estimadosSlotsByLinea = omitSubvenciones
         ? { CATERING: [], IDONI: [], KOIKI: [], ESTRUCTURA: [] }
@@ -4713,6 +4829,10 @@ export default function PIGPage() {
       const titlePrev = `${titleDocKind} GENERAL ${empresaLabel} A ${monthLabelUpper(prevIdx)} ${yy ? `${startStr} A ${endOfMonthStr(prevIdx)}` : ''}`.trim();
       const sheetNamePrev = (`${titleDocKind} GENERAL ${empresaLabel} A ${monthLabelUpper(prevIdx)}`.trim()).slice(0, 31);
 
+      const crSubvExcelRows = omitSubvenciones
+        ? crSubvEjerciciosAnterioresToExcelRows(crSubvEjAnterioresForGenerate)
+        : [];
+
       const { aoa: aoaFull, monthsLimited: monthsFull, formulaMeta: generalFormulaMetaFull } = buildGeneralAoa({
         title: titleFull,
         months,
@@ -4720,7 +4840,8 @@ export default function PIGPage() {
         annualTotalsMap: anual,
         monthLimit: monthLimitFull,
         cuentasMensuales,
-        omitSubvenciones
+        omitSubvenciones,
+        subvEjerciciosAnterioresRows: crSubvExcelRows
       });
       let miniTablaMeta = null;
       let itinerarioMeta = null;
@@ -4775,7 +4896,8 @@ export default function PIGPage() {
         annualTotalsMap: anual,
         monthLimit: monthLimitPrev,
         cuentasMensuales,
-        omitSubvenciones
+        omitSubvenciones,
+        subvEjerciciosAnterioresRows: crSubvExcelRows
       });
       let miniTablaMetaNov = null;
       const sideColsNov = getPigGeneralSideCols(monthsNov, {
@@ -5303,6 +5425,7 @@ export default function PIGPage() {
     itinerarioEi,
     tesoreriaPrevisiones,
     tesoreriaCajaCorto,
+    crSubvEjAnteriores,
     pigEmpresa,
     estimadosSubv,
     estimadosYear,
@@ -5310,7 +5433,8 @@ export default function PIGPage() {
     saveObjetivosComparativa,
     saveItinerarioEi,
     saveTesoreriaPrevisiones,
-    saveTesoreriaCajaCorto
+    saveTesoreriaCajaCorto,
+    saveCrSubvEjAnteriores
   ]);
 
   return (
@@ -5846,6 +5970,148 @@ export default function PIGPage() {
             {itinerarioStatus ? (
               <div style={{ marginTop: 8, fontSize: 12, fontWeight: 800, color: colors.textSecondary }}>
                 {itinerarioStatus}
+              </div>
+            ) : null}
+          </div>
+        )}
+
+        {pigEmpresa !== 'MH' && (
+          <div style={{ padding: 14, borderRadius: 12, border: `1px solid ${colors.border}`, background: colors.surface }}>
+            <div style={{ fontSize: 13, fontWeight: 950, marginBottom: 4 }}>
+              {PIG_CR_SUBV_EJERCICIOS_ANTERIORES_TITLE} (Cuenta Resultados)
+            </div>
+            <div style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 10, lineHeight: 1.35 }}>
+              Bloque al inicio de la tabla izquierda en <b>CR GENERAL EISSS</b> (hojas 1 y 2).
+              El título es fijo; añade filas con nombre e importe. <b>No suman</b> a ningún total.
+              Mismo año que estimados. Pulsa guardar o genera el Excel CR.
+            </div>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+              <button
+                type="button"
+                onClick={saveCrSubvEjAnteriores}
+                disabled={crSubvEjAnterioresSaving || crSubvEjAnterioresLoading}
+                style={{
+                  padding: '10px 14px',
+                  borderRadius: 10,
+                  border: `1px solid ${colors.primary}`,
+                  background: colors.primary,
+                  color: 'white',
+                  fontWeight: 900,
+                  cursor: crSubvEjAnterioresSaving || crSubvEjAnterioresLoading ? 'not-allowed' : 'pointer',
+                  opacity: crSubvEjAnterioresSaving || crSubvEjAnterioresLoading ? 0.7 : 1
+                }}
+              >
+                {crSubvEjAnterioresSaving ? 'Guardando…' : 'Guardar subv. anteriores'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setCrSubvEjAnteriores((prev) => [
+                  ...(prev || []),
+                  createEmptyCrSubvEjerciciosAnterioresRow()
+                ])}
+                style={{
+                  padding: '10px 14px',
+                  borderRadius: 10,
+                  border: `1px solid ${colors.border}`,
+                  background: colors.background,
+                  color: colors.text,
+                  fontWeight: 900,
+                  cursor: 'pointer'
+                }}
+              >
+                + Fila
+              </button>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {(crSubvEjAnteriores || []).map((row, idx) => (
+                <div
+                  key={`cr-subv-ej-${idx}`}
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '1.6fr 0.7fr auto',
+                    gap: 6,
+                    alignItems: 'center'
+                  }}
+                >
+                  <input
+                    value={row.concepto || ''}
+                    placeholder="Nombre / concepto"
+                    disabled={crSubvEjAnterioresLoading}
+                    onChange={(e) => setCrSubvEjAnteriores((prev) => {
+                      const next = [...(prev || [])];
+                      next[idx] = { ...next[idx], concepto: e.target.value };
+                      return next;
+                    })}
+                    style={{
+                      padding: '8px 10px',
+                      borderRadius: 8,
+                      border: `1px solid ${colors.border}`,
+                      background: colors.background,
+                      color: colors.text,
+                      fontSize: 12,
+                      fontWeight: 700
+                    }}
+                  />
+                  <input
+                    value={row.importe || ''}
+                    placeholder="Importe"
+                    disabled={crSubvEjAnterioresLoading}
+                    onChange={(e) => setCrSubvEjAnteriores((prev) => {
+                      const next = [...(prev || [])];
+                      next[idx] = { ...next[idx], importe: e.target.value };
+                      return next;
+                    })}
+                    style={{
+                      padding: '8px 10px',
+                      borderRadius: 8,
+                      border: `1px solid ${colors.border}`,
+                      background: colors.background,
+                      color: colors.text,
+                      fontSize: 12,
+                      fontWeight: 700
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setCrSubvEjAnteriores((prev) => (prev || []).filter((_, i) => i !== idx))}
+                    style={{
+                      padding: '8px 10px',
+                      borderRadius: 8,
+                      border: `1px solid ${colors.border}`,
+                      background: colors.background,
+                      color: colors.error || '#c0392b',
+                      fontWeight: 800,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+            <div
+              style={{
+                marginTop: 10,
+                display: 'grid',
+                gridTemplateColumns: '1.6fr 0.7fr auto',
+                gap: 6,
+                alignItems: 'center'
+              }}
+            >
+              <div style={{ fontSize: 12, fontWeight: 950 }}>
+                {PIG_CR_SUBV_EJERCICIOS_ANTERIORES_TOTAL_LABEL}
+              </div>
+              <div style={{ fontSize: 12, fontWeight: 950, textAlign: 'right', paddingRight: 8 }}>
+                {sumCrSubvEjerciciosAnteriores(crSubvEjAnteriores).toLocaleString('es-ES', {
+                  minimumFractionDigits: 0,
+                  maximumFractionDigits: 2
+                })}
+              </div>
+              <div />
+            </div>
+            {crSubvEjAnterioresStatus ? (
+              <div style={{ marginTop: 8, fontSize: 12, fontWeight: 800, color: colors.textSecondary }}>
+                {crSubvEjAnterioresStatus}
               </div>
             ) : null}
           </div>

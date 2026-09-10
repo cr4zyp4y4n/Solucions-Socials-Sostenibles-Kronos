@@ -1,3 +1,12 @@
+## v2.5.7
+
+### PIG / Cuenta Resultados
+
+- **Ingresos Subvenciones Ejercicios Anteriores:** bloque manual al inicio de la tabla izquierda en las hojas 1 y 2 del CR (`CR GENERAL EISSS` y mes anterior). Título fijo; Lizeth añade filas (nombre + importe) desde Kronos; debajo siempre hay un **TOTAL** del bloque. **No suman** a totales ni fórmulas del resto del PIG.
+- **SQL (requerido):** `database/create_pig_cr_subv_ejercicios_anteriores.sql`.
+
+---
+
 ## v2.5.6
 
 ### PIG / Tesorería
