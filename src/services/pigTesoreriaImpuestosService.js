@@ -38,7 +38,21 @@ export const IMPUESTOS_A_PAGAR_ACCOUNTS = [
 function parseBalance(value) {
   if (value == null || value === '') return 0;
   if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
-  const n = Number.parseFloat(String(value).replace(/\s/g, '').replace(',', '.'));
+  const raw = String(value).trim().replace(/\s/g, '');
+  if (!raw) return 0;
+  const lastDot = raw.lastIndexOf('.');
+  const lastComma = raw.lastIndexOf(',');
+  let normalized = raw;
+  if (lastDot >= 0 && lastComma >= 0) {
+    const decimalSep = lastDot > lastComma ? '.' : ',';
+    const thousandsSep = decimalSep === '.' ? ',' : '.';
+    normalized = raw.split(thousandsSep).join('').replace(decimalSep, '.');
+  } else if (lastComma >= 0) {
+    normalized = raw.replace(/\./g, '').replace(',', '.');
+  } else if ((raw.match(/\./g) || []).length > 1) {
+    normalized = raw.replace(/\./g, '');
+  }
+  const n = Number.parseFloat(normalized);
   return Number.isFinite(n) ? n : 0;
 }
 
@@ -122,6 +136,10 @@ function buildBalanceMap(accounts = []) {
   return map;
 }
 
+function hasBalanceForCode(map, code) {
+  return map.has(normalizeAccountCode(code));
+}
+
 /** Solo coincidencia exacta de número de cuenta (sin rellenar prefijos tipo 472 → 47200000). */
 function balanceForCode(map, code) {
   const want = normalizeAccountCode(code);
@@ -178,6 +196,19 @@ export async function loadPigImpuestosBalances({
       include_empty: true
     });
     const map = buildBalanceMap(raw || []);
+    const requiredCodes = [
+      ...IMPUESTOS_MOD_303_ACCOUNTS.map((row) => row.code),
+      ...IMPUESTOS_A_PAGAR_ACCOUNTS.map((row) => row.code)
+    ];
+    const missingCodes = requiredCodes.filter((code) => !hasBalanceForCode(map, code));
+    if (!Array.isArray(raw) || raw.length === 0 || missingCodes.length) {
+      return {
+        impuestos: null,
+        error: new Error(
+          `Holded no devolvió saldos fiscales verificables (${missingCodes.join(', ') || 'sin cuentas'}).`
+        )
+      };
+    }
     const mod303 = IMPUESTOS_MOD_303_ACCOUNTS.map((row) => ({
       ...row,
       balance: balanceForCode(map, row.code)
@@ -216,12 +247,7 @@ export async function loadPigImpuestosBalances({
     };
   } catch (error) {
     return {
-      impuestos: {
-        mod303: IMPUESTOS_MOD_303_ACCOUNTS.map((r) => ({ ...r, balance: 0 })),
-        mod303Sum: 0,
-        aPagar: IMPUESTOS_A_PAGAR_ACCOUNTS.map((r) => ({ ...r, balance: 0 })),
-        aPagarByCode: {}
-      },
+      impuestos: null,
       error
     };
   }

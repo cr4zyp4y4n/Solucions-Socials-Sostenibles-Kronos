@@ -196,18 +196,33 @@ export async function upsertPigTesoreriaPrevisiones({ year, previsiones }) {
     }))
   ];
 
-  const { error: deleteError } = await supabase
-    .from('pig_tesoreria_previsiones')
-    .delete()
-    .eq('year', y);
-  if (deleteError) return { error: deleteError };
+  if (!payload.length) {
+    const { error: deleteError } = await supabase
+      .from('pig_tesoreria_previsiones')
+      .delete()
+      .eq('year', y);
+    return { error: deleteError || null };
+  }
 
-  if (!payload.length) return { error: null };
+  const { data: previousRows, error: selectError } = await supabase
+    .from('pig_tesoreria_previsiones')
+    .select('id')
+    .eq('year', y);
+  if (selectError) return { error: selectError };
 
   const { error: insertError } = await supabase
     .from('pig_tesoreria_previsiones')
     .insert(payload);
   if (insertError) return { error: insertError };
+
+  const previousIds = (previousRows || []).map((row) => row.id).filter(Boolean);
+  if (previousIds.length) {
+    const { error: deleteError } = await supabase
+      .from('pig_tesoreria_previsiones')
+      .delete()
+      .in('id', previousIds);
+    if (deleteError) return { error: deleteError };
+  }
   return { error: null };
 }
 
