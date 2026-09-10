@@ -4584,16 +4584,30 @@ export default function PIGPage() {
             loadPigItinerarioEi({ year: yearForEstimados }),
             loadPigTesoreriaCajaCorto({ year: yearForEstimados })
           ]);
+          const loadErrors = [
+            ['estimados', loadEstError],
+            ['objetivos', loadObjError],
+            ['itinerario', loadItError],
+            ['caja a corto', loadCajaError]
+          ].filter(([, err]) => err);
+          if (loadErrors.length) {
+            setError(`No se pudo generar el Excel: falló la carga de ${loadErrors.map(([name]) => name).join(', ')}.`);
+            return;
+          }
           if (!loadEstError && estimados) estimadosForGenerate = estimados;
           if (!loadObjError && objetivos) objetivosForGenerate = objetivos;
           if (!loadItError && itinerario) itinerarioForGenerate = itinerario;
           if (!loadCajaError && cajaCorto) cajaCortoForGenerate = cajaCorto;
         } else {
-          await Promise.all([
+          const saveResults = await Promise.all([
             saveEstimadosSubv(),
             saveObjetivosComparativa(),
             saveItinerarioEi()
           ]);
+          if (saveResults.some((ok) => ok === false)) {
+            setError('No se pudo generar el Excel: antes hay que corregir los errores de autoguardado.');
+            return;
+          }
         }
 
         // PIG Normal: rellenar NÓMINAS/SS/AUTÓNOMOS/FINANC. desde Holded al generar (sin botón manual).
@@ -4624,23 +4638,41 @@ export default function PIGPage() {
           } catch (e) {
             console.warn('PIG caja a corto Holded:', e);
           }
-          await upsertPigTesoreriaCajaCorto({
+          const { error: cajaSaveError } = await upsertPigTesoreriaCajaCorto({
             year: yearForEstimados,
             cajaCorto: cajaCortoForGenerate
           });
+          if (cajaSaveError) {
+            const detail = String(cajaSaveError.message || cajaSaveError.details || '').trim();
+            setCajaCortoStatus(detail ? `Error al guardar caja a corto: ${detail}` : 'Error al guardar caja a corto.');
+            setError('No se pudo generar el Excel: falló el guardado de caja a corto.');
+            return;
+          }
         }
       } else if (yearForEstimados && Number(yearForEstimados) === Number(estimadosYear)) {
         // Objetivos + itinerario CR + previsiones TESORERÍA (sin caja corto).
-        await Promise.all([
+        const saveResults = await Promise.all([
           saveObjetivosComparativa(),
           saveItinerarioEi(),
           saveTesoreriaPrevisiones()
         ]);
+        if (saveResults.some((ok) => ok === false)) {
+          setError('No se pudo generar el Excel: antes hay que corregir los errores de autoguardado.');
+          return;
+        }
       } else if (yearForEstimados) {
         const [{ itinerario, error: itErr }, { previsiones, error: prErr }] = await Promise.all([
           loadPigItinerarioEi({ year: yearForEstimados }),
           loadPigTesoreriaPrevisiones({ year: yearForEstimados })
         ]);
+        const loadErrors = [
+          ['itinerario', itErr],
+          ['previsiones de tesorería', prErr]
+        ].filter(([, err]) => err);
+        if (loadErrors.length) {
+          setError(`No se pudo generar el Excel: falló la carga de ${loadErrors.map(([name]) => name).join(', ')}.`);
+          return;
+        }
         if (!itErr && itinerario) itinerarioForGenerate = itinerario;
         if (!prErr && previsiones) previsionesForGenerate = previsiones;
       }
@@ -5218,9 +5250,17 @@ export default function PIGPage() {
             ]);
           if (treasuryError) {
             console.warn('PIG TESORERÍA: no se pudieron cargar cuentas de Holded.', treasuryError);
+            setError(`No se pudo generar el Excel: falló la carga de TESORERÍA (${treasuryError.message || treasuryError}).`);
+            return;
           }
           if (impuestosError) {
             console.warn('PIG TESORERÍA IMPUESTOS: no se pudieron cargar cuentas contables de Holded.', impuestosError);
+            setError(`No se pudo generar el Excel: falló la carga de IMPUESTOS (${impuestosError.message || impuestosError}).`);
+            return;
+          }
+          if (!impuestos) {
+            setError('No se pudo generar el Excel: IMPUESTOS no devolvió saldos fiscales verificables.');
+            return;
           }
           const { aoa: aoaTesoreria, meta: tesoreriaMeta } = buildPigTesoreriaSheetAoa({
             title: titleTesoreria,
@@ -5238,6 +5278,8 @@ export default function PIGPage() {
           XLSX.utils.book_append_sheet(wb, wsTesoreria, 'TESORERÍA');
         } catch (e) {
           console.error('Error generando hoja TESORERÍA:', e);
+          setError(`No se pudo generar el Excel: falló la hoja TESORERÍA (${e?.message || e}).`);
+          return;
         }
 
         try {
