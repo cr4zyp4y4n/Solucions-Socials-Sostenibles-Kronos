@@ -1,4 +1,5 @@
 import { supabase } from '../config/supabase';
+import { safeReplacePigRowsByYear } from './pigSafeReplaceService';
 
 /** Defaults estructurales (Lizeth introduce importes y ajusta títulos/fechas). */
 export const PIG_TESORERIA_CAJA_CORTO_DEFAULTS = {
@@ -159,17 +160,11 @@ export async function upsertPigTesoreriaCajaCorto({ year, cajaCorto }) {
     }))
   ];
 
-  const { error: deleteError } = await supabase
-    .from('pig_tesoreria_caja_corto')
-    .delete()
-    .eq('year', y);
-  if (deleteError) return { error: deleteError };
-
-  const { error: insertError } = await supabase
-    .from('pig_tesoreria_caja_corto')
-    .insert(payload);
-  if (insertError) return { error: insertError };
-  return { error: null };
+  return safeReplacePigRowsByYear({
+    table: 'pig_tesoreria_caja_corto',
+    year: y,
+    payload
+  });
 }
 
 /** Normaliza UI → filas numéricas para el Excel PIG Normal. */
