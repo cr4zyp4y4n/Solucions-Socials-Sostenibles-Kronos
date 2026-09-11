@@ -1,4 +1,5 @@
 import { supabase } from '../config/supabase';
+import { safeReplacePigRowsByYear } from './pigSafeReplaceService';
 
 /** Título fijo del bloque en Excel CR GENERAL (hojas 1 y 2). */
 export const PIG_CR_SUBV_EJERCICIOS_ANTERIORES_TITLE =
@@ -74,19 +75,11 @@ export async function upsertPigCrSubvEjerciciosAnteriores({ year, rows }) {
     }))
     .filter((r) => r.concepto || r.importe != null);
 
-  const { error: deleteError } = await supabase
-    .from('pig_cr_subv_ejercicios_anteriores')
-    .delete()
-    .eq('year', y);
-  if (deleteError) return { error: deleteError };
-
-  if (!payload.length) return { error: null };
-
-  const { error: insertError } = await supabase
-    .from('pig_cr_subv_ejercicios_anteriores')
-    .insert(payload);
-  if (insertError) return { error: insertError };
-  return { error: null };
+  return safeReplacePigRowsByYear({
+    table: 'pig_cr_subv_ejercicios_anteriores',
+    year: y,
+    payload
+  });
 }
 
 /** Filas UI → números para Excel (omite filas totalmente vacías). */

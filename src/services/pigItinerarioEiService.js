@@ -1,4 +1,5 @@
 import { supabase } from '../config/supabase';
+import { safeReplacePigRowsByYear } from './pigSafeReplaceService';
 
 /** Defaults Lizeth / PIG99%LISTO (año 2026). */
 export const PIG_ITINERARIO_EI_DEFAULTS = {
@@ -189,17 +190,9 @@ export async function upsertPigItinerarioEi({ year, itinerario }) {
     }))
   ];
 
-  const { error: deleteError } = await supabase
-    .from('pig_itinerario_ei')
-    .delete()
-    .eq('year', y);
-  if (deleteError) return { error: deleteError };
-
-  if (!payload.length) return { error: null };
-
-  const { error: insertError } = await supabase
-    .from('pig_itinerario_ei')
-    .insert(payload);
-  if (insertError) return { error: insertError };
-  return { error: null };
+  return safeReplacePigRowsByYear({
+    table: 'pig_itinerario_ei',
+    year: y,
+    payload
+  });
 }
