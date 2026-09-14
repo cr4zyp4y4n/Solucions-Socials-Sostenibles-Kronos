@@ -1,2 +1,4 @@
-Buenas , soy Aitor y esto es un fichero de prueba.
+## Buenas!
+
+Soy Aitor y esto es un fichero de prueba.
 
