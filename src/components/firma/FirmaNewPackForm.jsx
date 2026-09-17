@@ -29,6 +29,7 @@ export default function FirmaNewPackForm({
   onEnvioFormChange,
   packItems,
   onPackItemsChange,
+  plantillasByTipo = {},
   onSave,
   saving
 }) {
@@ -289,11 +290,48 @@ export default function FirmaNewPackForm({
                   <span style={{ color: colors.primary }}>
                     PDF propio ({(item.file.size / 1024).toFixed(0)} KB)
                   </span>
+                ) : plantillasByTipo[item.tipoDocumento] ? (
+                  <span style={{ color: colors.primary }}>
+                    Usará plantilla: {plantillasByTipo[item.tipoDocumento].file_name}
+                  </span>
+                ) : item.tipoDocumento === 'contrato' || esSoloNotificacion ? (
+                  <span style={{ color: colors.warning || '#b45309' }}>
+                    Requiere PDF propio o plantilla guardada
+                  </span>
                 ) : (
                   <span style={{ color: colors.success }}>Se generará desde Holded</span>
                 )}
                 {getFirmaDocPrepHint(item.tipoDocumento) ? (
                   <div style={{ marginTop: 4 }}>{getFirmaDocPrepHint(item.tipoDocumento)}</div>
+                ) : null}
+                {item.file ? (
+                  <label
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      marginTop: 8,
+                      cursor: 'pointer',
+                      fontSize: 12,
+                      fontWeight: 600,
+                      color: colors.text
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={item.guardarComoPlantilla !== false}
+                      onChange={(e) =>
+                        onPackItemsChange(
+                          packItems.map((it) =>
+                            it.key === item.key
+                              ? { ...it, guardarComoPlantilla: e.target.checked }
+                              : it
+                          )
+                        )
+                      }
+                    />
+                    Guardar como plantilla para próximos envíos ({selectedEntity})
+                  </label>
                 ) : null}
               </div>
               {item.tipoDocumento === 'epis' && !item.file ? (

@@ -5,7 +5,7 @@ import { useTheme } from './ThemeContext';
 import SectionHeader from './SectionHeader';
 import firmaService from '../services/firmaService';
 import holdedEmployeesService from '../services/holdedEmployeesService';
-import { envioEsPackBaja } from '../constants/firmaDocumentos';
+import { envioEsPackBaja, getFirmaDocumentoLabel } from '../constants/firmaDocumentos';
 import { generateFirmaPdfFile } from '../utils/firmaPdfGenerator';
 import { openEmailDraft, formatEmailDebugLine } from '../utils/openMailto';
 import FirmaNewPackForm from './firma/FirmaNewPackForm';
@@ -14,6 +14,7 @@ import FirmaTimelineModal from './firma/FirmaTimelineModal';
 import FirmaDocumentosModal from './firma/FirmaDocumentosModal';
 import FirmaAuditoriaModal from './firma/FirmaAuditoriaModal';
 import FirmaNotificarBajaModal from './firma/FirmaNotificarBajaModal';
+import FirmaPlantillasPanel from './firma/FirmaPlantillasPanel';
 import { FirmaButton, FirmaTabs } from './firma/FirmaUi';
 import {
   buildFirmaEmailBody,
@@ -25,7 +26,8 @@ import {
 
 const TABS = [
   { id: 'envios', label: 'Envíos' },
-  { id: 'nuevo', label: 'Nuevo pack' }
+  { id: 'nuevo', label: 'Nuevo pack' },
+  { id: 'plantillas', label: 'Plantillas' }
 ];
 
 export default function FirmaPage() {
@@ -53,6 +55,9 @@ export default function FirmaPage() {
   const [auditoriaRows, setAuditoriaRows] = useState([]);
   const [auditoriaLoading, setAuditoriaLoading] = useState(false);
   const [notificarBajaEnvioId, setNotificarBajaEnvioId] = useState(null);
+  const [plantillas, setPlantillas] = useState([]);
+  const [plantillasLoading, setPlantillasLoading] = useState(false);
+  const [uploadingPlantillaTipo, setUploadingPlantillaTipo] = useState('');
 
   const notificarBajaEnvio = useMemo(
     () => envios.find((e) => e.id === notificarBajaEnvioId) || null,
@@ -63,6 +68,14 @@ export default function FirmaPage() {
     () => holdedEmployees.find((e) => String(e.id) === String(selectedHoldedId)) || null,
     [holdedEmployees, selectedHoldedId]
   );
+
+  const plantillasByTipo = useMemo(() => {
+    const map = {};
+    for (const p of plantillas) {
+      if (p.entity_key === selectedEntity) map[p.tipo_documento] = p;
+    }
+    return map;
+  }, [plantillas, selectedEntity]);
 
   const entityToCompany = useMemo(() => ({
     EI_SSS: 'solucions',
@@ -78,18 +91,37 @@ export default function FirmaPage() {
     }
   }, []);
 
+  const loadPlantillas = useCallback(async () => {
+    setPlantillasLoading(true);
+    try {
+      const rows = await firmaService.loadPlantillas();
+      setPlantillas(rows);
+    } catch (e) {
+      console.warn('loadPlantillas:', e?.message || e);
+      setPlantillas([]);
+      if (String(e?.message || '').includes('create_firma_plantillas')) {
+        setError(e.message);
+      }
+    } finally {
+      setPlantillasLoading(false);
+    }
+  }, []);
+
   const loadAll = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const enviosData = await firmaService.loadEnvios();
+      const [enviosData] = await Promise.all([
+        firmaService.loadEnvios(),
+        loadPlantillas()
+      ]);
       setEnvios(enviosData);
     } catch (e) {
       setError(e?.message || 'Error cargando datos de Firma.');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [loadPlantillas]);
 
   const loadHoldedEmployees = useCallback(async () => {
     setHoldedLoading(true);
@@ -364,18 +396,20 @@ export default function FirmaPage() {
       setActiveTab('nuevo');
       return;
     }
-    const contratoSinPdf = packKind === 'contratacion'
-      ? packItems.find((i) => i.tipoDocumento === 'contrato' && !i.file)
+    const contratoSinFuente = packKind === 'contratacion'
+      ? packItems.find(
+        (i) => i.tipoDocumento === 'contrato' && !i.file && !plantillasByTipo.contrato
+      )
       : null;
-    if (contratoSinPdf) {
-      setError('El contrato laboral requiere subir el PDF.');
+    if (contratoSinFuente) {
+      setError('El contrato laboral requiere subir el PDF o tener una plantilla de contrato guardada.');
       return;
     }
-    const notificacionSinPdf = packKind === 'notificacion'
-      ? packItems.find((i) => !i.file)
+    const notificacionSinFuente = packKind === 'notificacion'
+      ? packItems.find((i) => !i.file && !plantillasByTipo[i.tipoDocumento])
       : null;
-    if (notificacionSinPdf) {
-      setError('La opción "Solo notificación" requiere subir un PDF propio.');
+    if (notificacionSinFuente) {
+      setError('La opción "Solo notificación" requiere subir un PDF propio o una plantilla.');
       return;
     }
     setSavingDocumento(true);
@@ -385,18 +419,33 @@ export default function FirmaPage() {
       const items = await Promise.all(
         packItems.map(async (item) => {
           let file = item.file;
+          let origen = file ? 'upload' : null;
           if (!file) {
-            file = await generateFirmaPdfFile({
+            const plantilla = plantillasByTipo[item.tipoDocumento];
+            if (plantilla) {
+              file = await firmaService.downloadPlantillaAsFile(plantilla);
+              origen = 'plantilla';
+            } else {
+              file = await generateFirmaPdfFile({
+                tipoDocumento: item.tipoDocumento,
+                employee: selectedHoldedEmployee,
+                entityKey: selectedEntity,
+                episRows: item.episRows || [],
+                fechaFin: envioForm.fechaFin,
+                fechaInicio: envioForm.fechaInicio,
+                motivoBaja: packKind === 'baja' ? envioForm.notasInternas : ''
+              });
+              origen = 'holded';
+            }
+          }
+          if (item.file && item.guardarComoPlantilla !== false) {
+            await firmaService.upsertPlantilla({
               tipoDocumento: item.tipoDocumento,
-              employee: selectedHoldedEmployee,
               entityKey: selectedEntity,
-              episRows: item.episRows || [],
-              fechaFin: envioForm.fechaFin,
-              fechaInicio: envioForm.fechaInicio,
-              motivoBaja: packKind === 'baja' ? envioForm.notasInternas : ''
+              file: item.file
             });
           }
-          return { tipoDocumento: item.tipoDocumento, file };
+          return { tipoDocumento: item.tipoDocumento, file, origen };
         })
       );
       const trabajador = await firmaService.getOrCreateTrabajadorFromHolded(selectedHoldedEmployee);
@@ -406,6 +455,7 @@ export default function FirmaPage() {
         fechaInicio: envioForm.fechaInicio,
         fechaFin: envioForm.fechaFin,
         notasInternas: envioForm.notasInternas,
+        entityKey: selectedEntity,
         items
       });
       await loadAll();
@@ -413,18 +463,66 @@ export default function FirmaPage() {
       setPackItems(defaultPackItemsForKind(packKind));
       setSelectedHoldedId('');
       setActiveTab('envios');
-      if (packKind === 'baja') {
+      const origenes = items.map((i) => i.origen).filter(Boolean);
+      const nPlantilla = origenes.filter((o) => o === 'plantilla').length;
+      const nUpload = origenes.filter((o) => o === 'upload').length;
+      setMessage(
+        `Pack creado (${items.length} docs` +
+        `${nUpload ? `, ${nUpload} PDF propio` : ''}` +
+        `${nPlantilla ? `, ${nPlantilla} desde plantilla` : ''}` +
+        `). Enlace listo para compartir.`
+      );
+      if (packKind === 'baja' && result?.envioId) {
         setNotificarBajaEnvioId(result.envioId);
-        setMessage('Notificación creada. Envía el enlace por WhatsApp y por email.');
-      } else if (packKind === 'notificacion') {
-        setMessage(`Notificación creada. Enlace: ${result.tokenInfo.portalLink}`);
-      } else {
-        setMessage(`Pack creado. Enlace: ${result.tokenInfo.portalLink}`);
       }
     } catch (e) {
-      setError(e?.message || 'Error creando el envío.');
+      setError(e?.message || 'Error creando el pack.');
     } finally {
       setSavingDocumento(false);
+    }
+  };
+
+  const uploadPlantillaManual = async ({ tipoDocumento, file }) => {
+    if (!file) return;
+    setUploadingPlantillaTipo(tipoDocumento);
+    setError('');
+    try {
+      await firmaService.upsertPlantilla({
+        tipoDocumento,
+        entityKey: selectedEntity,
+        file
+      });
+      await loadPlantillas();
+      setMessage(`Plantilla guardada: ${getFirmaDocumentoLabel(tipoDocumento)}`);
+    } catch (e) {
+      setError(e?.message || 'Error guardando plantilla.');
+    } finally {
+      setUploadingPlantillaTipo('');
+    }
+  };
+
+  const deletePlantilla = async (plantilla) => {
+    if (!plantilla?.id) return;
+    if (!window.confirm(`¿Eliminar plantilla «${plantilla.file_name}»?`)) return;
+    try {
+      await firmaService.deletePlantilla(plantilla.id);
+      await loadPlantillas();
+      setMessage('Plantilla eliminada.');
+    } catch (e) {
+      setError(e?.message || 'Error eliminando plantilla.');
+    }
+  };
+
+  const verPlantilla = async (plantilla) => {
+    try {
+      const url = await firmaService.getPlantillaSignedUrl(plantilla);
+      if (window.electronAPI?.openExternal) {
+        await window.electronAPI.openExternal(url);
+      } else {
+        window.open(url, '_blank', 'noopener,noreferrer');
+      }
+    } catch (e) {
+      setError(e?.message || 'No se pudo abrir la plantilla.');
     }
   };
 
@@ -433,7 +531,7 @@ export default function FirmaPage() {
       <SectionHeader
         icon={FileText}
         title="Firma"
-        subtitle="Packs de contratación y de baja con un solo enlace. PDFs desde Holded; el trabajador firma o da acuse en el portal."
+        subtitle="Packs de contratación y baja. Plantillas PDF reutilizables por empresa; el trabajador firma en el portal."
         actions={(
           <FirmaButton onClick={loadAll} disabled={loading}>
             <motion.span
@@ -537,6 +635,25 @@ export default function FirmaPage() {
               onCancelar={cancelEnvio}
             />
           </motion.div>
+        ) : activeTab === 'plantillas' ? (
+          <motion.div
+            key="tab-plantillas"
+            initial={{ opacity: 0, x: 12 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -12 }}
+            transition={{ duration: 0.22 }}
+          >
+            <FirmaPlantillasPanel
+              plantillas={plantillas}
+              loading={plantillasLoading}
+              selectedEntity={selectedEntity}
+              onEntityChange={setSelectedEntity}
+              onUpload={uploadPlantillaManual}
+              onDelete={deletePlantilla}
+              onVer={verPlantilla}
+              uploadingTipo={uploadingPlantillaTipo}
+            />
+          </motion.div>
         ) : (
           <motion.div
             key="tab-nuevo"
@@ -563,6 +680,7 @@ export default function FirmaPage() {
               onEnvioFormChange={(patch) => setEnvioForm((p) => ({ ...p, ...patch }))}
               packItems={packItems}
               onPackItemsChange={setPackItems}
+              plantillasByTipo={plantillasByTipo}
               onSave={saveEnvio}
               saving={savingDocumento}
             />

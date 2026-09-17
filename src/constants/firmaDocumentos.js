@@ -99,24 +99,18 @@ const LABEL_BY_VALUE = Object.fromEntries(
 
 
 /** Texto de ayuda en Kronos (generación automática desde Holded). */
-
 export const FIRMA_DOC_PREP_HINTS = {
-
-  riesgos_laborales: 'Se genera solo con datos Holded (empresa, nombre, DNI, puesto).',
-
-  epis: 'Se genera desde Holded. Añade filas de EPI abajo o deja vacío si no aplica.',
-
-  acoso: 'Se genera desde Holded. La formación opcional se marca en el portal.',
-
-  vrp_consentimiento: 'Solo si desea el VRP. Cambia a «Renuncia» si no lo quiere (nunca ambos).',
-
-  vrp_renuncia: 'Solo si renuncia al VRP. No incluir junto al de consentimiento.',
-
-  contrato: 'Sube el contrato PDF propio; no se genera automáticamente.',
-
+  riesgos_laborales:
+    'Sin PDF: plantilla guardada o generación Holded (empresa, nombre, DNI, puesto).',
+  epis: 'Sin PDF: plantilla o generación Holded. Añade filas EPI abajo si generas.',
+  acoso: 'Sin PDF: plantilla o generación Holded. Formación opcional en el portal.',
+  vrp_consentimiento:
+    'Solo si desea el VRP. Plantilla o generación. No mezclar con renuncia.',
+  vrp_renuncia: 'Solo si renuncia al VRP. Plantilla o generación. No con consentimiento.',
+  contrato:
+    'Sube el PDF o usa la plantilla de contrato de esta empresa (si la hay). No se genera desde Holded.',
   baja:
-    'Se genera desde Holded con fecha de efecto. Sube PDF propio si la asesoría te envía la carta firmada por la empresa.'
-
+    'Sin PDF: plantilla o generación Holded con fecha de efecto. PDF propio si viene de asesoría.'
 };
 
 

@@ -213,7 +213,8 @@ export function buildStampLinesForDoc({
   userAgent,
   dniConfirmadoEnPortal,
   smsVerificado,
-  smsVerificadoAt
+  smsVerificadoAt,
+  empresaLine
 }: {
   trabajadorNombre?: string | null;
   trabajadorDni?: string | null;
@@ -228,6 +229,7 @@ export function buildStampLinesForDoc({
   dniConfirmadoEnPortal?: boolean;
   smsVerificado?: boolean;
   smsVerificadoAt?: string | null;
+  empresaLine?: string | null;
 }) {
   const meta = getFirmaDocMeta(tipoDocumento);
   const uaShort = userAgent ? `${userAgent.slice(0, 40)}${userAgent.length > 40 ? '…' : ''}` : '';
@@ -237,7 +239,13 @@ export function buildStampLinesForDoc({
       ? 'Verificación SMS (OTP): completada'
       : '';
   const respuesta = normalizeRespuestaAceptacion(opciones);
+  const docRef = documentoId ? String(documentoId).replace(/-/g, '').slice(0, 12) : '';
+  const tokenRef = tokenRowId ? String(tokenRowId).replace(/-/g, '').slice(0, 12) : '';
+  const hashShort = hashPdf ? String(hashPdf).slice(0, 32) : '';
+
   const lines = [
+    'Firma electrónica simple · verificación por SMS',
+    empresaLine || '',
     meta.stampDeclaration,
     respuesta ? buildAceptacionRespuestaLine(tipoDocumento, respuesta) : '',
     trabajadorNombre ? `Trabajador: ${trabajadorNombre}` : '',
@@ -245,14 +253,17 @@ export function buildStampLinesForDoc({
     dniConfirmadoEnPortal ? 'DNI confirmado en portal antes del SMS: Sí' : '',
     smsLine,
     `Fecha/hora firma: ${new Date(nowIso).toLocaleString('es-ES')}`,
-    hashPdf ? `SHA-256 (orig): ${String(hashPdf).slice(0, 16)}…` : '',
+    hashShort ? `SHA-256 (orig): ${hashShort}…` : '',
+    docRef || tokenRef
+      ? `Ref: doc ${docRef || '—'}${tokenRef ? ` · tok ${tokenRef}` : ''}`
+      : '',
     ip ? `IP: ${ip}` : '',
     uaShort ? `UA: ${uaShort}` : ''
   ].filter(Boolean);
 
   if (tipoDocumento === 'acoso' && opciones?.formacion_acoso) {
     const idx = lines.findIndex((l) => l.includes('Protocolo de acoso'));
-    const insertAt = idx >= 0 ? idx + 1 : 2;
+    const insertAt = idx >= 0 ? idx + 1 : 3;
     lines.splice(insertAt, 0, 'Solicita formación PREVENCION DEL ACOSO: Sí');
   }
 

@@ -1,5 +1,5 @@
-import { getFirmaDocumentoLabel } from '@/lib/firmaDocumentos';
 import { buildAceptacionRespuestaLine, buildStampLinesForDoc, getFirmaDocMeta, normalizeRespuestaAceptacion } from '@/lib/firmaDocumentosMeta';
+import { getFirmaEmpresaStampLine } from '@/lib/firmaEmpresas';
 import { getOtpScopeIds, resolveFirmaToken } from '@/lib/resolveFirmaToken';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getRequestInfo } from '@/lib/requestInfo';
@@ -17,7 +17,8 @@ async function stampAndUploadDocument({
   trabajadorNombre,
   trabajadorDni,
   dniConfirmadoEnPortal,
-  smsVerificadoAt
+  smsVerificadoAt,
+  empresaLine
 }: {
   documento: {
     id: string;
@@ -36,6 +37,7 @@ async function stampAndUploadDocument({
   trabajadorDni?: string | null;
   dniConfirmadoEnPortal?: boolean;
   smsVerificadoAt?: string | null;
+  empresaLine?: string | null;
 }) {
   if (documento.firmado_at && documento.storage_path_firmado) {
     return { signedPath: documento.storage_path_firmado, skipped: true };
@@ -74,7 +76,8 @@ async function stampAndUploadDocument({
     userAgent,
     dniConfirmadoEnPortal,
     smsVerificado: true,
-    smsVerificadoAt: smsVerificadoAt || null
+    smsVerificadoAt: smsVerificadoAt || null,
+    empresaLine: empresaLine || null
   });
 
   const signedPdf = await stampPdfLastPage({ pdfBytes: originalBuf, stampLines });
@@ -179,6 +182,7 @@ export async function POST(_req: Request, ctx: { params: Promise<{ token: string
   const trabajadorDni = resolved.trabajador?.dni || null;
   const dniConfirmadoEnPortal = requiereDni;
   const smsVerificadoAt = consumed[0]?.consumed_at || null;
+  const empresaLine = getFirmaEmpresaStampLine(resolved.envio?.entity_key);
 
   const signedPaths: string[] = [];
   for (const doc of resolved.documentos) {
@@ -191,7 +195,8 @@ export async function POST(_req: Request, ctx: { params: Promise<{ token: string
       trabajadorNombre,
       trabajadorDni,
       dniConfirmadoEnPortal,
-      smsVerificadoAt
+      smsVerificadoAt,
+      empresaLine
     });
     signedPaths.push(result.signedPath);
   }

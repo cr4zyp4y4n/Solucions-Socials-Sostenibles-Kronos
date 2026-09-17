@@ -39,6 +39,7 @@ export type FirmaEnvioResolved = {
   fecha_inicio: string | null;
   fecha_fin: string | null;
   firmado_at: string | null;
+  entity_key?: string | null;
 };
 
 export type ResolvedFirmaContext = {
@@ -76,6 +77,7 @@ export async function resolveFirmaToken(token: string): Promise<ResolvedFirmaCon
         fecha_inicio,
         fecha_fin,
         firmado_at,
+        entity_key,
         trabajador:firma_trabajadores (
           id,
           nombre,
@@ -168,7 +170,8 @@ export async function resolveFirmaToken(token: string): Promise<ResolvedFirmaCon
       estado: envioRaw.estado,
       fecha_inicio: envioRaw.fecha_inicio ?? null,
       fecha_fin: envioRaw.fecha_fin ?? null,
-      firmado_at: envioRaw.firmado_at ?? null
+      firmado_at: envioRaw.firmado_at ?? null,
+      entity_key: (envioRaw as { entity_key?: string | null }).entity_key ?? null
     };
     const { data: docsByEnvio, error: docsErr } = await supabaseAdmin
       .from('firma_documentos')
@@ -196,6 +199,7 @@ export async function resolveFirmaToken(token: string): Promise<ResolvedFirmaCon
         fecha_inicio,
         fecha_fin,
         firmado_at,
+        entity_key,
         trabajador:firma_trabajadores ( id, nombre, dni, telefono )
       `
       )
@@ -208,7 +212,8 @@ export async function resolveFirmaToken(token: string): Promise<ResolvedFirmaCon
         estado: envioRow.estado,
         fecha_inicio: envioRow.fecha_inicio ?? null,
         fecha_fin: envioRow.fecha_fin ?? null,
-        firmado_at: envioRow.firmado_at ?? null
+        firmado_at: envioRow.firmado_at ?? null,
+        entity_key: (envioRow as { entity_key?: string | null }).entity_key ?? null
       };
       const { data: docsByEnvio, error: docsErr } = await supabaseAdmin
         .from('firma_documentos')

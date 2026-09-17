@@ -1,3 +1,23 @@
+## v2.5.8
+
+### Firma — plantillas PDF reutilizables
+
+- **Una plantilla por tipo de documento y empresa** (`EI_SSS` / `MENJAR_DHORT`), guardada en Supabase Storage.
+- **Nuevo pack:** si no subes PDF, se usa la plantilla; si no hay plantilla, se genera desde Holded (cuando aplica). Contrato/notificación: PDF propio o plantilla.
+- Al subir un PDF en el pack, opción **«Guardar como plantilla para próximos envíos»** (activa por defecto).
+- Pestaña **Plantillas**: subir/reemplazar, ver y eliminar.
+- **SQL (requerido):** `database/create_firma_plantillas.sql`.
+
+### Firma — sello PDF de aceptación
+
+- Línea **«Firma electrónica simple · verificación por SMS»**.
+- **Emisor** (nombre corto + NIF) según empresa del envío; SSS: `F67499186` (NIF Menjar pendiente de completar en código).
+- Hash SHA-256 más largo (32 chars) + referencia corta `doc` / `tok`.
+- **SQL (recomendado):** `database/alter_firma_envios_entity_key.sql` para guardar la empresa en el envío y mostrarla en el sello.
+- Requiere **redeploy del portal-firma** para que el sello nuevo aplique en firmas nuevas.
+
+---
+
 ## v2.5.7
 
 ### PIG / Cuenta Resultados

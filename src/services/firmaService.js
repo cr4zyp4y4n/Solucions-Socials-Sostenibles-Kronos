@@ -7,7 +7,9 @@ const TABLE_DOCUMENTOS = 'firma_documentos';
 const TABLE_TOKENS = 'firma_tokens';
 const TABLE_AUDITORIAS = 'firma_auditorias';
 const TABLE_OTP_CHALLENGES = 'firma_otp_challenges';
+const TABLE_PLANTILLAS = 'firma_plantillas';
 const BUCKET = 'firma-documentos';
+const PLANTILLAS_PREFIX = 'plantillas';
 
 /** Cache por sesión: lectura IPC del proceso principal (.env en main). */
 let firmaMainConfigCache = undefined;
@@ -555,7 +557,7 @@ class FirmaService {
     };
   }
 
-  async createEnvio({ trabajadorId, nombre, fechaInicio, fechaFin, notasInternas, items }) {
+  async createEnvio({ trabajadorId, nombre, fechaInicio, fechaFin, notasInternas, items, entityKey = null }) {
     await getFirmaMainConfig();
     if (!getPortalBaseForLinks()) {
       throw new Error(
@@ -577,21 +579,43 @@ class FirmaService {
       String(nombre || '').trim() ||
       (list.length === 1 ? null : `Pack contratación (${list.length} documentos)`);
 
-    const { data: envio, error: envErr } = await supabase
-      .from(TABLE_ENVIOS)
-      .insert({
-        trabajador_id: trabajadorId,
-        nombre: packNombre,
-        fecha_inicio: fechaInicio || null,
-        fecha_fin: fechaFin || null,
-        notas_internas: notasInternas || null,
-        estado: 'pendiente'
-      })
-      .select()
-      .single();
-    if (envErr) {
-      const hint = formatFirmaPackSchemaError(envErr);
-      throw new Error(hint || envErr.message || String(envErr));
+    const baseEnvioPayload = {
+      trabajador_id: trabajadorId,
+      nombre: packNombre,
+      fecha_inicio: fechaInicio || null,
+      fecha_fin: fechaFin || null,
+      notas_internas: notasInternas || null,
+      estado: 'pendiente'
+    };
+
+    let envio;
+    {
+      const first = await supabase
+        .from(TABLE_ENVIOS)
+        .insert({
+          ...baseEnvioPayload,
+          ...(entityKey ? { entity_key: entityKey } : {})
+        })
+        .select()
+        .single();
+
+      if (first.error && entityKey && String(first.error.message || '').includes('entity_key')) {
+        const retry = await supabase
+          .from(TABLE_ENVIOS)
+          .insert(baseEnvioPayload)
+          .select()
+          .single();
+        if (retry.error) {
+          const hint = formatFirmaPackSchemaError(retry.error);
+          throw new Error(hint || retry.error.message || String(retry.error));
+        }
+        envio = retry.data;
+      } else if (first.error) {
+        const hint = formatFirmaPackSchemaError(first.error);
+        throw new Error(hint || first.error.message || String(first.error));
+      } else {
+        envio = first.data;
+      }
     }
 
     const createdDocs = [];
@@ -953,6 +977,144 @@ class FirmaService {
     anchor.click();
     anchor.remove();
     URL.revokeObjectURL(blobUrl);
+  }
+
+  /**
+   * Plantillas PDF reutilizables por tipo + empresa (EI_SSS | MENJAR_DHORT).
+   */
+  async loadPlantillas(entityKey = null) {
+    let query = supabase
+      .from(TABLE_PLANTILLAS)
+      .select('id, tipo_documento, entity_key, storage_path, file_name, hash_pdf, created_at, updated_at')
+      .order('tipo_documento', { ascending: true });
+    if (entityKey) query = query.eq('entity_key', entityKey);
+    const { data, error } = await query;
+    if (error) {
+      const msg = String(error.message || '');
+      if (msg.includes('firma_plantillas') || error.code === '42P01' || error.code === 'PGRST205') {
+        throw new Error(
+          'Falta la tabla firma_plantillas en Supabase. Ejecuta database/create_firma_plantillas.sql'
+        );
+      }
+      throw error;
+    }
+    return data || [];
+  }
+
+  async getPlantilla(tipoDocumento, entityKey) {
+    const tipo = String(tipoDocumento || '').trim();
+    const entity = String(entityKey || '').trim();
+    if (!tipo || !entity) return null;
+    const { data, error } = await supabase
+      .from(TABLE_PLANTILLAS)
+      .select('id, tipo_documento, entity_key, storage_path, file_name, hash_pdf, created_at, updated_at')
+      .eq('tipo_documento', tipo)
+      .eq('entity_key', entity)
+      .maybeSingle();
+    if (error) throw error;
+    return data || null;
+  }
+
+  /**
+   * Guarda o reemplaza la plantilla de un tipo para una empresa.
+   * Sube a Storage bajo plantillas/{entity}/{tipo}/…
+   */
+  async upsertPlantilla({ tipoDocumento, entityKey, file }) {
+    if (!file) throw new Error('Falta el PDF de plantilla');
+    const tipo = String(tipoDocumento || '').trim();
+    const entity = String(entityKey || '').trim();
+    if (!tipo) throw new Error('Falta tipo de documento');
+    if (!entity) throw new Error('Falta empresa (entity_key)');
+
+    const existing = await this.getPlantilla(tipo, entity);
+    const safeName = `${Date.now()}-${String(file.name || 'plantilla').replace(/[^\w.-]+/g, '_')}`;
+    const storagePath = `${PLANTILLAS_PREFIX}/${entity}/${tipo}/${safeName}.pdf`;
+    const hashPdf = await sha256File(file);
+
+    const { error: upErr } = await supabase.storage.from(BUCKET).upload(storagePath, file, {
+      cacheControl: '3600',
+      upsert: true,
+      contentType: file.type || 'application/pdf'
+    });
+    if (upErr) throw upErr;
+
+    const payload = {
+      tipo_documento: tipo,
+      entity_key: entity,
+      storage_path: storagePath,
+      file_name: file.name || `${tipo}.pdf`,
+      hash_pdf: hashPdf,
+      updated_at: new Date().toISOString()
+    };
+
+    let row;
+    if (existing?.id) {
+      const { data, error } = await supabase
+        .from(TABLE_PLANTILLAS)
+        .update(payload)
+        .eq('id', existing.id)
+        .select()
+        .single();
+      if (error) throw error;
+      row = data;
+      if (existing.storage_path && existing.storage_path !== storagePath) {
+        await supabase.storage.from(BUCKET).remove([existing.storage_path]).catch(() => {});
+      }
+    } else {
+      const { data, error } = await supabase
+        .from(TABLE_PLANTILLAS)
+        .insert(payload)
+        .select()
+        .single();
+      if (error) throw error;
+      row = data;
+    }
+    return row;
+  }
+
+  async deletePlantilla(plantillaId) {
+    if (!plantillaId) throw new Error('Falta plantillaId');
+    const { data: row, error: readErr } = await supabase
+      .from(TABLE_PLANTILLAS)
+      .select('id, storage_path')
+      .eq('id', plantillaId)
+      .maybeSingle();
+    if (readErr) throw readErr;
+    if (!row) return { ok: true };
+
+    const { error } = await supabase.from(TABLE_PLANTILLAS).delete().eq('id', plantillaId);
+    if (error) throw error;
+    if (row.storage_path) {
+      await supabase.storage.from(BUCKET).remove([row.storage_path]).catch(() => {});
+    }
+    return { ok: true };
+  }
+
+  /** Descarga la plantilla como File listo para createEnvio / uploadPdf. */
+  async downloadPlantillaAsFile(plantilla) {
+    if (!plantilla?.storage_path) throw new Error('Plantilla sin archivo');
+    const { data, error } = await supabase.storage
+      .from(BUCKET)
+      .createSignedUrl(plantilla.storage_path, 600);
+    if (error) throw error;
+    if (!data?.signedUrl) throw new Error('No se pudo obtener la plantilla');
+    const res = await fetch(data.signedUrl);
+    if (!res.ok) throw new Error(`Error descargando plantilla (${res.status})`);
+    const blob = await res.blob();
+    const name = plantilla.file_name || `${plantilla.tipo_documento || 'plantilla'}.pdf`;
+    return new File([blob], name.endsWith('.pdf') ? name : `${name}.pdf`, {
+      type: 'application/pdf'
+    });
+  }
+
+  async getPlantillaSignedUrl(plantilla, expiresIn = 600) {
+    if (!plantilla?.storage_path) throw new Error('Plantilla sin archivo');
+    const { data, error } = await supabase.storage
+      .from(BUCKET)
+      .createSignedUrl(plantilla.storage_path, expiresIn);
+    if (error) throw error;
+    if (!data?.signedUrl) throw new Error('No se pudo obtener el enlace de la plantilla');
+    return data.signedUrl;
   }
 
   /** Historial de auditoría de un envío (portal + Kronos). */

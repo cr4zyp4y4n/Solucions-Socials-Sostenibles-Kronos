@@ -81,6 +81,7 @@ export function newPackItem(tipoDocumento) {
     key: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
     tipoDocumento,
     file: null,
+    guardarComoPlantilla: true,
     episRows: [{ equipo: '', marca: '', modelo: '' }]
   };
 }
