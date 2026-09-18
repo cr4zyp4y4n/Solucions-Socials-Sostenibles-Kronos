@@ -1,5 +1,5 @@
 import React from 'react';
-import { Clock, FileText } from 'feather-icons-react';
+import { Clock, Eye, FileText } from 'feather-icons-react';
 import { useTheme } from '../ThemeContext';
 import Sensitive from '../Sensitive';
 import FirmaModal from './FirmaModal';
@@ -7,10 +7,11 @@ import { FirmaButton } from './FirmaUi';
 import {
   buildFirmaTimeline,
   envioLabel,
-  envioTieneDocumentosFirmados
+  envioTieneDocumentosFirmados,
+  envioTieneIdentidadFoto
 } from './firmaPageHelpers';
 
-export default function FirmaTimelineModal({ envio, onClose, onVerFirmados, onAuditoria }) {
+export default function FirmaTimelineModal({ envio, onClose, onVerFirmados, onVerIdentidad, onAuditoria }) {
   const { colors } = useTheme();
   if (!envio) return null;
 
@@ -32,6 +33,12 @@ export default function FirmaTimelineModal({ envio, onClose, onVerFirmados, onAu
       width={480}
       footer={(
         <div style={{ display: 'grid', gap: 8 }}>
+          {envioTieneIdentidadFoto(envio) ? (
+            <FirmaButton onClick={() => onVerIdentidad?.(envio)} style={{ width: '100%' }}>
+              <Eye size={15} />
+              Ver foto de identidad
+            </FirmaButton>
+          ) : null}
           {envioTieneDocumentosFirmados(envio) ? (
             <FirmaButton variant="success" onClick={() => onVerFirmados(envio)} style={{ width: '100%' }}>
               <FileText size={15} />

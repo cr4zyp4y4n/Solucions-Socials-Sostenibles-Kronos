@@ -204,6 +204,14 @@ export function buildFirmaTimeline(envio) {
     { key: 'portal', title: 'Primera visita al portal', at: envio.portal_abierto_at || null, note: 'Solo cuando el navegador confirma la carga (no bots SSR). Detalle en Auditoría.' },
     onboardingTimelineRow(envio),
     {
+      key: 'identidad',
+      title: 'Foto de identidad (selfie + DNI)',
+      at: envio.identidad_foto_at
+        || (envio.documentos || []).find((d) => d?.identidad_foto_at)?.identidad_foto_at
+        || null,
+      note: 'Evidencia visual obligatoria antes del SMS.'
+    },
+    {
       key: 'otp',
       title: 'SMS con código OTP',
       at: envio.otp_primera_solicitud_at || null,
@@ -241,6 +249,12 @@ export function envioTieneDocumentosFirmados(envio) {
   if (!envio) return false;
   if (envio.firmado_at || envio.estado === 'firmado') return true;
   return (envio.documentos || []).some((d) => d.storage_path_firmado || d.firmado_at || d.estado === 'firmado');
+}
+
+export function envioTieneIdentidadFoto(envio) {
+  if (!envio) return false;
+  if (envio.identidad_foto_path || envio.identidad_foto_at) return true;
+  return (envio.documentos || []).some((d) => d?.identidad_foto_path || d?.identidad_foto_at);
 }
 
 export function documentosPackOrdenados(envio) {

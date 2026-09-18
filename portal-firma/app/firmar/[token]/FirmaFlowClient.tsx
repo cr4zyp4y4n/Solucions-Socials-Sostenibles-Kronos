@@ -1,6 +1,7 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import FirmaIdentidadCapture from './FirmaIdentidadCapture';
 
 type Props = {
   token: string;
@@ -9,6 +10,7 @@ type Props = {
   isRevoked: boolean;
   isExpired: boolean;
   requiereConfirmacionDni?: boolean;
+  identidadFotoOk?: boolean;
   acceptLabel?: string;
   blockedHint?: string;
 };
@@ -20,6 +22,7 @@ export default function FirmaFlowClient({
   isRevoked,
   isExpired,
   requiereConfirmacionDni = false,
+  identidadFotoOk = false,
   acceptLabel = 'Acepto y firmo',
   blockedHint = ''
 }: Props) {
@@ -30,6 +33,28 @@ export default function FirmaFlowClient({
   const [msg, setMsg] = useState<string>('');
   const [err, setErr] = useState<string>('');
   const [debugOtp, setDebugOtp] = useState<string>('');
+  const [fotoOk, setFotoOk] = useState(identidadFotoOk);
+
+  useEffect(() => {
+    setFotoOk(identidadFotoOk);
+  }, [identidadFotoOk]);
+
+  useEffect(() => {
+    if (identidadFotoOk) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch(`/firmar/${encodeURIComponent(token)}/identidad`, { cache: 'no-store' });
+        const json = await res.json().catch(() => ({}));
+        if (!cancelled && res.ok && json.hasFoto) setFotoOk(true);
+      } catch {
+        // silencioso: el bloqueo real está en el servidor
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [identidadFotoOk, token]);
 
   const disabledReason = useMemo(() => {
     if (blockedHint) return blockedHint;
@@ -41,6 +66,10 @@ export default function FirmaFlowClient({
   }, [blockedHint, canAttempt, isExpired, isRevoked, isUsed]);
 
   const requestOtp = async () => {
+    if (!fotoOk) {
+      setErr('Primero envía la foto de identidad (selfie con el DNI delante de la cara).');
+      return;
+    }
     if (requiereConfirmacionDni && !dni.trim()) {
       setErr('Introduce tu DNI o NIE para continuar.');
       return;
@@ -144,8 +173,19 @@ export default function FirmaFlowClient({
         </div>
       ) : null}
 
+      {step === 'idle' || step === 'requested' ? (
+        <FirmaIdentidadCapture
+          token={token}
+          alreadyDone={fotoOk}
+          onDone={() => {
+            setFotoOk(true);
+            setErr('');
+          }}
+        />
+      ) : null}
+
       {step === 'idle' ? (
-        <div className="space-y-3">
+        <div className={`space-y-3 ${fotoOk ? '' : 'opacity-60'}`}>
           {requiereConfirmacionDni ? (
             <div>
               <div className="mb-2 text-sm text-zinc-700">
@@ -156,21 +196,24 @@ export default function FirmaFlowClient({
                 onChange={(e) => setDni(e.target.value)}
                 autoComplete="off"
                 spellCheck={false}
-                className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-3 text-base uppercase tracking-wide"
+                disabled={!fotoOk}
+                className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-3 text-base uppercase tracking-wide disabled:bg-zinc-100"
                 placeholder="12345678A"
               />
             </div>
           ) : null}
           <button
             onClick={requestOtp}
-            disabled={loading || (requiereConfirmacionDni && !dni.trim())}
+            disabled={loading || !fotoOk || (requiereConfirmacionDni && !dni.trim())}
             className="w-full rounded-full bg-emerald-700 px-4 py-3 text-sm font-black text-white transition hover:bg-emerald-800 disabled:opacity-60"
           >
             {loading
               ? 'Enviando código...'
-              : requiereConfirmacionDni
-                ? 'Confirmar DNI y enviar código por SMS'
-                : 'Enviar código por SMS'}
+              : !fotoOk
+                ? 'Envía la foto de identidad para continuar'
+                : requiereConfirmacionDni
+                  ? 'Confirmar DNI y enviar código por SMS'
+                  : 'Enviar código por SMS'}
           </button>
         </div>
       ) : null}
@@ -197,7 +240,7 @@ export default function FirmaFlowClient({
             </button>
             <button
               onClick={requestOtp}
-              disabled={loading || (requiereConfirmacionDni && !dni.trim())}
+              disabled={loading || !fotoOk || (requiereConfirmacionDni && !dni.trim())}
               className="rounded-full border border-zinc-200 bg-white px-4 py-3 text-sm font-black text-zinc-900 transition hover:bg-zinc-50 disabled:opacity-60"
             >
               Reenviar código

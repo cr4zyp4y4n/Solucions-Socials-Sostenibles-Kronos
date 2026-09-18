@@ -7,6 +7,7 @@ const ACCION_LABELS = {
   documento_lectura_confirmada: 'Declaración aceptada en portal',
   dni_confirmado: 'DNI confirmado en portal',
   dni_confirmacion_fallida: 'DNI incorrecto en portal',
+  identidad_foto_subida: 'Foto de identidad (selfie + DNI) enviada',
   otp_solicitado: 'Código SMS solicitado',
   otp_verificado: 'Verificación código SMS',
   aceptado_y_firmado: 'Documento firmado electrónicamente',
@@ -153,6 +154,10 @@ export function describeFirmaAuditoriaRow(row) {
   }
   if (accion === 'dni_confirmado' && det.dni_hash) {
     notes.push(`Huella DNI (hash): ${String(det.dni_hash).slice(0, 12)}…`);
+  }
+  if (accion === 'identidad_foto_subida') {
+    notes.push('Selfie con documento de identidad delante de la cara');
+    if (det.hash) notes.push(`SHA-256: ${String(det.hash).slice(0, 12)}…`);
   }
   if (accion === 'pack_aceptado_y_firmado' || accion === 'aceptado_y_firmado') {
     if (det.trabajador) notes.push(det.trabajador);

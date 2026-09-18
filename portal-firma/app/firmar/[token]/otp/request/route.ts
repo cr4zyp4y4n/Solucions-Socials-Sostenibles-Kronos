@@ -4,6 +4,7 @@ import { sendSms } from '@/lib/sms';
 import { getRequestInfo } from '@/lib/requestInfo';
 import { supabaseAdmin } from '@/lib/supabase';
 import { checkProvidedDni } from '@/lib/dniVerification';
+import { assertIdentidadFotoPresent } from '@/lib/identidadVerification';
 
 export const runtime = 'nodejs';
 
@@ -22,6 +23,13 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
   const { documentoId, envioId } = getOtpScopeIds(resolved);
   if (!documentoId || !telefono) {
     return Response.json({ ok: false, error: 'Documento o teléfono no disponible' }, { status: 400 });
+  }
+
+  try {
+    await assertIdentidadFotoPresent(resolved);
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : 'Falta la foto de identidad';
+    return Response.json({ ok: false, error: msg }, { status: 403 });
   }
 
   const dniCheck = checkProvidedDni(resolved.trabajador?.dni, dniProvided);

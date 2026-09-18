@@ -371,6 +371,9 @@ class FirmaService {
       onboarding_modal_at: doc.onboarding_modal_at,
       onboarding_resuelto_at: doc.onboarding_resuelto_at,
       onboarding_resultado: doc.onboarding_resultado,
+      identidad_foto_path: doc.identidad_foto_path || null,
+      identidad_foto_at: doc.identidad_foto_at || null,
+      identidad_foto_hash: doc.identidad_foto_hash || null,
       firmado_at: doc.firmado_at,
       created_at: doc.created_at,
       updated_at: doc.updated_at,
@@ -980,6 +983,24 @@ class FirmaService {
   }
 
   /**
+   * URL firmada de la selfie con DNI (identidad) del envío o documento legacy.
+   */
+  async getIdentidadFotoSignedUrl(envio, { expiresIn = 600 } = {}) {
+    if (!envio) throw new Error('Falta envío');
+    let path = envio.identidad_foto_path || null;
+    if (!path) {
+      const docs = Array.isArray(envio.documentos) ? envio.documentos : [];
+      const withFoto = docs.find((d) => d?.identidad_foto_path);
+      path = withFoto?.identidad_foto_path || null;
+    }
+    if (!path) throw new Error('Este envío aún no tiene foto de identidad');
+    const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(path, expiresIn);
+    if (error) throw error;
+    if (!data?.signedUrl) throw new Error('No se pudo obtener el enlace de la foto');
+    return data.signedUrl;
+  }
+
+  /**
    * Plantillas PDF reutilizables por tipo + empresa (EI_SSS | MENJAR_DHORT).
    */
   async loadPlantillas(entityKey = null) {
@@ -1018,6 +1039,9 @@ class FirmaService {
   /**
    * Guarda o reemplaza la plantilla de un tipo para una empresa.
    * Sube a Storage bajo plantillas/{entity}/{tipo}/…
+   * Usa ON CONFLICT (tipo_documento, entity_key) para evitar
+   * "duplicate key value violates unique constraint firma_plantillas_unique"
+   * (p. ej. race al generar pack en paralelo o reintento).
    */
   async upsertPlantilla({ tipoDocumento, entityKey, file }) {
     if (!file) throw new Error('Falta el PDF de plantilla');
@@ -1047,29 +1071,17 @@ class FirmaService {
       updated_at: new Date().toISOString()
     };
 
-    let row;
-    if (existing?.id) {
-      const { data, error } = await supabase
-        .from(TABLE_PLANTILLAS)
-        .update(payload)
-        .eq('id', existing.id)
-        .select()
-        .single();
-      if (error) throw error;
-      row = data;
-      if (existing.storage_path && existing.storage_path !== storagePath) {
-        await supabase.storage.from(BUCKET).remove([existing.storage_path]).catch(() => {});
-      }
-    } else {
-      const { data, error } = await supabase
-        .from(TABLE_PLANTILLAS)
-        .insert(payload)
-        .select()
-        .single();
-      if (error) throw error;
-      row = data;
+    const { data, error } = await supabase
+      .from(TABLE_PLANTILLAS)
+      .upsert(payload, { onConflict: 'tipo_documento,entity_key' })
+      .select()
+      .single();
+    if (error) throw error;
+
+    if (existing?.storage_path && existing.storage_path !== storagePath) {
+      await supabase.storage.from(BUCKET).remove([existing.storage_path]).catch(() => {});
     }
-    return row;
+    return data;
   }
 
   async deletePlantilla(plantillaId) {

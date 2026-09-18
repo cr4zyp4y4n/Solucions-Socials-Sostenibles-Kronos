@@ -3,6 +3,7 @@ import { getFirmaDocumentoLabel } from '@/lib/firmaDocumentos';
 import { registrarVisitaPortal } from '@/lib/firmaPortalTracking';
 import { getPortalRequestMeta } from '@/lib/portalRequestMeta';
 import { resolveFirmaToken } from '@/lib/resolveFirmaToken';
+import { getIdentidadFotoStatus } from '@/lib/identidadVerification';
 import FirmaPackPortal from './FirmaPackPortal';
 
 export const dynamic = 'force-dynamic';
@@ -67,6 +68,14 @@ export default async function FirmaTokenPage({ params }: TokenPageProps) {
     : getFirmaDocumentoLabel(documentoPrincipal?.tipo_documento);
 
   const canAttempt = documentos.some((d) => d.storage_path) && !isExpired && !isRevoked;
+
+  let identidadFotoOk = false;
+  try {
+    const idStatus = await getIdentidadFotoStatus(resolved);
+    identidadFotoOk = idStatus.ok;
+  } catch (e) {
+    console.warn('[firma portal] identidad status:', e);
+  }
 
   return (
     <main className="min-h-screen overflow-x-hidden bg-zinc-50 px-4 py-8 text-zinc-900 sm:px-6">
@@ -166,6 +175,7 @@ export default async function FirmaTokenPage({ params }: TokenPageProps) {
               isRevoked={isRevoked}
               isUsed={isUsed}
               requiereConfirmacionDni={Boolean(trabajador?.dni?.trim())}
+              identidadFotoOk={identidadFotoOk}
             />
           </div>
         </div>

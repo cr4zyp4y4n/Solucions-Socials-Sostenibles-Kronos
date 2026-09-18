@@ -1,3 +1,17 @@
+## v2.5.9
+
+### Firma — portal móvil + foto de identidad
+
+- **UX pack en móvil:** al pulsar un documento, el PDF y Sí/No se abren **debajo de esa misma tarjeta**; al guardar la respuesta, se cierra.
+- **Foto de identidad obligatoria:** antes del DNI/SMS el firmante debe enviar una **selfie con el DNI/NIE delante de la cara** (cámara o captura móvil).
+- Bloqueo en servidor: sin foto no se puede pedir OTP ni firmar.
+- En Kronos: paso en el seguimiento + menú **Ver foto identidad**.
+- La foto queda en el bucket `firma-documentos` y se menciona en el sello del PDF firmado.
+- **SQL (requerido):** `database/alter_firma_identidad_foto.sql`.
+- **Redeploy del portal-firma** obligatorio.
+
+---
+
 ## v2.5.8
 
 ### Firma — plantillas PDF reutilizables

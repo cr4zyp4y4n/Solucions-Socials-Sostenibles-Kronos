@@ -18,6 +18,7 @@ import {
   canalesNotificacionBaja,
   envioLabel,
   envioTieneDocumentosFirmados,
+  envioTieneIdentidadFoto,
   flowEstadoFirma,
   formatFirmaDate
 } from './firmaPageHelpers';
@@ -45,6 +46,7 @@ export default function FirmaEnvioCard({
   onNotificarBaja,
   onAuditoria,
   onVerFirmados,
+  onVerIdentidad,
   onCancelar
 }) {
   const { colors } = useTheme();
@@ -52,6 +54,7 @@ export default function FirmaEnvioCard({
   const FlowIcon = flowIcon(flow.key);
   const docs = envio.documentos || [];
   const firmados = envioTieneDocumentosFirmados(envio);
+  const tieneIdentidad = envioTieneIdentidadFoto(envio);
   const hasLink = !!envio.portal_link;
   const esBaja = envioEsPackBaja(envio);
   const canales = canalesNotificacionBaja(envio);
@@ -107,6 +110,14 @@ export default function FirmaEnvioCard({
       icon: Clock,
       onClick: () => onAuditoria(envio)
     },
+    ...(tieneIdentidad
+      ? [{
+        key: 'identidad',
+        label: 'Ver foto identidad',
+        icon: Eye,
+        onClick: () => onVerIdentidad?.(envio)
+      }]
+      : []),
     ...(firmados
       ? [{
         key: 'signed',

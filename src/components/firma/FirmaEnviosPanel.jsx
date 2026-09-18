@@ -31,6 +31,7 @@ export default function FirmaEnviosPanel({
   onNotificarBaja,
   onAuditoria,
   onVerFirmados,
+  onVerIdentidad,
   onCancelar
 }) {
   const { colors } = useTheme();
@@ -121,6 +122,7 @@ export default function FirmaEnviosPanel({
                 onNotificarBaja={onNotificarBaja}
                 onAuditoria={onAuditoria}
                 onVerFirmados={onVerFirmados}
+                onVerIdentidad={onVerIdentidad}
                 onCancelar={onCancelar}
               />
             ))}

@@ -1,16 +1,21 @@
 import React from 'react';
 import { motion } from 'framer-motion';
+import { Eye } from 'feather-icons-react';
 import { useTheme } from '../ThemeContext';
 import Sensitive from '../Sensitive';
 import { describeFirmaAuditoriaRow, describeDocumentoAceptacion } from '../../utils/firmaAuditoriaLabels';
-import { documentosPackOrdenados } from './firmaPageHelpers';
+import {
+  documentosPackOrdenados,
+  envioLabel,
+  envioTieneIdentidadFoto
+} from './firmaPageHelpers';
 import FirmaModal from './FirmaModal';
 import { FirmaButton } from './FirmaUi';
-import { envioLabel } from './firmaPageHelpers';
 
-export default function FirmaAuditoriaModal({ envio, rows, loading, onClose }) {
+export default function FirmaAuditoriaModal({ envio, rows, loading, onClose, onVerIdentidad }) {
   const { colors } = useTheme();
   const docsAceptacion = envio ? documentosPackOrdenados(envio).map(describeDocumentoAceptacion) : [];
+  const tieneIdentidad = envioTieneIdentidadFoto(envio);
 
   return (
     <FirmaModal
@@ -27,13 +32,21 @@ export default function FirmaAuditoriaModal({ envio, rows, loading, onClose }) {
       ) : ''}
       width={600}
       footer={(
-        <FirmaButton variant="ghost" onClick={onClose} style={{ width: '100%' }}>
-          Cerrar
-        </FirmaButton>
+        <div style={{ display: 'grid', gap: 8 }}>
+          {tieneIdentidad ? (
+            <FirmaButton onClick={() => onVerIdentidad?.(envio)} style={{ width: '100%' }}>
+              <Eye size={15} />
+              Ver foto de identidad
+            </FirmaButton>
+          ) : null}
+          <FirmaButton variant="ghost" onClick={onClose} style={{ width: '100%' }}>
+            Cerrar
+          </FirmaButton>
+        </div>
       )}
     >
       <p style={{ margin: '0 0 16px', fontSize: 12, color: colors.textSecondary, lineHeight: 1.45 }}>
-        Registro de respuestas Sí/No, DNI, SMS, firma, IP y navegador en el portal.
+        Registro de respuestas Sí/No, foto de identidad, DNI, SMS, firma, IP y navegador en el portal.
         El trabajador debe elegir Sí o No en cada documento; puede firmar con cualquiera de las dos respuestas.
       </p>
 

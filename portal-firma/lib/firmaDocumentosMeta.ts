@@ -212,6 +212,8 @@ export function buildStampLinesForDoc({
   ip,
   userAgent,
   dniConfirmadoEnPortal,
+  identidadFotoOk,
+  identidadFotoAt,
   smsVerificado,
   smsVerificadoAt,
   empresaLine
@@ -227,6 +229,8 @@ export function buildStampLinesForDoc({
   ip?: string;
   userAgent?: string;
   dniConfirmadoEnPortal?: boolean;
+  identidadFotoOk?: boolean;
+  identidadFotoAt?: string | null;
   smsVerificado?: boolean;
   smsVerificadoAt?: string | null;
   empresaLine?: string | null;
@@ -237,6 +241,11 @@ export function buildStampLinesForDoc({
     ? `Verificación SMS (OTP): completada · ${new Date(smsVerificadoAt).toLocaleString('es-ES')}`
     : smsVerificado
       ? 'Verificación SMS (OTP): completada'
+      : '';
+  const identidadLine = identidadFotoAt
+    ? `Foto identidad (selfie + DNI): recibida · ${new Date(identidadFotoAt).toLocaleString('es-ES')}`
+    : identidadFotoOk
+      ? 'Foto identidad (selfie + DNI): recibida'
       : '';
   const respuesta = normalizeRespuestaAceptacion(opciones);
   const docRef = documentoId ? String(documentoId).replace(/-/g, '').slice(0, 12) : '';
@@ -251,6 +260,7 @@ export function buildStampLinesForDoc({
     trabajadorNombre ? `Trabajador: ${trabajadorNombre}` : '',
     trabajadorDni ? `DNI: ${trabajadorDni}` : '',
     dniConfirmadoEnPortal ? 'DNI confirmado en portal antes del SMS: Sí' : '',
+    identidadLine,
     smsLine,
     `Fecha/hora firma: ${new Date(nowIso).toLocaleString('es-ES')}`,
     hashShort ? `SHA-256 (orig): ${hashShort}…` : '',

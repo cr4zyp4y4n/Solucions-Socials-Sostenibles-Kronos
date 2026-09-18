@@ -360,6 +360,16 @@ export default function FirmaPage() {
     }
   };
 
+  const verIdentidadFoto = async (envio) => {
+    setError('');
+    try {
+      const url = await firmaService.getIdentidadFotoSignedUrl(envio);
+      await openLink(url);
+    } catch (e) {
+      setError(e?.message || 'No se pudo abrir la foto de identidad.');
+    }
+  };
+
   const descargarDocumentoPdf = async (documento) => {
     const key = `${documento.id}:dl:firmado`;
     setDocsLoadingId(key);
@@ -416,6 +426,8 @@ export default function FirmaPage() {
     setError('');
     setMessage('');
     try {
+      // Primero resolvemos PDFs en paralelo; las plantillas se guardan después
+      // en serie y deduplicadas por tipo (evita race en firma_plantillas_unique).
       const items = await Promise.all(
         packItems.map(async (item) => {
           let file = item.file;
@@ -438,16 +450,28 @@ export default function FirmaPage() {
               origen = 'holded';
             }
           }
-          if (item.file && item.guardarComoPlantilla !== false) {
-            await firmaService.upsertPlantilla({
-              tipoDocumento: item.tipoDocumento,
-              entityKey: selectedEntity,
-              file: item.file
-            });
-          }
-          return { tipoDocumento: item.tipoDocumento, file, origen };
+          return {
+            tipoDocumento: item.tipoDocumento,
+            file,
+            origen,
+            guardarComoPlantilla: Boolean(item.file) && item.guardarComoPlantilla !== false,
+            uploadFile: item.file || null
+          };
         })
       );
+
+      const plantillasToSave = new Map();
+      for (const item of items) {
+        if (!item.guardarComoPlantilla || !item.uploadFile) continue;
+        plantillasToSave.set(item.tipoDocumento, item.uploadFile);
+      }
+      for (const [tipoDocumento, file] of plantillasToSave) {
+        await firmaService.upsertPlantilla({
+          tipoDocumento,
+          entityKey: selectedEntity,
+          file
+        });
+      }
       const trabajador = await firmaService.getOrCreateTrabajadorFromHolded(selectedHoldedEmployee);
       const result = await firmaService.createEnvio({
         trabajadorId: trabajador.id,
@@ -632,6 +656,7 @@ export default function FirmaPage() {
               onNotificarBaja={openNotificarBaja}
               onAuditoria={openFirmaAuditoria}
               onVerFirmados={setDocsEnvio}
+              onVerIdentidad={verIdentidadFoto}
               onCancelar={cancelEnvio}
             />
           </motion.div>
@@ -695,6 +720,10 @@ export default function FirmaPage() {
           setTimelineEnvio(null);
           setDocsEnvio(e);
         }}
+        onVerIdentidad={async (e) => {
+          setTimelineEnvio(null);
+          await verIdentidadFoto(e);
+        }}
         onAuditoria={openFirmaAuditoria}
       />
 
@@ -711,6 +740,10 @@ export default function FirmaPage() {
         rows={auditoriaRows}
         loading={auditoriaLoading}
         onClose={() => setAuditoriaEnvio(null)}
+        onVerIdentidad={async (e) => {
+          setAuditoriaEnvio(null);
+          await verIdentidadFoto(e);
+        }}
       />
 
       <FirmaNotificarBajaModal

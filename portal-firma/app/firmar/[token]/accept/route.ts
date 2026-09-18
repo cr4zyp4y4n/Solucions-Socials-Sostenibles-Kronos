@@ -5,6 +5,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { getRequestInfo } from '@/lib/requestInfo';
 import { stampPdfLastPage } from '@/lib/pdfSign';
 import { hasRecentDniConfirmation } from '@/lib/dniVerification';
+import { assertIdentidadFotoPresent } from '@/lib/identidadVerification';
 import { normalizeDni } from '@/lib/normalizeDni';
 import { loadDocumentoOpciones } from '@/lib/firmaDocumentoOpciones';
 
@@ -17,6 +18,7 @@ async function stampAndUploadDocument({
   trabajadorNombre,
   trabajadorDni,
   dniConfirmadoEnPortal,
+  identidadFotoAt,
   smsVerificadoAt,
   empresaLine
 }: {
@@ -36,6 +38,7 @@ async function stampAndUploadDocument({
   trabajadorNombre?: string | null;
   trabajadorDni?: string | null;
   dniConfirmadoEnPortal?: boolean;
+  identidadFotoAt?: string | null;
   smsVerificadoAt?: string | null;
   empresaLine?: string | null;
 }) {
@@ -75,6 +78,8 @@ async function stampAndUploadDocument({
     ip,
     userAgent,
     dniConfirmadoEnPortal,
+    identidadFotoOk: Boolean(identidadFotoAt),
+    identidadFotoAt: identidadFotoAt || null,
     smsVerificado: true,
     smsVerificadoAt: smsVerificadoAt || null,
     empresaLine: empresaLine || null
@@ -165,6 +170,14 @@ export async function POST(_req: Request, ctx: { params: Promise<{ token: string
     return Response.json({ ok: false, error: 'Falta verificación OTP' }, { status: 401 });
   }
 
+  let identidadStatus;
+  try {
+    identidadStatus = await assertIdentidadFotoPresent(resolved);
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : 'Falta la foto de identidad';
+    return Response.json({ ok: false, error: msg }, { status: 403 });
+  }
+
   const requiereDni = Boolean(normalizeDni(resolved.trabajador?.dni));
   if (requiereDni) {
     const dniOk = await hasRecentDniConfirmation({ documentoId, envioId });
@@ -195,6 +208,7 @@ export async function POST(_req: Request, ctx: { params: Promise<{ token: string
       trabajadorNombre,
       trabajadorDni,
       dniConfirmadoEnPortal,
+      identidadFotoAt: identidadStatus.at,
       smsVerificadoAt,
       empresaLine
     });
