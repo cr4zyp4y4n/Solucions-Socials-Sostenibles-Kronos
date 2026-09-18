@@ -73,6 +73,17 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
     );
   }
 
+  const aceptaUso = String(form.get('acepta_uso_verificacion') || '') === 'true';
+  if (!aceptaUso) {
+    return Response.json(
+      {
+        ok: false,
+        error: 'Debes aceptar que la imagen se usa para verificación de identidad y se guarda en nuestros sistemas.'
+      },
+      { status: 400 }
+    );
+  }
+
   const buffer = Buffer.from(await blob.arrayBuffer());
   const hash = createHash('sha256').update(buffer).digest('hex');
   const ext = extensionFor(mime);
@@ -147,7 +158,11 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
       accion: 'identidad_foto_subida',
       envio_id: envioId,
       path: storagePath,
-      hash
+      hash,
+      finalidad: 'verificacion_identidad_firma',
+      acepta_uso_verificacion: true,
+      informacion_mostrada:
+        'Imagen para verificación de identidad; se guarda en BBDD/almacenamiento como evidencia del expediente de firma'
     }
   });
 

@@ -19,23 +19,33 @@ export default function FirmaOnboardingModal({ isPack, onAudit, onClose }: Props
   const steps = useMemo(
     () => [
       {
-        title: '1. Revisa el documento',
+        title: '1. Abre y revisa cada documento',
         body: isPack
-          ? 'Verás una lista de documentos. Abre cada uno, léelo con calma y responde Sí o No según corresponda.'
+          ? 'Verás una lista de documentos. Pulsa una tarjeta para abrir el PDF justo debajo. Léelo con calma y responde Sí o No.'
           : 'Lee el documento en pantalla con calma. Cuando lo hayas revisado, indica tu respuesta Sí o No.'
       },
       {
-        title: '2. Confirma cada respuesta',
+        title: '2. Guarda cada respuesta',
         body: isPack
-          ? 'Debes guardar la respuesta de todos los documentos del pack antes de continuar con la firma.'
+          ? 'Al pulsar «Guardar respuesta», esa tarjeta se cierra sola. Debes responder todos los documentos del pack antes de continuar.'
           : 'Pulsa «Guardar respuesta» para registrar tu lectura antes de seguir.'
       },
       {
-        title: '3. Verificación por SMS',
-        body: 'Te pediremos un código por SMS al teléfono de la empresa. Si se solicita, también confirmarás tu DNI o NIE.'
+        title: '3. Foto de identidad',
+        body:
+          'Te pediremos una selfie mostrando tu DNI o NIE delante de la cara (documento legible). ' +
+          'Esta imagen se usa solo para verificar tu identidad en el proceso de firma. ' +
+          'Al enviarla, se guarda de forma segura en nuestros sistemas (base de datos y almacenamiento) ' +
+          'como evidencia del proceso, junto con el resto del expediente de firma. Sin esta foto no podrás continuar.'
       },
       {
-        title: '4. Firma electrónica',
+        title: '4. DNI y código SMS',
+        body:
+          'Si se solicita, confirma tu DNI o NIE (debe coincidir con el de la empresa). ' +
+          'Después recibirás un código por SMS al teléfono registrado.'
+      },
+      {
+        title: '5. Firma electrónica',
         body: isPack
           ? 'Cuando el código sea correcto, podrás firmar todos los documentos del pack de una sola vez.'
           : 'Cuando el código sea correcto, podrás aceptar y firmar el documento.'
@@ -96,13 +106,13 @@ export default function FirmaOnboardingModal({ isPack, onAudit, onClose }: Props
                 ¿Es la primera vez que firmas aquí?
               </h2>
               <p className="mt-3 text-sm leading-relaxed text-zinc-600">
-                Hemos mejorado el portal para que sepas qué verás en cada paso antes de empezar. Si ya conoces
-                el proceso, puedes ir directamente a firmar.
+                Te explicamos el proceso en unos segundos: cómo abrir los documentos, la foto de identidad
+                obligatoria y la firma por SMS. Si ya lo conoces, puedes ir directamente a firmar.
               </p>
             </div>
 
             <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
-              En resumen: revisar documento{isPack ? 's' : ''} → responder Sí/No → código SMS → firma.
+              En resumen: revisar documento{isPack ? 's' : ''} → Sí/No → selfie con DNI → código SMS → firma.
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2">

@@ -157,6 +157,8 @@ export function describeFirmaAuditoriaRow(row) {
   }
   if (accion === 'identidad_foto_subida') {
     notes.push('Selfie con documento de identidad delante de la cara');
+    notes.push('Finalidad: verificación de identidad');
+    if (det.acepta_uso_verificacion) notes.push('Aceptó información de uso y almacenamiento');
     if (det.hash) notes.push(`SHA-256: ${String(det.hash).slice(0, 12)}…`);
   }
   if (accion === 'pack_aceptado_y_firmado' || accion === 'aceptado_y_firmado') {

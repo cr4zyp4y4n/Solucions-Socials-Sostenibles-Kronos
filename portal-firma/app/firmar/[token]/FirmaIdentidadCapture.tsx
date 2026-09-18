@@ -19,6 +19,7 @@ export default function FirmaIdentidadCapture({ token, alreadyDone = false, onDo
   const [uploading, setUploading] = useState(false);
   const [err, setErr] = useState('');
   const [doneLocal, setDoneLocal] = useState(alreadyDone);
+  const [aceptaUso, setAceptaUso] = useState(false);
 
   const stopCamera = useCallback(() => {
     streamRef.current?.getTracks().forEach((t) => t.stop());
@@ -107,11 +108,16 @@ export default function FirmaIdentidadCapture({ token, alreadyDone = false, onDo
       setErr('Haz la foto antes de continuar.');
       return;
     }
+    if (!aceptaUso) {
+      setErr('Debes aceptar el uso de la imagen para verificación de identidad.');
+      return;
+    }
     setUploading(true);
     setErr('');
     try {
       const form = new FormData();
       form.append('foto', blob, `identidad-${Date.now()}.jpg`);
+      form.append('acepta_uso_verificacion', 'true');
       const res = await fetch(`/firmar/${encodeURIComponent(token)}/identidad`, {
         method: 'POST',
         body: form
@@ -130,7 +136,7 @@ export default function FirmaIdentidadCapture({ token, alreadyDone = false, onDo
   if (doneLocal) {
     return (
       <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
-        Foto de identidad recibida. Puedes continuar con el DNI y el SMS.
+        Foto de identidad recibida y guardada para verificación. Puedes continuar con el DNI y el SMS.
       </div>
     );
   }
@@ -143,6 +149,13 @@ export default function FirmaIdentidadCapture({ token, alreadyDone = false, onDo
           Haz una <b>selfie</b> mostrando tu <b>DNI/NIE delante de la cara</b> (documento legible).
           Es obligatorio antes del código SMS.
         </p>
+      </div>
+
+      <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2.5 text-xs leading-relaxed text-sky-950">
+        <b>Información sobre esta imagen:</b> se solicita únicamente para{' '}
+        <b>verificar tu identidad</b> en este proceso de firma electrónica. Al enviarla, la imagen{' '}
+        <b>se guarda de forma segura</b> en nuestros sistemas (base de datos y almacenamiento de archivos)
+        como evidencia del expediente de firma, junto con la fecha y datos del envío. No se usa para otros fines.
       </div>
 
       {cameraErr ? (
@@ -208,12 +221,25 @@ export default function FirmaIdentidadCapture({ token, alreadyDone = false, onDo
           </>
         ) : (
           <>
+            <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-zinc-200 bg-white p-3 text-xs leading-relaxed text-zinc-800 sm:col-span-2">
+              <input
+                type="checkbox"
+                className="mt-0.5 h-4 w-4 shrink-0"
+                checked={aceptaUso}
+                onChange={(e) => setAceptaUso(e.target.checked)}
+              />
+              <span>
+                Entiendo que esta imagen es para <b>verificación de identidad</b> y que, al enviarla,{' '}
+                <b>se guardará en la base de datos</b> / sistemas de la empresa como evidencia del proceso de firma.
+              </span>
+            </label>
             <button
               type="button"
               onClick={() => {
                 if (previewUrl) URL.revokeObjectURL(previewUrl);
                 setPreviewUrl(null);
                 setBlob(null);
+                setAceptaUso(false);
               }}
               className="rounded-full border border-zinc-200 bg-white px-4 py-2.5 text-sm font-bold text-zinc-900"
             >
@@ -222,7 +248,7 @@ export default function FirmaIdentidadCapture({ token, alreadyDone = false, onDo
             <button
               type="button"
               onClick={() => void upload()}
-              disabled={uploading}
+              disabled={uploading || !aceptaUso}
               className="rounded-full bg-emerald-700 px-4 py-2.5 text-sm font-black text-white disabled:opacity-60"
             >
               {uploading ? 'Enviando…' : 'Enviar foto y continuar'}

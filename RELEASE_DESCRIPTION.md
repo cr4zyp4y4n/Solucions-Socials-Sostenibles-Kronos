@@ -4,6 +4,7 @@
 
 - **UX pack en móvil:** al pulsar un documento, el PDF y Sí/No se abren **debajo de esa misma tarjeta**; al guardar la respuesta, se cierra.
 - **Foto de identidad obligatoria:** antes del DNI/SMS el firmante debe enviar una **selfie con el DNI/NIE delante de la cara** (cámara o captura móvil).
+- **Onboarding actualizado:** la guía del portal explica el acordeón, la selfie con DNI, el SMS y la firma.
 - Bloqueo en servidor: sin foto no se puede pedir OTP ni firmar.
 - En Kronos: paso en el seguimiento + menú **Ver foto identidad**.
 - La foto queda en el bucket `firma-documentos` y se menciona en el sello del PDF firmado.
