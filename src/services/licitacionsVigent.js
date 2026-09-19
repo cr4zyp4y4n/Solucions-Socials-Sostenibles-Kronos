@@ -10,7 +10,7 @@ export function daysUntil(dateStr) {
   return Math.ceil((target - today) / (1000 * 60 * 60 * 24));
 }
 
-/** Anuncios previos (PRE) o licitaciones con plazo de oferta aún abierto. */
+/** Anuncios previos (PRE), publicados o licitaciones con plazo de oferta aún abierto. */
 export function isLicitacioVigent(row) {
   if (!row) return false;
   const code = String(row.estat_contractacio || '').toUpperCase();
@@ -20,17 +20,30 @@ export function isLicitacioVigent(row) {
   const d = daysUntil(row.termini_oferta);
   if (d != null) return d >= 0;
 
-  if (code === 'PUB' && row.source === 'PLACSP') return true;
-
-  if (code === 'PUB') return false;
+  if (code === 'PUB') return true;
   return false;
+}
+
+function hasSeguimentValue(value) {
+  if (value == null) return false;
+  return String(value).trim() !== '';
+}
+
+export function hasLicitacioSeguiment(row) {
+  if (!row) return false;
+  const jc = String(row.estat_jc || '').trim();
+  if (jc === 'Interessant' || jc === 'Contactat') return true;
+  return (
+    hasSeguimentValue(row.notes_paula) ||
+    hasSeguimentValue(row.data_contacte) ||
+    hasSeguimentValue(row.resultat_jc)
+  );
 }
 
 /** Borrar de BBDD solo caducadas sin seguimiento comercial activo. */
 export function shouldPurgeLicitacioFromDb(row) {
   if (!row) return false;
   if (isLicitacioVigent(row)) return false;
-  const jc = String(row.estat_jc || '');
-  if (jc === 'Interessant' || jc === 'Contactat') return false;
+  if (hasLicitacioSeguiment(row)) return false;
   return true;
 }
