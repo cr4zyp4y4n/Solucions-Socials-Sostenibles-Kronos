@@ -28,6 +28,7 @@ const {
   setMainSupabaseSession
 } = require('./main/licitacionsSupabaseMain');
 const { runBackgroundLicitacionsSync } = require('./main/licitacionsBackgroundSync');
+const { holdedApiUsageTracker } = require('./main/holdedApiUsageTracker');
 const https = require('https');
 const http = require('http');
 const { autoUpdater } = require('electron-updater');
@@ -508,6 +509,11 @@ ipcMain.handle('get-location-by-ip', async () => {
 
 // Handler IPC para peticiones a la API de Holded
 ipcMain.handle('make-holded-request', async (event, { url, options }) => {
+  // Contador local (0 coste API): registra antes de enviar
+  try {
+    holdedApiUsageTracker.record(url, options?.method || 'GET');
+  } catch (_) { /* no bloquear la petición */ }
+
   return new Promise((resolve, reject) => {
     const urlObj = new URL(url);
 
@@ -592,6 +598,24 @@ ipcMain.handle('make-holded-request', async (event, { url, options }) => {
 
     req.end();
   });
+});
+
+/** Contador local de uso Holded (sin llamar a Holded). */
+ipcMain.handle('get-holded-api-usage', async () => {
+  return holdedApiUsageTracker.getSnapshot();
+});
+
+ipcMain.handle('reset-holded-api-usage-month', async () => {
+  return holdedApiUsageTracker.resetMonth();
+});
+
+ipcMain.handle('reset-holded-api-usage-session', async () => {
+  return holdedApiUsageTracker.resetSession();
+});
+
+/** Snapshot manual del panel web Holded (no hay endpoint de uso). */
+ipcMain.handle('set-holded-official-usage', async (_event, payload) => {
+  return holdedApiUsageTracker.setOfficialSnapshot(payload || {});
 });
 
 /** Peticions TED/PSCP/PLACSP des del main (evita CSP del renderer). */

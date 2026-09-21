@@ -24,6 +24,12 @@ const HoldedTest = () => {
   const [currentTestIndex, setCurrentTestIndex] = React.useState(-1);
 
   const runTests = async () => {
+    const ok = window.confirm(
+      '⚠️ Las pruebas de Holded consumen MUCHAS llamadas al cupo de la API (plan ~7.500/mes).\n\n' +
+      '¿Seguro que quieres ejecutarlas ahora?'
+    );
+    if (!ok) return;
+
     setTesting(true);
     setTestResults({});
     setCurrentTestIndex(0);

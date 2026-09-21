@@ -41,8 +41,8 @@ export const DataProvider = ({ children }) => {
   const [testResults, setTestResults] = useState({});
   const [testing, setTesting] = useState(false);
 
-  // Configuración del caché (5 minutos)
-  const CACHE_DURATION = 5 * 60 * 1000; // 5 minutos en milisegundos
+  // Caché Holded Home/Analytics: 45 min (antes 5) — reduce el burn del cupo 7.500
+  const CACHE_DURATION = 45 * 60 * 1000;
   
   // Estado para tracking de última actualización por pestaña
   const [lastUpdateTime, setLastUpdateTime] = useState({

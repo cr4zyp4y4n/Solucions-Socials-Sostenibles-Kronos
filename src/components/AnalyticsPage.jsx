@@ -47,7 +47,9 @@ const AnalyticsPage = () => {
     shouldReloadHolded,
     setShouldReloadHolded,
     needsUpdate,
-    markTabUpdated
+    markTabUpdated,
+    getCachedData,
+    updateCache
   } = useDataContext();
   const { formatCurrency } = useCurrency();
   const { user } = useAuth();
@@ -223,9 +225,15 @@ const AnalyticsPage = () => {
     }
   }, [canViewAllDatasets, selectedDataset]);
 
-  // Cargar datos desde Holded al montar el componente
+  // Cargar datos desde Holded al montar (un solo disparo; antes había 2 useEffect y duplicaban)
   useEffect(() => {
-    loadDataFromHolded(null); // Carga datos de Solucions y Menjar (y Bruno en paralelo) - todos los años
+    if (!canViewAllDatasets) {
+      loadIdoniData();
+      markTabUpdated('analytics');
+      return;
+    }
+    loadDataFromHolded(null);
+    markTabUpdated('analytics');
   }, []);
 
   // Cerrar dropdown de meses cuando se hace clic fuera
@@ -244,19 +252,6 @@ const AnalyticsPage = () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [showMonthFilter, showYearFilter]);
-
-  // Verificar si necesita actualización cuando se monta el componente
-  useEffect(() => {
-    if (needsUpdate('analytics')) {
-      if (canViewAllDatasets) {
-        loadDataFromHolded(selectedYear || null); // Carga datos de Solucions y Menjar (y Bruno en paralelo)
-      } else {
-        // Si el usuario no tiene permisos, solo cargar datos de IDONI
-        loadIdoniData();
-      }
-      markTabUpdated('analytics');
-    }
-  }, []);
 
   // Cargar datos de IDONI automáticamente si el usuario no tiene permisos
   useEffect(() => {
@@ -312,19 +307,34 @@ const AnalyticsPage = () => {
       const userRole = user?.user_metadata?.role || 'user';
       
       // Cargar datos para ambas empresas en paralelo (todas las facturas, sin filtro de año)
+      // Reutiliza caché de Home (45 min) si sigue válida → 0 llamadas Holded extra
       console.log('📊 Cargando datos de Solucions y Menjar (todas las facturas)...');
       setLoadingMessage('Descargando facturas de Solucions y Menjar...');
+      const cachedSolucions = getCachedData('solucions');
+      const cachedMenjar = getCachedData('menjar');
       const [solucionsPurchases, menjarPurchases] = await Promise.all([
-        // Cargar datos de Solucions Socials (todas las facturas)
-        holdedApi.getAllPendingAndOverduePurchases('solucions', null).catch(error => {
-          console.error('❌ Error cargando datos de Solucions:', error);
-          return [];
-        }),
-        // Cargar datos de Menjar D'Hort (todas las facturas)
-        holdedApi.getAllPendingAndOverduePurchases('menjar', null).catch(error => {
-          console.error('❌ Error cargando datos de Menjar:', error);
-          return [];
-        })
+        cachedSolucions
+          ? Promise.resolve(cachedSolucions)
+          : holdedApi.getAllPendingAndOverduePurchases('solucions', null)
+              .then((data) => {
+                updateCache('solucions', data);
+                return data;
+              })
+              .catch(error => {
+                console.error('❌ Error cargando datos de Solucions:', error);
+                return [];
+              }),
+        cachedMenjar
+          ? Promise.resolve(cachedMenjar)
+          : holdedApi.getAllPendingAndOverduePurchases('menjar', null)
+              .then((data) => {
+                updateCache('menjar', data);
+                return data;
+              })
+              .catch(error => {
+                console.error('❌ Error cargando datos de Menjar:', error);
+                return [];
+              })
       ]);
 
       console.log(`📦 [AnalyticsPage] Facturas recibidas de Holded:`);

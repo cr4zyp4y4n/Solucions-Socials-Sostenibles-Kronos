@@ -1,3 +1,22 @@
+## v2.6.0
+
+### Holded — optimización del cupo API (~7.500 llamadas/mes)
+
+- **Barrido de compras/ventas:** solo `paid=0` + `paid=2` (sin ×2 años ×3 barridos ni doble HTTP por página).
+- **Home al abrir:** un solo disparo; carga **Solucions** primero; **Menjar bajo demanda** (clic en su tarjeta o «Actualizar»).
+- **Caché:** Home/Analytics 45 min; contactos 1 h; empleados 1 h + inflight; Holded v2 sesión 30 min (invoices, estimates, accounting, treasury…).
+- **Analytics:** reutiliza caché de compras de Home; un solo `useEffect` al montar (antes duplicaba).
+- **Informe Sergi:** invoices / estimates / proformas v2 filtrados por **año** (`start_date` / `end_date`), no el histórico entero.
+- **Candado inflight** en compras/ventas abiertas: dos pantallas no duplican la misma petición.
+- **HoldedTest:** confirmación antes de ejecutar (consume mucho cupo).
+- **Settings → Uso API Holded:**
+  - Contador **local** (0 coste API) por endpoint/zona/sesión/mes.
+  - Snapshot **oficial del panel Holded** (manual; Holded no expone endpoint de uso) + aprox. actual = panel + delta Kronos.
+- **Docs:** `docs/HOLDED_API_USAGE_AUDIT.txt`.
+- **Importante:** tras actualizar, **cerrar Kronos del todo y reabrir** para cargar main/preload (handlers IPC del contador).
+
+---
+
 ## v2.5.9
 
 ### Firma — portal móvil + foto de identidad

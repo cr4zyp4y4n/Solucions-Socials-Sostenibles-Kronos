@@ -12,6 +12,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   
   // API para peticiones a Holded
   makeHoldedRequest: (requestData) => ipcRenderer.invoke('make-holded-request', requestData),
+  /** Contador local de llamadas Holded (0 coste API). */
+  getHoldedApiUsage: () => ipcRenderer.invoke('get-holded-api-usage'),
+  resetHoldedApiUsageMonth: () => ipcRenderer.invoke('reset-holded-api-usage-month'),
+  resetHoldedApiUsageSession: () => ipcRenderer.invoke('reset-holded-api-usage-session'),
+  /** Pegar/actualizar datos del panel web Holded (0 coste API). */
+  setHoldedOfficialUsage: (payload) => ipcRenderer.invoke('set-holded-official-usage', payload),
 
   /** TED / PSCP / PLACSP — via main process (no afectado por CSP del renderer). */
   licitacionsHttpRequest: (requestData) => ipcRenderer.invoke('licitacions-http-request', requestData),

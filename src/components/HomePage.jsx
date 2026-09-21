@@ -142,6 +142,8 @@ const HomePage = () => {
   const [uploadProgress, setUploadProgress] = useState(0);
   const fileInputRef = useRef();
   const menjarFileInputRef = useRef();
+  /** Evita que dos disparos (efecto + botón) dupliquen la ráfaga Holded. */
+  const loadHoldedInflightRef = useRef(null);
   const {
     solucionsHeaders, setSolucionsHeaders, solucionsData, setSolucionsData,
     menjarHeaders, setMenjarHeaders, menjarData, setMenjarData,
@@ -260,116 +262,80 @@ const HomePage = () => {
   }
 
   // Cargar datos desde Holded solo para roles que pueden ver datos sensibles (no para rol "user")
+  // Un solo disparo al montar / al conocer el rol (antes había 2 useEffect y duplicaban la ráfaga)
   useEffect(() => {
     if (!effectiveRole || effectiveRole === 'user') return;
     loadDataFromHolded();
+    markTabUpdated('home');
   }, [effectiveRole]);
 
-  // Verificar si necesita actualización cuando se monta (solo roles con acceso a datos)
-  useEffect(() => {
-    if (effectiveRole === 'user' || !effectiveRole) return;
-    if (needsUpdate('home')) {
-      loadDataFromHolded();
-      markTabUpdated('home');
+  // Función para cargar datos desde Holded con caché.
+  // Por defecto solo Solucions al abrir; Menjar bajo demanda (options.includeMenjar)
+  // o tras pulsar Actualizar (que pasa includeMenjar: true).
+  const loadDataFromHolded = async (options = {}) => {
+    const { includeMenjar = false } = options;
+    if (loadHoldedInflightRef.current) {
+      return loadHoldedInflightRef.current;
     }
-  }, [effectiveRole]);
 
-  // Función para cargar datos desde Holded con caché
-  const loadDataFromHolded = async () => {
+    const run = (async () => {
     setLoadingData(true);
 
     try {
       // Verificar si tenemos datos en caché válidos
-      const cachedSolucions = getCachedData('solucions');
-      const cachedMenjar = getCachedData('menjar');
+      let solucionsPurchases = getCachedData('solucions');
+      let menjarPurchases = getCachedData('menjar');
 
-      let solucionsPurchases = cachedSolucions;
-      let menjarPurchases = cachedMenjar;
-
-      // Array de promesas para cargar datos que no están en caché
-      const loadPromises = [];
-
-      // Cargar datos de Solucions si no están en caché
-      if (!cachedSolucions) {
+      // 1) Solucions (prioridad al abrir Kronos)
+      if (!solucionsPurchases) {
         setLoading('solucions', true);
-        loadPromises.push(
-          holdedApi.getAllPendingAndOverduePurchases('solucions')
-            .then(data => {
-              updateCache('solucions', data);
-              // Limpiar error de suscripción si se cargan datos exitosamente
-              setSubscriptionErrors(prev => ({
-                ...prev,
-                solucions: null
-              }));
-              return data;
-            })
-            .catch(error => {
-              console.error('Error cargando datos de Solucions:', error);
-              setLoading('solucions', false);
-
-              // Rastrear error de suscripción
-              if (error.message.includes('Error 402')) {
-                setSubscriptionErrors(prev => ({
-                  ...prev,
-                  solucions: 'ERROR: Holded'
-                }));
-                showAlert(`Error en Solucions Socials: ${error.message}`, 'error');
-              } else {
-                setSubscriptionErrors(prev => ({
-                  ...prev,
-                  solucions: `Error de conexión: ${error.message}`
-                }));
-                showAlert(`Error cargando datos de Solucions Socials: ${error.message}`, 'error');
-              }
-
-              return [];
-            })
-        );
+        try {
+          solucionsPurchases = await holdedApi.getAllPendingAndOverduePurchases('solucions');
+          updateCache('solucions', solucionsPurchases);
+          setSubscriptionErrors(prev => ({ ...prev, solucions: null }));
+        } catch (error) {
+          console.error('Error cargando datos de Solucions:', error);
+          setLoading('solucions', false);
+          solucionsPurchases = [];
+          if (error.message.includes('Error 402')) {
+            setSubscriptionErrors(prev => ({ ...prev, solucions: 'ERROR: Holded' }));
+            showAlert(`Error en Solucions Socials: ${error.message}`, 'error');
+          } else {
+            setSubscriptionErrors(prev => ({ ...prev, solucions: `Error de conexión: ${error.message}` }));
+            showAlert(`Error cargando datos de Solucions Socials: ${error.message}`, 'error');
+          }
+        }
       }
 
-      // Cargar datos de Menjar si no están en caché
-      if (!cachedMenjar) {
+      // Pintar Solucions cuanto antes
+      const processedSolucionsEarly = processHoldedPurchases(solucionsPurchases || []);
+      setSupabaseData(prev => ({
+        ...prev,
+        solucions: {
+          headers: processedSolucionsEarly.headers,
+          data: processedSolucionsEarly.data
+        }
+      }));
+
+      // 2) Menjar: solo si se pide, o si ya hay caché (pintar sin gastar API)
+      if (includeMenjar && !menjarPurchases) {
         setLoading('menjar', true);
-        loadPromises.push(
-          holdedApi.getAllPendingAndOverduePurchases('menjar')
-            .then(data => {
-              updateCache('menjar', data);
-              // Limpiar error de suscripción si se cargan datos exitosamente
-              setSubscriptionErrors(prev => ({
-                ...prev,
-                menjar: null
-              }));
-              return data;
-            })
-            .catch(error => {
-              console.error('Error cargando datos de Menjar:', error);
-              setLoading('menjar', false);
-
-              // Rastrear error de suscripción
-              if (error.message.includes('Error 402')) {
-                setSubscriptionErrors(prev => ({
-                  ...prev,
-                  menjar: 'ERROR: Holded'
-                }));
-                showAlert(`Error en Menjar D'Hort: ${error.message}`, 'error');
-              } else {
-                setSubscriptionErrors(prev => ({
-                  ...prev,
-                  menjar: `Error de conexión: ${error.message}`
-                }));
-                showAlert(`Error cargando datos de Menjar D'Hort: ${error.message}`, 'error');
-              }
-
-              return [];
-            })
-        );
-      }
-
-      // Si hay datos para cargar, esperar a que se completen
-      if (loadPromises.length > 0) {
-        const [newSolucions, newMenjar] = await Promise.all(loadPromises);
-        if (!cachedSolucions) solucionsPurchases = newSolucions;
-        if (!cachedMenjar) menjarPurchases = newMenjar;
+        try {
+          menjarPurchases = await holdedApi.getAllPendingAndOverduePurchases('menjar');
+          updateCache('menjar', menjarPurchases);
+          setSubscriptionErrors(prev => ({ ...prev, menjar: null }));
+        } catch (error) {
+          console.error('Error cargando datos de Menjar:', error);
+          setLoading('menjar', false);
+          menjarPurchases = [];
+          if (error.message.includes('Error 402')) {
+            setSubscriptionErrors(prev => ({ ...prev, menjar: 'ERROR: Holded' }));
+            showAlert(`Error en Menjar D'Hort: ${error.message}`, 'error');
+          } else {
+            setSubscriptionErrors(prev => ({ ...prev, menjar: `Error de conexión: ${error.message}` }));
+            showAlert(`Error cargando datos de Menjar D'Hort: ${error.message}`, 'error');
+          }
+        }
       }
 
       // Procesar datos de cada empresa
@@ -392,6 +358,52 @@ const HomePage = () => {
       console.error('Error cargando datos de Holded:', error);
     } finally {
       setLoadingData(false);
+    }
+    })();
+
+    loadHoldedInflightRef.current = run;
+    try {
+      return await run;
+    } finally {
+      if (loadHoldedInflightRef.current === run) {
+        loadHoldedInflightRef.current = null;
+      }
+    }
+  };
+
+  const loadMenjarFromHolded = async () => {
+    const cached = getCachedData('menjar');
+    if (cached) {
+      const processed = processHoldedPurchases(cached || []);
+      setSupabaseData(prev => ({
+        ...prev,
+        menjar: { headers: processed.headers, data: processed.data }
+      }));
+      return;
+    }
+    setLoading('menjar', true);
+    try {
+      const menjarPurchases = await holdedApi.getAllPendingAndOverduePurchases('menjar');
+      updateCache('menjar', menjarPurchases);
+      setSubscriptionErrors(prev => ({ ...prev, menjar: null }));
+      const processedMenjar = processHoldedPurchases(menjarPurchases || []);
+      setSupabaseData(prev => ({
+        ...prev,
+        menjar: {
+          headers: processedMenjar.headers,
+          data: processedMenjar.data
+        }
+      }));
+      showAlert(`Menjar: ${menjarPurchases.length} compras cargadas`, 'success');
+    } catch (error) {
+      console.error('Error cargando Menjar:', error);
+      setSubscriptionErrors(prev => ({
+        ...prev,
+        menjar: error.message.includes('Error 402') ? 'ERROR: Holded' : `Error: ${error.message}`
+      }));
+      showAlert(`Error cargando Menjar: ${error.message}`, 'error');
+    } finally {
+      setLoading('menjar', false);
     }
   };
 
@@ -1050,7 +1062,9 @@ const HomePage = () => {
         return subscriptionErrors[company];
       }
 
-      if (!cache.data) return 'Sin datos';
+      if (!cache.data) {
+        return company === 'menjar' ? 'Clic para cargar' : 'Sin datos';
+      }
       if (!cache.timestamp) return 'Sin timestamp';
 
       const age = now - cache.timestamp;
@@ -1539,11 +1553,17 @@ const HomePage = () => {
             </div>
           </motion.div>
 
-          {/* Estado de Menjar */}
+          {/* Estado de Menjar — clic carga bajo demanda (ahorra cupo al abrir) */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4, delay: 0.15 }}
+            whileHover={{ y: -2 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={() => {
+              if (!cacheInfo.menjar.loading) loadMenjarFromHolded();
+            }}
+            title="Clic para cargar / refrescar Menjar d'Hort"
             style={{
               backgroundColor: colors.surface,
               padding: '20px 18px',
@@ -1553,6 +1573,7 @@ const HomePage = () => {
               flex: '1 1 180px',
               minWidth: '180px',
               maxWidth: '250px',
+              cursor: cacheInfo.menjar.loading ? 'wait' : 'pointer',
             }}
           >
             <div style={{
@@ -1576,10 +1597,12 @@ const HomePage = () => {
                 fontWeight: '500',
                 backgroundColor: cacheInfo.menjar.loading ? '#FF9800' + '15' :
                   cacheInfo.menjar.hasError ? '#F44336' + '15' :
-                    cacheInfo.menjar.status.includes('Válido') ? '#4CAF50' + '15' : '#F44336' + '15',
+                    cacheInfo.menjar.status.includes('Válido') ? '#4CAF50' + '15' :
+                      cacheInfo.menjar.status.includes('Clic') ? colors.primary + '15' : '#F44336' + '15',
                 color: cacheInfo.menjar.loading ? '#FF9800' :
                   cacheInfo.menjar.hasError ? '#F44336' :
-                    cacheInfo.menjar.status.includes('Válido') ? '#4CAF50' : '#F44336',
+                    cacheInfo.menjar.status.includes('Válido') ? '#4CAF50' :
+                      cacheInfo.menjar.status.includes('Clic') ? colors.primary : '#F44336',
               }}>
                 {cacheInfo.menjar.loading ? 'Cargando...' : cacheInfo.menjar.status}
               </div>
@@ -1635,38 +1658,16 @@ const HomePage = () => {
             }}
             onClick={async () => {
               try {
-                // Marcar ambas empresas como cargando
+                clearCache();
+                holdedApi.clearContactsCache?.();
                 setLoading('solucions', true);
                 setLoading('menjar', true);
-
-                // Actualizar datos de ambas empresas
-                const [solucionsPurchases, menjarPurchases] = await Promise.all([
-                  holdedApi.getAllPendingAndOverduePurchases('solucions').catch(error => {
-                    console.error('Error actualizando Solucions:', error);
-                    setLoading('solucions', false);
-                    return [];
-                  }),
-                  holdedApi.getAllPendingAndOverduePurchases('menjar').catch(error => {
-                    console.error('Error actualizando Menjar:', error);
-                    setLoading('menjar', false);
-                    return [];
-                  })
-                ]);
-
-                // Actualizar caché con nuevos datos
-                updateCache('solucions', solucionsPurchases);
-                updateCache('menjar', menjarPurchases);
-
-                const totalPurchases = solucionsPurchases.length + menjarPurchases.length;
-                showAlert(`Actualizadas ${totalPurchases} compras (Solucions: ${solucionsPurchases.length}, Menjar: ${menjarPurchases.length})`, 'success');
-
-                // Recargar datos en la página actual
-                await loadDataFromHolded();
-
-                // Activar recarga en AnalyticsPage
+                await loadDataFromHolded({ includeMenjar: true });
+                const s = getCachedData('solucions') || [];
+                const m = getCachedData('menjar') || [];
+                showAlert(`Actualizadas ${(s.length || 0) + (m.length || 0)} compras (Solucions: ${s.length || 0}, Menjar: ${m.length || 0})`, 'success');
                 setShouldReloadHolded(true);
               } catch (error) {
-                // Asegurar que se desactiva el estado de carga en caso de error
                 setLoading('solucions', false);
                 setLoading('menjar', false);
                 showAlert(`Error al actualizar: ${error.message}`, 'error');

@@ -1,0 +1,262 @@
+# AUDITORÍA USO API HOLDED — Kronos
+# Solo análisis de código. CERO llamadas a Holded hechas para este informe.
+# Fecha: 2026-09-21
+# Datos de panel Holded (EI SSS, periodo mensual actual):
+#   6.341 / 7.500 (85%) · 1.159 restantes
+
+================================================================================
+1. CÓMO LEER EL PANEL DE HOLDED
+================================================================================
+
+Holded agrupa el uso así (cuadra al milímetro con el código):
+
+Zona "v1" / endpoint mostrado como GET /api/v1/legacy = 5.608
+  → NO es un endpoint real de Kronos.
+  → Es el CUBO donde Holded mete casi todo api/invoicing/v1/*
+     (documents/purchase, documents/invoice, contacts, products, payments, warehouses…)
+
+Zona "Vendes" = 618
+  → Exactamente: v2/invoices (414) + v2/estimates (198) + v2/proformas (6) = 618
+
+Zona "Comptabilitat" = 73
+  → v2/accounting-accounts (63) + v2/treasury/accounts (10) = 73
+
+Zona "Equip" ≈ 42
+  → v2/salary-records (37) + v2/employees (2) + salary detail/form-data (4) ≈ 43
+
+CONCLUSIÓN: el 88% del cupo lo come la API v1 de facturación/compras
+(sobre todo Home + Analytics + contactos), NO el PIG v2.
+
+Nota: este panel es de la cuenta EISSS (key solucions).
+Menjar d'Hort usa OTRA API key → otro cupo (o el mismo agregado: verificar en Holded Menjar).
+
+================================================================================
+2. CLIENTES HTTP EN KRONOS
+================================================================================
+
+A) holdedApi.js
+   Base: https://api.holded.com/api/invoicing/v1
+   → Cuenta como "legacy/v1" en el panel Holded
+
+B) holdedApiV2Service.js
+   Base: https://api.holded.com/api/v2
+   → invoices, estimates, proformas, accounting-accounts, treasury, salary-records, employees
+   Paginación: cursor, limit=50 → N páginas = N llamadas
+
+C) holdedEmployeesService.js
+   Base: https://api.holded.com/api/team/v1
+   → /employees (puede aparecer en "Equip" o en otro bucket; uso bajo en tu panel)
+
+D) holdedPayrollV1Service.js (si se usa)
+   Nóminas v1 — revisar si se dispara en producción
+
+Todas pasan por Electron IPC: make-holded-request (main.js).
+
+================================================================================
+3. EL MONSTRUO: getAllPendingAndOverduePurchases (v1)
+================================================================================
+
+Archivo: src/services/holdedApi.js
+
+Sin año (así lo llama Home y Analytics):
+  · Años: [añoActual-1, añoActual]  → 2 años
+  · Por año, EN PARALELO:
+      1) getAllPendingPurchasesPages
+      2) getAllPartiallyPaidPurchasesPages   ← REDUNDANTE
+      3) getAllOverduePurchasesPages        ← solapa con pending
+  · Al final: getAllContacts (todas las páginas, limit 100)
+
+Detalle crítico — cada página de "pending":
+  getPendingPurchasesIncludingPartial hace **2 llamadas HTTP**:
+    · GET /documents/purchase?paid=0&…
+    · GET /documents/purchase?paid=2&…
+  Luego getAllPartiallyPaidPurchasesPages vuelve a pedir paid=2 (otra vez).
+  getAllOverduePurchasesPages vuelve a pedir paid=0 con filtro año.
+
+Además getAllPendingPurchasesPages puede seguir 1–2 páginas "vacías"
+(maxEmptyPages=2) → cada una = 2 llamadas tiradas.
+
+Estimación POR EMPRESA (orden de magnitud, según volumen real):
+  Supón ~3–8 páginas útiles por filtro/año:
+  · pending: ~5 páginas × 2 calls = 10
+  · partial: ~2 páginas × 1 = 2
+  · overdue: ~5 páginas × 1 = 5
+  · × 2 años ≈ 34
+  · contacts: ~5–15 páginas ≈ 10
+  · TOTAL ≈ 40–60 llamadas / empresa / refresh
+
+Home carga SOLUCIONS + MENJAR → ≈ 80–120 llamadas por refresh frío.
+Caché DataContext: solo 5 minutos (CACHE_DURATION = 5 * 60 * 1000).
+Cada F5 / reentrada / "actualizar" tras 5 min = otra ronda.
+
+ESTO encaja con 5.608 legacy en el mes.
+
+================================================================================
+4. MAPA POR SECCIÓN KRONOS (qué gasta)
+================================================================================
+
+Leyenda coste por apertura típica (frío, sin caché):
+  🔴 ALTO    = decenas–centenas de llamadas
+  🟠 MEDIO   = varias–docenas (paginación)
+  🟢 BAJO    = 1–5
+  ⚪ NULO    = no llama Holded
+
+--- HOME / Dashboard compras ---
+  Qué: getAllPendingAndOverduePurchases(solucions) + (menjar)
+  Endpoints: documents/purchase (muchas) + contacts
+  Coste: 🔴 DOMINANTE del cupo
+  Caché: 5 min en DataContext
+  Notas: se dispara al abrir app/home; refresh manual también
+
+--- ANALYTICS ---
+  Qué: compras pending+overdue ambas empresas + ventas pending+overdue ambas
+       + a veces getAllContacts
+  Coste: 🔴 igual o PEOR que Home (compras + ventas × 2 empresas)
+  Endpoints v1: documents/purchase, documents/invoice, contacts
+
+--- INFORME SERGI (AnalyticsSergiReportView) ---
+  Qué (en paralelo):
+    v2 accounting-accounts (paginado)
+    v2 invoices solucions (TODAS, paginado limit 50)
+    v2 estimates solucions
+    v1 getAllEstimatesPages (año, billed=0)  ← EXTRA
+    v2 proformas
+    v1 getAllProformsPages
+    v2 invoices menjar_dhort
+  Coste: 🟠–🔴 (invoices v2 sin filtro de año = muchas páginas)
+  Cuadra con: invoices 414 + estimates 198 + proformas 6
+
+--- PIG ---
+  Tesorería bancos: getTreasuryAccounts → 🟢 (panel: 10 calls mes)
+  Impuestos: getAccountingAccounts (+ fechas) → 🟠 por generación
+  Caja corto: accounting-accounts + salary-records → 🟠
+  Facturación pendiente: accounts + invoices ×2 empresas → 🟠
+  Presupuestos / catering estimates: accounts + estimates v2 + estimates v1 → 🟠
+  Previsión 18 meses: payments v1 + sales v1 + invoices v2 → 🟠 por generar Excel
+  Estructura purchases: getAllPendingAndOverduePurchases + getPurchaseDetails N veces → 🔴 si se usa
+
+--- VENTAS (SalesInvoicesPage) ---
+  getAllEstimates ×2 empresas + getAllPendingAndPartiallyPaidSales ×2 → 🟠–🔴
+
+--- CONTACTOS / PROVEEDORES ---
+  getAllContacts (paginado) → 🟠 cada apertura
+  findContactsByIban puede recorrer todos
+
+--- INVENTARIO / HOJA DE RUTA ---
+  getAllProducts ×2, warehouses, stock por almacén → 🟠
+  create/update/delete product → 🟢 por acción
+
+--- EMPLEADOS / FICHAJE / FIRMA / SUBVENCIONES / PERSONAL ---
+  holdedEmployeesService.getEmployeesTransformed(solucions y/o menjar)
+  → team/v1/employees 🟢–🟠 (1 call si no pagina; o pocas)
+  Panel fichajes, códigos, descansos, firma pack: suelen cargar 2 empresas
+
+--- HOLDED SYNC / HOLDDED TEST / SETTINGS ---
+  Sync: getAllPendingAndOverduePurchases → 🔴
+  HoldedTest: batería de tests → 🔴 NO USAR en producción con cupo bajo
+  testConnection: 🟢 (1 call)
+
+--- OBRADOR sync proveedores ---
+  getAllContacts → 🟠
+
+================================================================================
+5. ENDPOINTS REALES ↔ PANEL HOLDED
+================================================================================
+
+Panel Holded              | Código Kronos                         | Quién lo dispara
+--------------------------|---------------------------------------|------------------
+/api/v1/legacy (5608)     | invoicing/v1 documents/*, contacts,   | Home, Analytics,
+                          | products, payments, warehouses…       | Ventas, Inventario,
+                          |                                       | Sync, PIG prevision…
+v2/invoices (414)         | holdedApiV2Service.getInvoices        | Informe Sergi, PIG
+v2/estimates (198)        | getEstimates v2                       | Sergi, catering PIG
+v2/accounting-accounts(63)| getAccountingAccounts                 | PIG impuestos/caja, Sergi
+v2/salary-records (37)    | getSalaryRecords                      | PIG caja a corto
+v2/treasury/accounts (10) | getTreasuryAccounts                   | PIG Tesorería
+v2/proformas (6)          | getProformas                          | Informe Sergi
+v2/employees (2)          | getEmployees v2                       | poco uso
+salary-records/{id} (2)   | getSalaryRecordById                   | detalle nómina
+salary form-data (2)       | (si existe en código)                 | formularios
+
+================================================================================
+6. ESTIMACIÓN: ¿DE DÓNDE SALEN LAS ~5600 LEGACY?
+================================================================================
+
+Escenario plausible (sin llamar a la API):
+
+  Home frío × 2 empresas × ~50 calls ≈ 100 por apertura
+  Si se abre Kronos ~2 veces/día laborable × 20 días ≈ 40 aperturas
+  40 × 100 = 4.000
+
+  Analytics 1–2 veces/semana × ~120–200 calls ≈ 800–1.600/mes
+
+  Contactos / inventario / ventas residual ≈ resto hasta 5.608
+
+El multiplicador malo es:
+  1) 2 empresas siempre
+  2) 2 años siempre
+  3) 3 barridos (pending + partial + overdue) con solapamiento
+  4) pending = 2 HTTP por página
+  5) caché solo 5 minutos
+  6) contacts enteros al final de cada barrido de compras
+
+================================================================================
+7. QUÉ NO GASTA HOLDED
+================================================================================
+
+  · Supabase (fichajes, firma, obrador datos, licitaciones DB…)
+  · TED / PSCP / PLACSP (otras APIs)
+  · Portal firma / portal fichajes / Internal (salvo que llamen Holded;
+    portal-fichajes NO usa Holded para fichar)
+  · Generar PIG desde CSV ya cargado (sin botones que refresquen Holded)
+
+================================================================================
+8. OPTIMIZACIONES (prioridad) — ESTADO
+================================================================================
+
+IMPLEMENTADO (2026-09-21, oleada 3):
+  ✅ Informe Sergi: invoices/estimates/proformas v2 filtrados por año (start_date/end_date)
+  ✅ Caché sesión 30 min + inflight en holdedApiV2Service (PIG/Sergi reutilizan)
+  ✅ Empleados: caché 1 h + inflight (Fichaje/Firma/Personal no re-llaman)
+  ✅ Home: Menjar NO se carga al abrir — clic en tarjeta o «Actualizar»
+  ✅ HoldedTest: confirmación antes de gastar cupo
+
+P1 — restante:
+  7. Quitar del todo estimates v1 si se puede derivar unbilled solo de v2 (riesgo funcional; aplazado)
+  8. (cubierto vía caché v2) PIG accounting/treasury
+
+P2 — restante:
+  11. Sync Holded → solo bajo demanda / cron semanal
+  12. Alerta 80% cupo en banner global Kronos
+
+
+
+================================================================================
+9. INSTRUMENTACIÓN — IMPLEMENTADA
+================================================================================
+
+En main.js ipc 'make-holded-request':
+  ✅ Incrementa contador local por host+path normalizado
+  ✅ Guarda en userData/holded-api-usage.json
+  ✅ Settings → "Uso API Holded (local)": mes / sesión / top endpoints / zonas
+
+IPC:
+  get-holded-api-usage
+  reset-holded-api-usage-month
+  reset-holded-api-usage-session
+
+
+================================================================================
+10. ACCIÓN INMEDIATA (operativa, sin code)
+================================================================================
+
+  · Quedan ~1.159 llamadas → ~15% del mes
+  · Evitar: abrir Analytics, HoldedTest, Sync masivo, regenerar Informe Sergi
+    muchas veces, refrescar Home cada pocos minutos
+  · Preferir: trabajar con caché Home; PIG solo si hace falta
+  · Valorar upgrade temporal 22.500 si el mes no puede parar
+  · Planificar P0 de código esta semana (es el ROI más alto)
+
+================================================================================
+FIN — Auditoría solo lectura de código + cruce con panel Holded aportado.
+================================================================================

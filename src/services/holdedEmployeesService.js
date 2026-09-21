@@ -8,6 +8,20 @@ const HOLDED_TEAM_BASE_URL = 'https://api.holded.com/api/team/v1';
 class HoldedEmployeesService {
   constructor() {
     this.baseUrl = HOLDED_TEAM_BASE_URL;
+    /** @type {Record<string, { data: Array, timestamp: number }>} */
+    this._employeesCache = {};
+    /** @type {Record<string, Promise<Array>>} */
+    this._inflight = {};
+  }
+
+  clearEmployeesCache(company = null) {
+    if (company) {
+      delete this._employeesCache[company];
+      delete this._inflight[company];
+    } else {
+      this._employeesCache = {};
+      this._inflight = {};
+    }
   }
 
   // Método genérico para hacer peticiones a la API (IPC en Electron, fetch en web)
@@ -455,23 +469,48 @@ class HoldedEmployeesService {
     };
   }
 
-  // Obtener empleados con transformación
-  async getEmployeesTransformed(company = 'solucions') {
-    try {
-      const employees = await this.getEmployees(company);
-      const transformedEmployees = employees.map(emp => this.transformEmployee(emp));
-
-      if (process.env.NODE_ENV === 'development') {
-        const activos = employees.filter(emp => !emp.endDate || emp.endDate === 0).length;
-        const inactivos = employees.filter(emp => emp.endDate && emp.endDate !== 0).length;
-        console.log(`[Holded Employees] ${company} - Empleados: ${transformedEmployees.length} (activos: ${activos}, inactivos: ${inactivos})`);
-      }
-
-      return transformedEmployees;
-    } catch (error) {
-      console.error('❌ Error en getEmployeesTransformed:', error);
-      throw error;
+  // Obtener empleados con transformación (caché 1 h + inflight por empresa)
+  async getEmployeesTransformed(company = 'solucions', { forceRefresh = false } = {}) {
+    const TTL = 60 * 60 * 1000;
+    const cached = this._employeesCache[company];
+    if (
+      !forceRefresh &&
+      cached?.data &&
+      cached.timestamp &&
+      Date.now() - cached.timestamp < TTL
+    ) {
+      return cached.data;
     }
+    if (!forceRefresh && this._inflight[company]) {
+      return this._inflight[company];
+    }
+
+    const promise = (async () => {
+      try {
+        const employees = await this.getEmployees(company);
+        const transformedEmployees = employees.map(emp => this.transformEmployee(emp));
+
+        if (process.env.NODE_ENV === 'development') {
+          const activos = employees.filter(emp => !emp.endDate || emp.endDate === 0).length;
+          const inactivos = employees.filter(emp => emp.endDate && emp.endDate !== 0).length;
+          console.log(`[Holded Employees] ${company} - Empleados: ${transformedEmployees.length} (activos: ${activos}, inactivos: ${inactivos})`);
+        }
+
+        this._employeesCache[company] = {
+          data: transformedEmployees,
+          timestamp: Date.now()
+        };
+        return transformedEmployees;
+      } catch (error) {
+        console.error('❌ Error en getEmployeesTransformed:', error);
+        throw error;
+      } finally {
+        delete this._inflight[company];
+      }
+    })();
+
+    this._inflight[company] = promise;
+    return promise;
   }
 
   // Filtrar empleados por estado (activos/inactivos)

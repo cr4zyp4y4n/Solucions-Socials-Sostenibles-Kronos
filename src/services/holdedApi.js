@@ -2,9 +2,17 @@
 import { HOLDED_API_KEYS } from './holdedHttpClient';
 const HOLDED_BASE_URL = 'https://api.holded.com/api/invoicing/v1';
 
+/** TTL caché contactos (1 h) — evita re-paginar /contacts en cada refresh de compras. */
+const CONTACTS_CACHE_TTL_MS = 60 * 60 * 1000;
+
 class HoldedApiService {
   constructor() {
     this.baseUrl = HOLDED_BASE_URL;
+    /** @type {Record<string, { data: Array, timestamp: number }>} */
+    this._contactsCache = {};
+    /** Evita ráfagas duplicadas si Home/Analytics disparan la misma carga a la vez. */
+    this._inflightOpenPurchases = {};
+    this._inflightOpenSales = {};
   }
 
   // Método genérico para hacer peticiones a la API usando IPC
@@ -577,8 +585,19 @@ class HoldedApiService {
   }
 
   // Obtener todos los contactos (múltiples páginas)
-  async getAllContacts(company = 'solucions') {
+  // forceRefresh=true salta la caché local (1 h)
+  async getAllContacts(company = 'solucions', { forceRefresh = false } = {}) {
     try {
+      const cached = this._contactsCache[company];
+      if (
+        !forceRefresh &&
+        cached?.data &&
+        cached.timestamp &&
+        Date.now() - cached.timestamp < CONTACTS_CACHE_TTL_MS
+      ) {
+        return cached.data;
+      }
+
       let allContacts = [];
       let page = 1;
       const limit = 100;
@@ -589,15 +608,33 @@ class HoldedApiService {
         
         if (contacts && contacts.length > 0) {
           allContacts = allContacts.concat(contacts);
-          page++;
+          if (contacts.length < limit) {
+            hasMore = false;
+          } else {
+            page++;
+          }
         } else {
           hasMore = false;
         }
       }
+
+      this._contactsCache[company] = {
+        data: allContacts,
+        timestamp: Date.now()
+      };
       
       return allContacts;
     } catch (error) {
       throw error;
+    }
+  }
+
+  /** Invalidar caché de contactos (p.ej. tras sync manual). */
+  clearContactsCache(company = null) {
+    if (company) {
+      delete this._contactsCache[company];
+    } else {
+      this._contactsCache = {};
     }
   }
 
@@ -1060,6 +1097,43 @@ class HoldedApiService {
     return this.getSales(params, company);
   }
 
+  /** Pagina documents/invoice por un único paid (0|2). */
+  async getAllSalesPagesByPaid(company = 'solucions', paid = '0', year = null) {
+    const allSales = [];
+    let page = 1;
+    const limit = 100;
+    while (true) {
+      const params = {
+        page,
+        limit,
+        paid: String(paid),
+        sort: 'created-desc'
+      };
+      if (year) {
+        const startDate = new Date(`${year}-01-01T00:00:00Z`);
+        const endDate = new Date(`${year}-12-31T23:59:59Z`);
+        params.starttmp = Math.floor(startDate.getTime() / 1000);
+        params.endtmp = Math.floor(endDate.getTime() / 1000);
+      }
+      const sales = await this.getSales(params, company);
+      if (!sales || sales.length === 0) break;
+      allSales.push(...sales);
+      if (sales.length < limit) break;
+      page++;
+    }
+    return allSales;
+  }
+
+  /** Un barrido: paid=0 + paid=2 (sin overdue ni ×2 años). */
+  async fetchOpenSalesRaw(company = 'solucions', year = null) {
+    const [unpaid, partial] = await Promise.all([
+      this.getAllSalesPagesByPaid(company, '0', year),
+      this.getAllSalesPagesByPaid(company, '2', year)
+    ]);
+    const all = [...(unpaid || []), ...(partial || [])];
+    return all.filter((doc, i, self) => self.findIndex(d => d.id === doc.id) === i);
+  }
+
   // Obtener TODAS las facturas de venta pendientes (todas las páginas), con año opcional
   async getAllPendingSalesPages(company = 'solucions', year = null) {
     const allSales = [];
@@ -1137,31 +1211,25 @@ class HoldedApiService {
     });
   }
 
-  // Obtener TODAS las facturas de venta pendientes y vencidas (mismo patrón que getAllPendingAndOverduePurchases)
+  // Obtener TODAS las facturas de venta pendientes y vencidas
+  // P0 cupo: paid=0 + paid=2 (sin ×2 años ni overdue duplicado)
   async getAllPendingAndOverdueSales(company = 'solucions', year = null) {
+    const key = `${company}:${year == null ? 'all' : year}`;
+    if (this._inflightOpenSales[key]) {
+      return this._inflightOpenSales[key];
+    }
+
+    this._inflightOpenSales[key] = this._getAllPendingAndOverdueSalesImpl(company, year)
+      .finally(() => {
+        delete this._inflightOpenSales[key];
+      });
+
+    return this._inflightOpenSales[key];
+  }
+
+  async _getAllPendingAndOverdueSalesImpl(company = 'solucions', year = null) {
     try {
-      let unique;
-      if (year) {
-        const [pending, overdue] = await Promise.all([
-          this.getAllPendingSalesPages(company, year),
-          this.getAllOverdueSalesPages(company, year)
-        ]);
-        const all = [...pending, ...overdue];
-        unique = all.filter((doc, i, self) => self.findIndex(d => d.id === doc.id) === i);
-      } else {
-        const currentYear = new Date().getFullYear();
-        const yearsToFetch = [currentYear - 1, currentYear];
-        const allYearResults = await Promise.all(
-          yearsToFetch.map(yr =>
-            Promise.all([
-              this.getAllPendingSalesPages(company, yr),
-              this.getAllOverdueSalesPages(company, yr)
-            ]).then(([p, o]) => [...p, ...o])
-          )
-        );
-        const all = allYearResults.flat();
-        unique = all.filter((doc, i, self) => self.findIndex(d => d.id === doc.id) === i);
-      }
+      const unique = await this.fetchOpenSalesRaw(company, year);
       const enriched = await this._enrichSalesDocumentsWithContacts(unique, company);
       return enriched.map(doc => this.transformHoldedDocumentToSaleInvoice(doc));
     } catch (error) {
@@ -1196,81 +1264,46 @@ class HoldedApiService {
   }
 
   // Obtener TODAS las facturas de venta pendientes, parcialmente pagadas y vencidas
-  // Igual que getAllPendingAndOverduePurchases pero para ventas
+  // P0: invoices paid=0+2; receipts solo paid=0+2 (no bajar todo el histórico de tickets)
   async getAllPendingAndPartiallyPaidSales(company = 'solucions') {
     try {
-      // Obtener pendientes, parcialmente pagadas y vencidas en paralelo (igual que en purchases)
-      const [pendingSales, partiallyPaidSales, overdueSales] = await Promise.all([
-        this.getAllPendingSalesPages(company).catch(error => {
-          console.error(`Error obteniendo facturas de venta pendientes para ${company}:`, error);
-          return [];
-        }),
-        this.getAllPartiallyPaidSalesPages(company).catch(error => {
-          console.error(`Error obteniendo facturas de venta parcialmente pagadas para ${company}:`, error);
-          return [];
-        }),
-        this.getAllOverdueSalesPages(company).catch(error => {
-          console.error(`Error obteniendo facturas de venta vencidas para ${company}:`, error);
-          return [];
-        })
-      ]);
+      const openInvoices = await this.fetchOpenSalesRaw(company, null).catch(error => {
+        console.error(`Error obteniendo facturas de venta abiertas para ${company}:`, error);
+        return [];
+      });
 
-      // También obtener tickets de venta (salesreceipt) que pueden ser las facturas que faltan
-      let allSalesReceipts = [];
-      let page = 1;
-      let hasMorePages = true;
-      const limit = 100;
-
-      while (hasMorePages) {
-        try {
+      // Tickets: solo no pagados / parciales (no todo el histórico)
+      const fetchReceiptsByPaid = async (paid) => {
+        const all = [];
+        let page = 1;
+        const limit = 100;
+        while (true) {
           const receipts = await this.getSalesReceipts({
             page,
             limit,
+            paid: String(paid),
             sort: 'created-desc'
           }, company);
-          
-          if (receipts && receipts.length > 0) {
-            allSalesReceipts.push(...receipts);
-            
-            if (receipts.length < limit) {
-              hasMorePages = false;
-            } else {
-              page++;
-            }
-          } else {
-            hasMorePages = false;
-          }
-        } catch (error) {
-          console.error(`Error obteniendo tickets de venta en página ${page}:`, error);
-          hasMorePages = false;
+          if (!receipts || receipts.length === 0) break;
+          all.push(...receipts);
+          if (receipts.length < limit) break;
+          page++;
         }
+        return all;
+      };
+
+      let pendingReceipts = [];
+      try {
+        const [unpaidR, partialR] = await Promise.all([
+          fetchReceiptsByPaid('0'),
+          fetchReceiptsByPaid('2')
+        ]);
+        pendingReceipts = [...(unpaidR || []), ...(partialR || [])];
+      } catch (error) {
+        console.error(`Error obteniendo tickets de venta abiertos para ${company}:`, error);
       }
 
-      // Filtrar tickets de venta pendientes o vencidos
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      
-      const pendingReceipts = allSalesReceipts.filter(receipt => {
-        const isUnpaid = receipt.paid === false || receipt.paid === 0 || receipt.paid === '0';
-        const isPartiallyPaid = receipt.status === 2 && (receipt.paymentsPending > 0 || receipt.pending > 0);
-        const isPending = isUnpaid || isPartiallyPaid;
-        
-        let isOverdue = false;
-        if (receipt.dueDate) {
-          try {
-            const dueDate = new Date(receipt.dueDate);
-            dueDate.setHours(0, 0, 0, 0);
-            isOverdue = dueDate < today;
-          } catch (e) {
-            isOverdue = false;
-          }
-        }
-        
-        return isPending || isOverdue;
-      });
-
-      // Combinar facturas normales y tickets de venta, y eliminar duplicados basándose en el ID
-      const allDocuments = [...pendingSales, ...partiallyPaidSales, ...overdueSales, ...pendingReceipts];
+      const allDocuments = [...openInvoices, ...pendingReceipts];
       const uniqueDocuments = allDocuments.filter((doc, index, self) => 
         index === self.findIndex(d => d.id === doc.id)
       );
@@ -1763,51 +1796,78 @@ class HoldedApiService {
     return finalData;
   }
 
-  // Función para obtener todas las compras pendientes y vencidas
-  // ESTRATEGIA: Hacer consultas específicas para cada año (2025, 2026, etc.) y combinar resultados
-  async getAllPendingAndOverduePurchases(company = 'solucions', year = null) {
-    try {
-      // Si se especifica un año, solo obtener facturas de ese año
+  /**
+   * Pagina documents/purchase por un único paid (0|2).
+   * Sin páginas vacías extra; para al llegar a página corta o vacía.
+   */
+  async getAllPurchasesPagesByPaid(company = 'solucions', paid = '0', year = null) {
+    const allPurchases = [];
+    let page = 1;
+    const limit = 100;
+
+    while (true) {
+      const params = {
+        page,
+        limit,
+        paid: String(paid),
+        sort: 'created-desc'
+      };
       if (year) {
-        const [pendingPurchases, partiallyPaidPurchases, overduePurchases] = await Promise.all([
-          this.getAllPendingPurchasesPages(company, year),
-          this.getAllPartiallyPaidPurchasesPages(company, year),
-          this.getAllOverduePurchasesPages(company, year)
-        ]);
-
-        const allDocuments = [...pendingPurchases, ...partiallyPaidPurchases, ...overduePurchases];
-        const uniqueDocuments = allDocuments.filter((doc, index, self) => 
-          index === self.findIndex(d => d.id === doc.id)
-        );
-        
-        return uniqueDocuments;
+        const startDate = new Date(`${year}-01-01T00:00:00Z`);
+        const endDate = new Date(`${year}-12-31T23:59:59Z`);
+        params.starttmp = Math.floor(startDate.getTime() / 1000);
+        params.endtmp = Math.floor(endDate.getTime() / 1000);
       }
-      
-      // Si no se especifica año, obtener facturas de los últimos 2 años (2025 y 2026)
-      const currentYear = new Date().getFullYear();
-      const yearsToFetch = [currentYear - 1, currentYear]; // [2025, 2026]
 
-      // Obtener facturas de cada año en paralelo
-      const allYearResults = await Promise.all(
-        yearsToFetch.map(async (yearToFetch) => {
-          const [pending, partiallyPaid, overdue] = await Promise.all([
-            this.getAllPendingPurchasesPages(company, yearToFetch),
-            this.getAllPartiallyPaidPurchasesPages(company, yearToFetch),
-            this.getAllOverduePurchasesPages(company, yearToFetch)
-          ]);
-          
-          const yearDocuments = [...pending, ...partiallyPaid, ...overdue];
-          return yearDocuments;
-        })
-      );
+      const purchases = await this.getPurchases(params, company);
+      if (!purchases || purchases.length === 0) break;
+      allPurchases.push(...purchases);
+      if (purchases.length < limit) break;
+      page++;
+    }
 
-      // Combinar todas las facturas de todos los años
-      const allDocuments = allYearResults.flat();
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[Holded API] ${company} - paid=${paid}${year ? ` year=${year}` : ''}: ${allPurchases.length}`);
+    }
+    return allPurchases;
+  }
 
-      // Eliminar duplicados basándose en el ID
-      const uniqueDocuments = allDocuments.filter((doc, index, self) =>
-        index === self.findIndex(d => d.id === doc.id)
-      );
+  /**
+   * Un solo barrido eficiente: paid=0 + paid=2 (en paralelo).
+   * Sustituye el antiguo triple barrido pending+partial+overdue × 2 años.
+   * Las vencidas son subconjunto de paid=0 (se filtran en cliente si hace falta).
+   */
+  async fetchOpenPurchasesRaw(company = 'solucions', year = null) {
+    const [unpaid, partial] = await Promise.all([
+      this.getAllPurchasesPagesByPaid(company, '0', year),
+      this.getAllPurchasesPagesByPaid(company, '2', year)
+    ]);
+    const allDocuments = [...(unpaid || []), ...(partial || [])];
+    return allDocuments.filter((doc, index, self) =>
+      index === self.findIndex(d => d.id === doc.id)
+    );
+  }
+
+  // Función para obtener todas las compras pendientes y vencidas
+  // P0 cupo API: 2 paginaciones (paid=0 + paid=2), sin años ×3 barridos ni doble HTTP por página.
+  async getAllPendingAndOverduePurchases(company = 'solucions', year = null) {
+    const key = `${company}:${year == null ? 'all' : year}`;
+    if (this._inflightOpenPurchases[key]) {
+      return this._inflightOpenPurchases[key];
+    }
+
+    this._inflightOpenPurchases[key] = this._getAllPendingAndOverduePurchasesImpl(company, year)
+      .finally(() => {
+        delete this._inflightOpenPurchases[key];
+      });
+
+    return this._inflightOpenPurchases[key];
+  }
+
+  async _getAllPendingAndOverduePurchasesImpl(company = 'solucions', year = null) {
+    try {
+      // Si year es null: sin filtro de fecha (todas las abiertas, cualquier año) — menos calls que 2 años × 3 barridos
+      const uniqueDocuments = await this.fetchOpenPurchasesRaw(company, year);
 
       if (process.env.NODE_ENV === 'development') {
         const years = new Set();
@@ -1816,12 +1876,15 @@ class HoldedApiService {
             years.add(new Date(doc.date * 1000).getFullYear());
           }
         });
-        console.log(`[Holded API] ${company} - Facturas compra: ${uniqueDocuments.length} (años: ${Array.from(years).sort().join(', ')})`);
+        console.log(`[Holded API] ${company} - Facturas compra abiertas: ${uniqueDocuments.length} (años: ${Array.from(years).sort().join(', ') || 'n/a'})`);
       }
 
-      // Resumen de datos procesados
+      // Si se pide un año concreto, devolver docs crudos (comportamiento previo del branch year)
+      if (year) {
+        return uniqueDocuments;
+      }
 
-      // Obtener todos los contactos de una vez para hacer match por ID (prioritario) o por nombre (fallback)
+      // Obtener contactos (caché 1 h) para IBAN / match
       const allContacts = await this.getAllContacts(company);
 
       // Map por ID de contacto: es la fuente fiable (cada factura tiene contact.id en Holded)

@@ -24,6 +24,7 @@ import holdedApi from '../services/holdedApi';
 import HoldedTest from './HoldedTest';
 import { useAuth } from './AuthContext';
 import { dbService, supabase } from '../config/supabase';
+import { HOLDED_OFFICIAL_USAGE_DEFAULT } from '../constants/holdedOfficialUsageDefaults';
 
 console.log('SettingsPage');
 
@@ -62,86 +63,47 @@ function useSupabaseConnectionStatus() {
   return { status, error };
 }
 
-// Hook para obtener el estado de conexión de Holded Solucions
+// Hook para estado Holded Solucions — NO auto-llama a la API (ahorra cupo).
+// status: idle | testing | success | error
 function useHoldedSolucionsConnectionStatus() {
-  const [status, setStatus] = useReactState('testing');
+  const [status, setStatus] = useReactState('idle');
   const [error, setError] = useReactState(null);
-  const { colors } = useTheme();
 
-  React.useEffect(() => {
-    let isMounted = true;
-    let retryCount = 0;
-    const maxRetries = 3;
-    
-    async function testConnection() {
-      try {
-        // Esperar un poco antes de intentar la conexión
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        await holdedApi.testConnection('solucions');
-        if (!isMounted) return;
-        setStatus('success');
-        setError(null);
-      } catch (err) {
-        if (!isMounted) return;
-        
-        // Si es un error de API no disponible, reintentar
-        if (err.message.includes('API de Electron no disponible') && retryCount < maxRetries) {
-          retryCount++;
-          console.log(`Reintentando conexión Holded Solucions (${retryCount}/${maxRetries})...`);
-          setTimeout(testConnection, 2000); // Esperar 2 segundos antes de reintentar
-          return;
-        }
-        
-        setStatus('error');
-        setError(err.message);
-      }
+  const testNow = React.useCallback(async () => {
+    setStatus('testing');
+    setError(null);
+    try {
+      await holdedApi.testConnection('solucions');
+      setStatus('success');
+      setError(null);
+    } catch (err) {
+      setStatus('error');
+      setError(err.message);
     }
-    testConnection();
-    return () => { isMounted = false; };
   }, []);
-  return { status, error };
+
+  return { status, error, testNow };
 }
 
-// Hook para obtener el estado de conexión de Holded Menjar
+// Hook para estado Holded Menjar — NO auto-llama a la API (ahorra cupo).
 function useHoldedMenjarConnectionStatus() {
-  const [status, setStatus] = useReactState('testing');
+  const [status, setStatus] = useReactState('idle');
   const [error, setError] = useReactState(null);
-  const { colors } = useTheme();
 
-  React.useEffect(() => {
-    let isMounted = true;
-    let retryCount = 0;
-    const maxRetries = 3;
-    
-    async function testConnection() {
-      try {
-        // Esperar un poco antes de intentar la conexión
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        await holdedApi.testConnection('menjar');
-        if (!isMounted) return;
-        setStatus('success');
-        setError(null);
-      } catch (err) {
-        if (!isMounted) return;
-        
-        // Si es un error de API no disponible, reintentar
-        if (err.message.includes('API de Electron no disponible') && retryCount < maxRetries) {
-          retryCount++;
-          console.log(`Reintentando conexión Holded Menjar (${retryCount}/${maxRetries})...`);
-          setTimeout(testConnection, 2000); // Esperar 2 segundos antes de reintentar
-          return;
-        }
-        
-        setStatus('error');
-        setError(err.message);
-      }
+  const testNow = React.useCallback(async () => {
+    setStatus('testing');
+    setError(null);
+    try {
+      await holdedApi.testConnection('menjar');
+      setStatus('success');
+      setError(null);
+    } catch (err) {
+      setStatus('error');
+      setError(err.message);
     }
-    testConnection();
-    return () => { isMounted = false; };
   }, []);
-  return { status, error };
+
+  return { status, error, testNow };
 }
 
 // Hook para obtener el uso de la base de datos
@@ -319,11 +281,88 @@ const SettingsPage = () => {
   // Estado de conexión Supabase (badge)
   const { status: supabaseStatus, error: supabaseError } = useSupabaseConnectionStatus();
 
-  // Estado de conexión Holded Solucions (badge)
-  const { status: holdedSolucionsStatus, error: holdedSolucionsError } = useHoldedSolucionsConnectionStatus();
+  // Estado de conexión Holded Solucions (badge) — sin auto-call
+  const { status: holdedSolucionsStatus, error: holdedSolucionsError, testNow: testHoldedSolucions } = useHoldedSolucionsConnectionStatus();
 
-  // Estado de conexión Holded Menjar (badge)
-  const { status: holdedMenjarStatus, error: holdedMenjarError } = useHoldedMenjarConnectionStatus();
+  // Estado de conexión Holded Menjar (badge) — sin auto-call
+  const { status: holdedMenjarStatus, error: holdedMenjarError, testNow: testHoldedMenjar } = useHoldedMenjarConnectionStatus();
+
+  // Contador local Holded (0 coste API) + snapshot panel oficial
+  const [holdedUsage, setHoldedUsage] = useState(null);
+  const [holdedUsageLoading, setHoldedUsageLoading] = useState(false);
+  const [holdedOfficialEdit, setHoldedOfficialEdit] = useState(false);
+  const [holdedOfficialForm, setHoldedOfficialForm] = useState({ used: '6370', limit: '7500', remaining: '1130' });
+  const [holdedOfficialSaving, setHoldedOfficialSaving] = useState(false);
+
+  const refreshHoldedUsage = React.useCallback(async () => {
+    if (!window.electronAPI?.getHoldedApiUsage) {
+      setHoldedUsage(null);
+      return;
+    }
+    setHoldedUsageLoading(true);
+    try {
+      const snap = await window.electronAPI.getHoldedApiUsage();
+      setHoldedUsage(snap);
+      if (snap?.official) {
+        setHoldedOfficialForm({
+          used: String(snap.official.used ?? ''),
+          limit: String(snap.official.planLimit ?? 7500),
+          remaining: String(snap.official.remaining ?? '')
+        });
+      }
+    } catch (e) {
+      console.warn('No se pudo leer uso Holded local:', e);
+    } finally {
+      setHoldedUsageLoading(false);
+    }
+  }, []);
+
+  const saveHoldedOfficial = React.useCallback(async () => {
+    if (!window.electronAPI?.setHoldedOfficialUsage) {
+      showAlertMessage(
+        'Reinicia Kronos por completo (cerrar ventana y volver a abrir) para activar el guardado del panel Holded.',
+        'error'
+      );
+      return;
+    }
+    setHoldedOfficialSaving(true);
+    try {
+      const used = parseInt(holdedOfficialForm.used, 10) || 0;
+      const planLimit = parseInt(holdedOfficialForm.limit, 10) || 7500;
+      const remaining = holdedOfficialForm.remaining !== ''
+        ? parseInt(holdedOfficialForm.remaining, 10)
+        : Math.max(0, planLimit - used);
+      const base = holdedUsage?.official || HOLDED_OFFICIAL_USAGE_DEFAULT;
+      const snap = await window.electronAPI.setHoldedOfficialUsage({
+        used,
+        planLimit,
+        remaining,
+        percentUsed: planLimit > 0 ? Math.round((used / planLimit) * 1000) / 10 : 0,
+        period: holdedUsage?.period || base.period,
+        zones: base.zones,
+        endpoints: base.endpoints,
+        warningMessage: base.warningMessage,
+        note: 'Actualizado manualmente desde Configuración Kronos'
+      });
+      setHoldedUsage(snap);
+      setHoldedOfficialEdit(false);
+      showAlertMessage('Snapshot del panel Holded guardado.', 'success');
+    } catch (e) {
+      console.warn('No se pudo guardar snapshot oficial Holded:', e);
+      showAlertMessage(
+        'No se pudo guardar. Cierra Kronos del todo (no solo recargar) y ábrelo de nuevo: el proceso main tiene que cargar el handler nuevo.',
+        'error'
+      );
+    } finally {
+      setHoldedOfficialSaving(false);
+    }
+  }, [holdedOfficialForm, holdedUsage]);
+
+  useEffect(() => {
+    refreshHoldedUsage();
+    const id = setInterval(refreshHoldedUsage, 15000);
+    return () => clearInterval(id);
+  }, [refreshHoldedUsage]);
 
   // Estado de uso de base de datos
   const { sizeBytes: dbSizeBytes, loading: dbLoading } = useDatabaseUsage(isAdmin);
@@ -780,25 +819,31 @@ const SettingsPage = () => {
         {
           icon: CheckCircle,
           title: 'Conexión Holded Solucions',
-          description: holdedSolucionsStatus === 'success' ? 'Conectado correctamente' : 
+          description: holdedSolucionsStatus === 'idle' ? 'Sin comprobar (ahorra cupo). Pulsa para verificar.' :
+                      holdedSolucionsStatus === 'success' ? 'Conectado correctamente' : 
                       holdedSolucionsStatus === 'error' ? `Error: ${holdedSolucionsError}` : 
                       'Comprobando conexión...',
-          action: null,
+          action: holdedSolucionsStatus === 'testing' ? null : testHoldedSolucions,
+          actionLabel: 'Comprobar',
           color: holdedSolucionsStatus === 'success' ? colors.success : 
                  holdedSolucionsStatus === 'error' ? colors.error : 
-                 colors.warning,
+                 holdedSolucionsStatus === 'testing' ? colors.warning :
+                 colors.textSecondary,
           disabled: false
         },
         {
           icon: CheckCircle,
           title: 'Conexión Holded Menjar',
-          description: holdedMenjarStatus === 'success' ? 'Conectado correctamente' : 
+          description: holdedMenjarStatus === 'idle' ? 'Sin comprobar (ahorra cupo). Pulsa para verificar.' :
+                      holdedMenjarStatus === 'success' ? 'Conectado correctamente' : 
                       holdedMenjarStatus === 'error' ? `Error: ${holdedMenjarError}` : 
                       'Comprobando conexión...',
-          action: null,
+          action: holdedMenjarStatus === 'testing' ? null : testHoldedMenjar,
+          actionLabel: 'Comprobar',
           color: holdedMenjarStatus === 'success' ? colors.success : 
                  holdedMenjarStatus === 'error' ? colors.error : 
-                 colors.warning,
+                 holdedMenjarStatus === 'testing' ? colors.warning :
+                 colors.textSecondary,
           disabled: false
         }
       ]
@@ -872,6 +917,25 @@ const SettingsPage = () => {
                   <div style={{ fontWeight: 600, fontSize: 15, color: colors.text }}>{item.title}</div>
                   <div style={{ fontSize: 13, color: colors.textSecondary, marginTop: 2 }}>{item.description}</div>
                 </div>
+                {item.action && (
+                  <button
+                    type="button"
+                    onClick={item.action}
+                    style={{
+                      padding: '8px 12px',
+                      borderRadius: 6,
+                      border: `1px solid ${colors.border}`,
+                      background: colors.surface,
+                      color: colors.text,
+                      cursor: 'pointer',
+                      fontSize: 13,
+                      fontWeight: 500,
+                      flexShrink: 0
+                    }}
+                  >
+                    {item.actionLabel || 'Acción'}
+                  </button>
+                )}
               </motion.div>
             ))}
           </div>
@@ -879,6 +943,344 @@ const SettingsPage = () => {
       );
     }
     return null;
+  };
+
+  const renderHoldedUsageSection = () => {
+    if (!(isAdmin || isManagementOrUser)) return null;
+
+    const official = holdedUsage?.official || HOLDED_OFFICIAL_USAGE_DEFAULT;
+    const estimated = holdedUsage?.estimated || {
+      used: (official.used || 0) + (holdedUsage?.monthTotal || 0),
+      remaining: Math.max(0, (official.planLimit || 7500) - ((official.used || 0) + (holdedUsage?.monthTotal || 0))),
+      percentUsed: 0,
+      deltaSinceOfficial: holdedUsage?.monthTotal || 0,
+      planLimit: official.planLimit || 7500
+    };
+    if (!holdedUsage?.estimated && estimated.planLimit > 0) {
+      estimated.percentUsed = Math.round((estimated.used / estimated.planLimit) * 1000) / 10;
+    }
+    const monthTotal = holdedUsage?.monthTotal ?? 0;
+    const top = holdedUsage?.topEndpoints || [];
+    const zonesLocal = holdedUsage?.byZoneMonth || {};
+
+    const displayUsed = estimated?.used ?? official?.used ?? 0;
+    const displayLimit = estimated?.planLimit ?? official?.planLimit ?? 7500;
+    const displayRemaining = estimated?.remaining ?? official?.remaining ?? Math.max(0, displayLimit - displayUsed);
+    const displayPct = estimated?.percentUsed ?? official?.percentUsed ?? 0;
+    const barColor = displayPct >= 90 ? colors.error : displayPct >= 75 ? colors.warning : colors.primary;
+
+    const inputStyle = {
+      width: '100%',
+      padding: '8px 10px',
+      borderRadius: 6,
+      border: `1px solid ${colors.border}`,
+      background: colors.surface,
+      color: colors.text,
+      fontSize: 14,
+      boxSizing: 'border-box'
+    };
+
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.32 }}
+        style={{
+          background: colors.card,
+          borderRadius: 8,
+          boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+          padding: '24px'
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center' }}>
+            <Zap size={20} color={colors.text} style={{ marginRight: 10 }} />
+            <h3 style={{ color: colors.text, fontSize: 18, fontWeight: 600, margin: 0 }}>Uso API Holded</h3>
+          </div>
+          <button
+            type="button"
+            onClick={refreshHoldedUsage}
+            disabled={holdedUsageLoading}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '8px 12px',
+              borderRadius: 6,
+              border: `1px solid ${colors.border}`,
+              background: colors.surface,
+              color: colors.text,
+              cursor: holdedUsageLoading ? 'wait' : 'pointer',
+              fontSize: 13
+            }}
+          >
+            <RefreshCw size={14} />
+            Actualizar
+          </button>
+        </div>
+
+        <div style={{ fontSize: 13, color: colors.textSecondary, marginBottom: 18 }}>
+          Holded no tiene endpoint de uso: los datos del panel se guardan aquí a mano.
+          El total aprox. = panel + llamadas de Kronos desde la última captura.
+        </div>
+
+        {/* —— Panel oficial (como en Holded) —— */}
+        <div style={{
+          padding: 16,
+          borderRadius: 8,
+          border: `1px solid ${colors.border}`,
+          background: colors.surface,
+          marginBottom: 16
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: colors.text }}>
+              Panel Holded (oficial · manual)
+            </div>
+            <button
+              type="button"
+              onClick={() => setHoldedOfficialEdit((v) => !v)}
+              style={{
+                padding: '6px 10px',
+                borderRadius: 6,
+                border: `1px solid ${colors.border}`,
+                background: colors.card,
+                color: colors.text,
+                cursor: 'pointer',
+                fontSize: 12
+              }}
+            >
+              {holdedOfficialEdit ? 'Cancelar' : 'Editar números'}
+            </button>
+          </div>
+
+          {displayPct >= 75 && (
+            <div style={{
+              fontSize: 12,
+              color: colors.warning,
+              marginBottom: 12,
+              padding: '8px 10px',
+              borderRadius: 6,
+              background: colors.warning + '18',
+              border: `1px solid ${colors.warning}44`
+            }}>
+              {official?.warningMessage ||
+                'El uso se acerca al límite del plan. Valora ampliar capacidad en Holded.'}
+            </div>
+          )}
+
+          {holdedOfficialEdit ? (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 12 }}>
+              <label style={{ fontSize: 12, color: colors.textSecondary }}>
+                Usadas
+                <input
+                  style={{ ...inputStyle, marginTop: 4 }}
+                  value={holdedOfficialForm.used}
+                  onChange={(e) => setHoldedOfficialForm((f) => ({ ...f, used: e.target.value }))}
+                />
+              </label>
+              <label style={{ fontSize: 12, color: colors.textSecondary }}>
+                Límite
+                <input
+                  style={{ ...inputStyle, marginTop: 4 }}
+                  value={holdedOfficialForm.limit}
+                  onChange={(e) => setHoldedOfficialForm((f) => ({ ...f, limit: e.target.value }))}
+                />
+              </label>
+              <label style={{ fontSize: 12, color: colors.textSecondary }}>
+                Restantes
+                <input
+                  style={{ ...inputStyle, marginTop: 4 }}
+                  value={holdedOfficialForm.remaining}
+                  onChange={(e) => setHoldedOfficialForm((f) => ({ ...f, remaining: e.target.value }))}
+                  placeholder="auto"
+                />
+              </label>
+              <div style={{ gridColumn: '1 / -1' }}>
+                <button
+                  type="button"
+                  onClick={saveHoldedOfficial}
+                  disabled={holdedOfficialSaving}
+                  style={{
+                    padding: '8px 14px',
+                    borderRadius: 6,
+                    border: 'none',
+                    background: colors.primary,
+                    color: '#fff',
+                    cursor: holdedOfficialSaving ? 'wait' : 'pointer',
+                    fontSize: 13,
+                    fontWeight: 600
+                  }}
+                >
+                  Guardar snapshot del panel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div style={{ marginBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+                <span style={{ fontSize: 14, color: colors.text, fontWeight: 500 }}>
+                  Uso del testimonio (aprox. actual)
+                </span>
+                <span style={{ fontSize: 13, color: colors.textSecondary }}>
+                  {displayUsed.toLocaleString('es-ES')} / {displayLimit.toLocaleString('es-ES')} · {displayRemaining.toLocaleString('es-ES')} rest.
+                </span>
+              </div>
+              <div style={{
+                height: 10,
+                width: '100%',
+                backgroundColor: colors.border,
+                borderRadius: 4,
+                overflow: 'hidden',
+                marginBottom: 8
+              }}>
+                <motion.div
+                  initial={{ width: 0 }}
+                  animate={{ width: `${Math.min(100, displayPct)}%` }}
+                  transition={{ duration: 0.6, ease: 'easeOut' }}
+                  style={{ height: '100%', backgroundColor: barColor, borderRadius: 4 }}
+                />
+              </div>
+              <div style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 12 }}>
+                {displayPct}% del límit mensual
+                {estimated?.deltaSinceOfficial > 0
+                  ? ` · +${estimated.deltaSinceOfficial} desde captura Kronos`
+                  : ''}
+                {official?.capturedAt
+                  ? ` · captura: ${new Date(official.capturedAt).toLocaleString('es-ES')}`
+                  : ''}
+              </div>
+            </>
+          )}
+
+          {Array.isArray(official?.zones) && official.zones.length > 0 && (
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: colors.text, marginBottom: 6 }}>Distribución por zona</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {official.zones.map((z) => (
+                  <span
+                    key={z.name}
+                    style={{
+                      fontSize: 12,
+                      padding: '4px 10px',
+                      borderRadius: 6,
+                      background: colors.card,
+                      border: `1px solid ${colors.border}`,
+                      color: colors.text
+                    }}
+                  >
+                    {z.name}: {Number(z.count).toLocaleString('es-ES')}
+                    {z.percent != null ? ` (${z.percent}%)` : ''}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {Array.isArray(official?.endpoints) && official.endpoints.length > 0 && (
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: colors.text, marginBottom: 6 }}>
+                Top endpoints (panel Holded)
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 160, overflowY: 'auto' }}>
+                {official.endpoints.map((row) => (
+                  <div
+                    key={`${row.method}-${row.path}`}
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      gap: 12,
+                      fontSize: 12,
+                      color: colors.textSecondary,
+                      fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace'
+                    }}
+                  >
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {row.method || 'GET'} {row.path}
+                    </span>
+                    <span style={{ flexShrink: 0, color: colors.text, fontWeight: 600 }}>
+                      {Number(row.count).toLocaleString('es-ES')}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* —— Contador local Kronos —— */}
+        <div style={{
+          padding: 16,
+          borderRadius: 8,
+          border: `1px solid ${colors.border}`,
+          background: colors.surface
+        }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: colors.text, marginBottom: 8 }}>
+            Contador Kronos (este PC)
+          </div>
+          <div style={{ fontSize: 13, color: colors.textSecondary, marginBottom: 8 }}>
+            Periodo {holdedUsage?.period || '—'} · solo lo que mide esta app desde que existe el contador
+          </div>
+          <div style={{ fontSize: 13, color: colors.text, marginBottom: 8 }}>
+            Mes: <strong>{monthTotal.toLocaleString('es-ES')}</strong>
+            {' · '}
+            Sesión: <strong>{(holdedUsage?.sessionTotal ?? 0).toLocaleString('es-ES')}</strong>
+            {holdedUsage?.lastCallAt
+              ? ` · última: ${new Date(holdedUsage.lastCallAt).toLocaleString('es-ES')}`
+              : ''}
+          </div>
+
+          {Object.keys(zonesLocal).length > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+              {Object.entries(zonesLocal).map(([zone, count]) => (
+                <span
+                  key={zone}
+                  style={{
+                    fontSize: 12,
+                    padding: '4px 10px',
+                    borderRadius: 6,
+                    background: colors.card,
+                    border: `1px solid ${colors.border}`,
+                    color: colors.text
+                  }}
+                >
+                  {zone}: {count}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {top.length > 0 && (
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: colors.text, marginBottom: 6 }}>Top endpoints (Kronos)</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 140, overflowY: 'auto' }}>
+                {top.map((row) => (
+                  <div
+                    key={row.endpoint}
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      gap: 12,
+                      fontSize: 12,
+                      color: colors.textSecondary,
+                      fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace'
+                    }}
+                  >
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.endpoint}</span>
+                    <span style={{ flexShrink: 0, color: colors.text, fontWeight: 600 }}>{row.count}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {!holdedUsage && (
+            <div style={{ fontSize: 13, color: colors.textSecondary }}>
+              Aún no hay datos locales. Tras usar Home/Analytics aparecerán aquí.
+            </div>
+          )}
+        </div>
+      </motion.div>
+    );
   };
 
   // Sección de Almacenamiento (Database Usage)
@@ -1554,13 +1956,16 @@ const SettingsPage = () => {
             fontWeight: '500',
             backgroundColor: holdedSolucionsStatus === 'success' ? colors.success + '22' : 
                            holdedSolucionsStatus === 'error' ? colors.error + '22' : 
-                           colors.warning + '22',
+                           holdedSolucionsStatus === 'testing' ? colors.warning + '22' :
+                           colors.textSecondary + '18',
             color: holdedSolucionsStatus === 'success' ? colors.success : 
                    holdedSolucionsStatus === 'error' ? colors.error : 
-                   colors.warning,
+                   holdedSolucionsStatus === 'testing' ? colors.warning :
+                   colors.textSecondary,
             border: `1px solid ${holdedSolucionsStatus === 'success' ? colors.success : 
                                 holdedSolucionsStatus === 'error' ? colors.error : 
-                                colors.warning}33`
+                                holdedSolucionsStatus === 'testing' ? colors.warning :
+                                colors.textSecondary}33`
           }}>
             <div style={{
               width: '6px',
@@ -1568,7 +1973,8 @@ const SettingsPage = () => {
               borderRadius: '50%',
               backgroundColor: holdedSolucionsStatus === 'success' ? colors.success : 
                              holdedSolucionsStatus === 'error' ? colors.error : 
-                             colors.warning
+                             holdedSolucionsStatus === 'testing' ? colors.warning :
+                             colors.textSecondary
             }} />
             Holded Solucions
           </div>
@@ -1584,13 +1990,16 @@ const SettingsPage = () => {
             fontWeight: '500',
             backgroundColor: holdedMenjarStatus === 'success' ? colors.success + '22' : 
                            holdedMenjarStatus === 'error' ? colors.error + '22' : 
-                           colors.warning + '22',
+                           holdedMenjarStatus === 'testing' ? colors.warning + '22' :
+                           colors.textSecondary + '18',
             color: holdedMenjarStatus === 'success' ? colors.success : 
                    holdedMenjarStatus === 'error' ? colors.error : 
-                   colors.warning,
+                   holdedMenjarStatus === 'testing' ? colors.warning :
+                   colors.textSecondary,
             border: `1px solid ${holdedMenjarStatus === 'success' ? colors.success : 
                                 holdedMenjarStatus === 'error' ? colors.error : 
-                                colors.warning}33`
+                                holdedMenjarStatus === 'testing' ? colors.warning :
+                                colors.textSecondary}33`
           }}>
             <div style={{
               width: '6px',
@@ -1598,7 +2007,8 @@ const SettingsPage = () => {
               borderRadius: '50%',
               backgroundColor: holdedMenjarStatus === 'success' ? colors.success : 
                              holdedMenjarStatus === 'error' ? colors.error : 
-                             colors.warning
+                             holdedMenjarStatus === 'testing' ? colors.warning :
+                             colors.textSecondary
             }} />
             Holded Menjar
           </div>
@@ -1665,6 +2075,7 @@ const SettingsPage = () => {
         {renderDivisaSection()}
         {renderInfoApp()}
         {renderEstadoConexiones()}
+        {renderHoldedUsageSection()}
         {renderPruebasTecnicas()}
         {renderUpdateSection()}
         {renderStorageSection()}

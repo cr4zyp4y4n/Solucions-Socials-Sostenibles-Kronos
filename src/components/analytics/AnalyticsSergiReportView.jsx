@@ -46,19 +46,22 @@ export default function AnalyticsSergiReportView({
       setV2Error('');
 
       try {
+        // Invoices/estimates/proformas filtrados por año en API (no bajar histórico).
+        // Estimates v1 billed=0 del año: solo para marcar "no facturado" (barato vs v2 completo).
         const [accounts, invoices, allEstimates, unbilledEstimates, v2AllProformas, v1PendingProforms, mhInvoices] = await Promise.all([
           holdedApiV2Service.getAccountingAccounts('solucions'),
-          holdedApiV2Service.getInvoices('solucions'),
-          holdedApiV2Service.getEstimates({ sort: '-date' }, 'solucions'),
+          holdedApiV2Service.getInvoicesForYear(targetYear, 'solucions'),
+          holdedApiV2Service.getEstimatesForYear(targetYear, 'solucions'),
           holdedApi.getAllEstimatesPages('solucions', targetYear, 0),
-          holdedApiV2Service.getProformas({ sort: '-date' }, 'solucions'),
+          holdedApiV2Service.getProformasForYear(targetYear, 'solucions'),
           holdedApi.getAllProformsPages('solucions', targetYear, 0),
-          holdedApiV2Service.getInvoices('menjar_dhort')
+          holdedApiV2Service.getInvoicesForYear(targetYear, 'menjar_dhort')
         ]);
 
         if (cancelled) return;
 
         const yearPrefix = `${targetYear}-`;
+        // Ya vienen del año vía API; el filtro es red de seguridad si Holded ignora params
         const invoicesForYear = (invoices || []).filter((invoice) => String(invoice?.date || '').startsWith(yearPrefix));
         const accountMap = buildHoldedV2AccountMap(accounts);
         const enriched = enrichSergiRowsWithHoldedV2({
