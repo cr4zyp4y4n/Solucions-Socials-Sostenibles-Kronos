@@ -1,16 +1,16 @@
 /**
  * Diseño visual de la hoja de evidencias (marca EISSS / Kronos).
- * Banda izquierda verde, cabecera con logo, bloques tipográficos y caja SHA-256.
+ * Estilo documental formal: logo alineado, tipografía sobria, menos “plantilla verde”.
  */
 import { PDFDocument, PDFFont, PDFPage, PDFImage, rgb, StandardFonts } from 'pdf-lib';
 import { LOGO_SSS_EVIDENCE_PNG_BASE64 } from '@/lib/logoSssEvidenceBase64';
 
 /** Verde Solucions / Kronos (#4CAF50) */
 export const EISSS_GREEN = rgb(0.298, 0.686, 0.314);
-export const EISSS_GREEN_DARK = rgb(0.18, 0.49, 0.2);
-export const EISSS_GREEN_SOFT = rgb(0.91, 0.96, 0.91);
-export const INK = rgb(0.12, 0.14, 0.13);
-export const MUTED = rgb(0.35, 0.4, 0.38);
+export const EISSS_GREEN_DARK = rgb(0.15, 0.42, 0.18);
+export const RULE = rgb(0.78, 0.82, 0.79);
+export const INK = rgb(0.1, 0.12, 0.11);
+export const MUTED = rgb(0.38, 0.42, 0.4);
 
 export type EvidenceSection = {
   heading: string;
@@ -34,6 +34,16 @@ function wrapLine(text: string, maxChars: number): string[] {
   return out;
 }
 
+/** Parte "Etiqueta: valor" para filas tipo ficha. */
+function splitLabelValue(line: string): { label: string; value: string } | null {
+  const idx = line.indexOf(':');
+  if (idx <= 0 || idx > 42) return null;
+  return {
+    label: line.slice(0, idx).trim(),
+    value: line.slice(idx + 1).trim()
+  };
+}
+
 async function tryEmbedLogo(pdfDoc: PDFDocument): Promise<PDFImage | null> {
   try {
     const bytes = Buffer.from(LOGO_SSS_EVIDENCE_PNG_BASE64, 'base64');
@@ -43,19 +53,19 @@ async function tryEmbedLogo(pdfDoc: PDFDocument): Promise<PDFImage | null> {
   }
 }
 
-function drawWordmark(page: PDFPage, fontBold: PDFFont, x: number, y: number): number {
-  const box = 36;
+function drawWordmark(page: PDFPage, fontBold: PDFFont, x: number, midY: number): number {
+  const box = 32;
   page.drawRectangle({
     x,
-    y: y - box,
+    y: midY - box / 2,
     width: box,
     height: box,
-    color: EISSS_GREEN
+    color: EISSS_GREEN_DARK
   });
   page.drawText('SSS', {
-    x: x + 5,
-    y: y - 24,
-    size: 12,
+    x: x + 4.5,
+    y: midY - 4.5,
+    size: 11,
     font: fontBold,
     color: rgb(1, 1, 1)
   });
@@ -87,195 +97,242 @@ export async function drawBrandedEvidencePage({
   const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
   const logo = await tryEmbedLogo(pdfDoc);
 
-  const leftBar = 10;
-  const marginL = 36 + leftBar;
-  const marginR = 36;
-  const marginT = 36;
+  const leftBar = 6;
+  const marginL = 40 + leftBar;
+  const marginR = 40;
   const contentW = width - marginL - marginR;
+  const footerH = 22;
 
+  // Fondo blanco limpio
   page.drawRectangle({
     x: 0,
     y: 0,
     width,
     height,
-    color: rgb(0.985, 0.99, 0.985)
+    color: rgb(1, 1, 1)
   });
 
+  // Filete izquierdo fino
   page.drawRectangle({
     x: 0,
-    y: 0,
+    y: footerH,
     width: leftBar,
-    height,
-    color: EISSS_GREEN
+    height: height - footerH,
+    color: EISSS_GREEN_DARK
   });
 
-  const headerH = 72;
+  // —— Cabecera institucional ——
+  const headerH = 58;
+  const headerBottom = height - headerH;
+  const headerMid = headerBottom + headerH / 2;
+
+  // Solo línea superior + línea de cierre (sin fondo verde suave)
   page.drawRectangle({
     x: leftBar,
-    y: height - headerH,
+    y: height - 3,
     width: width - leftBar,
-    height: headerH,
-    color: EISSS_GREEN_SOFT
+    height: 3,
+    color: EISSS_GREEN_DARK
   });
   page.drawRectangle({
     x: leftBar,
-    y: height - headerH,
+    y: headerBottom,
     width: width - leftBar,
-    height: 2.5,
-    color: EISSS_GREEN
+    height: 0.75,
+    color: RULE
   });
 
   let brandX = marginL;
   if (logo) {
-    const logoW = 52;
+    const logoW = 38;
     const logoH = (logo.height / logo.width) * logoW;
     page.drawImage(logo, {
       x: marginL,
-      y: height - marginT - logoH + 4,
+      y: headerMid - logoH / 2,
       width: logoW,
       height: logoH
     });
     brandX = marginL + logoW + 12;
   } else {
-    drawWordmark(page, fontBold, marginL, height - marginT + 8);
-    brandX = marginL + 48;
+    const box = drawWordmark(page, fontBold, marginL, headerMid);
+    brandX = marginL + box + 12;
   }
+
+  // Bloque de texto centrado verticalmente con el logo
+  const titleSize = 10;
+  const metaSize = 8;
+  const gap = 3;
+  const textBlockH = titleSize + gap + metaSize;
+  const textTop = headerMid + textBlockH / 2;
 
   page.drawText(toWinAnsiSafe(razonSocial), {
     x: brandX,
-    y: height - 32,
-    size: 11,
+    y: textTop - titleSize,
+    size: titleSize,
     font: fontBold,
-    color: EISSS_GREEN_DARK
+    color: INK
   });
-  const sub = nif
-    ? `NIF ${nif}  ·  Kronos · Acuse electrónico`
+  const metaLine = nif
+    ? `NIF ${nif}   ·   Kronos · Acuse electrónico`
     : 'Kronos · Acuse electrónico';
-  page.drawText(toWinAnsiSafe(sub), {
+  page.drawText(toWinAnsiSafe(metaLine), {
     x: brandX,
-    y: height - 48,
-    size: 8,
+    y: textTop - titleSize - gap - metaSize,
+    size: metaSize,
     font,
     color: MUTED
   });
 
-  let y = height - headerH - 28;
+  // Marca pequeña a la derecha
+  page.drawText('CONFIDENCIAL', {
+    x: width - marginR - 68,
+    y: headerMid - 3,
+    size: 7,
+    font: fontBold,
+    color: MUTED
+  });
+
+  // —— Título del documento ——
+  let y = headerBottom - 26;
   page.drawText(toWinAnsiSafe('Hoja de evidencias de aceptación electrónica'), {
     x: marginL,
     y,
-    size: 14,
+    size: 13,
     font: fontBold,
     color: INK
   });
-  y -= 8;
+  y -= 6;
   page.drawRectangle({
     x: marginL,
-    y: y - 2,
-    width: 120,
-    height: 2.5,
-    color: EISSS_GREEN
+    y: y - 1,
+    width: 56,
+    height: 1.5,
+    color: EISSS_GREEN_DARK
   });
-  y -= 22;
+  y -= 20;
 
   const bodySize = 9;
   const labelSize = 8;
-  const lineGap = 11;
-  const maxChars = Math.floor(contentW / (bodySize * 0.48));
+  const lineGap = 12;
+  const labelColW = 148;
+  const valueMaxChars = Math.floor((contentW - labelColW - 8) / (bodySize * 0.5));
 
   for (const section of sections) {
-    if (y < 100) break;
+    if (y < footerH + 90) break;
 
-    page.drawRectangle({
-      x: marginL,
-      y: y - 2,
-      width: 3,
-      height: 11,
-      color: EISSS_GREEN
-    });
     page.drawText(toWinAnsiSafe(section.heading.toUpperCase()), {
-      x: marginL + 10,
+      x: marginL,
       y,
       size: labelSize,
       font: fontBold,
       color: EISSS_GREEN_DARK
     });
+    y -= 5;
+    page.drawRectangle({
+      x: marginL,
+      y: y - 0.5,
+      width: contentW,
+      height: 0.5,
+      color: RULE
+    });
     y -= 14;
 
     for (const raw of section.lines) {
       if (!raw) {
-        y -= 4;
+        y -= 3;
         continue;
       }
-      for (const line of wrapLine(toWinAnsiSafe(raw), Math.max(40, maxChars))) {
-        if (y < 90) break;
-        page.drawText(line, {
-          x: marginL + 10,
+      if (y < footerH + 80) break;
+
+      const parts = splitLabelValue(raw);
+      if (parts) {
+        page.drawText(toWinAnsiSafe(parts.label), {
+          x: marginL,
           y,
           size: bodySize,
           font,
-          color: INK
+          color: MUTED
         });
-        y -= lineGap;
+        const valueLines = wrapLine(toWinAnsiSafe(parts.value), Math.max(28, valueMaxChars));
+        let vx = 0;
+        for (const vl of valueLines) {
+          page.drawText(vl, {
+            x: marginL + labelColW,
+            y: y - vx * lineGap,
+            size: bodySize,
+            font: fontBold,
+            color: INK
+          });
+          vx += 1;
+        }
+        y -= Math.max(1, valueLines.length) * lineGap;
+      } else {
+        for (const line of wrapLine(toWinAnsiSafe(raw), Math.max(48, Math.floor(contentW / (bodySize * 0.5))))) {
+          page.drawText(line, {
+            x: marginL,
+            y,
+            size: bodySize,
+            font,
+            color: INK
+          });
+          y -= lineGap;
+        }
       }
     }
-    y -= 8;
+    y -= 10;
   }
 
+  // —— Bloque SHA (sobrio: borde fino, sin relleno chillón) ——
   const shaLines = wrapLine(sha256Original, 64);
-  const shaBoxH = 28 + shaLines.length * 11;
-  if (y - shaBoxH > 48) {
-    y -= 4;
+  const shaPad = 10;
+  const shaBoxH = shaPad * 2 + 12 + shaLines.length * 10;
+  if (y - shaBoxH > footerH + 16) {
+    y -= 2;
     page.drawRectangle({
       x: marginL,
       y: y - shaBoxH,
       width: contentW,
       height: shaBoxH,
-      color: EISSS_GREEN_SOFT,
-      borderColor: EISSS_GREEN,
-      borderWidth: 1
+      borderColor: EISSS_GREEN_DARK,
+      borderWidth: 0.9,
+      color: rgb(0.97, 0.98, 0.97)
     });
-    page.drawRectangle({
-      x: marginL,
-      y: y - shaBoxH,
-      width: 4,
-      height: shaBoxH,
-      color: EISSS_GREEN
-    });
-    page.drawText('SHA-256 DEL PDF ORIGINAL', {
-      x: marginL + 14,
-      y: y - 14,
+    page.drawText('INTEGRIDAD · SHA-256 DEL PDF ORIGINAL', {
+      x: marginL + shaPad,
+      y: y - shaPad - 8,
       size: 7.5,
       font: fontBold,
       color: EISSS_GREEN_DARK
     });
-    let sy = y - 28;
+    let sy = y - shaPad - 22;
     for (const line of shaLines) {
       page.drawText(line, {
-        x: marginL + 14,
+        x: marginL + shaPad,
         y: sy,
         size: 8,
         font,
         color: INK
       });
-      sy -= 11;
+      sy -= 10;
     }
   }
 
+  // —— Pie ——
   page.drawRectangle({
-    x: leftBar,
+    x: 0,
     y: 0,
-    width: width - leftBar,
-    height: 28,
+    width,
+    height: footerH,
     color: EISSS_GREEN_DARK
   });
   const footer = padesSealed
-    ? 'Documento con sello electrónico de la entidad  ·  Generado por Kronos'
-    : 'Aceptación electrónica verificada por SMS  ·  Sello PAdES pendiente  ·  Kronos';
+    ? 'Sello electrónico de la entidad aplicado  ·  Generado por Kronos'
+    : 'Aceptación verificada por SMS  ·  Sello PAdES pendiente  ·  Kronos';
   page.drawText(toWinAnsiSafe(footer), {
     x: marginL,
-    y: 10,
+    y: 7,
     size: 7.5,
     font,
-    color: rgb(0.95, 0.98, 0.95)
+    color: rgb(0.95, 0.97, 0.95)
   });
 }
