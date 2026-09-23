@@ -10,7 +10,7 @@
  * encima de la última página (sin firma criptográfica; podía tapar pies de página).
  */
 import { createHash } from 'crypto';
-import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import { PDFDocument } from 'pdf-lib';
 import { pdflibAddPlaceholder } from '@signpdf/placeholder-pdf-lib';
 import { P12Signer } from '@signpdf/signer-p12';
 import signpdf from '@signpdf/signpdf';
@@ -24,6 +24,7 @@ import {
 } from '@/lib/firmaDocumentosMeta';
 import { formatMadridDateTime } from '@/lib/madridDate';
 import { getFirmaEmpresaInfo } from '@/lib/firmaEmpresas';
+import { drawBrandedEvidencePage, type EvidenceSection } from '@/lib/evidencePageLayout';
 
 export type SealPdfEvidenceArgs = {
   pdfBytes: Uint8Array;
@@ -88,23 +89,11 @@ export function maskTelefonoOtp(raw?: string | null): string {
   return `${prefix}${local[0]}${'·'.repeat(Math.max(2, local.length - 4))} ${local.slice(-3)}`;
 }
 
-function wrapLine(text: string, maxChars: number): string[] {
-  const t = String(text || '');
-  if (!t) return [];
-  if (t.length <= maxChars) return [t];
-  const out: string[] = [];
-  for (let i = 0; i < t.length; i += maxChars) {
-    out.push(t.slice(i, i + maxChars));
-  }
-  return out;
-}
-
-/** Helvetica WinAnsi: evita caracteres que rompen drawText (bullet, ellipsis…). */
 function toWinAnsiSafe(text: string): string {
   return String(text || '')
-    .replace(/\u2022/g, '·') // •
-    .replace(/\u2026/g, '...') // …
-    .replace(/[\u2013\u2014]/g, '-') // – —
+    .replace(/\u2022/g, '·')
+    .replace(/\u2026/g, '...')
+    .replace(/[\u2013\u2014]/g, '-')
     .replace(/\u00A0/g, ' ');
 }
 
@@ -206,13 +195,13 @@ function extractCertInfo(p12Buffer: Buffer, passphrase: string): {
   }
 }
 
-function buildEvidenceBlocks(args: SealPdfEvidenceArgs & {
+function buildEvidenceSections(args: SealPdfEvidenceArgs & {
   sha256Original: string;
   originalPageCount: number;
   razonSocial: string;
   nif: string;
   padesSealed: boolean;
-}): string[] {
+}): EvidenceSection[] {
   const meta = getFirmaDocMeta(args.tipoDocumento);
   const respuesta = normalizeRespuestaAceptacion(args.opciones);
   const docTitulo =
@@ -223,65 +212,48 @@ function buildEvidenceBlocks(args: SealPdfEvidenceArgs & {
   const tokenRef = args.tokenRowId.replace(/-/g, '').slice(0, 12);
   const telMasked = maskTelefonoOtp(args.telefonoOtp);
 
-  const lines: string[] = [
-    `Emisor: ${args.razonSocial}${args.nif ? ` · NIF ${args.nif}` : ''}`,
+  const docLines = [
     `Documento: ${docTitulo}`,
     `Páginas del original: ${args.originalPageCount}`,
-    `Referencia documento: ${docRef || args.documentoId}`,
-    ''
+    `Referencia: ${docRef || args.documentoId}`
   ];
-
   if (respuesta) {
-    lines.push(`Declaración aceptada: ${buildAceptacionRespuestaLine(args.tipoDocumento, respuesta)}`);
+    docLines.push(buildAceptacionRespuestaLine(args.tipoDocumento, respuesta));
   } else {
-    lines.push(`Declaración: ${meta.stampDeclaration}`);
+    docLines.push(meta.stampDeclaration);
   }
-
   if (args.tipoDocumento === 'acoso' && args.opciones?.formacion_acoso) {
-    lines.push('Solicita formación PREVENCION DEL ACOSO: Sí');
+    docLines.push('Solicita formación PREVENCION DEL ACOSO: Sí');
   }
 
-  lines.push('');
-  lines.push(`Trabajador: ${args.trabajadorNombre || '—'}`);
-  lines.push(`DNI: ${args.trabajadorDni || '—'}`);
-  lines.push('');
-  lines.push(`DNI confirmado en portal: ${args.dniConfirmadoEnPortal ? 'Sí' : 'No'}`);
-  lines.push(
+  const idLines = [
+    `Trabajador: ${args.trabajadorNombre || '—'}`,
+    `DNI: ${args.trabajadorDni || '—'}`,
+    `DNI confirmado en portal: ${args.dniConfirmadoEnPortal ? 'Sí' : 'No'}`,
     args.identidadFotoAt
-      ? `Foto de identidad recibida: Sí · ${formatMadridDateTime(args.identidadFotoAt)}`
-      : 'Foto de identidad recibida: No'
-  );
-  lines.push(
+      ? `Foto de identidad: Sí · ${formatMadridDateTime(args.identidadFotoAt)}`
+      : 'Foto de identidad: No',
     args.smsVerificadoAt
-      ? `OTP completada: Sí · ${formatMadridDateTime(args.smsVerificadoAt)}`
-      : 'OTP completada: Sí'
-  );
-  if (telMasked) {
-    lines.push(`Teléfono OTP: ${telMasked}`);
-  }
-  lines.push(`Fecha/hora de firma: ${formatMadridDateTime(args.nowIso)}`);
-  lines.push('');
-  lines.push('SHA-256 del PDF original:');
-  lines.push(...wrapLine(args.sha256Original, 64));
-  lines.push('');
-  lines.push(`Ref. documento: ${docRef || '—'} · Token: ${tokenRef || '—'}`);
-  if (args.ip) lines.push(`IP: ${args.ip}`);
-  if (args.userAgent) {
-    lines.push('User-Agent:');
-    lines.push(...wrapLine(args.userAgent, 90));
-  }
-  lines.push('');
-  if (args.padesSealed) {
-    lines.push(
-      `Tipo de firma: Firma electrónica simple · verificación por SMS · documento sellado electrónicamente por ${args.razonSocial}`
-    );
-  } else {
-    lines.push(
-      'Tipo de firma: Firma electrónica simple · verificación por SMS · sin sello criptográfico PAdES (pendiente certificado de sello de empresa)'
-    );
-  }
+      ? `OTP SMS: Sí · ${formatMadridDateTime(args.smsVerificadoAt)}`
+      : 'OTP SMS: Sí',
+    telMasked ? `Teléfono OTP: ${telMasked}` : '',
+    `Fecha/hora de firma: ${formatMadridDateTime(args.nowIso)}`
+  ].filter(Boolean);
 
-  return lines.map(toWinAnsiSafe);
+  const techLines = [
+    `Token: ${tokenRef || '—'}`,
+    args.ip ? `IP: ${args.ip}` : '',
+    args.userAgent ? `User-Agent: ${args.userAgent}` : '',
+    args.padesSealed
+      ? `Tipo: Firma electrónica simple · SMS · sellado por ${args.razonSocial}`
+      : 'Tipo: Firma electrónica simple · SMS · sin sello PAdES (pendiente certificado de empresa)'
+  ].filter(Boolean);
+
+  return [
+    { heading: 'Documento', lines: docLines },
+    { heading: 'Identificación y verificación', lines: idLines },
+    { heading: 'Trazabilidad técnica', lines: techLines }
+  ];
 }
 
 /**
@@ -313,14 +285,12 @@ export async function sealPdfWithEvidence(args: SealPdfEvidenceArgs): Promise<Se
   const { width, height } = lastPage.getSize();
 
   const evidencePage = pdfDoc.addPage([width, height]);
-  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-  const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
   const empresa = getFirmaEmpresaInfo(args.entityKey);
   const razonSocial = empresa?.nombre || 'Emisor';
   const nif = empresa?.nif || '';
 
-  const blocks = buildEvidenceBlocks({
+  const sections = buildEvidenceSections({
     ...args,
     sha256Original,
     originalPageCount,
@@ -329,40 +299,17 @@ export async function sealPdfWithEvidence(args: SealPdfEvidenceArgs): Promise<Se
     padesSealed
   });
 
-  const margin = 48;
-  const title = toWinAnsiSafe('Hoja de evidencias de aceptación electrónica');
-  let y = height - margin;
-  evidencePage.drawText(title, {
-    x: margin,
-    y: y - 14,
-    size: 14,
-    font: fontBold,
-    color: rgb(0.1, 0.1, 0.1)
+  await drawBrandedEvidencePage({
+    pdfDoc,
+    page: evidencePage,
+    width,
+    height,
+    razonSocial,
+    nif,
+    sections,
+    sha256Original,
+    padesSealed
   });
-  y -= 36;
-
-  const bodySize = 9;
-  const lineGap = 12;
-  const maxWidthChars = Math.floor((width - margin * 2) / (bodySize * 0.5));
-
-  for (const raw of blocks) {
-    if (!raw) {
-      y -= lineGap * 0.6;
-      continue;
-    }
-    const wrapped = wrapLine(raw, Math.max(40, maxWidthChars));
-    for (const line of wrapped) {
-      if (y < margin + 24) break;
-      evidencePage.drawText(line, {
-        x: margin,
-        y: y - bodySize,
-        size: bodySize,
-        font,
-        color: rgb(0.12, 0.12, 0.12)
-      });
-      y -= lineGap;
-    }
-  }
 
   const docTituloMeta =
     String(args.documentoTitulo || '').trim() ||

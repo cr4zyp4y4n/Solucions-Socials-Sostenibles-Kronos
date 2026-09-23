@@ -41,6 +41,8 @@ yarn-error.log*
 dev.crt
 dev.key
 /tmp-seal-test/
+# Logo a tamaño completo (usar solo logo-sss-evidence / base64 embebido)
+/assets/logo-sss.png
 
 
 # vercel
