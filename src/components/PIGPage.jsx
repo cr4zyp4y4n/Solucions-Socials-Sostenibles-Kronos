@@ -4679,6 +4679,12 @@ export default function PIGPage() {
       let previsionesForGenerate = tesoreriaPrevisiones;
       let cajaCortoForGenerate = tesoreriaCajaCorto;
       let crSubvEjAnterioresForGenerate = crSubvEjAnteriores;
+      const requireSuccessfulSaves = async (saveActions, message) => {
+        const results = await Promise.all(saveActions.map((saveAction) => (
+          typeof saveAction === 'function' ? saveAction() : saveAction
+        )));
+        if (results.some((ok) => ok !== true)) throw new Error(message);
+      };
 
       if (!omitSubvenciones) {
         if (yearForEstimados && Number(yearForEstimados) !== Number(estimadosYear)) {
@@ -4693,16 +4699,19 @@ export default function PIGPage() {
             loadPigItinerarioEi({ year: yearForEstimados }),
             loadPigTesoreriaCajaCorto({ year: yearForEstimados })
           ]);
+          if (loadEstError || loadObjError || loadItError || loadCajaError) {
+            throw new Error('No se pudieron cargar todos los datos auxiliares del año del PIG. Revisa los errores antes de generar el Excel.');
+          }
           if (!loadEstError && estimados) estimadosForGenerate = estimados;
           if (!loadObjError && objetivos) objetivosForGenerate = objetivos;
           if (!loadItError && itinerario) itinerarioForGenerate = itinerario;
           if (!loadCajaError && cajaCorto) cajaCortoForGenerate = cajaCorto;
         } else {
-          await Promise.all([
+          await requireSuccessfulSaves([
             saveEstimadosSubv(),
             saveObjetivosComparativa(),
             saveItinerarioEi()
-          ]);
+          ], 'No se pudieron guardar los datos auxiliares del PIG. No se ha generado el Excel.');
         }
 
         // PIG Normal: rellenar NÓMINAS/SS/AUTÓNOMOS/FINANC. desde Holded al generar (sin botón manual).
@@ -4733,19 +4742,22 @@ export default function PIGPage() {
           } catch (e) {
             console.warn('PIG caja a corto Holded:', e);
           }
-          await upsertPigTesoreriaCajaCorto({
+          const { error: cajaCortoSaveError } = await upsertPigTesoreriaCajaCorto({
             year: yearForEstimados,
             cajaCorto: cajaCortoForGenerate
           });
+          if (cajaCortoSaveError) {
+            throw new Error(`No se pudo guardar la previsión de caja a corto: ${cajaCortoSaveError.message || cajaCortoSaveError}`);
+          }
         }
       } else if (yearForEstimados && Number(yearForEstimados) === Number(estimadosYear)) {
         // Objetivos + itinerario CR + previsiones TESORERÍA + subv. ejercicios anteriores.
-        await Promise.all([
+        await requireSuccessfulSaves([
           saveObjetivosComparativa(),
           saveItinerarioEi(),
           saveTesoreriaPrevisiones(),
           saveCrSubvEjAnteriores()
-        ]);
+        ], 'No se pudieron guardar todos los datos de Cuenta Resultados. No se ha generado el Excel.');
       } else if (yearForEstimados) {
         const [
           { itinerario, error: itErr },
@@ -4756,6 +4768,9 @@ export default function PIGPage() {
           loadPigTesoreriaPrevisiones({ year: yearForEstimados }),
           loadPigCrSubvEjerciciosAnteriores({ year: yearForEstimados })
         ]);
+        if (itErr || prErr || crSubvErr) {
+          throw new Error('No se pudieron cargar todos los datos de Cuenta Resultados del año del PIG. Revisa los errores antes de generar el Excel.');
+        }
         if (!itErr && itinerario) itinerarioForGenerate = itinerario;
         if (!prErr && previsiones) previsionesForGenerate = previsiones;
         if (!crSubvErr && crSubvRows) crSubvEjAnterioresForGenerate = crSubvRows;
