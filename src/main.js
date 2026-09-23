@@ -681,7 +681,8 @@ const createWindow = () => {
         ...details.responseHeaders,
         'Content-Security-Policy': [
           "default-src 'self' 'unsafe-inline' data:; " +
-          "script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +
+          "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:; " +
+          "worker-src 'self' blob: data:; " +
           "style-src 'self' 'unsafe-inline'; " +
           "connect-src 'self' http://127.0.0.1:* http://localhost:* https://*.netlify.app https://*.vercel.app https://*.solucionssocials.org https://v6.exchangerate-api.com https://api.exchangerate-api.com https://zalnsacawwekmibhoiba.supabase.co https://*.supabase.co wss://zalnsacawwekmibhoiba.supabase.co wss://*.supabase.co https://api.holded.com https://api.github.com https://ipapi.co https://api.ted.europa.eu https://opendata.aoc.cat https://contrataciondelestado.es; " +
           "img-src 'self' data: blob: https://zalnsacawwekmibhoiba.supabase.co https://*.supabase.co;"

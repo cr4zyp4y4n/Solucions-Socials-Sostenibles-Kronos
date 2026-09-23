@@ -1,10 +1,12 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
+// Worker local (webpack asset/resource) — unpkg falla por CSP/connect-src en Electron
+import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs';
 import { useTheme } from '../ThemeContext';
 import FirmaModal from './FirmaModal';
 import { FirmaButton } from './FirmaUi';
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 
 const DEFAULT_W = 145;
 const DEFAULT_H = 38;

@@ -16,7 +16,7 @@ module.exports = {
     rules,
   },
   resolve: {
-    extensions: ['.js', '.jsx', '.json'],
+    extensions: ['.js', '.jsx', '.json', '.mjs'],
   },
   plugins: [
     // Inyectar variables de entorno en el código del renderer
