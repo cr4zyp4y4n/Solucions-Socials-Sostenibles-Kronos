@@ -183,15 +183,6 @@ export async function drawBrandedEvidencePage({
     color: MUTED
   });
 
-  // Marca pequeña a la derecha
-  page.drawText('CONFIDENCIAL', {
-    x: width - marginR - 68,
-    y: headerMid - 3,
-    size: 7,
-    font: fontBold,
-    color: MUTED
-  });
-
   // —— Título del documento ——
   let y = headerBottom - 26;
   page.drawText(toWinAnsiSafe('Hoja de evidencias de aceptación electrónica'), {
