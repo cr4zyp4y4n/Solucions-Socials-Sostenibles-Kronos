@@ -3,7 +3,7 @@ export type FirmaEmpresaInfo = { nombre: string; corto: string; nif: string };
 
 export const FIRMA_EMPRESA_INFO: Record<string, FirmaEmpresaInfo> = {
   EI_SSS: {
-    nombre: 'SOLUCIONS SOCIALS SOSTENIBLES SCRL',
+    nombre: 'SOLUCIONS SOCIALS SOSTENIBLES SCCL',
     corto: 'Solucions Socials',
     nif: 'F67499186'
   },

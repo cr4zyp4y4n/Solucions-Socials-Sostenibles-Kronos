@@ -116,7 +116,7 @@ async function stampAndUploadDocument({
     sha256_firmado: sealed.sha256Firmado,
     seal_cert_serial: sealed.sealCertSerial,
     seal_cert_issuer: sealed.sealCertIssuer,
-    sealed_at: nowIso
+    sealed_at: sealed.padesSealed ? nowIso : null
   };
 
   let { error: docErr } = await supabaseAdmin
@@ -135,7 +135,12 @@ async function stampAndUploadDocument({
   }
   if (docErr) throw new Error(docErr.message);
 
-  return { signedPath, skipped: false, sha256Firmado: sealed.sha256Firmado };
+  return {
+    signedPath,
+    skipped: false,
+    sha256Firmado: sealed.sha256Firmado,
+    padesSealed: sealed.padesSealed
+  };
 }
 
 export async function POST(_req: Request, ctx: { params: Promise<{ token: string }> }) {
@@ -224,6 +229,7 @@ export async function POST(_req: Request, ctx: { params: Promise<{ token: string
   const entityKey = resolved.envio?.entity_key || null;
 
   const signedPaths: string[] = [];
+  let anyPades = false;
   try {
     for (const doc of resolved.documentos) {
       const result = await stampAndUploadDocument({
@@ -241,6 +247,7 @@ export async function POST(_req: Request, ctx: { params: Promise<{ token: string
         entityKey
       });
       signedPaths.push(result.signedPath);
+      if (result.padesSealed) anyPades = true;
     }
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Error al sellar el PDF';
@@ -276,7 +283,8 @@ export async function POST(_req: Request, ctx: { params: Promise<{ token: string
       sms_verificado_at: smsVerificadoAt,
       num_documentos: resolved.documentos.length,
       storage_paths_firmados: signedPaths,
-      sellado: 'pades_evidencias',
+      sellado: anyPades ? 'pades_evidencias' : 'evidencias_sin_pades',
+      pades_aplicado: anyPades,
       declaraciones_aceptadas: await Promise.all(
         resolved.documentos.map(async (d) => {
           const { opciones } = await loadDocumentoOpciones(d.id);

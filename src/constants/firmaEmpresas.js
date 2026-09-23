@@ -1,7 +1,7 @@
 /** Datos de empresa para documentos de firma (ajusta razón social si hace falta). */
 export const FIRMA_EMPRESA_INFO = {
   EI_SSS: {
-    nombre: 'SOLUCIONS SOCIALS SOSTENIBLES SCRL',
+    nombre: 'SOLUCIONS SOCIALS SOSTENIBLES SCCL',
     corto: 'Solucions Socials',
     nif: 'F67499186'
   },

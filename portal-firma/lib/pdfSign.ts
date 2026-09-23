@@ -54,8 +54,10 @@ export type SealPdfEvidenceResult = {
   sealCertSerial: string | null;
   sealCertIssuer: string | null;
   originalPageCount: number;
-  /** Env usada: SOLUCIONS | MENJAR | DEFAULT */
-  sealEnvProfile: 'SOLUCIONS' | 'MENJAR' | 'DEFAULT';
+  /** Env usada: SOLUCIONS | MENJAR | DEFAULT | NONE (sin P12) */
+  sealEnvProfile: 'SOLUCIONS' | 'MENJAR' | 'DEFAULT' | 'NONE';
+  /** false = solo hoja de evidencias (sin PAdES); temporal hasta sello de empresa */
+  padesSealed: boolean;
 };
 
 export function sha256HexOfBytes(bytes: Uint8Array | Buffer): string {
@@ -134,15 +136,14 @@ function readBase64Parts(baseKey: string): string {
 }
 
 /**
- * Elige P12 según entidad del envío.
- * Preferencia: …_SOLUCIONS / …_MENJAR → fallback KRONOS_SEAL_P12_* genérico.
- * Base64 puede ir partido en _1, _2, _3… (límite Netlify 5000).
+ * Elige P12 según entidad. Si no hay certificado en env → null
+ * (modo temporal: evidencias sin sello PAdES).
  */
-function loadP12FromEnv(entityKey?: string | null): {
+function tryLoadP12FromEnv(entityKey?: string | null): {
   p12: Buffer;
   passphrase: string;
   profile: SealEnvProfile;
-} {
+} | null {
   const profile = resolveSealEnvProfile(entityKey);
 
   const candidates: Array<{ profile: SealEnvProfile; b64Key: string; passKey: string }> = [];
@@ -170,7 +171,8 @@ function loadP12FromEnv(entityKey?: string | null): {
     if (!b64) continue;
     const p12 = Buffer.from(b64, 'base64');
     if (!p12.length) {
-      throw new Error(`${c.b64Key} inválido (buffer vacío)`);
+      console.warn(`[pdfSign] ${c.b64Key} inválido (buffer vacío); se ignora`);
+      continue;
     }
     return {
       p12,
@@ -179,15 +181,7 @@ function loadP12FromEnv(entityKey?: string | null): {
     };
   }
 
-  const hint =
-    profile === 'SOLUCIONS'
-      ? 'KRONOS_SEAL_P12_BASE64_SOLUCIONS_1/_2/… (o KRONOS_SEAL_P12_BASE64)'
-      : profile === 'MENJAR'
-        ? 'KRONOS_SEAL_P12_BASE64_MENJAR_1/_2/… (o KRONOS_SEAL_P12_BASE64)'
-        : 'KRONOS_SEAL_P12_BASE64_1/_2/…';
-  throw new Error(
-    `${hint} no configurado. Sin certificado FNMT de sello no se puede cerrar el PDF con PAdES.`
-  );
+  return null;
 }
 
 function extractCertInfo(p12Buffer: Buffer, passphrase: string): {
@@ -217,6 +211,7 @@ function buildEvidenceBlocks(args: SealPdfEvidenceArgs & {
   originalPageCount: number;
   razonSocial: string;
   nif: string;
+  padesSealed: boolean;
 }): string[] {
   const meta = getFirmaDocMeta(args.tipoDocumento);
   const respuesta = normalizeRespuestaAceptacion(args.opciones);
@@ -250,11 +245,7 @@ function buildEvidenceBlocks(args: SealPdfEvidenceArgs & {
   lines.push(`Trabajador: ${args.trabajadorNombre || '—'}`);
   lines.push(`DNI: ${args.trabajadorDni || '—'}`);
   lines.push('');
-  lines.push(
-    `DNI confirmado en portal: ${args.dniConfirmadoEnPortal ? 'Sí' : 'No'}${
-      args.dniConfirmadoEnPortal ? '' : ''
-    }`
-  );
+  lines.push(`DNI confirmado en portal: ${args.dniConfirmadoEnPortal ? 'Sí' : 'No'}`);
   lines.push(
     args.identidadFotoAt
       ? `Foto de identidad recibida: Sí · ${formatMadridDateTime(args.identidadFotoAt)}`
@@ -280,22 +271,36 @@ function buildEvidenceBlocks(args: SealPdfEvidenceArgs & {
     lines.push(...wrapLine(args.userAgent, 90));
   }
   lines.push('');
-  lines.push(
-    `Tipo de firma: Firma electrónica simple · verificación por SMS · documento sellado electrónicamente por ${args.razonSocial}`
-  );
+  if (args.padesSealed) {
+    lines.push(
+      `Tipo de firma: Firma electrónica simple · verificación por SMS · documento sellado electrónicamente por ${args.razonSocial}`
+    );
+  } else {
+    lines.push(
+      'Tipo de firma: Firma electrónica simple · verificación por SMS · sin sello criptográfico PAdES (pendiente certificado de sello de empresa)'
+    );
+  }
 
   return lines.map(toWinAnsiSafe);
 }
 
 /**
- * Construye PDF con hoja de evidencias + sello PAdES (certificado de entorno).
+ * Hoja de evidencias + sello PAdES si hay P12 en env.
+ * Sin certificado: solo evidencias (aceptación SMS sigue válida; sin firma criptográfica).
  */
 export async function sealPdfWithEvidence(args: SealPdfEvidenceArgs): Promise<SealPdfEvidenceResult> {
   const sha256Original = sha256HexOfBytes(args.pdfBytes);
   if (args.hashPdfKnown && String(args.hashPdfKnown).toLowerCase() !== sha256Original) {
-    // Preferimos el hash real de los bytes descargados (fuente de verdad del PDF sellado).
     console.warn(
       `[pdfSign] hash_pdf en BD (${args.hashPdfKnown}) != SHA-256 bytes (${sha256Original}); se usa el calculado.`
+    );
+  }
+
+  const p12Loaded = tryLoadP12FromEnv(args.entityKey);
+  const padesSealed = Boolean(p12Loaded);
+  if (!padesSealed) {
+    console.warn(
+      '[pdfSign] Sin P12 de sello en entorno: se genera hoja de evidencias sin PAdES (modo temporal).'
     );
   }
 
@@ -320,7 +325,8 @@ export async function sealPdfWithEvidence(args: SealPdfEvidenceArgs): Promise<Se
     sha256Original,
     originalPageCount,
     razonSocial,
-    nif
+    nif,
+    padesSealed
   });
 
   const margin = 48;
@@ -369,8 +375,23 @@ export async function sealPdfWithEvidence(args: SealPdfEvidenceArgs): Promise<Se
   pdfDoc.setKeywords([docRef, sha256Original].filter(Boolean));
   pdfDoc.setProducer('Kronos');
   pdfDoc.setCreator('Kronos · portal-firma');
+  pdfDoc.setAuthor('Kronos');
 
-  const { p12, passphrase, profile: sealEnvProfile } = loadP12FromEnv(args.entityKey);
+  if (!p12Loaded) {
+    const out = new Uint8Array(await pdfDoc.save());
+    return {
+      signedPdf: out,
+      sha256Original,
+      sha256Firmado: sha256HexOfBytes(out),
+      sealCertSerial: null,
+      sealCertIssuer: null,
+      originalPageCount,
+      sealEnvProfile: 'NONE',
+      padesSealed: false
+    };
+  }
+
+  const { p12, passphrase, profile: sealEnvProfile } = p12Loaded;
   const certInfo = extractCertInfo(p12, passphrase);
 
   pdflibAddPlaceholder({
@@ -399,7 +420,8 @@ export async function sealPdfWithEvidence(args: SealPdfEvidenceArgs): Promise<Se
     sealCertSerial: certInfo.serial,
     sealCertIssuer: certInfo.issuer,
     originalPageCount,
-    sealEnvProfile
+    sealEnvProfile,
+    padesSealed: true
   };
 }
 
