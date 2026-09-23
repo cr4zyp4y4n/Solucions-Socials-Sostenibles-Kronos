@@ -8,6 +8,8 @@ import {
 } from '../../services/obradorAlbaranParser';
 import { ocrTextFromAlbaranFile } from '../../utils/obradorOcrFromFile';
 import OcrDebugPanel, { buildOcrDebugReport } from './OcrDebugPanel';
+import ObradorProveidorSelect from './ObradorProveidorSelect';
+import { useAuth } from '../AuthContext';
 
 const ESTATS = [
   { value: 'bo', label: 'Bo' },
@@ -39,6 +41,9 @@ const formInicial = () => ({
 
 export default function ObradorRecepcionsPage() {
   const { colors } = useTheme();
+  const { user } = useAuth();
+  const role = String(user?.user_metadata?.role || user?.role || '').toLowerCase();
+  const canEditEstatProveidor = ['admin', 'management', 'manager'].includes(role);
   const success = colors.success || '#1D9E75';
   const warning = colors.warning || '#e67e22';
   const danger = colors.error || '#c0392b';
@@ -528,38 +533,62 @@ export default function ObradorRecepcionsPage() {
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
               <label style={{ ...labelStyle, marginBottom: 0 }} htmlFor="id_proveidor">Proveïdor *</label>
-              <button
-                type="button"
-                onClick={handleImportarHolded}
-                disabled={importingHolded || schemaIncomplete}
-                title={schemaIncomplete ? `Executa ${PROVEIDORS_SCHEMA_SQL} a Supabase` : undefined}
-                style={{
-                  padding: '6px 10px',
-                  fontSize: 12,
-                  fontWeight: 600,
-                  borderRadius: 6,
-                  cursor: importingHolded || schemaIncomplete ? 'not-allowed' : 'pointer',
-                  background: colors.surface,
-                  color: colors.textSecondary,
-                  border: `0.5px solid ${colors.border}`,
-                  opacity: schemaIncomplete ? 0.5 : 1
-                }}
-              >
-                {importingHolded ? 'Important Holded…' : 'Actualitzar des de Holded'}
-              </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <select
+                  value={holdedCompany}
+                  onChange={(e) => setHoldedCompany(e.target.value)}
+                  disabled={importingHolded || schemaIncomplete}
+                  aria-label="Empresa Holded"
+                  style={{
+                    padding: '6px 8px',
+                    fontSize: 12,
+                    borderRadius: 6,
+                    border: `0.5px solid ${colors.border}`,
+                    background: colors.surface,
+                    color: colors.text
+                  }}
+                >
+                  {Object.entries(HOLDED_COMPANIES).map(([key, label]) => (
+                    <option key={key} value={key}>{label}</option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={handleImportarHolded}
+                  disabled={importingHolded || schemaIncomplete}
+                  title={schemaIncomplete ? `Executa ${PROVEIDORS_SCHEMA_SQL} a Supabase` : undefined}
+                  style={{
+                    padding: '6px 10px',
+                    fontSize: 12,
+                    fontWeight: 600,
+                    borderRadius: 6,
+                    cursor: importingHolded || schemaIncomplete ? 'not-allowed' : 'pointer',
+                    background: colors.surface,
+                    color: colors.textSecondary,
+                    border: `0.5px solid ${colors.border}`,
+                    opacity: schemaIncomplete ? 0.5 : 1
+                  }}
+                >
+                  {importingHolded ? 'Important Holded…' : 'Actualitzar des de Holded'}
+                </button>
+              </div>
             </div>
-            <select
-              id="id_proveidor"
+            <ObradorProveidorSelect
+              proveidors={proveidors}
               value={form.id_proveidor}
-              onChange={(e) => actualitzar('id_proveidor', e.target.value)}
-              style={inputStyle}
+              onChange={(id) => actualitzar('id_proveidor', id)}
+              colors={colors}
+              inputStyle={inputStyle}
+              labelStyle={labelStyle}
               required
-            >
-              <option value="">Selecciona proveïdor...</option>
-              {proveidors.map((p) => (
-                <option key={p.id} value={p.id}>{p.nom}</option>
-              ))}
-            </select>
+              id="id_proveidor"
+              canEditEstat={canEditEstatProveidor}
+              onEstatUpdated={(updated) => {
+                setProveidors((prev) =>
+                  prev.map((p) => (p.id === updated.id ? { ...p, ...updated } : p))
+                );
+              }}
+            />
           </div>
 
           <div>

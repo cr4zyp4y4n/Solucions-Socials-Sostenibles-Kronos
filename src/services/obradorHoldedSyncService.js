@@ -19,7 +19,8 @@ function normCif(value) {
   return String(value || '')
     .trim()
     .toUpperCase()
-    .replace(/[\s.-]/g, '');
+    .replace(/^ES/, '')
+    .replace(/[\s.\-/]/g, '');
 }
 
 /** CIF/NIF des del contacte Holded (taxId, code, etc.). */
@@ -78,7 +79,31 @@ function findExistingProveidor(existing, row, company) {
 }
 
 /**
+ * Payload d'UPDATE: mai inclou estat_us ni codi_intern (llistat Compres / CSV).
+ * No trepitja contacte/cif si ja tenen valor i Holded ve buit.
+ */
+export function buildHoldedSyncUpdatePayload(match, row, company) {
+  const payload = {
+    holded_contact_id: row.holded_contact_id,
+    holded_empresa: company,
+    updated_at: new Date().toISOString()
+  };
+
+  if (row.nom) payload.nom = row.nom;
+  if (row.cif) payload.cif = row.cif;
+
+  const matchContacte = String(match.contacte || '').trim();
+  if (row.contacte && !matchContacte) {
+    payload.contacte = row.contacte;
+  }
+
+  return payload;
+}
+
+/**
  * Importa proveïdors des de Holded → Supabase obrador_proveidors.
+ * Blindatge CSV: no modifica estat_us ni codi_intern.
+ * Inserts nous: sense aquests camps → default BD (habitual).
  * Només des de Kronos (Electron + holdedApi).
  */
 export async function syncProveidorsFromHolded(company = 'solucions') {
@@ -94,12 +119,12 @@ export async function syncProveidorsFromHolded(company = 'solucions') {
 
   const { data: existing, error: fetchError } = await supabase
     .from('obrador_proveidors')
-    .select('id, nom, cif, holded_contact_id, holded_empresa');
+    .select('id, nom, cif, contacte, estat_us, codi_intern, holded_contact_id, holded_empresa');
 
   if (fetchError) {
     if (isMissingColumnError(fetchError)) {
       throw new Error(
-        `Falta executar ${PROVEIDORS_SCHEMA_SQL} a Supabase abans d'importar.`
+        `Falta executar ${PROVEIDORS_SCHEMA_SQL} (i alter_obrador_proveidors_estat_us.sql si cal) a Supabase abans d'importar.`
       );
     }
     throw fetchError;
@@ -111,24 +136,19 @@ export async function syncProveidorsFromHolded(company = 'solucions') {
 
   for (const row of suppliers) {
     const match = findExistingProveidor(list, row, company);
-    const payload = {
-      nom: row.nom,
-      cif: row.cif,
-      contacte: row.contacte,
-      holded_contact_id: row.holded_contact_id,
-      holded_empresa: company,
-      updated_at: new Date().toISOString()
-    };
 
     if (match) {
+      const payload = buildHoldedSyncUpdatePayload(match, row, company);
       const { error } = await supabase
         .from('obrador_proveidors')
         .update(payload)
         .eq('id', match.id);
       if (error) throw error;
       Object.assign(match, payload);
+      // Conserva estat_us / codi_intern a memòria (no venien al payload)
       updated += 1;
     } else {
+      // No passar estat_us ni codi_intern → DEFAULT habitual a BD
       const { data: created, error } = await supabase
         .from('obrador_proveidors')
         .insert({
@@ -138,7 +158,7 @@ export async function syncProveidorsFromHolded(company = 'solucions') {
           holded_contact_id: row.holded_contact_id,
           holded_empresa: company
         })
-        .select('id, nom, cif, holded_contact_id, holded_empresa')
+        .select('id, nom, cif, contacte, estat_us, codi_intern, holded_contact_id, holded_empresa')
         .single();
       if (error) throw error;
       list.push(created);
@@ -153,7 +173,8 @@ export async function syncProveidorsFromHolded(company = 'solucions') {
     suppliersFound: suppliers.length,
     inserted,
     updated,
-    totalInSupabase: list.length
+    totalInSupabase: list.length,
+    note: 'estat_us i codi_intern no modificats (llistat Compres)'
   };
 }
 

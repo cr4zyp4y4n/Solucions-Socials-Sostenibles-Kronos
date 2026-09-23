@@ -65,6 +65,65 @@ function comptarAlertesTemperatures(temperatures) {
   ).length;
 }
 
+/** Estat IoT: prioritza llindars del sensor i incidències actives (oberta / en_curs). */
+export function classificarEstatSensor(sensor, lectura, incidenciesActives = []) {
+  if (!sensor?.actiu) return 'inactiu';
+
+  const active = (incidenciesActives || []).filter(
+    (i) =>
+      i.id_sensor === sensor.id &&
+      (i.estat === 'oberta' || i.estat === 'en_curs')
+  );
+
+  const senseSenyal = active.filter((i) => i.tipus === 'sensor_sense_senyal');
+  if (senseSenyal.length) {
+    return senseSenyal.some((i) => i.estat === 'en_curs') ? 'en_revisio' : 'sense_senyal';
+  }
+
+  const foraRang = active.filter((i) => i.tipus === 'sensor_fora_rang');
+  if (foraRang.length) {
+    return foraRang.some((i) => i.estat === 'en_curs') ? 'en_revisio' : 'fora_rang';
+  }
+
+  if (!lectura?.mesura_at) return 'sense_dades';
+
+  const ageMin = (Date.now() - new Date(lectura.mesura_at).getTime()) / 60000;
+  const senseMax = Number(sensor.minuts_sense_senyal) || 30;
+  if (ageMin > senseMax) return 'sense_senyal';
+
+  const v = Number(lectura.valor);
+  const min = sensor.llindar_min;
+  const max = sensor.llindar_max;
+  if (min != null || max != null) {
+    if (min != null && v < Number(min)) return 'fora_rang';
+    if (max != null && v > Number(max)) return 'fora_rang';
+    return 'ok';
+  }
+
+  return classificarTemperatura(v, sensor.tipus_lectura || lectura.tipus || 'refrigeracio') === 'ok'
+    ? 'ok'
+    : 'fora_rang';
+}
+
+export function etiquetaEstatSensor(estat) {
+  switch (estat) {
+    case 'ok':
+      return 'OK';
+    case 'fora_rang':
+      return 'Fora de rang';
+    case 'sense_senyal':
+      return 'Sense senyal';
+    case 'en_revisio':
+      return 'En revisió';
+    case 'sense_dades':
+      return 'Sense dades';
+    case 'inactiu':
+      return 'Inactiu';
+    default:
+      return estat || '—';
+  }
+}
+
 async function countEnRang(table, column, daysAgo = 0) {
   const { count, error } = await supabase
     .from(table)
@@ -78,26 +137,89 @@ async function countEnRang(table, column, daysAgo = 0) {
 // ── SELECTS (formularis) ───────────────────────────────────────
 
 export const PROVEIDORS_SCHEMA_SQL = 'database/alter_obrador_proveidors_holded.sql';
+export const PROVEIDORS_ESTAT_US_SQL = 'database/alter_obrador_proveidors_estat_us.sql';
+
+export const ESTATS_US_PROVEIDOR = ['habitual', 'ocasional', 'inactiu', 'revisar'];
+
+const ESTAT_US_ORDER = { habitual: 0, ocasional: 1, revisar: 2, inactiu: 3 };
 
 export function isMissingColumnError(error) {
   return error?.code === '42703' || /column .* does not exist/i.test(error?.message || '');
 }
 
+export function sortProveidorsByEstatUs(list) {
+  return [...(list || [])].sort((a, b) => {
+    const ea = ESTAT_US_ORDER[a.estat_us] ?? 9;
+    const eb = ESTAT_US_ORDER[b.estat_us] ?? 9;
+    if (ea !== eb) return ea - eb;
+    return String(a.nom || '').localeCompare(String(b.nom || ''), 'ca', { sensitivity: 'base' });
+  });
+}
+
+/**
+ * Filtra per selector: per defecte només habitual + ocasional.
+ * Manté sempre `selectedId` visible (recepcions històriques amb inactiu).
+ */
+export function filterProveidorsForSelector(
+  list,
+  { incloureInactius = false, cerca = '', selectedId = null } = {}
+) {
+  let out = list || [];
+  if (!incloureInactius) {
+    out = out.filter(
+      (p) =>
+        p.id === selectedId ||
+        p.estat_us === 'habitual' ||
+        p.estat_us === 'ocasional' ||
+        p.estat_us == null
+    );
+  }
+  const q = String(cerca || '').trim().toLowerCase();
+  if (q) {
+    out = out.filter((p) => {
+      if (p.id === selectedId) return true;
+      const nom = String(p.nom || '').toLowerCase();
+      const cif = String(p.cif || '').toLowerCase();
+      const codi = String(p.codi_intern || '').toLowerCase();
+      return nom.includes(q) || cif.includes(q) || codi.includes(q);
+    });
+  }
+  return sortProveidorsByEstatUs(out);
+}
+
 /**
  * Llista proveïdors per als formularis.
- * Si falten columnes cif/holded_* a Supabase, fa fallback a id+nom i marca schemaIncomplete.
+ * Si falten columnes cif/holded_* / estat_us a Supabase, fa fallback.
  */
 export async function getProveidors() {
-  const { data, error } = await supabase
+  const full = await supabase
     .from('obrador_proveidors')
-    .select('id, nom, cif, holded_contact_id, holded_empresa')
+    .select('id, nom, cif, contacte, estat_us, codi_intern, holded_contact_id, holded_empresa')
     .order('nom');
 
-  if (!error) {
-    return { proveidors: data || [], schemaIncomplete: false };
+  if (!full.error) {
+    return {
+      proveidors: sortProveidorsByEstatUs(full.data || []),
+      schemaIncomplete: false
+    };
   }
 
-  if (isMissingColumnError(error)) {
+  if (isMissingColumnError(full.error)) {
+    const mid = await supabase
+      .from('obrador_proveidors')
+      .select('id, nom, cif, holded_contact_id, holded_empresa')
+      .order('nom');
+    if (!mid.error) {
+      return {
+        proveidors: (mid.data || []).map((p) => ({
+          ...p,
+          contacte: null,
+          estat_us: 'habitual',
+          codi_intern: null
+        })),
+        schemaIncomplete: true
+      };
+    }
     const fallback = await supabase
       .from('obrador_proveidors')
       .select('id, nom')
@@ -107,6 +229,9 @@ export async function getProveidors() {
       proveidors: (fallback.data || []).map((p) => ({
         ...p,
         cif: null,
+        contacte: null,
+        estat_us: 'habitual',
+        codi_intern: null,
         holded_contact_id: null,
         holded_empresa: null
       })),
@@ -114,7 +239,22 @@ export async function getProveidors() {
     };
   }
 
-  throw error;
+  throw full.error;
+}
+
+/** Canviar estat_us (admin/management). No esborra el proveïdor. */
+export async function updateProveidorEstatUs(id, estatUs) {
+  if (!ESTATS_US_PROVEIDOR.includes(estatUs)) {
+    throw new Error(`estat_us invàlid: ${estatUs}`);
+  }
+  const { data, error } = await supabase
+    .from('obrador_proveidors')
+    .update({ estat_us: estatUs, updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .select('id, nom, cif, contacte, estat_us, codi_intern, holded_contact_id, holded_empresa')
+    .single();
+  if (error) throw error;
+  return data;
 }
 
 export const LOT_MULTI_RECEPCIO_SCHEMA_SQL = 'database/alter_obrador_lot_multi_recepcio.sql';
@@ -189,12 +329,12 @@ export async function getOperaris() {
   return data || [];
 }
 
-// ── TEMPERATURES ───────────────────────────────────────────────
+// ── TEMPERATURES / SENSORS IoT ─────────────────────────────────
 
 export async function getTemperatures() {
   const { data, error } = await supabase
     .from('obrador_temperatures')
-    .select('ubicacio, valor, tipus, mesura_at')
+    .select('ubicacio, valor, tipus, mesura_at, sensor_id, humitat')
     .order('mesura_at', { ascending: false })
     .limit(100);
   if (error) throw error;
@@ -207,10 +347,110 @@ export async function getTemperatures() {
     latest.push({
       nom: row.ubicacio,
       valor: Number(row.valor),
-      tipus: row.tipus || 'refrigeracio'
+      tipus: row.tipus || 'refrigeracio',
+      mesura_at: row.mesura_at,
+      sensor_id: row.sensor_id || null,
+      humitat: row.humitat != null ? Number(row.humitat) : null
     });
   }
   return latest;
+}
+
+export async function getSensors() {
+  const { data, error } = await supabase
+    .from('obrador_sensors')
+    .select(
+      'id, dev_eui, nom, ubicacio, tipus, tipus_lectura, llindar_min, llindar_max, minuts_tolerancia, minuts_sense_senyal, actiu, ultima_lectura_at, notes'
+    )
+    .order('ubicacio');
+  if (error) throw error;
+  return data || [];
+}
+
+/** Última lectura + estat + sèrie 24 h per sensor (dashboard IoT). */
+export async function getSensorsDashboard() {
+  const since = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+
+  const [sensors, tempsRes, incRes] = await Promise.all([
+    getSensors(),
+    supabase
+      .from('obrador_temperatures')
+      .select('sensor_id, valor, humitat, tipus, mesura_at')
+      .not('sensor_id', 'is', null)
+      .gte('mesura_at', since)
+      .order('mesura_at', { ascending: true })
+      .limit(2000),
+    supabase
+      .from('obrador_incidencies')
+      .select('id, id_sensor, tipus, estat, origen')
+      .eq('origen', 'sensor')
+      .in('estat', ['oberta', 'en_curs'])
+  ]);
+
+  if (tempsRes.error) throw tempsRes.error;
+  if (incRes.error) throw incRes.error;
+
+  const seriesBySensor = new Map();
+  const latestBySensor = new Map();
+  for (const row of tempsRes.data || []) {
+    const sid = row.sensor_id;
+    if (!seriesBySensor.has(sid)) seriesBySensor.set(sid, []);
+    seriesBySensor.get(sid).push({
+      valor: Number(row.valor),
+      humitat: row.humitat != null ? Number(row.humitat) : null,
+      mesura_at: row.mesura_at
+    });
+    latestBySensor.set(sid, {
+      valor: Number(row.valor),
+      humitat: row.humitat != null ? Number(row.humitat) : null,
+      tipus: row.tipus,
+      mesura_at: row.mesura_at
+    });
+  }
+
+  const incs = incRes.data || [];
+
+  return (sensors || []).map((s) => {
+    const lectura = latestBySensor.get(s.id) || null;
+    // Si no hi ha sèrie 24 h però sí ultima_lectura_at al sensor, no tenim valor
+    const estat = classificarEstatSensor(s, lectura, incs);
+    return {
+      ...s,
+      lectura,
+      estat,
+      serie24h: seriesBySensor.get(s.id) || []
+    };
+  });
+}
+
+/** Subscripció Realtime per refrescar el panell IoT. Retorna unsubscribe. */
+export function subscribeObradorIoT(onChange) {
+  const channel = supabase
+    .channel('obrador-iot-dashboard')
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'obrador_temperatures' },
+      () => onChange?.('temperatures')
+    )
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'obrador_sensors' },
+      () => onChange?.('sensors')
+    )
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'obrador_incidencies' },
+      () => onChange?.('incidencies')
+    )
+    .subscribe();
+
+  return () => {
+    try {
+      supabase.removeChannel(channel);
+    } catch {
+      /* ignore */
+    }
+  };
 }
 
 // ── RECEPCIONS ─────────────────────────────────────────────────
@@ -485,53 +725,140 @@ export async function marcarExpedicioEntregada(id, { check_client = false } = {}
 
 // ── INCIDÈNCIES ────────────────────────────────────────────────
 
-export async function getIncidencies(limit = 100, { estat } = {}) {
-  let q = supabase
-    .from('obrador_incidencies')
-    .select(`
-      id, tipus, descripcio, data_incidencia, estat,
-      obrador_lots ( codi_lot )
-    `)
-    .order('data_incidencia', { ascending: false })
-    .limit(limit);
+export async function getIncidencies(limit = 100, { estat, estats } = {}) {
+  const selectFull = `
+      id, tipus, descripcio, data_incidencia, estat, origen, id_sensor, valor_extrem,
+      tancada_at, notes_tancament, checklist_tancament, inici_episodi_at,
+      obrador_lots ( codi_lot ),
+      obrador_sensors ( nom, ubicacio )
+    `;
+  const selectFallback = `
+      id, tipus, descripcio, data_incidencia, estat, origen, id_sensor, valor_extrem,
+      tancada_at, inici_episodi_at,
+      obrador_lots ( codi_lot ),
+      obrador_sensors ( nom, ubicacio )
+    `;
 
-  if (estat) q = q.eq('estat', estat);
+  async function run(selectCols) {
+    let q = supabase
+      .from('obrador_incidencies')
+      .select(selectCols)
+      .order('data_incidencia', { ascending: false })
+      .limit(limit);
+    if (Array.isArray(estats) && estats.length) q = q.in('estat', estats);
+    else if (estat) q = q.eq('estat', estat);
+    return q;
+  }
 
-  const { data, error } = await q;
-  if (error) throw error;
+  const { data, error } = await run(selectFull);
+  if (error) {
+    if (isMissingColumnError(error)) {
+      const res2 = await run(selectFallback);
+      if (res2.error) throw res2.error;
+      return res2.data || [];
+    }
+    throw error;
+  }
   return data || [];
 }
 
-/** Compatibilitat dashboard: només obertes. */
+/** Compatibilitat dashboard: actives = oberta + en_curs. */
 export async function getIncidenciesObertes(limit = 50) {
-  return getIncidencies(limit, { estat: 'oberta' });
+  return getIncidencies(limit, { estats: ['oberta', 'en_curs'] });
 }
 
 export async function crearIncidencia(dades) {
   const { data, error } = await supabase
     .from('obrador_incidencies')
-    .insert({ ...dades, estat: 'oberta' })
+    .insert({
+      ...dades,
+      origen: dades.origen || 'lot',
+      estat: 'oberta'
+    })
     .select()
     .single();
   if (error) throw error;
   return data;
 }
 
-export async function tancarIncidencia(id) {
+/** Marca incidència com a reconeguda (en revisió). No tanca l'episodi. */
+export async function marcarIncidenciaEnCurs(id) {
   const { data, error } = await supabase
     .from('obrador_incidencies')
-    .update({ estat: 'tancada', updated_at: new Date().toISOString() })
+    .update({
+      estat: 'en_curs',
+      updated_at: new Date().toISOString()
+    })
     .eq('id', id)
+    .in('estat', ['oberta', 'en_curs'])
     .select()
     .single();
   if (error) throw error;
+  return data;
+}
+
+/**
+ * Tancament amb checklist (lot o sensor).
+ * @param {string} id
+ * @param {{ checklist?: Record<string, boolean|string>, notes?: string }} [opts]
+ */
+export async function tancarIncidencia(id, opts = {}) {
+  const payload = {
+    estat: 'tancada',
+    tancada_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  };
+  if (opts.checklist && typeof opts.checklist === 'object') {
+    payload.checklist_tancament = opts.checklist;
+  }
+  if (opts.notes != null) {
+    payload.notes_tancament = String(opts.notes).trim() || null;
+  }
+
+  const { data, error } = await supabase
+    .from('obrador_incidencies')
+    .update(payload)
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) {
+    // Fallback sense columnes noves
+    if (isMissingColumnError(error)) {
+      const { data: d2, error: e2 } = await supabase
+        .from('obrador_incidencies')
+        .update({
+          estat: 'tancada',
+          tancada_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', id)
+        .select()
+        .single();
+      if (e2) throw e2;
+      return d2;
+    }
+    throw error;
+  }
   return data;
 }
 
 // ── KPIs DASHBOARD ─────────────────────────────────────────────
 
 export async function getKpisDashboard() {
-  const temperatures = await getTemperatures();
+  const [temperatures, sensorsDash] = await Promise.all([
+    getTemperatures(),
+    getSensorsDashboard().catch(() => [])
+  ]);
+
+  const alertesSensors = (sensorsDash || []).filter(
+    (s) => s.estat === 'fora_rang' || s.estat === 'sense_senyal' || s.estat === 'en_revisio'
+  ).length;
+
+  // Ubicacions sense sensor_id (lectures manuals / seed antic)
+  const alertesLegacy = comptarAlertesTemperatures(
+    (temperatures || []).filter((t) => !t.sensor_id)
+  );
 
   const [
     lotsAvui,
@@ -546,7 +873,7 @@ export async function getKpisDashboard() {
     supabase
       .from('obrador_incidencies')
       .select('*', { count: 'exact', head: true })
-      .eq('estat', 'oberta')
+      .in('estat', ['oberta', 'en_curs'])
       .then(({ count, error }) => {
         if (error) throw error;
         return count || 0;
@@ -559,7 +886,7 @@ export async function getKpisDashboard() {
   return {
     lotsAvui,
     lotsAhir,
-    alertesTemp: comptarAlertesTemperatures(temperatures),
+    alertesTemp: alertesSensors + alertesLegacy,
     incidenciesObertes,
     expedicionsDia,
     etiquetesGenerades,

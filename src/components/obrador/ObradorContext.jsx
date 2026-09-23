@@ -12,12 +12,18 @@ export function useObrador() {
 
 export function ObradorProvider({ children }) {
   const [currentView, setCurrentView] = useState('dashboard');
+  const [navPayload, setNavPayload] = useState(null);
 
-  const navigateTo = (view) => setCurrentView(view);
+  const navigateTo = (view, payload = null) => {
+    setCurrentView(view);
+    setNavPayload(payload || null);
+  };
+
+  const clearNavPayload = () => setNavPayload(null);
 
   const value = useMemo(
-    () => ({ currentView, navigateTo }),
-    [currentView]
+    () => ({ currentView, navigateTo, navPayload, clearNavPayload }),
+    [currentView, navPayload]
   );
 
   return (

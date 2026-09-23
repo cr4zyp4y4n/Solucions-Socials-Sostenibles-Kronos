@@ -6,9 +6,14 @@ import {
   setProducteProveidors,
   LOT_MULTI_RECEPCIO_SCHEMA_SQL
 } from '../../services/obradorSupabaseService';
+import ObradorProveidorSelect from './ObradorProveidorSelect';
+import { useAuth } from '../AuthContext';
 
 export default function ObradorProductesPage() {
   const { colors } = useTheme();
+  const { user } = useAuth();
+  const role = String(user?.user_metadata?.role || user?.role || '').toLowerCase();
+  const canEditEstatProveidor = ['admin', 'management', 'manager'].includes(role);
   const danger = colors.error || '#c0392b';
   const success = colors.success || '#1D9E75';
 
@@ -237,16 +242,21 @@ export default function ObradorProductesPage() {
                   >
                     <div>
                       <label style={labelStyle}>Proveïdor</label>
-                      <select
+                      <ObradorProveidorSelect
+                        proveidors={proveidors}
                         value={f.id_proveidor}
-                        onChange={(e) => actualitzarFila(idx, { id_proveidor: e.target.value })}
-                        style={inputStyle}
-                      >
-                        <option value="">Selecciona...</option>
-                        {proveidors.map((p) => (
-                          <option key={p.id} value={p.id}>{p.nom}</option>
-                        ))}
-                      </select>
+                        onChange={(id) => actualitzarFila(idx, { id_proveidor: id })}
+                        colors={colors}
+                        inputStyle={inputStyle}
+                        labelStyle={labelStyle}
+                        id={`producte-proveidor-${idx}`}
+                        canEditEstat={canEditEstatProveidor}
+                        onEstatUpdated={(updated) => {
+                          setProveidors((prev) =>
+                            prev.map((p) => (p.id === updated.id ? { ...p, ...updated } : p))
+                          );
+                        }}
+                      />
                     </div>
                     <div>
                       <label style={labelStyle}>Ingredient (opcional)</label>

@@ -1,28 +1,44 @@
 /**
  * Dashboard operatiu Obrador Ac3 — InnvESS 2026
+ * Bloc IoT: sensors + Realtime + gràfic 24 h
  */
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { useTheme } from '../ThemeContext';
 import {
   Chart as ChartJS,
   CategoryScale,
   LinearScale,
   BarElement,
+  LineElement,
+  PointElement,
+  Filler,
   Title,
   Tooltip,
   Legend
 } from 'chart.js';
-import { Bar } from 'react-chartjs-2';
+import { Bar, Line } from 'react-chartjs-2';
 import {
   getKpisDashboard,
   getProduccioSetmanal,
   getIncidenciesObertes,
   getExpedicions,
-  getTemperatures,
-  classificarTemperatura
+  getSensorsDashboard,
+  subscribeObradorIoT,
+  etiquetaEstatSensor
 } from '../../services/obradorSupabaseService';
+import { useObrador } from './ObradorContext';
 
-ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  LineElement,
+  PointElement,
+  Filler,
+  Title,
+  Tooltip,
+  Legend
+);
 
 function sendPrompt(scope) {
   const missatges = {
@@ -38,8 +54,90 @@ function sendPrompt(scope) {
   }
 }
 
+function formatHora(iso) {
+  if (!iso) return '—';
+  try {
+    return new Date(iso).toLocaleString('ca', {
+      day: '2-digit',
+      month: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  } catch {
+    return '—';
+  }
+}
+
+function SensorMiniChart({ serie, color, textSecondary }) {
+  const data = useMemo(() => {
+    const pts = serie || [];
+    return {
+      labels: pts.map((p) => {
+        try {
+          return new Date(p.mesura_at).toLocaleTimeString('ca', {
+            hour: '2-digit',
+            minute: '2-digit'
+          });
+        } catch {
+          return '';
+        }
+      }),
+      datasets: [
+        {
+          data: pts.map((p) => p.valor),
+          borderColor: color,
+          backgroundColor: `${color}33`,
+          fill: true,
+          tension: 0.3,
+          pointRadius: pts.length > 40 ? 0 : 2,
+          borderWidth: 1.5
+        }
+      ]
+    };
+  }, [serie, color]);
+
+  const options = useMemo(
+    () => ({
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { mode: 'index', intersect: false } },
+      scales: {
+        x: {
+          display: true,
+          ticks: {
+            maxTicksLimit: 6,
+            color: textSecondary,
+            font: { size: 9 }
+          },
+          grid: { display: false }
+        },
+        y: {
+          ticks: { color: textSecondary, font: { size: 9 } },
+          grid: { color: `${textSecondary}22` }
+        }
+      }
+    }),
+    [textSecondary]
+  );
+
+  if (!serie?.length) {
+    return (
+      <div style={{ height: 72, display: 'flex', alignItems: 'center', color: textSecondary, fontSize: 12 }}>
+        Sense lectures (24 h)
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ height: 72 }}>
+      <Line data={data} options={options} />
+    </div>
+  );
+}
+
 export default function ObradorDashboardPage() {
   const { colors } = useTheme();
+  const { navigateTo } = useObrador();
 
   const [kpis, setKpis] = useState({
     lotsAvui: 0,
@@ -51,37 +149,56 @@ export default function ObradorDashboardPage() {
     registresAppcc: 0,
     registresAppccBuits: 0
   });
-  const [temperatures, setTemperatures] = useState([]);
+  const [sensors, setSensors] = useState([]);
   const [incidencies, setIncidencies] = useState([]);
   const [expedicions, setExpedicions] = useState([]);
   const [produccio, setProduccio] = useState({ labels: [], data: [] });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [iotTick, setIotTick] = useState(0);
+  const reloadTimer = useRef(null);
+
+  const carregarTot = useCallback(async ({ soft = false } = {}) => {
+    try {
+      if (!soft) setError(null);
+      const [k, prod, inc, exp, sens] = await Promise.all([
+        getKpisDashboard(),
+        getProduccioSetmanal(),
+        getIncidenciesObertes(5),
+        getExpedicions(5),
+        getSensorsDashboard()
+      ]);
+      setKpis(k);
+      setProduccio(prod);
+      setIncidencies(inc);
+      setExpedicions(exp);
+      setSensors(sens);
+    } catch (err) {
+      console.error('Error obrador dashboard:', err);
+      if (!soft) setError(err.message);
+    } finally {
+      if (!soft) setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    async function carregar() {
-      try {
-        const [k, prod, inc, exp, temps] = await Promise.all([
-          getKpisDashboard(),
-          getProduccioSetmanal(),
-          getIncidenciesObertes(5),
-          getExpedicions(5),
-          getTemperatures()
-        ]);
-        setKpis(k);
-        setProduccio(prod);
-        setIncidencies(inc);
-        setExpedicions(exp);
-        setTemperatures(temps);
-      } catch (err) {
-        console.error('Error obrador dashboard:', err);
-        setError(err.message);
-      } finally {
-        setLoading(false);
-      }
-    }
-    carregar();
-  }, []);
+    carregarTot();
+  }, [carregarTot]);
+
+  // Realtime: debounce per no saturar amb bursts d'uplinks
+  useEffect(() => {
+    const unsub = subscribeObradorIoT(() => {
+      if (reloadTimer.current) clearTimeout(reloadTimer.current);
+      reloadTimer.current = setTimeout(() => {
+        setIotTick((n) => n + 1);
+        carregarTot({ soft: true });
+      }, 400);
+    });
+    return () => {
+      if (reloadTimer.current) clearTimeout(reloadTimer.current);
+      unsub?.();
+    };
+  }, [carregarTot]);
 
   const diffLots = kpis.lotsAvui - kpis.lotsAhir;
 
@@ -93,6 +210,14 @@ export default function ObradorDashboardPage() {
   const success = colors.success || '#1D9E75';
   const warning = colors.warning || '#e67e22';
   const danger = colors.error || '#c0392b';
+
+  const colorEstat = (estat) => {
+    if (estat === 'ok') return success;
+    if (estat === 'en_revisio') return colors.primary || '#3B82F6';
+    if (estat === 'fora_rang' || estat === 'sense_senyal') return danger;
+    if (estat === 'sense_dades') return warning;
+    return colors.textSecondary;
+  };
 
   const chartData = useMemo(() => ({
     labels: produccio.labels,
@@ -143,6 +268,11 @@ export default function ObradorDashboardPage() {
       <header style={{ marginBottom: 28 }}>
         <time style={{ display: 'block', fontSize: 14, color: colors.textSecondary, marginBottom: 4 }}>{dataActual}</time>
         <h1 style={{ margin: 0, fontSize: 28, fontWeight: 700 }}>Resum del dia</h1>
+        {iotTick > 0 && (
+          <span style={{ fontSize: 12, color: colors.textSecondary }}>
+            Sensors actualitzats en viu
+          </span>
+        )}
       </header>
 
       <section style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 24 }}>
@@ -166,7 +296,8 @@ export default function ObradorDashboardPage() {
             label: 'Incidències obertes',
             value: kpis.incidenciesObertes,
             trend: kpis.incidenciesObertes > 0 ? 'Obertes' : 'Cap oberta',
-            trendClass: kpis.incidenciesObertes > 0 ? warning : success
+            trendClass: kpis.incidenciesObertes > 0 ? warning : success,
+            onClick: () => navigateTo('incidencies')
           },
           {
             id: 'expedicions',
@@ -192,13 +323,18 @@ export default function ObradorDashboardPage() {
         ].map((item) => (
           <div
             key={item.id}
+            role={item.onClick ? 'button' : undefined}
+            tabIndex={item.onClick ? 0 : undefined}
+            onClick={item.onClick}
+            onKeyDown={item.onClick ? (e) => { if (e.key === 'Enter' || e.key === ' ') item.onClick(); } : undefined}
             style={{
               background: colors.surface,
               borderRadius: 12,
               padding: 20,
               display: 'flex',
               flexDirection: 'column',
-              alignItems: 'flex-start'
+              alignItems: 'flex-start',
+              cursor: item.onClick ? 'pointer' : 'default'
             }}
           >
             <span style={{ fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.04em', color: colors.textSecondary, marginBottom: 8 }}>{item.label}</span>
@@ -210,21 +346,59 @@ export default function ObradorDashboardPage() {
 
       <section style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 24 }}>
         <div style={{ background: colors.card, border: `0.5px solid ${colors.border}`, borderRadius: 12, padding: 20 }}>
-          <h2 style={{ margin: '0 0 16px 0', fontSize: 18, fontWeight: 600 }}>Temperatures en temps real</h2>
-          {temperatures.length === 0 ? (
+          <h2 style={{ margin: '0 0 4px 0', fontSize: 18, fontWeight: 600 }}>Temperatures en temps real</h2>
+          <p style={{ margin: '0 0 16px 0', fontSize: 12, color: colors.textSecondary }}>
+            Sensors IoT (Realtime). Llindars APPCC pendents de Cristina si encara són buits.
+          </p>
+          {sensors.length === 0 ? (
             <p style={{ color: colors.textSecondary, margin: '0 0 16px 0', fontSize: 14 }}>
-              Sense dades de sensors.
+              Sense sensors configurats.
             </p>
           ) : (
             <ul style={{ listStyle: 'none', margin: '0 0 16px 0', padding: 0 }}>
-              {temperatures.map((t) => {
-                const classe = classificarTemperatura(t.valor, t.tipus);
-                const bg = classe === 'ok' ? `${success}22` : classe === 'avís' ? `${warning}22` : `${danger}22`;
-                const fg = classe === 'ok' ? success : classe === 'avís' ? warning : danger;
+              {sensors.map((s) => {
+                const fg = colorEstat(s.estat);
+                const val = s.lectura?.valor;
                 return (
-                  <li key={t.nom} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: `1px solid ${colors.border}` }}>
-                    <span>{t.nom}</span>
-                    <span style={{ padding: '4px 10px', borderRadius: 6, fontSize: 12, fontWeight: 600, background: bg, color: fg }}>{t.valor} °C</span>
+                  <li
+                    key={s.id}
+                    style={{
+                      padding: '12px 0',
+                      borderBottom: `1px solid ${colors.border}`
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 6 }}>
+                      <div>
+                        <div style={{ fontWeight: 600 }}>{s.nom}</div>
+                        <div style={{ fontSize: 12, color: colors.textSecondary }}>
+                          {formatHora(s.lectura?.mesura_at || s.ultima_lectura_at)}
+                          {s.lectura?.humitat != null ? ` · ${s.lectura.humitat}% HR` : ''}
+                          {!s.actiu ? ' · inactiu' : ''}
+                        </div>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontSize: 18, fontWeight: 700 }}>
+                          {val != null && !Number.isNaN(val) ? `${val} °C` : '—'}
+                        </div>
+                        <span
+                          style={{
+                            padding: '2px 8px',
+                            borderRadius: 6,
+                            fontSize: 11,
+                            fontWeight: 600,
+                            background: `${fg}22`,
+                            color: fg
+                          }}
+                        >
+                          {etiquetaEstatSensor(s.estat)}
+                        </span>
+                      </div>
+                    </div>
+                    <SensorMiniChart
+                      serie={s.serie24h}
+                      color={fg}
+                      textSecondary={colors.textSecondary}
+                    />
                   </li>
                 );
               })}
@@ -254,17 +428,50 @@ export default function ObradorDashboardPage() {
             <p style={{ color: colors.textSecondary, margin: '0 0 16px 0', fontSize: 14 }}>Cap incidència oberta.</p>
           ) : (
             <ul style={{ listStyle: 'none', margin: '0 0 16px 0', padding: 0 }}>
-              {incidencies.map((inc) => (
-                <li key={inc.id} style={{ padding: '12px 0', borderBottom: `1px solid ${colors.border}` }}>
-                  <div style={{ fontWeight: 600, marginBottom: 4 }}>
-                    Lot {inc.obrador_lots?.codi_lot || '—'}
-                  </div>
-                  <div style={{ color: colors.textSecondary, marginBottom: 6, fontSize: 14 }}>{inc.descripcio}</div>
-                  <span style={{ padding: '4px 8px', borderRadius: 6, fontSize: 11, fontWeight: 600, background: inc.estat === 'oberta' ? `${danger}22` : `${success}22`, color: inc.estat === 'oberta' ? danger : success }}>
-                    {inc.estat === 'oberta' ? 'Oberta' : 'Tancada'}
-                  </span>
-                </li>
-              ))}
+              {incidencies.map((inc) => {
+                const esSensor = inc.origen === 'sensor' || String(inc.tipus || '').startsWith('sensor_');
+                const titol = esSensor
+                  ? (inc.obrador_sensors?.nom || 'Sensor')
+                  : `Lot ${inc.obrador_lots?.codi_lot || '—'}`;
+                return (
+                  <li key={inc.id} style={{ padding: '12px 0', borderBottom: `1px solid ${colors.border}` }}>
+                    <button
+                      type="button"
+                      onClick={() => navigateTo('incidencies', { incidenciaId: inc.id })}
+                      style={{
+                        display: 'block',
+                        width: '100%',
+                        textAlign: 'left',
+                        padding: 0,
+                        border: 'none',
+                        background: 'transparent',
+                        cursor: 'pointer',
+                        color: 'inherit'
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
+                        <span style={{ fontWeight: 600 }}>{titol}</span>
+                        <span style={{
+                          padding: '2px 8px',
+                          borderRadius: 6,
+                          fontSize: 11,
+                          fontWeight: 600,
+                          background: esSensor ? `${colors.primary}22` : `${warning}22`,
+                          color: esSensor ? colors.primary : warning
+                        }}>
+                          {esSensor ? 'Sensor' : 'Lot'}
+                        </span>
+                      </div>
+                      <div style={{ color: colors.textSecondary, marginBottom: 6, fontSize: 14 }}>{inc.descripcio}</div>
+                      <span style={{ padding: '4px 8px', borderRadius: 6, fontSize: 11, fontWeight: 600, background: inc.estat === 'en_curs' ? `${colors.primary}22` : inc.estat === 'oberta' ? `${danger}22` : `${success}22`, color: inc.estat === 'en_curs' ? colors.primary : inc.estat === 'oberta' ? danger : success }}>
+                        {inc.estat === 'en_curs' ? 'En revisió' : inc.estat === 'oberta' ? 'Oberta' : 'Tancada'}
+                        {inc.tipus ? ` · ${inc.tipus}` : ''}
+                        {' · Obrir'}
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
           )}
           <button

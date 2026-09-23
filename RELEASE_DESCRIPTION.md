@@ -1,3 +1,34 @@
+## v2.7.0
+
+### Obrador Ac3 — proveïdors Compres 2026 + sensors IoT (TTN)
+
+**Proveïdors (Tasca 1)**
+- Estat d’ús (`habitual` / `ocasional` / `inactiu` / `revisar`) + `codi_intern` al selector de recepcions.
+- Import CSV `proveidors_obrador_2026.csv` + sync Holded endurit (NIF, demote d’inactius).
+- Component `ObradorProveidorSelect` al flux de recepcions.
+
+**Sensors temperatura IoT (Tasca 2) — preparat abans del hardware**
+- Taula `obrador_sensors` + `sensor_id` / `humitat` a temperatures + índex anti-duplicats.
+- Edge Functions: `ttn-webhook` (uplinks TTN v3) + `obrador-sensors-watchdog` (sense senyal) + `notify()` desacoblat (log/Telegram).
+- Cron cada 15 min (`database/cron_obrador_sensors_watchdog.sql`).
+- Dashboard: estat per sensor (OK / fora de rang / sense senyal / **en revisió**), gràfic 24 h, Supabase Realtime.
+- Incidències: origen **Lot** vs **Sensor**; tancament amb checklist Sí/No; estat **`en_curs`** (reconeguda sense tancar l’episodi).
+- Simulador: `scripts/simulateTtnUplink.mjs` (normal, fora_rang, torna_rang, retransmisio, sense_secret).
+
+**SQL a executar a Supabase (si no s’ha fet):**
+- `database/alter_obrador_proveidors_estat_us.sql`
+- `database/create_obrador_sensors_iot.sql`
+- `database/alter_obrador_iot_realtime.sql`
+- `database/alter_obrador_incidencies_tancament.sql`
+- `database/alter_obrador_incidencies_en_curs.sql`
+- `database/cron_obrador_sensors_watchdog.sql` (després de desplegar les Edge Functions)
+
+**Secrets / deploy Edge:** `TTN_WEBHOOK_SECRET`, `OBRADOR_NOTIFY_CHANNEL` (+ Telegram opcional). Redeploy `ttn-webhook` i `obrador-sensors-watchdog`.
+
+**Nota:** amb simulador aturat, als 30 min sense uplink el dashboard marca «Sense senyal» (comportament APPCC esperat). Hardware: ~1 lectura / 10 min.
+
+---
+
 ## v2.6.0
 
 ### Holded — optimización del cupo API (~7.500 llamadas/mes)
