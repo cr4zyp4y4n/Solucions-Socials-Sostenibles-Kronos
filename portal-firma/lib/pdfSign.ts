@@ -381,7 +381,9 @@ export async function sealPdfWithEvidence(args: SealPdfEvidenceArgs): Promise<Se
     contactInfo: nif ? `NIF ${nif}` : razonSocial,
     name: toWinAnsiSafe(razonSocial),
     location: 'Barcelona',
-    subFilter: SUBFILTER_ETSI_CADES_DETACHED
+    subFilter: SUBFILTER_ETSI_CADES_DETACHED,
+    // FNMT sello + cadena suele ~12KB; default @signpdf es 8192 y falla.
+    signatureLength: 32768
   });
 
   const prepared = Buffer.from(await pdfDoc.save({ useObjectStreams: false }));
