@@ -2,9 +2,8 @@
  * Diseño visual de la hoja de evidencias (marca EISSS / Kronos).
  * Banda izquierda verde, cabecera con logo, bloques tipográficos y caja SHA-256.
  */
-import { readFileSync, existsSync } from 'fs';
-import { join } from 'path';
 import { PDFDocument, PDFFont, PDFPage, PDFImage, rgb, StandardFonts } from 'pdf-lib';
+import { LOGO_SSS_EVIDENCE_PNG_BASE64 } from '@/lib/logoSssEvidenceBase64';
 
 /** Verde Solucions / Kronos (#4CAF50) */
 export const EISSS_GREEN = rgb(0.298, 0.686, 0.314);
@@ -12,7 +11,6 @@ export const EISSS_GREEN_DARK = rgb(0.18, 0.49, 0.2);
 export const EISSS_GREEN_SOFT = rgb(0.91, 0.96, 0.91);
 export const INK = rgb(0.12, 0.14, 0.13);
 export const MUTED = rgb(0.35, 0.4, 0.38);
-export const LINE = rgb(0.82, 0.86, 0.83);
 
 export type EvidenceSection = {
   heading: string;
@@ -37,28 +35,15 @@ function wrapLine(text: string, maxChars: number): string[] {
 }
 
 async function tryEmbedLogo(pdfDoc: PDFDocument): Promise<PDFImage | null> {
-  const candidates = [
-    join(process.cwd(), 'assets', 'logo-sss-evidence.png'),
-    join(process.cwd(), 'portal-firma', 'assets', 'logo-sss-evidence.png')
-  ];
-  for (const p of candidates) {
-    try {
-      if (!existsSync(p)) continue;
-      const bytes = readFileSync(p);
-      return await pdfDoc.embedPng(bytes);
-    } catch {
-      // siguiente ruta
-    }
+  try {
+    const bytes = Buffer.from(LOGO_SSS_EVIDENCE_PNG_BASE64, 'base64');
+    return await pdfDoc.embedPng(bytes);
+  } catch {
+    return null;
   }
-  return null;
 }
 
-function drawWordmark(
-  page: PDFPage,
-  fontBold: PDFFont,
-  x: number,
-  y: number
-): number {
+function drawWordmark(page: PDFPage, fontBold: PDFFont, x: number, y: number): number {
   const box = 36;
   page.drawRectangle({
     x,
@@ -108,7 +93,6 @@ export async function drawBrandedEvidencePage({
   const marginT = 36;
   const contentW = width - marginL - marginR;
 
-  // Fondo suave
   page.drawRectangle({
     x: 0,
     y: 0,
@@ -117,7 +101,6 @@ export async function drawBrandedEvidencePage({
     color: rgb(0.985, 0.99, 0.985)
   });
 
-  // Banda izquierda verde (marca)
   page.drawRectangle({
     x: 0,
     y: 0,
@@ -126,7 +109,6 @@ export async function drawBrandedEvidencePage({
     color: EISSS_GREEN
   });
 
-  // Cabecera
   const headerH = 72;
   page.drawRectangle({
     x: leftBar,
@@ -177,7 +159,6 @@ export async function drawBrandedEvidencePage({
     color: MUTED
   });
 
-  // Título
   let y = height - headerH - 28;
   page.drawText(toWinAnsiSafe('Hoja de evidencias de aceptación electrónica'), {
     x: marginL,
@@ -204,7 +185,6 @@ export async function drawBrandedEvidencePage({
   for (const section of sections) {
     if (y < 100) break;
 
-    // Chip / etiqueta de sección
     page.drawRectangle({
       x: marginL,
       y: y - 2,
@@ -241,7 +221,6 @@ export async function drawBrandedEvidencePage({
     y -= 8;
   }
 
-  // Caja SHA-256
   const shaLines = wrapLine(sha256Original, 64);
   const shaBoxH = 28 + shaLines.length * 11;
   if (y - shaBoxH > 48) {
@@ -280,10 +259,8 @@ export async function drawBrandedEvidencePage({
       });
       sy -= 11;
     }
-    y -= shaBoxH + 12;
   }
 
-  // Pie
   page.drawRectangle({
     x: leftBar,
     y: 0,
