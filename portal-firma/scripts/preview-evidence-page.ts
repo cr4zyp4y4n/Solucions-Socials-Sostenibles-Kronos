@@ -43,7 +43,9 @@ async function main() {
     smsVerificadoAt: new Date().toISOString(),
     entityKey: 'EI_SSS',
     documentoTitulo: 'Acuse de recibo informacion RPT (art. 18 LPRL)',
-    fileName: 'ejemplo-rpt.pdf'
+    fileName: 'ejemplo-rpt.pdf',
+    // Sello pequeño en página 2 (última del original), esquina inferior derecha
+    selloPosicion: { pageIndex: 1, x: 422, y: 36, width: 145, height: 38 }
   });
 
   const outDir = path.join(__dirname, '..', 'tmp-seal-test');

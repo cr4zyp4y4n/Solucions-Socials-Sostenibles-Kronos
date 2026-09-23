@@ -33,6 +33,13 @@ async function stampAndUploadDocument({
     hash_pdf: string | null;
     firmado_at: string | null;
     storage_path_firmado: string | null;
+    sello_posicion?: {
+      pageIndex: number;
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+    } | null;
   };
   tokenRowId: string;
   nowIso: string;
@@ -88,7 +95,8 @@ async function stampAndUploadDocument({
     smsVerificadoAt: smsVerificadoAt || null,
     entityKey: entityKey || null,
     documentoTitulo: getFirmaDocMeta(tipo).stampDeclaration,
-    fileName: documento.file_name
+    fileName: documento.file_name,
+    selloPosicion: documento.sello_posicion || null
   });
 
   const baseName = String(documento.file_name || 'documento.pdf').replace(/[^\w.-]/g, '_');

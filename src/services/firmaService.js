@@ -624,6 +624,15 @@ class FirmaService {
     const createdDocs = [];
     for (let i = 0; i < list.length; i += 1) {
       const item = list[i];
+      let selloPosicion = item.selloPosicion || null;
+      if (!selloPosicion && entityKey) {
+        try {
+          const plantilla = await this.getPlantilla(item.tipoDocumento, entityKey);
+          if (plantilla?.sello_posicion) selloPosicion = plantilla.sello_posicion;
+        } catch (_) {
+          /* plantilla opcional */
+        }
+      }
       const { data: doc, error: docErr } = await supabase
         .from(TABLE_DOCUMENTOS)
         .insert({
@@ -636,7 +645,8 @@ class FirmaService {
           estado: 'pendiente',
           storage_path: 'pending',
           file_name: item.file?.name || null,
-          notas_internas: notasInternas || null
+          notas_internas: notasInternas || null,
+          ...(selloPosicion ? { sello_posicion: selloPosicion } : {})
         })
         .select()
         .single();
@@ -1006,7 +1016,7 @@ class FirmaService {
   async loadPlantillas(entityKey = null) {
     let query = supabase
       .from(TABLE_PLANTILLAS)
-      .select('id, tipo_documento, entity_key, storage_path, file_name, hash_pdf, created_at, updated_at')
+      .select('id, tipo_documento, entity_key, storage_path, file_name, hash_pdf, sello_posicion, created_at, updated_at')
       .order('tipo_documento', { ascending: true });
     if (entityKey) query = query.eq('entity_key', entityKey);
     const { data, error } = await query;
@@ -1028,7 +1038,7 @@ class FirmaService {
     if (!tipo || !entity) return null;
     const { data, error } = await supabase
       .from(TABLE_PLANTILLAS)
-      .select('id, tipo_documento, entity_key, storage_path, file_name, hash_pdf, created_at, updated_at')
+      .select('id, tipo_documento, entity_key, storage_path, file_name, hash_pdf, sello_posicion, created_at, updated_at')
       .eq('tipo_documento', tipo)
       .eq('entity_key', entity)
       .maybeSingle();
@@ -1080,6 +1090,32 @@ class FirmaService {
 
     if (existing?.storage_path && existing.storage_path !== storagePath) {
       await supabase.storage.from(BUCKET).remove([existing.storage_path]).catch(() => {});
+    }
+    return data;
+  }
+
+  /**
+   * Guarda la posición del sello visual en una plantilla (pageIndex, x, y, width, height en pts PDF).
+   */
+  async updatePlantillaSelloPosicion(plantillaId, selloPosicion) {
+    if (!plantillaId) throw new Error('Falta plantillaId');
+    const { data, error } = await supabase
+      .from(TABLE_PLANTILLAS)
+      .update({
+        sello_posicion: selloPosicion || null,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', plantillaId)
+      .select('id, tipo_documento, entity_key, storage_path, file_name, hash_pdf, sello_posicion, created_at, updated_at')
+      .single();
+    if (error) {
+      const msg = String(error.message || '');
+      if (msg.includes('sello_posicion')) {
+        throw new Error(
+          'Falta la columna sello_posicion. Ejecuta database/alter_firma_sello_posicion.sql en Supabase.'
+        );
+      }
+      throw error;
     }
     return data;
   }

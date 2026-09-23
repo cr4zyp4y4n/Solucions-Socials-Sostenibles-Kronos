@@ -25,6 +25,12 @@ import {
 import { formatMadridDateTime } from '@/lib/madridDate';
 import { getFirmaEmpresaInfo } from '@/lib/firmaEmpresas';
 import { drawBrandedEvidencePage, type EvidenceSection } from '@/lib/evidencePageLayout';
+import {
+  defaultSelloPosicion,
+  drawAcceptanceStamp,
+  normalizeSelloPosicion,
+  type SelloPosicion
+} from '@/lib/acceptanceStamp';
 
 export type SealPdfEvidenceArgs = {
   pdfBytes: Uint8Array;
@@ -46,6 +52,8 @@ export type SealPdfEvidenceArgs = {
   entityKey?: string | null;
   documentoTitulo?: string | null;
   fileName?: string | null;
+  /** Posición del sello visual (plantilla / documento). */
+  selloPosicion?: SelloPosicion | null;
 };
 
 export type SealPdfEvidenceResult = {
@@ -281,8 +289,35 @@ export async function sealPdfWithEvidence(args: SealPdfEvidenceArgs): Promise<Se
   if (!pages.length) throw new Error('PDF sin páginas');
 
   const originalPageCount = pages.length;
-  const lastPage = pages[pages.length - 1];
-  const { width, height } = lastPage.getSize();
+  const lastOriginal = pages[pages.length - 1];
+  const { width, height } = lastOriginal.getSize();
+
+  // Sello visual pequeño en el original (antes de la hoja de evidencias)
+  const normalized = normalizeSelloPosicion(args.selloPosicion);
+  let stampPageIndex = normalized
+    ? Math.min(normalized.pageIndex, originalPageCount - 1)
+    : originalPageCount - 1;
+  const stampPage = pages[stampPageIndex];
+  const stampBox = normalized
+    ? {
+        x: normalized.x,
+        y: normalized.y,
+        width: normalized.width,
+        height: normalized.height
+      }
+    : (() => {
+        const d = defaultSelloPosicion(stampPage);
+        return { x: d.x, y: d.y, width: d.width, height: d.height };
+      })();
+
+  await drawAcceptanceStamp({
+    pdfDoc,
+    page: stampPage,
+    box: stampBox,
+    trabajadorNombre: args.trabajadorNombre,
+    trabajadorDni: args.trabajadorDni,
+    nowIso: args.nowIso
+  });
 
   const evidencePage = pdfDoc.addPage([width, height]);
 

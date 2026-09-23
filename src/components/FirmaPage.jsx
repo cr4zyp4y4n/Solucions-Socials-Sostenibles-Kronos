@@ -15,6 +15,7 @@ import FirmaDocumentosModal from './firma/FirmaDocumentosModal';
 import FirmaAuditoriaModal from './firma/FirmaAuditoriaModal';
 import FirmaNotificarBajaModal from './firma/FirmaNotificarBajaModal';
 import FirmaPlantillasPanel from './firma/FirmaPlantillasPanel';
+import FirmaSelloPositionModal from './firma/FirmaSelloPositionModal';
 import { FirmaButton, FirmaTabs } from './firma/FirmaUi';
 import {
   buildFirmaEmailBody,
@@ -58,6 +59,9 @@ export default function FirmaPage() {
   const [plantillas, setPlantillas] = useState([]);
   const [plantillasLoading, setPlantillasLoading] = useState(false);
   const [uploadingPlantillaTipo, setUploadingPlantillaTipo] = useState('');
+  const [selloEditorPlantilla, setSelloEditorPlantilla] = useState(null);
+  const [selloEditorUrl, setSelloEditorUrl] = useState('');
+  const [selloEditorSaving, setSelloEditorSaving] = useState(false);
 
   const notificarBajaEnvio = useMemo(
     () => envios.find((e) => e.id === notificarBajaEnvioId) || null,
@@ -550,6 +554,39 @@ export default function FirmaPage() {
     }
   };
 
+  const abrirEditorSello = async (plantilla) => {
+    setError('');
+    try {
+      const url = await firmaService.getPlantillaSignedUrl(plantilla);
+      setSelloEditorUrl(url);
+      setSelloEditorPlantilla(plantilla);
+    } catch (e) {
+      setError(e?.message || 'No se pudo abrir el editor de sello.');
+    }
+  };
+
+  const cerrarEditorSello = () => {
+    setSelloEditorPlantilla(null);
+    setSelloEditorUrl('');
+    setSelloEditorSaving(false);
+  };
+
+  const guardarPosicionSello = async (selloPosicion) => {
+    if (!selloEditorPlantilla?.id) return;
+    setSelloEditorSaving(true);
+    setError('');
+    try {
+      await firmaService.updatePlantillaSelloPosicion(selloEditorPlantilla.id, selloPosicion);
+      await loadPlantillas();
+      setMessage('Posición del sello guardada en la plantilla.');
+      cerrarEditorSello();
+    } catch (e) {
+      setError(e?.message || 'Error guardando la posición del sello.');
+    } finally {
+      setSelloEditorSaving(false);
+    }
+  };
+
   return (
     <div style={{ padding: '20px 24px 32px', color: colors.text, maxWidth: 1100, margin: '0 auto' }}>
       <SectionHeader
@@ -676,6 +713,7 @@ export default function FirmaPage() {
               onUpload={uploadPlantillaManual}
               onDelete={deletePlantilla}
               onVer={verPlantilla}
+              onEditSello={abrirEditorSello}
               uploadingTipo={uploadingPlantillaTipo}
             />
           </motion.div>
@@ -753,6 +791,17 @@ export default function FirmaPage() {
         onEmail={openEmail}
         onRefresh={loadAll}
       />
+
+      {selloEditorPlantilla && selloEditorUrl ? (
+        <FirmaSelloPositionModal
+          open
+          plantilla={selloEditorPlantilla}
+          pdfUrl={selloEditorUrl}
+          saving={selloEditorSaving}
+          onSave={guardarPosicionSello}
+          onClose={cerrarEditorSello}
+        />
+      ) : null}
     </div>
   );
 }

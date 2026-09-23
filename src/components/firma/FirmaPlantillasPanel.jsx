@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Eye, Trash2, Upload } from 'feather-icons-react';
+import { Eye, MapPin, Trash2, Upload } from 'feather-icons-react';
 import { useTheme } from '../ThemeContext';
 import { getFirmaDocumentoLabel } from '../../constants/firmaDocumentos';
 import { getFirmaEmpresaNombre } from '../../constants/firmaEmpresas';
@@ -13,6 +13,7 @@ export default function FirmaPlantillasPanel({
   onUpload,
   onDelete,
   onVer,
+  onEditSello,
   uploadingTipo
 }) {
   const { colors } = useTheme();
@@ -32,6 +33,7 @@ export default function FirmaPlantillasPanel({
           Una plantilla por tipo de documento y empresa. En <b>Nuevo pack</b>, si no subes PDF,
           Kronos usa esta plantilla; si no hay, genera desde Holded (cuando aplica).
           El PDF de plantilla es estático (no rellena nombre/DNI del empleado).
+          Tras subirla, usa el pin para colocar el sello pequeño de aceptación.
         </p>
         <FirmaSelect
           value={selectedEntity}
@@ -124,6 +126,18 @@ export default function FirmaPlantillasPanel({
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontWeight: 800, fontSize: 13 }}>
                     {getFirmaDocumentoLabel(p.tipo_documento)}
+                    {p.sello_posicion ? (
+                      <span
+                        style={{
+                          marginLeft: 8,
+                          fontSize: 11,
+                          fontWeight: 700,
+                          color: colors.success || '#2e7d32'
+                        }}
+                      >
+                        · sello OK
+                      </span>
+                    ) : null}
                   </div>
                   <div
                     style={{
@@ -141,6 +155,16 @@ export default function FirmaPlantillasPanel({
                   <FirmaButton size="sm" variant="ghost" onClick={() => onVer(p)} title="Ver PDF">
                     <Eye size={14} />
                   </FirmaButton>
+                  {onEditSello ? (
+                    <FirmaButton
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => onEditSello(p)}
+                      title="Posicionar sello de aceptación"
+                    >
+                      <MapPin size={14} />
+                    </FirmaButton>
+                  ) : null}
                   <FirmaButton
                     size="sm"
                     variant="ghost"
