@@ -4693,16 +4693,23 @@ export default function PIGPage() {
             loadPigItinerarioEi({ year: yearForEstimados }),
             loadPigTesoreriaCajaCorto({ year: yearForEstimados })
           ]);
+          const loadError = loadEstError || loadObjError || loadItError || loadCajaError;
+          if (loadError) {
+            throw new Error(`No se pudo cargar la configuración PIG ${yearForEstimados}: ${loadError.message || loadError}`);
+          }
           if (!loadEstError && estimados) estimadosForGenerate = estimados;
           if (!loadObjError && objetivos) objetivosForGenerate = objetivos;
           if (!loadItError && itinerario) itinerarioForGenerate = itinerario;
           if (!loadCajaError && cajaCorto) cajaCortoForGenerate = cajaCorto;
         } else {
-          await Promise.all([
+          const saveResults = await Promise.all([
             saveEstimadosSubv(),
             saveObjetivosComparativa(),
             saveItinerarioEi()
           ]);
+          if (saveResults.some((ok) => ok !== true)) {
+            throw new Error('No se pudo guardar la configuración PIG antes de generar el Excel.');
+          }
         }
 
         // PIG Normal: rellenar NÓMINAS/SS/AUTÓNOMOS/FINANC. desde Holded al generar (sin botón manual).
@@ -4733,29 +4740,42 @@ export default function PIGPage() {
           } catch (e) {
             console.warn('PIG caja a corto Holded:', e);
           }
-          await upsertPigTesoreriaCajaCorto({
+          const { error: cajaSaveError } = await upsertPigTesoreriaCajaCorto({
             year: yearForEstimados,
             cajaCorto: cajaCortoForGenerate
           });
+          if (cajaSaveError) {
+            throw new Error(`No se pudo guardar caja a corto antes de generar el Excel: ${cajaSaveError.message || cajaSaveError}`);
+          }
         }
       } else if (yearForEstimados && Number(yearForEstimados) === Number(estimadosYear)) {
         // Objetivos + itinerario CR + previsiones TESORERÍA + subv. ejercicios anteriores.
-        await Promise.all([
+        const saveResults = await Promise.all([
           saveObjetivosComparativa(),
           saveItinerarioEi(),
           saveTesoreriaPrevisiones(),
           saveCrSubvEjAnteriores()
         ]);
+        if (saveResults.some((ok) => ok !== true)) {
+          throw new Error('No se pudo guardar la configuración de Cuenta Resultados antes de generar el Excel.');
+        }
       } else if (yearForEstimados) {
         const [
+          { objetivos, error: objErr },
           { itinerario, error: itErr },
           { previsiones, error: prErr },
           { rows: crSubvRows, error: crSubvErr }
         ] = await Promise.all([
+          loadPigObjetivosComparativa({ year: yearForEstimados }),
           loadPigItinerarioEi({ year: yearForEstimados }),
           loadPigTesoreriaPrevisiones({ year: yearForEstimados }),
           loadPigCrSubvEjerciciosAnteriores({ year: yearForEstimados })
         ]);
+        const loadError = objErr || itErr || prErr || crSubvErr;
+        if (loadError) {
+          throw new Error(`No se pudo cargar la configuración de Cuenta Resultados ${yearForEstimados}: ${loadError.message || loadError}`);
+        }
+        if (!objErr && objetivos) objetivosForGenerate = objetivos;
         if (!itErr && itinerario) itinerarioForGenerate = itinerario;
         if (!prErr && previsiones) previsionesForGenerate = previsiones;
         if (!crSubvErr && crSubvRows) crSubvEjAnterioresForGenerate = crSubvRows;
@@ -5340,9 +5360,14 @@ export default function PIGPage() {
             ]);
           if (treasuryError) {
             console.warn('PIG TESORERÍA: no se pudieron cargar cuentas de Holded.', treasuryError);
+            throw new Error(`No se pudieron cargar las cuentas de TESORERÍA desde Holded: ${treasuryError.message || treasuryError}`);
           }
           if (impuestosError) {
             console.warn('PIG TESORERÍA IMPUESTOS: no se pudieron cargar cuentas contables de Holded.', impuestosError);
+            throw new Error(`No se pudieron cargar saldos fiscales para IMPUESTOS: ${impuestosError.message || impuestosError}`);
+          }
+          if (!impuestos) {
+            throw new Error('No se pudieron calcular los saldos fiscales de IMPUESTOS.');
           }
           const { aoa: aoaTesoreria, meta: tesoreriaMeta } = buildPigTesoreriaSheetAoa({
             title: titleTesoreria,

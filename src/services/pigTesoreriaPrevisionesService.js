@@ -1,4 +1,5 @@
 import { supabase } from '../config/supabase';
+import { safeReplacePigRowsByYear } from './pigSafeReplaceService';
 
 export const PIG_TESORERIA_PREVISIONES_BLOCKS = {
   ingresos_por_subv: {
@@ -196,19 +197,11 @@ export async function upsertPigTesoreriaPrevisiones({ year, previsiones }) {
     }))
   ];
 
-  const { error: deleteError } = await supabase
-    .from('pig_tesoreria_previsiones')
-    .delete()
-    .eq('year', y);
-  if (deleteError) return { error: deleteError };
-
-  if (!payload.length) return { error: null };
-
-  const { error: insertError } = await supabase
-    .from('pig_tesoreria_previsiones')
-    .insert(payload);
-  if (insertError) return { error: insertError };
-  return { error: null };
+  return safeReplacePigRowsByYear({
+    table: 'pig_tesoreria_previsiones',
+    year: y,
+    payload
+  });
 }
 
 /** Normaliza previsiones UI → filas numéricas para el Excel. */
