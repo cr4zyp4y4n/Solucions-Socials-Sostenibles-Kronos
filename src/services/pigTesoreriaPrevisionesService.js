@@ -196,19 +196,34 @@ export async function upsertPigTesoreriaPrevisiones({ year, previsiones }) {
     }))
   ];
 
+  const { data: existingRows, error: selectError } = await supabase
+    .from('pig_tesoreria_previsiones')
+    .select('id')
+    .eq('year', y);
+  if (selectError) return { error: selectError };
+
+  if (payload.length) {
+    const { error: insertError } = await supabase
+      .from('pig_tesoreria_previsiones')
+      .insert(payload);
+    if (insertError) return { error: insertError };
+
+    const existingIds = (existingRows || []).map((row) => row.id).filter(Boolean);
+    if (existingIds.length) {
+      const { error: deleteError } = await supabase
+        .from('pig_tesoreria_previsiones')
+        .delete()
+        .in('id', existingIds);
+      if (deleteError) return { error: deleteError };
+    }
+    return { error: null };
+  }
+
   const { error: deleteError } = await supabase
     .from('pig_tesoreria_previsiones')
     .delete()
     .eq('year', y);
-  if (deleteError) return { error: deleteError };
-
-  if (!payload.length) return { error: null };
-
-  const { error: insertError } = await supabase
-    .from('pig_tesoreria_previsiones')
-    .insert(payload);
-  if (insertError) return { error: insertError };
-  return { error: null };
+  return { error: deleteError || null };
 }
 
 /** Normaliza previsiones UI → filas numéricas para el Excel. */
