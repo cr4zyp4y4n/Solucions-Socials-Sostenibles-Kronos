@@ -7,7 +7,12 @@
 # Variables de entorno (Site → Environment variables), mismas claves que .env.local:
 # NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY,
 # TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM, TWILIO_API_BASE (opcional),
-# FIRMA_SMS_API_SECRET (debe coincidir con seleccion-proveedores/.env en Kronos).
+# FIRMA_SMS_API_SECRET (debe coincidir con seleccion-proveedores/.env en Kronos),
+# Sellos PAdES FNMT (Base64 + pass):
+#   KRONOS_SEAL_P12_BASE64_SOLUCIONS + KRONOS_SEAL_P12_PASS_SOLUCIONS  (entity EI_SSS)
+#   KRONOS_SEAL_P12_BASE64_MENJAR + KRONOS_SEAL_P12_PASS_MENJAR        (entity MENJAR_DHORT)
+#   o fallback: KRONOS_SEAL_P12_BASE64 + KRONOS_SEAL_P12_PASS
+# (ver kronos-firma-pades-evidencias.md).
 
 [build]
   command = "npm run build"

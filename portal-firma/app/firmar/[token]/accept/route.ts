@@ -1,13 +1,15 @@
-import { buildAceptacionRespuestaLine, buildStampLinesForDoc, getFirmaDocMeta, normalizeRespuestaAceptacion } from '@/lib/firmaDocumentosMeta';
-import { getFirmaEmpresaStampLine } from '@/lib/firmaEmpresas';
+import { buildAceptacionRespuestaLine, getFirmaDocMeta, normalizeRespuestaAceptacion } from '@/lib/firmaDocumentosMeta';
 import { getOtpScopeIds, resolveFirmaToken } from '@/lib/resolveFirmaToken';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getRequestInfo } from '@/lib/requestInfo';
-import { stampPdfLastPage } from '@/lib/pdfSign';
+import { sealPdfWithEvidence } from '@/lib/pdfSign';
 import { hasRecentDniConfirmation } from '@/lib/dniVerification';
 import { assertIdentidadFotoPresent } from '@/lib/identidadVerification';
 import { normalizeDni } from '@/lib/normalizeDni';
 import { loadDocumentoOpciones } from '@/lib/firmaDocumentoOpciones';
+
+/** Obligatorio: @signpdf / node-forge no corren en Edge. */
+export const runtime = 'nodejs';
 
 async function stampAndUploadDocument({
   documento,
@@ -17,10 +19,11 @@ async function stampAndUploadDocument({
   userAgent,
   trabajadorNombre,
   trabajadorDni,
+  telefonoOtp,
   dniConfirmadoEnPortal,
   identidadFotoAt,
   smsVerificadoAt,
-  empresaLine
+  entityKey
 }: {
   documento: {
     id: string;
@@ -37,10 +40,11 @@ async function stampAndUploadDocument({
   userAgent: string;
   trabajadorNombre?: string | null;
   trabajadorDni?: string | null;
+  telefonoOtp?: string | null;
   dniConfirmadoEnPortal?: boolean;
   identidadFotoAt?: string | null;
   smsVerificadoAt?: string | null;
-  empresaLine?: string | null;
+  entityKey?: string | null;
 }) {
   if (documento.firmado_at && documento.storage_path_firmado) {
     return { signedPath: documento.storage_path_firmado, skipped: true };
@@ -66,51 +70,72 @@ async function stampAndUploadDocument({
   }
   const originalBuf = new Uint8Array(await originalRes.arrayBuffer());
 
-  const stampLines = buildStampLinesForDoc({
-    trabajadorNombre,
-    trabajadorDni,
+  const sealed = await sealPdfWithEvidence({
+    pdfBytes: originalBuf,
+    hashPdfKnown: documento.hash_pdf,
     tipoDocumento: tipo,
     opciones,
-    nowIso,
     documentoId: documento.id,
     tokenRowId,
-    hashPdf: documento.hash_pdf,
+    nowIso,
     ip,
     userAgent,
+    trabajadorNombre,
+    trabajadorDni,
+    telefonoOtp,
     dniConfirmadoEnPortal,
-    identidadFotoOk: Boolean(identidadFotoAt),
     identidadFotoAt: identidadFotoAt || null,
-    smsVerificado: true,
     smsVerificadoAt: smsVerificadoAt || null,
-    empresaLine: empresaLine || null
+    entityKey: entityKey || null,
+    documentoTitulo: getFirmaDocMeta(tipo).stampDeclaration,
+    fileName: documento.file_name
   });
-
-  const signedPdf = await stampPdfLastPage({ pdfBytes: originalBuf, stampLines });
 
   const baseName = String(documento.file_name || 'documento.pdf').replace(/[^\w.-]/g, '_');
   const signedPath = `${documento.id}/SIGNED-${Date.now()}-${baseName.endsWith('.pdf') ? baseName : `${baseName}.pdf`}`;
 
   const { error: uploadErr } = await supabaseAdmin.storage
     .from('firma-documentos')
-    .upload(signedPath, signedPdf, {
+    .upload(signedPath, sealed.signedPdf, {
       contentType: 'application/pdf',
       cacheControl: '3600',
       upsert: true
     });
   if (uploadErr) throw new Error(`Error subiendo PDF firmado: ${uploadErr.message}`);
 
-  const { error: docErr } = await supabaseAdmin
+  const baseUpdate = {
+    estado: 'firmado',
+    firmado_at: nowIso,
+    storage_path_firmado: signedPath,
+    file_name_firmado: `SIGNED-${baseName}`,
+    hash_pdf: sealed.sha256Original
+  };
+  const sealUpdate = {
+    ...baseUpdate,
+    sha256_original: sealed.sha256Original,
+    sha256_firmado: sealed.sha256Firmado,
+    seal_cert_serial: sealed.sealCertSerial,
+    seal_cert_issuer: sealed.sealCertIssuer,
+    sealed_at: nowIso
+  };
+
+  let { error: docErr } = await supabaseAdmin
     .from('firma_documentos')
-    .update({
-      estado: 'firmado',
-      firmado_at: nowIso,
-      storage_path_firmado: signedPath,
-      file_name_firmado: `SIGNED-${baseName}`
-    })
+    .update(sealUpdate)
     .eq('id', documento.id);
+
+  if (docErr && /sha256_original|sha256_firmado|seal_cert_|sealed_at/i.test(docErr.message || '')) {
+    console.warn(
+      '[firma/accept] Columnas PAdES ausentes en BD; ejecuta database/alter_firma_documentos_pades_seal.sql. Guardando sin metadatos de sello.'
+    );
+    ({ error: docErr } = await supabaseAdmin
+      .from('firma_documentos')
+      .update(baseUpdate)
+      .eq('id', documento.id));
+  }
   if (docErr) throw new Error(docErr.message);
 
-  return { signedPath, skipped: false };
+  return { signedPath, skipped: false, sha256Firmado: sealed.sha256Firmado };
 }
 
 export async function POST(_req: Request, ctx: { params: Promise<{ token: string }> }) {
@@ -193,26 +218,34 @@ export async function POST(_req: Request, ctx: { params: Promise<{ token: string
   const { ip, userAgent } = await getRequestInfo();
   const trabajadorNombre = resolved.trabajador?.nombre || null;
   const trabajadorDni = resolved.trabajador?.dni || null;
+  const telefonoOtp = resolved.trabajador?.telefono || null;
   const dniConfirmadoEnPortal = requiereDni;
   const smsVerificadoAt = consumed[0]?.consumed_at || null;
-  const empresaLine = getFirmaEmpresaStampLine(resolved.envio?.entity_key);
+  const entityKey = resolved.envio?.entity_key || null;
 
   const signedPaths: string[] = [];
-  for (const doc of resolved.documentos) {
-    const result = await stampAndUploadDocument({
-      documento: doc,
-      tokenRowId: resolved.tokenRow.id,
-      nowIso,
-      ip,
-      userAgent,
-      trabajadorNombre,
-      trabajadorDni,
-      dniConfirmadoEnPortal,
-      identidadFotoAt: identidadStatus.at,
-      smsVerificadoAt,
-      empresaLine
-    });
-    signedPaths.push(result.signedPath);
+  try {
+    for (const doc of resolved.documentos) {
+      const result = await stampAndUploadDocument({
+        documento: doc,
+        tokenRowId: resolved.tokenRow.id,
+        nowIso,
+        ip,
+        userAgent,
+        trabajadorNombre,
+        trabajadorDni,
+        telefonoOtp,
+        dniConfirmadoEnPortal,
+        identidadFotoAt: identidadStatus.at,
+        smsVerificadoAt,
+        entityKey
+      });
+      signedPaths.push(result.signedPath);
+    }
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : 'Error al sellar el PDF';
+    console.error('[firma/accept] sellado:', msg);
+    return Response.json({ ok: false, error: msg }, { status: 500 });
   }
 
   if (envioId) {
@@ -243,6 +276,7 @@ export async function POST(_req: Request, ctx: { params: Promise<{ token: string
       sms_verificado_at: smsVerificadoAt,
       num_documentos: resolved.documentos.length,
       storage_paths_firmados: signedPaths,
+      sellado: 'pades_evidencias',
       declaraciones_aceptadas: await Promise.all(
         resolved.documentos.map(async (d) => {
           const { opciones } = await loadDocumentoOpciones(d.id);

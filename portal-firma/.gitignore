@@ -32,6 +32,16 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
+
+# Certificados sello PAdES
+*.p12
+*.pfx
+*.key
+dev.crt
+dev.key
+/tmp-seal-test/
+
 
 # vercel
 .vercel

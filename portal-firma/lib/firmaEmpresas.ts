@@ -1,8 +1,7 @@
-/** Datos de empresa para el sello de firma en el portal. */
-export const FIRMA_EMPRESA_INFO: Record<
-  string,
-  { nombre: string; corto: string; nif: string }
-> = {
+/** Datos de empresa para el sello / hoja de evidencias en el portal. */
+export type FirmaEmpresaInfo = { nombre: string; corto: string; nif: string };
+
+export const FIRMA_EMPRESA_INFO: Record<string, FirmaEmpresaInfo> = {
   EI_SSS: {
     nombre: 'SOLUCIONS SOCIALS SOSTENIBLES SCRL',
     corto: 'Solucions Socials',
@@ -16,9 +15,13 @@ export const FIRMA_EMPRESA_INFO: Record<
   }
 };
 
-export function getFirmaEmpresaStampLine(entityKey?: string | null): string {
+export function getFirmaEmpresaInfo(entityKey?: string | null): FirmaEmpresaInfo | null {
   const key = String(entityKey || '').trim();
-  const info = FIRMA_EMPRESA_INFO[key];
+  return FIRMA_EMPRESA_INFO[key] || null;
+}
+
+export function getFirmaEmpresaStampLine(entityKey?: string | null): string {
+  const info = getFirmaEmpresaInfo(entityKey);
   if (!info) return '';
   if (info.nif) return `Emisor: ${info.corto} · NIF ${info.nif}`;
   return `Emisor: ${info.corto}`;

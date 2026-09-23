@@ -60,6 +60,14 @@ typings/
 # dotenv environment variables file
 .env
 .env.test
+.env.local
+
+# Certificados de sello PAdES (nunca en el repo)
+*.p12
+*.pfx
+*.key
+dev.crt
+dev.key
 
 # Documentación interna (no subir a GitHub)
 docs/interno/
