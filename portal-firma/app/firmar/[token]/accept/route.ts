@@ -1,4 +1,9 @@
-import { buildAceptacionRespuestaLine, getFirmaDocMeta, normalizeRespuestaAceptacion } from '@/lib/firmaDocumentosMeta';
+import {
+  buildAceptacionRespuestaLine,
+  getFirmaDocMeta,
+  getReadStatementNo,
+  normalizeRespuestaAceptacion
+} from '@/lib/firmaDocumentosMeta';
 import { getOtpScopeIds, resolveFirmaToken } from '@/lib/resolveFirmaToken';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getRequestInfo } from '@/lib/requestInfo';
@@ -172,6 +177,38 @@ export async function POST(_req: Request, ctx: { params: Promise<{ token: string
     );
   }
 
+  const declaracionesVerificadas = await Promise.all(
+    resolved.documentos.map(async (d) => {
+      const { opciones } = await loadDocumentoOpciones(d.id);
+      const respuesta = normalizeRespuestaAceptacion(opciones);
+      return { documento: d, respuesta };
+    })
+  );
+  const missingDeclaraciones = declaracionesVerificadas.filter((d) => !d.respuesta);
+  if (missingDeclaraciones.length) {
+    return Response.json(
+      {
+        ok: false,
+        error: `No se puede firmar: falta una respuesta Sí/No verificable en ${missingDeclaraciones.length} documento(s). Vuelve a revisar el envío.`
+      },
+      { status: 400 }
+    );
+  }
+  const declaracionesAceptadas = declaracionesVerificadas.map(({ documento: d, respuesta }) => {
+    const respuestaVerificada = respuesta as 'si' | 'no';
+    return {
+      documento_id: d.id,
+      tipo_documento: d.tipo_documento,
+      respuesta: respuestaVerificada,
+      lectura_confirmada: respuestaVerificada === 'si',
+      declaracion:
+        respuestaVerificada === 'si'
+          ? getFirmaDocMeta(d.tipo_documento).readStatement
+          : getReadStatementNo(d.tipo_documento),
+      aceptacion_linea: buildAceptacionRespuestaLine(d.tipo_documento, respuestaVerificada)
+    };
+  });
+
   const vrpConsent = resolved.documentos.some((d) => d.tipo_documento === 'vrp_consentimiento');
   const vrpRenuncia = resolved.documentos.some((d) => d.tipo_documento === 'vrp_renuncia');
   if (vrpConsent && vrpRenuncia) {
@@ -293,20 +330,7 @@ export async function POST(_req: Request, ctx: { params: Promise<{ token: string
       storage_paths_firmados: signedPaths,
       sellado: anyPades ? 'pades_evidencias' : 'evidencias_sin_pades',
       pades_aplicado: anyPades,
-      declaraciones_aceptadas: await Promise.all(
-        resolved.documentos.map(async (d) => {
-          const { opciones } = await loadDocumentoOpciones(d.id);
-          const respuesta = normalizeRespuestaAceptacion(opciones) || 'si';
-          return {
-            documento_id: d.id,
-            tipo_documento: d.tipo_documento,
-            respuesta,
-            lectura_confirmada: respuesta === 'si',
-            declaracion: getFirmaDocMeta(d.tipo_documento).readStatement,
-            aceptacion_linea: buildAceptacionRespuestaLine(d.tipo_documento, respuesta)
-          };
-        })
-      )
+      declaraciones_aceptadas: declaracionesAceptadas
     }
   });
 
