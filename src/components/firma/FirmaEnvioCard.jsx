@@ -16,11 +16,13 @@ import { useTheme } from '../ThemeContext';
 import { getFirmaDocumentoLabel, envioEsPackBaja } from '../../constants/firmaDocumentos';
 import {
   canalesNotificacionBaja,
+  envioIdentidadOcr,
   envioLabel,
   envioTieneDocumentosFirmados,
   envioTieneIdentidadFoto,
   flowEstadoFirma,
-  formatFirmaDate
+  formatFirmaDate,
+  identidadOcrBadgeMeta
 } from './firmaPageHelpers';
 import { FirmaButton, FirmaStatusBadge } from './FirmaUi';
 import { FirmaDropdown, FirmaIconMenu } from './FirmaDropdown';
@@ -55,6 +57,7 @@ export default function FirmaEnvioCard({
   const docs = envio.documentos || [];
   const firmados = envioTieneDocumentosFirmados(envio);
   const tieneIdentidad = envioTieneIdentidadFoto(envio);
+  const ocrMeta = identidadOcrBadgeMeta(envioIdentidadOcr(envio), colors);
   const hasLink = !!envio.portal_link;
   const esBaja = envioEsPackBaja(envio);
   const canales = canalesNotificacionBaja(envio);
@@ -173,6 +176,23 @@ export default function FirmaEnvioCard({
                 onClick={() => onTimeline(envio)}
                 title="Ver seguimiento"
               />
+              {ocrMeta ? (
+                <span
+                  title={ocrMeta.title}
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 700,
+                    padding: '3px 8px',
+                    borderRadius: 6,
+                    background: `${ocrMeta.color}18`,
+                    color: ocrMeta.color,
+                    cursor: tieneIdentidad ? 'pointer' : 'default'
+                  }}
+                  onClick={tieneIdentidad ? () => onVerIdentidad?.(envio) : undefined}
+                >
+                  {ocrMeta.label}
+                </span>
+              ) : null}
             </div>
             <div style={{ marginTop: 4, fontSize: 13, color: colors.textSecondary, fontWeight: 600 }}>
               {envioLabel(envio)}

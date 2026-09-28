@@ -69,6 +69,7 @@ export function empleadoEstadoFlow(resumen) {
   if (resumen.trabajandoAhora) return { key: 'trabajando', label: 'Trabajando' };
   if (resumen.estaDeBaja) return { key: 'baja', label: 'De baja' };
   if (resumen.estaEnVacaciones) return { key: 'vacaciones', label: 'Vacaciones' };
+  if (resumen.estaEnFestivo) return { key: 'festivo', label: 'Festivo' };
   if (resumen.diasTrabajados > 0) return { key: 'ok', label: 'Al día' };
   return { key: 'neutral', label: 'Sin fichajes' };
 }
@@ -78,7 +79,20 @@ export function estadoPanelColor(key, colors) {
     case 'trabajando': return colors.warning;
     case 'baja': return colors.error;
     case 'vacaciones': return colors.info;
+    case 'festivo': return '#00897B';
     case 'ok': return colors.success;
     default: return colors.textSecondary;
+  }
+}
+
+/** Color de celda/etiqueta de festivo en calendarios de fichaje */
+export const FESTIVO_COLOR = '#00897B';
+
+export function ambitoFestivoLabel(ambito) {
+  switch (ambito) {
+    case 'estatal': return 'Estatal';
+    case 'autonomico': return 'Autonómico';
+    case 'local': return 'Local';
+    default: return ambito || '—';
   }
 }

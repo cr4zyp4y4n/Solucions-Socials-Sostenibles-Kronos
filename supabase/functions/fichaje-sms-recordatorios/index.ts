@@ -188,6 +188,16 @@ Deno.serve(async (req) => {
     let sent = 0;
     let closed = 0;
 
+    const fechaMadrid = dateKeyInTz(now, 'Europe/Madrid');
+    const { data: festivoHoy } = await supabase
+      .from('festivos')
+      .select('id')
+      .eq('fecha', fechaMadrid)
+      .eq('activo', true)
+      .eq('ciudad', 'Barcelona')
+      .maybeSingle();
+    const esFestivoHoy = !!festivoHoy?.id;
+
     for (const row of horarios as HorarioRow[]) {
       const tz = row.timezone || 'Europe/Madrid';
       const empleadoId = String(row.empleado_id || '').trim();
@@ -239,6 +249,12 @@ Deno.serve(async (req) => {
 
       if (!telefono) {
         results.push({ empleado_id: empleadoId, skip: 'telefono_invalido' });
+        continue;
+      }
+
+      // Festivo Barcelona: no enviar SMS de olvido (sí se cierran fichajes viejos arriba)
+      if (esFestivoHoy && fecha === fechaMadrid) {
+        results.push({ empleado_id: empleadoId, skip: 'festivo', fecha });
         continue;
       }
 

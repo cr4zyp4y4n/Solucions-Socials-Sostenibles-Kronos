@@ -44,7 +44,7 @@ const FILTERS = [
   { id: 'activos', label: 'Activos' }
 ];
 
-function buildResumenPorEmpleado(empleados, fichajesMes, vacacionesMes, bajasMes, mesReferencia) {
+function buildResumenPorEmpleado(empleados, fichajesMes, vacacionesMes, bajasMes, mesReferencia, festivoHoy = null) {
   const todayStr = format(mesReferencia, 'yyyy-MM-dd');
   const yearStr = format(mesReferencia, 'yyyy');
   const map = {};
@@ -106,7 +106,9 @@ function buildResumenPorEmpleado(empleados, fichajesMes, vacacionesMes, bajasMes
       estaEnVacaciones,
       diasVacacionesRestantes,
       estaDeBaja,
-      bajaHasta
+      bajaHasta,
+      estaEnFestivo: !!festivoHoy,
+      festivoHoyNombre: festivoHoy?.nombre || null
     };
   });
   return map;
@@ -119,6 +121,7 @@ const PanelFichajesPage = () => {
   const [fichajesMes, setFichajesMes] = useState([]);
   const [vacacionesMes, setVacacionesMes] = useState([]);
   const [bajasMes, setBajasMes] = useState([]);
+  const [festivoHoy, setFestivoHoy] = useState(null);
   const [alertasSmsHoy, setAlertasSmsHoy] = useState({});
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -147,19 +150,23 @@ const PanelFichajesPage = () => {
       const startVacaciones = startOfYear(mesReferencia);
       const { fecha: hoyMadrid } = nowPartsInMadrid();
 
-      const [fichRes, vacRes, bajasRes] = await Promise.all([
+      const [fichRes, vacRes, bajasRes, festRes] = await Promise.all([
         fichajeSupabaseService.obtenerTodosFichajes({ fechaInicio: start, fechaFin: end }),
         fichajeSupabaseService.obtenerVacacionesEnRango(startVacaciones, endVacaciones),
-        fichajeSupabaseService.obtenerBajasEnRango(start, endVacaciones)
+        fichajeSupabaseService.obtenerBajasEnRango(start, endVacaciones),
+        fichajeSupabaseService.obtenerFestivosEnRango(parseISO(hoyMadrid), parseISO(hoyMadrid))
       ]);
 
       const fichajes = fichRes.success ? fichRes.data || [] : [];
       const vacaciones = vacRes.success ? vacRes.data || [] : [];
       const bajas = bajasRes.success ? bajasRes.data || [] : [];
+      const festivosHoyList = festRes.success ? festRes.data || [] : [];
+      const festivoHoyRow = festivosHoyList[0] || null;
 
       setFichajesMes(fichajes);
       setVacacionesMes(vacaciones);
       setBajasMes(bajas);
+      setFestivoHoy(festivoHoyRow);
 
       const fichajesHoy = fichajes.filter((f) => f.fecha === hoyMadrid);
       // También pedir fichajes de hoy si el mes visto no es el actual
@@ -183,17 +190,23 @@ const PanelFichajesPage = () => {
         }
       });
 
-      const alertRes = await fichajeSmsRecordatoriosService.cargarAlertasHoy({
-        fichajesHoy: fichajesHoyFull,
-        vacacionesHoyIds,
-        bajasHoyIds
-      });
-      setAlertasSmsHoy(alertRes.alertas || {});
+      // En festivo no hay alertas SMS de olvido
+      if (festivoHoyRow) {
+        setAlertasSmsHoy({});
+      } else {
+        const alertRes = await fichajeSmsRecordatoriosService.cargarAlertasHoy({
+          fichajesHoy: fichajesHoyFull,
+          vacacionesHoyIds,
+          bajasHoyIds
+        });
+        setAlertasSmsHoy(alertRes.alertas || {});
+      }
     } catch (err) {
       console.error('Error cargando datos del panel:', err);
       setFichajesMes([]);
       setVacacionesMes([]);
       setBajasMes([]);
+      setFestivoHoy(null);
       setAlertasSmsHoy({});
     } finally {
       setLoading(false);
@@ -209,8 +222,8 @@ const PanelFichajesPage = () => {
   }, [loadDatosMes]);
 
   const resumenPorEmpleado = useMemo(
-    () => buildResumenPorEmpleado(empleados, fichajesMes, vacacionesMes, bajasMes, mesReferencia),
-    [empleados, fichajesMes, vacacionesMes, bajasMes, mesReferencia]
+    () => buildResumenPorEmpleado(empleados, fichajesMes, vacacionesMes, bajasMes, mesReferencia, festivoHoy),
+    [empleados, fichajesMes, vacacionesMes, bajasMes, mesReferencia, festivoHoy]
   );
 
   const stats = useMemo(
@@ -290,6 +303,24 @@ const PanelFichajesPage = () => {
           </KronosButton>
         ) : null}
       </div>
+
+      {festivoHoy ? (
+        <KronosCard
+          style={{
+            padding: '12px 16px',
+            marginBottom: 16,
+            border: '1px solid #00897B55',
+            background: '#00897B12'
+          }}
+        >
+          <div style={{ fontWeight: 700, fontSize: 14, color: '#00897B' }}>
+            Hoy festivo · {festivoHoy.nombre}
+          </div>
+          <div style={{ marginTop: 4, fontSize: 13, color: colors.textSecondary }}>
+            Calendario Barcelona. No se envían recordatorios SMS de fichaje.
+          </div>
+        </KronosCard>
+      ) : null}
 
       <div
         style={{

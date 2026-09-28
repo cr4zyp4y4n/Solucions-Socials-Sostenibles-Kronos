@@ -501,6 +501,130 @@ class FichajeSupabaseService {
   }
 
   // =====================================================
+  // FESTIVOS (calendario Barcelona / empresa; no por empleado)
+  // =====================================================
+
+  /**
+   * Obtener festivos activos en un rango de fechas
+   * @param {Date} fechaInicio
+   * @param {Date} fechaFin
+   * @param {string} ciudad - Por defecto Barcelona
+   * @returns {Promise<Object>}
+   */
+  async obtenerFestivosEnRango(fechaInicio, fechaFin, ciudad = 'Barcelona') {
+    try {
+      const { data, error } = await supabase
+        .from('festivos')
+        .select('*')
+        .eq('ciudad', ciudad)
+        .eq('activo', true)
+        .gte('fecha', fechaInicio.toISOString().split('T')[0])
+        .lte('fecha', fechaFin.toISOString().split('T')[0])
+        .order('fecha', { ascending: true });
+
+      if (error) throw error;
+      return { success: true, data: data || [] };
+    } catch (error) {
+      console.error('Error obteniendo festivos:', error);
+      return { success: false, error: error.message, data: [] };
+    }
+  }
+
+  /**
+   * Listar festivos de un año (admin; incluye inactivos)
+   * @param {number|string} anio
+   * @param {string} ciudad
+   */
+  async obtenerFestivosAnio(anio, ciudad = 'Barcelona') {
+    try {
+      const year = String(anio);
+      const { data, error } = await supabase
+        .from('festivos')
+        .select('*')
+        .eq('ciudad', ciudad)
+        .gte('fecha', `${year}-01-01`)
+        .lte('fecha', `${year}-12-31`)
+        .order('fecha', { ascending: true });
+
+      if (error) throw error;
+      return { success: true, data: data || [] };
+    } catch (error) {
+      console.error('Error obteniendo festivos del año:', error);
+      return { success: false, error: error.message, data: [] };
+    }
+  }
+
+  /**
+   * Crear festivo
+   */
+  async crearFestivo({ fecha, nombre, ambito = 'estatal', ciudad = 'Barcelona', userId = null }) {
+    try {
+      const fechaStr = typeof fecha === 'string' ? fecha : fecha.toISOString().split('T')[0];
+      const { data, error } = await supabase
+        .from('festivos')
+        .insert({
+          fecha: fechaStr,
+          nombre: (nombre || '').trim(),
+          ambito: ambito || 'estatal',
+          ciudad: ciudad || 'Barcelona',
+          activo: true,
+          created_by: userId
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+      return { success: true, data };
+    } catch (error) {
+      console.error('Error creando festivo:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Actualizar festivo (nombre, ámbito, activo)
+   */
+  async actualizarFestivo(festivoId, patch = {}) {
+    try {
+      const updates = {};
+      if (patch.nombre != null) updates.nombre = String(patch.nombre).trim();
+      if (patch.ambito != null) updates.ambito = patch.ambito;
+      if (patch.activo != null) updates.activo = !!patch.activo;
+      if (patch.fecha != null) {
+        updates.fecha = typeof patch.fecha === 'string'
+          ? patch.fecha
+          : patch.fecha.toISOString().split('T')[0];
+      }
+      const { data, error } = await supabase
+        .from('festivos')
+        .update(updates)
+        .eq('id', festivoId)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return { success: true, data };
+    } catch (error) {
+      console.error('Error actualizando festivo:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Eliminar festivo
+   */
+  async eliminarFestivo(festivoId) {
+    try {
+      const { error } = await supabase.from('festivos').delete().eq('id', festivoId);
+      if (error) throw error;
+      return { success: true };
+    } catch (error) {
+      console.error('Error eliminando festivo:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  // =====================================================
   // GESTIÓN DE PAUSAS
   // =====================================================
 

@@ -36,6 +36,7 @@ import { supabase } from '../config/supabase';
 import FichajeAdminSection from './FichajeAdminSection';
 import FichajeCodigosAdmin from './FichajeCodigosAdmin';
 import FichajeDescansosAdmin from './FichajeDescansosAdmin';
+import FichajeFestivosAdmin from './FichajeFestivosAdmin';
 
 const AdminPanel = () => {
   const { user } = useAuth();
@@ -43,7 +44,7 @@ const AdminPanel = () => {
   const { navigateTo } = useNavigation();
 
   // Estados principales
-  const [activeTab, setActiveTab] = useState('usuarios'); // 'usuarios', 'fichajes', 'codigos-fichaje' o 'descansos-fichaje'
+  const [activeTab, setActiveTab] = useState('usuarios'); // 'usuarios', 'fichajes', 'codigos-fichaje', 'descansos-fichaje', 'festivos-fichaje'
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -509,6 +510,26 @@ const AdminPanel = () => {
           <Clock size={18} />
           Reglas de Descanso
         </button>
+        <button
+          onClick={() => setActiveTab('festivos-fichaje')}
+          style={{
+            padding: '12px 24px',
+            backgroundColor: 'transparent',
+            border: 'none',
+            borderBottom: activeTab === 'festivos-fichaje' ? `3px solid ${colors.primary}` : '3px solid transparent',
+            color: activeTab === 'festivos-fichaje' ? colors.primary : colors.textSecondary,
+            fontSize: '15px',
+            fontWeight: activeTab === 'festivos-fichaje' ? '600' : '500',
+            cursor: 'pointer',
+            transition: 'all 0.2s',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px'
+          }}
+        >
+          <Calendar size={18} />
+          Festivos
+        </button>
       </div>
 
       {/* Mensajes */}
@@ -625,6 +646,8 @@ const AdminPanel = () => {
         <FichajeCodigosAdmin />
       ) : activeTab === 'descansos-fichaje' ? (
         <FichajeDescansosAdmin />
+      ) : activeTab === 'festivos-fichaje' ? (
+        <FichajeFestivosAdmin />
       ) : (
         <>
           {/* Estadísticas */}

@@ -102,10 +102,20 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
     return Response.json({ ok: false, error: `Error subiendo foto: ${upErr.message}` }, { status: 500 });
   }
 
+  const ocrPending = {
+    identidad_ocr_status: 'pending',
+    identidad_ocr_match: null,
+    identidad_ocr_confianza: null,
+    identidad_ocr_dni_detectado: null,
+    identidad_ocr_at: null,
+    identidad_ocr_detalle: { pending: true }
+  };
+
   const payload = {
     identidad_foto_path: storagePath,
     identidad_foto_at: nowIso,
     identidad_foto_hash: hash,
+    ...ocrPending,
     updated_at: nowIso
   };
 
@@ -117,7 +127,9 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
           ok: false,
           error: String(updErr.message || '').includes('identidad_foto')
             ? 'Falta migrar identidad foto en Supabase. Ejecuta database/alter_firma_identidad_foto.sql'
-            : updErr.message
+            : String(updErr.message || '').includes('identidad_ocr')
+              ? 'Falta migrar OCR identidad. Ejecuta database/alter_firma_identidad_ocr.sql'
+              : updErr.message
         },
         { status: 500 }
       );
@@ -128,7 +140,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
       .update({
         identidad_foto_path: storagePath,
         identidad_foto_at: nowIso,
-        identidad_foto_hash: hash
+        identidad_foto_hash: hash,
+        ...ocrPending
       })
       .eq('id', documentoId);
     if (updErr) {
@@ -137,7 +150,9 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
           ok: false,
           error: String(updErr.message || '').includes('identidad_foto')
             ? 'Falta migrar identidad foto en Supabase. Ejecuta database/alter_firma_identidad_foto.sql'
-            : updErr.message
+            : String(updErr.message || '').includes('identidad_ocr')
+              ? 'Falta migrar OCR identidad. Ejecuta database/alter_firma_identidad_ocr.sql'
+              : updErr.message
         },
         { status: 500 }
       );

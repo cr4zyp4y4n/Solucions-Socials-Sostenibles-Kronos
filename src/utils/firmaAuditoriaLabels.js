@@ -8,6 +8,7 @@ const ACCION_LABELS = {
   dni_confirmado: 'DNI confirmado en portal',
   dni_confirmacion_fallida: 'DNI incorrecto en portal',
   identidad_foto_subida: 'Foto de identidad (selfie + DNI) enviada',
+  identidad_ocr_resultado: 'OCR de documento de identidad (DNI/NIE)',
   otp_solicitado: 'Código SMS solicitado',
   otp_verificado: 'Verificación código SMS',
   aceptado_y_firmado: 'Documento firmado electrónicamente',
@@ -160,6 +161,19 @@ export function describeFirmaAuditoriaRow(row) {
     notes.push('Finalidad: verificación de identidad');
     if (det.acepta_uso_verificacion) notes.push('Aceptó información de uso y almacenamiento');
     if (det.hash) notes.push(`SHA-256: ${String(det.hash).slice(0, 12)}…`);
+  }
+  if (accion === 'identidad_ocr_resultado') {
+    notes.push('Señal informativa (no bloquea la firma)');
+    if (det.status) notes.push(`Estado: ${det.status}`);
+    if (det.match === true) notes.push('Coincide con BBDD: sí');
+    if (det.match === false) notes.push('Coincide con BBDD: no');
+    if (det.dni_esperado) notes.push(`En BBDD: ${det.dni_esperado}`);
+    if (det.dni_detectado) notes.push(`OCR detectó: ${det.dni_detectado}`);
+    else notes.push('OCR detectó: (nada legible)');
+    if (det.confianza != null) notes.push(`Confianza: ${Math.round(Number(det.confianza) * 100)}%`);
+    if (Array.isArray(det.candidatos) && det.candidatos.length > 1) {
+      notes.push(`Otros candidatos: ${det.candidatos.join(', ')}`);
+    }
   }
   if (accion === 'pack_aceptado_y_firmado' || accion === 'aceptado_y_firmado') {
     if (det.trabajador) notes.push(det.trabajador);

@@ -7,7 +7,8 @@ import {
   AlertCircle,
   Umbrella,
   Pencil,
-  User
+  User,
+  PartyPopper
 } from 'lucide-react';
 import {
   startOfMonth,
@@ -31,7 +32,7 @@ import Sensitive from './Sensitive';
 import { useAuth } from './AuthContext';
 import { supabase } from '../config/supabase';
 import { KronosButton, KronosCard, KronosFieldLabel, KronosInput, KronosSelect } from './kronos';
-import { empleadoEstadoFlow, estadoPanelColor } from './panelFichajes/panelFichajesHelpers';
+import { empleadoEstadoFlow, estadoPanelColor, FESTIVO_COLOR } from './panelFichajes/panelFichajesHelpers';
 import FichajeDetailsModal from './FichajeDetailsModal';
 import FichajeEditModal from './FichajeEditModal';
 
@@ -42,7 +43,8 @@ const LEGEND_ITEMS = [
   { key: 'fichaje', label: 'Fichaje' },
   { key: 'curso', label: 'En curso' },
   { key: 'vacaciones', label: 'Vacaciones' },
-  { key: 'baja', label: 'Baja' }
+  { key: 'baja', label: 'Baja' },
+  { key: 'festivo', label: 'Festivo' }
 ];
 
 const FichajeEmpleadoPerfil = ({ empleado, onBack, resumen, mesInicial }) => {
@@ -60,6 +62,7 @@ const FichajeEmpleadoPerfil = ({ empleado, onBack, resumen, mesInicial }) => {
   const [modoPeriodoVacaciones, setModoPeriodoVacaciones] = useState(false);
   const [periodoPrimerDia, setPeriodoPrimerDia] = useState(null);
   const [bajas, setBajas] = useState([]);
+  const [festivos, setFestivos] = useState([]);
   const [showBajaForm, setShowBajaForm] = useState(false);
   const [bajaForm, setBajaForm] = useState({ fecha_inicio: '', fecha_fin: '', tipo: '', notas: '' });
   const [savingBaja, setSavingBaja] = useState(false);
@@ -127,6 +130,15 @@ const FichajeEmpleadoPerfil = ({ empleado, onBack, resumen, mesInicial }) => {
     });
   }, [empleadoId, calendarMonth]);
 
+  // Festivos Barcelona del mes visible
+  useEffect(() => {
+    const start = startOfMonth(calendarMonth);
+    const end = endOfMonth(calendarMonth);
+    fichajeSupabaseService.obtenerFestivosEnRango(start, end).then((res) => {
+      setFestivos(res.success ? res.data || [] : []);
+    });
+  }, [calendarMonth]);
+
   // Mapa fecha (YYYY-MM-DD) -> fichaje
   const fichajesPorFecha = useMemo(() => {
     const map = {};
@@ -159,8 +171,17 @@ const FichajeEmpleadoPerfil = ({ empleado, onBack, resumen, mesInicial }) => {
     return set;
   }, [bajas]);
 
+  const festivosPorFecha = useMemo(() => {
+    const map = {};
+    (festivos || []).forEach((f) => {
+      map[f.fecha] = f;
+    });
+    return map;
+  }, [festivos]);
+
   const toggleVacacion = async (dateKey) => {
     if (!userCanEditVacaciones || !empleadoId || togglingVacacion) return;
+    if (festivosPorFecha[dateKey]) return;
     setTogglingVacacion(true);
     const esVacacion = vacacionesPorFecha.has(dateKey);
     try {
@@ -179,6 +200,7 @@ const FichajeEmpleadoPerfil = ({ empleado, onBack, resumen, mesInicial }) => {
   /** Modo periodo: primer clic guarda el día, segundo clic marca todos los días entre ambos como vacaciones */
   const handleClicDiaCalendario = (dateKey) => {
     if (!userCanEditVacaciones) return;
+    if (festivosPorFecha[dateKey] && !modoPeriodoVacaciones) return;
     if (modoPeriodoVacaciones) {
       if (periodoPrimerDia === null) {
         setPeriodoPrimerDia(dateKey);
@@ -199,7 +221,7 @@ const FichajeEmpleadoPerfil = ({ empleado, onBack, resumen, mesInicial }) => {
         let current = desde;
         while (current <= hasta) {
           const key = format(current, 'yyyy-MM-dd');
-          if (!vacacionesPorFecha.has(key)) {
+          if (!vacacionesPorFecha.has(key) && !festivosPorFecha[key]) {
             const res = await fichajeSupabaseService.añadirVacacion(empleadoId, key, user?.id);
             if (res.success && res.data) nuevas.push(res.data);
           }
@@ -294,6 +316,7 @@ const FichajeEmpleadoPerfil = ({ empleado, onBack, resumen, mesInicial }) => {
       case 'curso': return colors.warning;
       case 'vacaciones': return colors.info || '#2196F3';
       case 'baja': return colors.error || colors.warning;
+      case 'festivo': return FESTIVO_COLOR;
       default: return colors.textSecondary;
     }
   };
@@ -483,12 +506,14 @@ const FichajeEmpleadoPerfil = ({ empleado, onBack, resumen, mesInicial }) => {
               {days.map((day, idx) => {
                 const dateKey = format(day, 'yyyy-MM-dd');
                 const dayFichajes = fichajesPorFecha[dateKey] || [];
+                const festivo = festivosPorFecha[dateKey];
+                const isFestivo = !!festivo;
                 const isVacacion = vacacionesPorFecha.has(dateKey);
                 const isBaja = bajasPorFecha.has(dateKey);
                 const isCurrentMonth = isSameMonth(day, calendarMonth);
                 const isTodayDate = isToday(day);
                 const isFutureDate = isFuture(day) && !isTodayDate;
-                const canToggleThisDay = userCanEditVacaciones;
+                const canToggleThisDay = userCanEditVacaciones && !isFestivo;
                 const esPrimerDiaPeriodo = modoPeriodoVacaciones && periodoPrimerDia === dateKey;
 
                 return (
@@ -500,6 +525,8 @@ const FichajeEmpleadoPerfil = ({ empleado, onBack, resumen, mesInicial }) => {
                       borderRadius: '8px',
                       backgroundColor: !isCurrentMonth
                         ? colors.surface
+                        : isFestivo
+                        ? `${FESTIVO_COLOR}18`
                         : isVacacion
                         ? (colors.info || '#2196F3') + '18'
                         : isBaja
@@ -511,6 +538,8 @@ const FichajeEmpleadoPerfil = ({ empleado, onBack, resumen, mesInicial }) => {
                         ? `2px solid ${colors.warning}`
                         : isTodayDate
                         ? `2px solid ${colors.primary}`
+                        : isFestivo
+                        ? `1px solid ${FESTIVO_COLOR}`
                         : isVacacion
                         ? `1px solid ${colors.info || '#2196F3'}`
                         : isBaja
@@ -531,7 +560,9 @@ const FichajeEmpleadoPerfil = ({ empleado, onBack, resumen, mesInicial }) => {
                       }}
                       onClick={canToggleThisDay ? () => handleClicDiaCalendario(dateKey) : undefined}
                       title={
-                        canToggleThisDay
+                        isFestivo
+                          ? festivo.nombre
+                          : canToggleThisDay
                           ? modoPeriodoVacaciones
                             ? periodoPrimerDia
                               ? 'Clic aquí como último día del periodo'
@@ -544,7 +575,26 @@ const FichajeEmpleadoPerfil = ({ empleado, onBack, resumen, mesInicial }) => {
                     >
                       {format(day, 'd')}
                     </div>
-                    {isVacacion && (
+                    {isFestivo && (
+                      <div
+                        style={{
+                          fontSize: '10px',
+                          padding: '2px 6px',
+                          borderRadius: '4px',
+                          backgroundColor: `${FESTIVO_COLOR}30`,
+                          color: colors.text,
+                          marginBottom: '4px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px'
+                        }}
+                        title={festivo.nombre}
+                      >
+                        <PartyPopper size={10} />
+                        Festivo
+                      </div>
+                    )}
+                    {isVacacion && !isFestivo && (
                       <div
                         style={{
                           fontSize: '10px',
@@ -579,7 +629,7 @@ const FichajeEmpleadoPerfil = ({ empleado, onBack, resumen, mesInicial }) => {
                         Vacaciones
                       </div>
                     )}
-                    {isBaja && !isVacacion && (
+                    {isBaja && !isVacacion && !isFestivo && (
                       <div
                         style={{
                           fontSize: '10px',

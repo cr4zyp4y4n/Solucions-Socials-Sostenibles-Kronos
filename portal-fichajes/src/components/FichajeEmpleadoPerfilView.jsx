@@ -34,12 +34,14 @@ import { formatTimeMadrid, formatDateShortMadrid, formatDateTimeMadrid, formatea
 import { colors } from '../theme';
 
 const WEEKDAYS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+const FESTIVO_COLOR = '#00897B';
 
 export default function FichajeEmpleadoPerfilView({ empleado, onBack }) {
   const [calendarMonth, setCalendarMonth] = useState(new Date());
   const [fichajes, setFichajes] = useState([]);
   const [vacaciones, setVacaciones] = useState([]);
   const [bajas, setBajas] = useState([]);
+  const [festivos, setFestivos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedFichaje, setSelectedFichaje] = useState(null);
   const [auditoria, setAuditoria] = useState([]);
@@ -56,18 +58,21 @@ export default function FichajeEmpleadoPerfilView({ empleado, onBack }) {
         const end = endOfMonth(calendarMonth);
         const startBajas = subMonths(start, 1);
         const endBajas = addMonths(end, 1);
-        const [resFichajes, resVacaciones, resBajas] = await Promise.all([
+        const [resFichajes, resVacaciones, resBajas, resFestivos] = await Promise.all([
           fichajePortalService.obtenerFichajesEmpleado(empleadoId, start, end),
           fichajePortalService.obtenerVacacionesEmpleado(empleadoId, start, end),
           fichajePortalService.obtenerBajasEmpleado(empleadoId, startBajas, endBajas),
+          fichajePortalService.obtenerFestivosEnRango(start, end),
         ]);
         setFichajes(resFichajes.success ? resFichajes.data || [] : []);
         setVacaciones(resVacaciones.success ? resVacaciones.data || [] : []);
         setBajas(resBajas.success ? resBajas.data || [] : []);
+        setFestivos(resFestivos.success ? resFestivos.data || [] : []);
       } catch (err) {
         setFichajes([]);
         setVacaciones([]);
         setBajas([]);
+        setFestivos([]);
       } finally {
         setLoading(false);
       }
@@ -115,6 +120,14 @@ export default function FichajeEmpleadoPerfilView({ empleado, onBack }) {
     });
     return set;
   }, [bajas]);
+
+  const festivosPorFecha = useMemo(() => {
+    const map = {};
+    (festivos || []).forEach((f) => {
+      map[f.fecha] = f;
+    });
+    return map;
+  }, [festivos]);
 
   const resumenMes = useMemo(() => {
     const completos = fichajes.filter((f) => f.hora_salida);
@@ -393,6 +406,8 @@ export default function FichajeEmpleadoPerfilView({ empleado, onBack }) {
               {days.map((day, idx) => {
                 const dateKey = format(day, 'yyyy-MM-dd');
                 const dayFichajes = fichajesPorFecha[dateKey] || [];
+                const festivo = festivosPorFecha[dateKey];
+                const isFestivo = !!festivo;
                 const isVacacion = vacacionesPorFecha.has(dateKey);
                 const isBaja = bajasPorFecha.has(dateKey);
                 const isCurrentMonth = isSameMonth(day, calendarMonth);
@@ -410,6 +425,8 @@ export default function FichajeEmpleadoPerfilView({ empleado, onBack }) {
                       borderRadius: 8,
                       backgroundColor: !isCurrentMonth
                         ? colors.surface
+                        : isFestivo
+                        ? `${FESTIVO_COLOR}18`
                         : isVacacion
                         ? (colors.info || '#2196F3') + '18'
                         : isBaja
@@ -419,6 +436,8 @@ export default function FichajeEmpleadoPerfilView({ empleado, onBack }) {
                         : 'transparent',
                       border: isTodayDate
                         ? `2px solid ${colors.primary}`
+                        : isFestivo
+                        ? `1px solid ${FESTIVO_COLOR}`
                         : isVacacion
                         ? `1px solid ${colors.info || '#2196F3'}`
                         : isBaja
@@ -437,7 +456,25 @@ export default function FichajeEmpleadoPerfilView({ empleado, onBack }) {
                     >
                       {format(day, 'd')}
                     </div>
-                    {isVacacion && (
+                    {isFestivo && (
+                      <div
+                        style={{
+                          fontSize: 10,
+                          padding: '2px 6px',
+                          borderRadius: 4,
+                          backgroundColor: `${FESTIVO_COLOR}30`,
+                          color: colors.text,
+                          marginBottom: 4,
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                        }}
+                        title={festivo.nombre}
+                      >
+                        Festivo
+                      </div>
+                    )}
+                    {isVacacion && !isFestivo && (
                       <div
                         style={{
                           fontSize: 10,
@@ -455,7 +492,7 @@ export default function FichajeEmpleadoPerfilView({ empleado, onBack }) {
                         Vacaciones
                       </div>
                     )}
-                    {isBaja && !isVacacion && (
+                    {isBaja && !isVacacion && !isFestivo && (
                       <div
                         style={{
                           fontSize: 10,

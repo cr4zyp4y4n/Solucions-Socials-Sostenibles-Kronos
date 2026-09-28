@@ -160,6 +160,28 @@ export async function obtenerBajasEnRango(fechaInicio, fechaFin) {
 }
 
 /**
+ * Festivos activos en un rango (calendario Barcelona; solo lectura).
+ */
+export async function obtenerFestivosEnRango(fechaInicio, fechaFin, ciudad = 'Barcelona') {
+  try {
+    const { data, error } = await supabase
+      .from('festivos')
+      .select('*')
+      .eq('ciudad', ciudad)
+      .eq('activo', true)
+      .gte('fecha', fechaInicio.toISOString().split('T')[0])
+      .lte('fecha', fechaFin.toISOString().split('T')[0])
+      .order('fecha', { ascending: true });
+
+    if (error) throw error;
+    return { success: true, data: data || [] };
+  } catch (err) {
+    console.error('Error obteniendo festivos:', err);
+    return { success: false, data: [] };
+  }
+}
+
+/**
  * Obtener historial de auditoría de un fichaje (solo lectura, para inspección).
  * @param {string} fichajeId - UUID del fichaje
  * @returns {Promise<{ success: boolean, data: Array }>}

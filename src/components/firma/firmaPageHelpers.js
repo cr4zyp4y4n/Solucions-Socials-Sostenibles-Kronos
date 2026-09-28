@@ -209,7 +209,14 @@ export function buildFirmaTimeline(envio) {
       at: envio.identidad_foto_at
         || (envio.documentos || []).find((d) => d?.identidad_foto_at)?.identidad_foto_at
         || null,
-      note: 'Evidencia visual obligatoria antes del SMS.'
+      note: (() => {
+        const ocr = envioIdentidadOcr(envio);
+        if (ocr?.status === 'match') return 'OCR: DNI detectado en la foto (señal OK).';
+        if (ocr?.status === 'no_match') return 'OCR: no coincide con DNI BBDD (revisar).';
+        if (ocr?.status === 'ilegible') return 'OCR: documento poco legible.';
+        if (ocr?.status === 'pending') return 'OCR pendiente / en curso.';
+        return 'Evidencia visual obligatoria antes del SMS.';
+      })()
     },
     {
       key: 'otp',
@@ -255,6 +262,90 @@ export function envioTieneIdentidadFoto(envio) {
   if (!envio) return false;
   if (envio.identidad_foto_path || envio.identidad_foto_at) return true;
   return (envio.documentos || []).some((d) => d?.identidad_foto_path || d?.identidad_foto_at);
+}
+
+/** Campos OCR del envío o del primer documento legacy con foto. */
+export function envioIdentidadOcr(envio) {
+  if (!envio) return null;
+  if (envio.identidad_ocr_status || envio.identidad_ocr_at) {
+    return {
+      status: envio.identidad_ocr_status || null,
+      match: envio.identidad_ocr_match === true,
+      confianza: envio.identidad_ocr_confianza,
+      dniDetectado: envio.identidad_ocr_dni_detectado || null,
+      at: envio.identidad_ocr_at || null
+    };
+  }
+  const doc = (envio.documentos || []).find((d) => d?.identidad_ocr_status || d?.identidad_foto_path);
+  if (!doc) return null;
+  return {
+    status: doc.identidad_ocr_status || null,
+    match: doc.identidad_ocr_match === true,
+    confianza: doc.identidad_ocr_confianza,
+    dniDetectado: doc.identidad_ocr_dni_detectado || null,
+    at: doc.identidad_ocr_at || null
+  };
+}
+
+export function identidadOcrBadgeMeta(ocr, colors = {}) {
+  const status = String(ocr?.status || '').trim();
+  if (!status) return null;
+  if (status === 'match' || ocr?.match) {
+    return {
+      key: 'match',
+      label: 'OCR DNI/NIE · OK',
+      color: colors.success || '#2e7d32',
+      title: 'El OCR detectó el DNI/NIE esperado en la foto (señal informativa).'
+    };
+  }
+  if (status === 'pending') {
+    return {
+      key: 'pending',
+      label: 'OCR DNI/NIE · pendiente',
+      color: colors.warning || '#ed6c02',
+      title: 'Foto recibida; análisis OCR aún no finalizado.'
+    };
+  }
+  if (status === 'no_match') {
+    return {
+      key: 'no_match',
+      label: 'OCR DNI/NIE · no coincide',
+      color: colors.error || '#c62828',
+      title: ocr?.dniDetectado
+        ? `OCR leyó «${ocr.dniDetectado}»; no coincide con el DNI/NIE de BBDD (revisar foto).`
+        : 'OCR no encontró el DNI/NIE esperado (revisar foto; puede ser ilegible).'
+    };
+  }
+  if (status === 'ilegible') {
+    return {
+      key: 'ilegible',
+      label: 'OCR DNI/NIE · ilegible',
+      color: colors.warning || '#ed6c02',
+      title: 'No se pudo leer un DNI/NIE claro en la foto.'
+    };
+  }
+  if (status === 'skipped') {
+    return {
+      key: 'skipped',
+      label: 'OCR · sin doc. en BBDD',
+      color: colors.textSecondary || '#757575',
+      title: 'No hay DNI/NIE en ficha del trabajador para comparar.'
+    };
+  }
+  if (status === 'error') {
+    return {
+      key: 'error',
+      label: 'OCR DNI/NIE · error',
+      color: colors.textSecondary || '#757575',
+      title: 'Falló el análisis OCR (no bloquea la firma).'
+    };
+  }
+  return {
+    key: status,
+    label: `OCR · ${status}`,
+    color: colors.textSecondary || '#757575',
+    title: 'Resultado OCR de identidad'
+  };
 }
 
 export function documentosPackOrdenados(envio) {

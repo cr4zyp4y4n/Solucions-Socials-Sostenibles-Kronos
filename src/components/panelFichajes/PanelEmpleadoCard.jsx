@@ -254,6 +254,11 @@ export default function PanelEmpleadoCard({ empleado, resumen, alertaSms = null,
               <Umbrella size={13} />
               Vacaciones hasta {formatDateShortMadrid(resumen.vacacionesHasta)}
             </span>
+          ) : resumen.estaEnFestivo ? (
+            <span style={{ color: '#00897B', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+              <Calendar size={13} />
+              Festivo{resumen.festivoHoyNombre ? ` · ${resumen.festivoHoyNombre}` : ''}
+            </span>
           ) : !resumen.trabajandoAhora && resumen.ultimoFichaje ? (
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
               <Calendar size={13} />

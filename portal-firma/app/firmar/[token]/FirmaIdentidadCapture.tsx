@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { postIdentidadOcrResult, runIdentidadOcrOnBlob } from '@/lib/identidadOcrClient';
 
 type Props = {
   token: string;
@@ -8,7 +9,11 @@ type Props = {
   onDone: () => void;
 };
 
-export default function FirmaIdentidadCapture({ token, alreadyDone = false, onDone }: Props) {
+export default function FirmaIdentidadCapture({
+  token,
+  alreadyDone = false,
+  onDone
+}: Props) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -17,6 +22,7 @@ export default function FirmaIdentidadCapture({ token, alreadyDone = false, onDo
   const [cameraOn, setCameraOn] = useState(false);
   const [cameraErr, setCameraErr] = useState('');
   const [uploading, setUploading] = useState(false);
+  const [ocrNote, setOcrNote] = useState('');
   const [err, setErr] = useState('');
   const [doneLocal, setDoneLocal] = useState(alreadyDone);
   const [aceptaUso, setAceptaUso] = useState(false);
@@ -103,6 +109,39 @@ export default function FirmaIdentidadCapture({ token, alreadyDone = false, onDo
     stopCamera();
   };
 
+  /** OCR en segundo plano: no bloquea continuar con DNI/SMS. */
+  const runOcrInBackground = (image: Blob) => {
+    setOcrNote('Analizando documento en la foto (opcional)…');
+    void (async () => {
+      try {
+        // No pasamos el DNI esperado al cliente (privacidad); el servidor re-evalúa con ocrText.
+        const result = await runIdentidadOcrOnBlob(image, null);
+        const saved = await postIdentidadOcrResult(token, result);
+        if (!saved.ok) {
+          setOcrNote('Foto guardada. No se pudo guardar el análisis automático (no bloquea).');
+          return;
+        }
+        const matched = saved.match ?? false;
+        setOcrNote(
+          matched
+            ? 'Verificación automática del documento: señal OK (informativa).'
+            : 'Foto guardada. La verificación automática del documento es solo informativa.'
+        );
+      } catch {
+        await postIdentidadOcrResult(token, {
+          status: 'error',
+          match: false,
+          confianza: 0,
+          dniDetectado: null,
+          candidatos: [],
+          ocrText: '',
+          detalle: { engine: 'tesseract.js', reason: 'ocr_client_exception' }
+        }).catch(() => {});
+        setOcrNote('Foto guardada. No se pudo completar el análisis automático (no bloquea la firma).');
+      }
+    })();
+  };
+
   const upload = async () => {
     if (!blob) {
       setErr('Haz la foto antes de continuar.');
@@ -126,6 +165,7 @@ export default function FirmaIdentidadCapture({ token, alreadyDone = false, onDo
       if (!res.ok || !json.ok) throw new Error(json.error || 'No se pudo subir la foto');
       setDoneLocal(true);
       onDone();
+      runOcrInBackground(blob);
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : 'Error subiendo la foto');
     } finally {
@@ -135,8 +175,15 @@ export default function FirmaIdentidadCapture({ token, alreadyDone = false, onDo
 
   if (doneLocal) {
     return (
-      <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
-        Foto de identidad recibida y guardada para verificación. Puedes continuar con el DNI y el SMS.
+      <div className="space-y-2">
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+          Foto de identidad recibida y guardada para verificación. Puedes continuar con el DNI y el SMS.
+        </div>
+        {ocrNote ? (
+          <div className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-xs text-zinc-600">
+            {ocrNote}
+          </div>
+        ) : null}
       </div>
     );
   }
