@@ -1,4 +1,9 @@
-import { buildAceptacionRespuestaLine, getFirmaDocMeta, normalizeRespuestaAceptacion } from '@/lib/firmaDocumentosMeta';
+import {
+  buildAceptacionRespuestaLine,
+  getFirmaDocMeta,
+  getReadStatementNo,
+  normalizeRespuestaAceptacion
+} from '@/lib/firmaDocumentosMeta';
 import { getOtpScopeIds, resolveFirmaToken } from '@/lib/resolveFirmaToken';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getRequestInfo } from '@/lib/requestInfo';
@@ -236,6 +241,33 @@ export async function POST(_req: Request, ctx: { params: Promise<{ token: string
   const smsVerificadoAt = consumed[0]?.consumed_at || null;
   const entityKey = resolved.envio?.entity_key || null;
 
+  const declaracionesAceptadas = await Promise.all(
+    resolved.documentos.map(async (d) => {
+      const { opciones } = await loadDocumentoOpciones(d.id);
+      const respuesta = normalizeRespuestaAceptacion(opciones);
+      if (!respuesta) {
+        throw new Error(`Falta una respuesta Sí/No verificable para el documento ${d.id}`);
+      }
+
+      return {
+        documento_id: d.id,
+        tipo_documento: d.tipo_documento,
+        respuesta,
+        lectura_confirmada: respuesta === 'si',
+        declaracion:
+          respuesta === 'si'
+            ? getFirmaDocMeta(d.tipo_documento).readStatement
+            : getReadStatementNo(d.tipo_documento),
+        aceptacion_linea: buildAceptacionRespuestaLine(d.tipo_documento, respuesta)
+      };
+    })
+  ).catch((e: unknown) => {
+    const msg = e instanceof Error ? e.message : 'Faltan respuestas de aceptación verificables';
+    return Response.json({ ok: false, error: msg }, { status: 400 });
+  });
+
+  if (declaracionesAceptadas instanceof Response) return declaracionesAceptadas;
+
   const signedPaths: string[] = [];
   let anyPades = false;
   try {
@@ -293,20 +325,7 @@ export async function POST(_req: Request, ctx: { params: Promise<{ token: string
       storage_paths_firmados: signedPaths,
       sellado: anyPades ? 'pades_evidencias' : 'evidencias_sin_pades',
       pades_aplicado: anyPades,
-      declaraciones_aceptadas: await Promise.all(
-        resolved.documentos.map(async (d) => {
-          const { opciones } = await loadDocumentoOpciones(d.id);
-          const respuesta = normalizeRespuestaAceptacion(opciones) || 'si';
-          return {
-            documento_id: d.id,
-            tipo_documento: d.tipo_documento,
-            respuesta,
-            lectura_confirmada: respuesta === 'si',
-            declaracion: getFirmaDocMeta(d.tipo_documento).readStatement,
-            aceptacion_linea: buildAceptacionRespuestaLine(d.tipo_documento, respuesta)
-          };
-        })
-      )
+      declaraciones_aceptadas: declaracionesAceptadas
     }
   });
 
