@@ -89,6 +89,50 @@ class FichajeCodigosService {
   }
 
   /**
+   * Genera un código numérico de 6 cifras aleatorio que no exista en BBDD
+   * (revisa activos e inactivos para no reutilizar PINs antiguos).
+   * @param {number} maxIntentos
+   * @returns {Promise<{ success: boolean, codigo?: string, error?: string }>}
+   */
+  async generarCodigoAleatorioUnico(maxIntentos = 40) {
+    try {
+      for (let i = 0; i < maxIntentos; i++) {
+        const codigo = this._codigoSeisDigitosAleatorio();
+        const { data, error } = await supabase
+          .from('fichajes_codigos')
+          .select('id')
+          .eq('codigo', codigo)
+          .maybeSingle();
+
+        if (error && error.code !== 'PGRST116') throw error;
+        if (!data) {
+          return { success: true, codigo };
+        }
+      }
+      return {
+        success: false,
+        error: 'No se pudo generar un código único. Inténtalo de nuevo.'
+      };
+    } catch (error) {
+      console.error('Error generando código aleatorio:', error);
+      return {
+        success: false,
+        error: error.message || 'Error al generar el código'
+      };
+    }
+  }
+
+  /** @returns {string} 000000–999999 */
+  _codigoSeisDigitosAleatorio() {
+    if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+      const buf = new Uint32Array(1);
+      crypto.getRandomValues(buf);
+      return String(buf[0] % 1000000).padStart(6, '0');
+    }
+    return String(Math.floor(Math.random() * 1000000)).padStart(6, '0');
+  }
+
+  /**
    * Crear o actualizar un código de fichaje
    * @param {string} codigo - Código único
    * @param {string} empleadoId - ID del empleado en Holded

@@ -76,7 +76,7 @@ Comprueba `fichajes_sms_envios` y que el móvil reciba el SMS (solo si ya pasó 
 - No envía en **vacaciones** ni **bajas** (tablas existentes).
 - Máximo **1 SMS por tipo y día** (`entrada_olvidada` / `salida_olvidada`).
 - Solo filas con `activo = true`.
-- **Salida (2 pasos):** a `hora_salida + tolerancia` (ej. **17:15**) → solo SMS para que cierre la persona. A `+5 min` más (ej. **17:20**) → si sigue abierto, cierre automático con hora **17:20**. También cierra fichajes abiertos de **días anteriores**.
+- **Salida:** a `hora_salida + tolerancia` (ej. **17:15**) → SMS. A `+5 min` más (ej. **17:20**) → cierre automático. El SMS de salida ya **no depende de una ventana de 5 min** (antes el cron podía saltárselo). También cierra fichajes abiertos de **días anteriores**.
 - SQL RPC ampliada: `database/alter_cerrar_fichaje_automaticamente_hora_salida.sql` (ejecutar y **redeploy** de la Edge Function).
 
 ## Ampliar a más gente

@@ -38,6 +38,7 @@ const FichajeCodigosAdmin = () => {
     empleadoId: '',
     descripcion: ''
   });
+  const [generandoCodigo, setGenerandoCodigo] = useState(false);
   
   // Estados para importación Excel
   const [showImportModal, setShowImportModal] = useState(false);
@@ -119,7 +120,8 @@ const FichajeCodigosAdmin = () => {
   };
 
   // Abrir modal para crear/editar
-  const openModal = (codigo = null) => {
+  const openModal = async (codigo = null) => {
+    setError('');
     if (codigo) {
       setEditingCodigo(codigo);
       const descripcion = codigo.descripcion?.trim() || getEmpleadoNombre(codigo.empleado_id);
@@ -128,19 +130,52 @@ const FichajeCodigosAdmin = () => {
         empleadoId: codigo.empleado_id,
         descripcion: descripcion === 'Empleado no encontrado' ? '' : descripcion
       });
-    } else {
-      setEditingCodigo(null);
-      setFormData({
-        codigo: '',
-        empleadoId: '',
-        descripcion: ''
-      });
+      setShowModal(true);
+      return;
     }
+
+    setEditingCodigo(null);
+    setFormData({
+      codigo: '',
+      empleadoId: '',
+      descripcion: ''
+    });
     setShowModal(true);
+    setGenerandoCodigo(true);
+    try {
+      const gen = await fichajeCodigosService.generarCodigoAleatorioUnico();
+      if (gen.success && gen.codigo) {
+        setFormData((prev) => ({ ...prev, codigo: gen.codigo }));
+      } else {
+        setError(gen.error || 'No se pudo generar el código');
+      }
+    } finally {
+      setGenerandoCodigo(false);
+    }
+  };
+
+  const regenerarCodigo = async () => {
+    if (editingCodigo) return;
+    setGenerandoCodigo(true);
+    setError('');
+    try {
+      const gen = await fichajeCodigosService.generarCodigoAleatorioUnico();
+      if (gen.success && gen.codigo) {
+        setFormData((prev) => ({ ...prev, codigo: gen.codigo }));
+      } else {
+        setError(gen.error || 'No se pudo generar el código');
+      }
+    } finally {
+      setGenerandoCodigo(false);
+    }
   };
 
   // Guardar código
   const handleSave = async () => {
+    if (!editingCodigo && !formData.codigo.trim()) {
+      setError('Espera a que se genere el código o pulsa regenerar');
+      return;
+    }
     if (!formData.codigo.trim()) {
       setError('El código es requerido');
       return;
@@ -165,8 +200,12 @@ const FichajeCodigosAdmin = () => {
       );
       
       if (resultado.success) {
-        setSuccess(resultado.message);
-        setTimeout(() => setSuccess(''), 3000);
+        setSuccess(
+          editingCodigo
+            ? resultado.message
+            : `Código ${formData.codigo} creado para ${nombreEmpleado}`
+        );
+        setTimeout(() => setSuccess(''), 4000);
         setShowModal(false);
         loadCodigos();
       } else {
@@ -559,26 +598,58 @@ const FichajeCodigosAdmin = () => {
                 }}>
                   Código *
                 </label>
-                <input
-                  type="text"
-                  value={formData.codigo}
-                  onChange={(e) => setFormData({ ...formData, codigo: e.target.value.toUpperCase() })}
-                  placeholder="Ej: 1234"
-                  disabled={!!editingCodigo}
-                  style={{
-                    width: '100%',
-                    padding: '12px',
-                    border: `1px solid ${colors.border}`,
-                    borderRadius: '8px',
-                    fontSize: '14px',
-                    color: colors.text,
-                    backgroundColor: editingCodigo ? colors.background : colors.surface,
-                    outline: 'none',
-                    textTransform: 'uppercase',
-                    fontFamily: 'monospace',
-                    fontWeight: '600'
-                  }}
-                />
+                <div style={{ display: 'flex', gap: 8, alignItems: 'stretch' }}>
+                  <input
+                    type="text"
+                    value={generandoCodigo && !editingCodigo ? 'Generando…' : formData.codigo}
+                    readOnly
+                    disabled={!!editingCodigo || generandoCodigo}
+                    placeholder="Se genera automáticamente"
+                    style={{
+                      flex: 1,
+                      padding: '12px',
+                      border: `1px solid ${colors.border}`,
+                      borderRadius: '8px',
+                      fontSize: '18px',
+                      letterSpacing: '0.12em',
+                      color: colors.text,
+                      backgroundColor: colors.background,
+                      outline: 'none',
+                      fontFamily: 'monospace',
+                      fontWeight: '700'
+                    }}
+                  />
+                  {!editingCodigo ? (
+                    <button
+                      type="button"
+                      onClick={() => void regenerarCodigo()}
+                      disabled={generandoCodigo || loading}
+                      title="Generar otro código"
+                      style={{
+                        padding: '0 14px',
+                        border: `1px solid ${colors.border}`,
+                        borderRadius: 8,
+                        background: colors.surface,
+                        color: colors.text,
+                        cursor: generandoCodigo ? 'wait' : 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        fontSize: 13,
+                        fontWeight: 600,
+                        fontFamily: 'inherit'
+                      }}
+                    >
+                      <RefreshCw size={16} />
+                      Otro
+                    </button>
+                  ) : null}
+                </div>
+                <p style={{ margin: '6px 0 0', fontSize: 12, color: colors.textSecondary }}>
+                  {editingCodigo
+                    ? 'El código existente no se modifica (solo empleado/descripción).'
+                    : 'Código aleatorio de 6 dígitos; se comprueba que no exista ya en la base de datos.'}
+                </p>
               </div>
               
               <div>

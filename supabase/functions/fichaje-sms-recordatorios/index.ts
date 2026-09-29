@@ -67,10 +67,16 @@ function minutesNowInTz(date: Date, timeZone: string): number {
   return hour * 60 + minute;
 }
 
-function parseTimeToMinutes(t: string): number {
-  const m = String(t || '').trim().match(/^(\d{1,2}):(\d{2})/);
+function parseTimeToMinutes(t: unknown): number {
+  if (t == null) return 0;
+  // PostgREST a veces devuelve TIME como "17:00:00", a veces embebido en ISO
+  const raw = String(t).trim();
+  const m = raw.match(/(\d{1,2}):(\d{2})(?::\d{2})?/);
   if (!m) return 0;
-  return Number(m[1]) * 60 + Number(m[2]);
+  const h = Number(m[1]);
+  const min = Number(m[2]);
+  if (!Number.isFinite(h) || !Number.isFinite(min)) return 0;
+  return h * 60 + min;
 }
 
 function pad2(n: number) {
@@ -78,13 +84,15 @@ function pad2(n: number) {
 }
 
 function formatHmFromMinutes(mins: number): string {
-  const h = Math.floor(mins / 60);
-  const m = mins % 60;
+  // Normalizar por si se pasa del día (no debería en jornadas normales)
+  const total = ((Math.floor(mins) % (24 * 60)) + 24 * 60) % (24 * 60);
+  const h = Math.floor(total / 60);
+  const m = total % 60;
   return `${pad2(h)}:${pad2(m)}`;
 }
 
 /** 'YYYY-MM-DD HH:MM:00' wall clock Madrid for RPC */
-function localSalidaWall(fecha: string, horaSalida: string): string {
+function localSalidaWall(fecha: string, horaSalida: unknown): string {
   const mins = parseTimeToMinutes(horaSalida);
   return `${fecha} ${formatHmFromMinutes(mins)}:00`;
 }
@@ -204,7 +212,9 @@ Deno.serve(async (req) => {
       const telefono = normalizePhone(row.telefono);
       const fecha = dateKeyInTz(now, tz);
       const tol = Number(row.tolerancia_minutos) || 15;
-      const horaSalidaHm = formatHmFromMinutes(parseTimeToMinutes(row.hora_salida));
+      const entradaMins = parseTimeToMinutes(row.hora_entrada);
+      const salidaMins = parseTimeToMinutes(row.hora_salida);
+      const horaSalidaHm = formatHmFromMinutes(salidaMins);
 
       if (!empleadoId || empleadoId.startsWith('PENDIENTE')) {
         results.push({ empleado_id: empleadoId, skip: 'id_invalido' });
@@ -259,8 +269,19 @@ Deno.serve(async (req) => {
       }
 
       const minsNow = minutesNowInTz(now, tz);
-      const entradaLimit = parseTimeToMinutes(row.hora_entrada) + tol;
-      const salidaLimit = parseTimeToMinutes(row.hora_salida) + tol;
+      const entradaLimit = entradaMins + tol;
+      const salidaLimit = salidaMins + tol;
+      const cierreLimit = salidaLimit + GRACIA_CIERRE_MIN;
+
+      // Defensa: si TIME llega mal parseado (0) pero el raw no parece medianoche, loguear
+      if (salidaMins === 0 && String(row.hora_salida || '').trim() && !/^0?0:/.test(String(row.hora_salida))) {
+        results.push({
+          empleado_id: empleadoId,
+          warn: 'hora_salida_parse_sospechoso',
+          raw_hora_salida: row.hora_salida,
+          raw_hora_entrada: row.hora_entrada,
+        });
+      }
 
       const { data: vac } = await supabase
         .from('vacaciones')
@@ -286,12 +307,17 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      const { data: fichaje } = await supabase
+      const { data: fichaje, error: fichErr } = await supabase
         .from('fichajes')
-        .select('id, hora_entrada, hora_salida')
+        .select('id, fecha, hora_entrada, hora_salida')
         .eq('empleado_id', empleadoId)
         .eq('fecha', fecha)
         .maybeSingle();
+
+      if (fichErr) {
+        results.push({ empleado_id: empleadoId, skip: 'error_fichaje', error: fichErr.message });
+        continue;
+      }
 
       // Entrada olvidada → solo SMS
       if (minsNow >= entradaLimit && !fichaje?.hora_entrada) {
@@ -327,14 +353,13 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Salida olvidada:
-      // 1) SMS a hora_salida + tolerancia (ej. 17:15) — tiempo para que cierre la persona
-      // 2) Cierre auto a hora_salida + tolerancia + GRACIA (ej. 17:20), hora registrada = 17:20
-      if (fichaje?.hora_entrada && !fichaje?.hora_salida) {
-        const cierreLimit = salidaLimit + GRACIA_CIERRE_MIN;
+      // Salida olvidada (requiere entrada fichada y sin salida):
+      // - SMS: desde hora_salida+tolerancia (sin ventana estrecha; el cron cada 5 min no debe saltárselo)
+      // - Cierre: desde hora_salida+tolerancia+gracia
+      if (fichaje?.id && fichaje?.hora_entrada && !fichaje?.hora_salida) {
+        const tipo: TipoAviso = 'salida_olvidada';
 
-        if (minsNow >= salidaLimit && minsNow < cierreLimit) {
-          const tipo: TipoAviso = 'salida_olvidada';
+        if (minsNow >= salidaLimit) {
           const { data: ya } = await supabase
             .from('fichajes_sms_envios')
             .select('id')
@@ -359,46 +384,23 @@ Deno.serve(async (req) => {
             results.push({
               empleado_id: empleadoId,
               tipo,
-              phase: 'aviso_sms',
+              phase: minsNow >= cierreLimit ? 'sms_con_cierre' : 'aviso_sms',
               sent: !insErr && sms.ok,
               delivery: sms.delivery,
               error: insErr?.message || sms.error,
+              minsNow,
+              salidaLimit,
+              cierreLimit,
             });
-          } else {
+          } else if (minsNow < cierreLimit) {
             results.push({ empleado_id: empleadoId, tipo, phase: 'aviso_sms', skip: 'ya_enviado' });
           }
         }
 
         if (minsNow >= cierreLimit) {
-          // Asegurar SMS si el cron saltó la ventana 17:15–17:20
-          const tipo: TipoAviso = 'salida_olvidada';
-          const { data: ya } = await supabase
-            .from('fichajes_sms_envios')
-            .select('id')
-            .eq('empleado_id', empleadoId)
-            .eq('fecha', fecha)
-            .eq('tipo', tipo)
-            .maybeSingle();
-
-          if (!ya?.id) {
-            const cuerpo = buildMessage(tipo, row.nombre, horaSalidaHm);
-            const sms = await sendSms(telefono, cuerpo);
-            await supabase.from('fichajes_sms_envios').insert({
-              empleado_id: empleadoId,
-              fecha,
-              tipo,
-              telefono,
-              cuerpo,
-              delivery: sms.ok ? sms.delivery || 'sms' : 'error',
-              error_message: sms.ok ? null : sms.error || 'error',
-            });
-            if (sms.ok) sent += 1;
-            results.push({ empleado_id: empleadoId, tipo, phase: 'sms_tardio', sent: sms.ok });
-          }
-
           try {
-            const cierreHm = formatHmFromMinutes(parseTimeToMinutes(row.hora_salida) + tol + GRACIA_CIERRE_MIN);
-            const wall = localSalidaWall(fecha, cierreHm);
+            const cierreHm = formatHmFromMinutes(salidaMins + tol + GRACIA_CIERRE_MIN);
+            const wall = `${fecha} ${cierreHm}:00`;
             await cerrarAuto(
               supabase,
               fichaje.id,
@@ -406,15 +408,37 @@ Deno.serve(async (req) => {
               wall
             );
             closed += 1;
-            results.push({ empleado_id: empleadoId, closed_today: true, hora: wall, phase: 'cierre_auto' });
+            results.push({
+              empleado_id: empleadoId,
+              closed_today: true,
+              hora: wall,
+              phase: 'cierre_auto',
+              fichaje_id: fichaje.id,
+            });
           } catch (e) {
             results.push({
               empleado_id: empleadoId,
               closed_today: false,
+              fichaje_id: fichaje.id,
               error: e instanceof Error ? e.message : String(e),
+              phase: 'cierre_auto_error',
             });
           }
         }
+      } else if (minsNow >= salidaLimit) {
+        results.push({
+          empleado_id: empleadoId,
+          skip: 'salida_no_aplica',
+          motivo: !fichaje
+            ? 'sin_fichaje_hoy'
+            : !fichaje.hora_entrada
+              ? 'sin_entrada'
+              : fichaje.hora_salida
+                ? 'ya_tiene_salida'
+                : 'desconocido',
+          minsNow,
+          salidaLimit,
+        });
       }
     }
 
