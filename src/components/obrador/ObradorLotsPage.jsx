@@ -199,6 +199,11 @@ export default function ObradorLotsPage() {
   const [enviant, setEnviant] = useState(false);
   const [error, setError] = useState('');
   const [etiquetaModal, setEtiquetaModal] = useState(null);
+  const [filtreCerca, setFiltreCerca] = useState('');
+  const [filtreEstat, setFiltreEstat] = useState('');
+  const [hasMore, setHasMore] = useState(false);
+  const [carregantMes, setCarregantMes] = useState(false);
+  const PAGE_SIZE = 50;
 
   const inputStyle = {
     width: '100%',
@@ -250,26 +255,36 @@ export default function ObradorLotsPage() {
   const tempMin = producteSeleccionat?.temp_coccio != null ? Number(producteSeleccionat.temp_coccio) : null;
   const tempInsuficient = tempMin != null && tempNum != null && !Number.isNaN(tempNum) && tempNum < tempMin;
 
-  const carregar = useCallback(async () => {
-    setLoading(true);
+  const carregar = useCallback(async ({ append = false, offset = 0 } = {}) => {
+    if (!append) setLoading(true);
+    else setCarregantMes(true);
     try {
       const [l, prod, rec, op] = await Promise.all([
-        getLots(),
+        getLots({
+          limit: PAGE_SIZE,
+          offset,
+          cerca: filtreCerca,
+          estat: filtreEstat || undefined
+        }),
         getProductes(),
         getRecepcions(80),
         getOperaris()
       ]);
-      setLots(l);
-      setProductes(prod);
-      setRecepcions(rec);
-      setOperaris(op);
+      setLots((prev) => (append ? [...prev, ...l] : l));
+      setHasMore((l || []).length >= PAGE_SIZE);
+      if (!append) {
+        setProductes(prod);
+        setRecepcions(rec);
+        setOperaris(op);
+      }
     } catch (err) {
       console.error(err);
       setError(err.message);
     } finally {
       setLoading(false);
+      setCarregantMes(false);
     }
-  }, []);
+  }, [filtreCerca, filtreEstat]);
 
   useEffect(() => {
     carregar();
@@ -450,7 +465,27 @@ export default function ObradorLotsPage() {
           )}
 
           {mode === 'llistat' ? (
-            lots.length === 0 ? (
+            <>
+              <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
+                <input
+                  type="search"
+                  value={filtreCerca}
+                  onChange={(e) => setFiltreCerca(e.target.value)}
+                  placeholder="Cercar codi lot…"
+                  style={{ ...inputStyle, maxWidth: 260 }}
+                />
+                <select
+                  value={filtreEstat}
+                  onChange={(e) => setFiltreEstat(e.target.value)}
+                  style={{ ...inputStyle, maxWidth: 180 }}
+                >
+                  <option value="">Tots els estats</option>
+                  {Object.entries(ESTATS_LOT).map(([k, v]) => (
+                    <option key={k} value={k}>{v.label}</option>
+                  ))}
+                </select>
+              </div>
+            {lots.length === 0 ? (
               <p style={{ color: colors.textSecondary }}>Encara no hi ha lots registrats.</p>
             ) : (
               <div style={{ overflowX: 'auto', background: colors.card, border: `0.5px solid ${colors.border}`, borderRadius: 12 }}>
@@ -542,7 +577,26 @@ export default function ObradorLotsPage() {
                   </tbody>
                 </table>
               </div>
-            )
+            )}
+            {hasMore ? (
+              <button
+                type="button"
+                disabled={carregantMes}
+                onClick={() => carregar({ append: true, offset: lots.length })}
+                style={{
+                  marginTop: 16,
+                  padding: '10px 16px',
+                  borderRadius: 8,
+                  border: `0.5px solid ${colors.border}`,
+                  background: colors.surface,
+                  cursor: 'pointer',
+                  fontWeight: 600
+                }}
+              >
+                {carregantMes ? 'Carregant…' : 'Carregar més'}
+              </button>
+            ) : null}
+            </>
           ) : (
             <form
               onSubmit={handleSubmit}

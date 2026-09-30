@@ -143,6 +143,16 @@ export async function crearExpedicio(dades) {
     p_observacions: dades.observacions || null
   });
   if (error) throw error;
+
+  const nom = String(dades.id_client || '').trim();
+  if (nom) {
+    try {
+      await supabase.rpc('obrador_upsert_client', { p_nom: nom, p_codi: null });
+    } catch {
+      /* best-effort */
+    }
+  }
+
   return data?.expedicio || null;
 }
 

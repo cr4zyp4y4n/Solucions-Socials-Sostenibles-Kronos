@@ -37,6 +37,10 @@ export default function ExpedirLotSection({ traceCode, autoOpen = false }) {
       setError('El client és obligatori.');
       return;
     }
+    if (!checkSortida) {
+      setError('Cal verificar el producte abans de sortir (check sortida).');
+      return;
+    }
 
     setEnviant(true);
     try {
@@ -52,7 +56,7 @@ export default function ExpedirLotSection({ traceCode, autoOpen = false }) {
         id_lot: lot.id,
         id_client: idClient.trim(),
         comanda_holded: comandaHolded.trim() || null,
-        check_sortida: checkSortida,
+        check_sortida: true,
         check_client: false,
         observacions: observacions.trim() || null
       });
@@ -137,10 +141,11 @@ export default function ExpedirLotSection({ traceCode, autoOpen = false }) {
               type="checkbox"
               checked={checkSortida}
               onChange={(e) => setCheckSortida(e.target.checked)}
+              required
               style={{ marginTop: 3 }}
             />
             <span>
-              Producte verificat abans de sortir (obrador / transport)
+              Producte verificat abans de sortir (obligatori)
               <span style={{ display: 'block', fontSize: 12, color: colors.textSecondary, marginTop: 4 }}>
                 Estat, etiquetatge i temperatura correctes en expedir.
               </span>

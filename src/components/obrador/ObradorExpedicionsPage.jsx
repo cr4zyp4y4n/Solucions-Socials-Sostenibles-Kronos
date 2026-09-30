@@ -6,10 +6,15 @@ import {
   getLotPerCodi,
   crearExpedicio,
   marcarExpedicioEntregada,
+  anularExpedicio,
+  getClients,
   normalitzarCodiQR,
   lotEsExpedible,
   getLotNoExpedibleMessage
 } from '../../services/obradorSupabaseService';
+import ObradorQrScanner from './ObradorQrScanner';
+
+const PAGE_SIZE = 50;
 
 function formatData(iso) {
   if (!iso) return '—';
@@ -84,6 +89,13 @@ export default function ObradorExpedicionsPage() {
   const [successMsg, setSuccessMsg] = useState('');
   const [entregantId, setEntregantId] = useState(null);
   const [entregaModal, setEntregaModal] = useState(null);
+  const [anulantId, setAnulantId] = useState(null);
+  const [clients, setClients] = useState([]);
+  const [filtreCerca, setFiltreCerca] = useState('');
+  const [filtreEstat, setFiltreEstat] = useState('');
+  const [hasMore, setHasMore] = useState(false);
+  const [carregantMes, setCarregantMes] = useState(false);
+  const [scannerOpen, setScannerOpen] = useState(false);
 
   const inputStyle = {
     width: '100%',
@@ -104,18 +116,28 @@ export default function ObradorExpedicionsPage() {
     color: colors.textSecondary
   };
 
-  const carregar = useCallback(async () => {
-    setLoading(true);
+  const carregar = useCallback(async ({ append = false, offset = 0 } = {}) => {
+    if (!append) setLoading(true);
+    else setCarregantMes(true);
     try {
-      const data = await getExpedicions();
-      setExpedicions(data);
+      const data = await getExpedicions({
+        limit: PAGE_SIZE,
+        offset,
+        cerca: filtreCerca,
+        estat: filtreEstat || undefined
+      });
+      setExpedicions((prev) => (append ? [...prev, ...data] : data));
+      setHasMore((data || []).length >= PAGE_SIZE);
+      const clientsList = await getClients(100).catch(() => []);
+      setClients(clientsList);
     } catch (err) {
       console.error(err);
       setError(err.message);
     } finally {
       setLoading(false);
+      setCarregantMes(false);
     }
-  }, []);
+  }, [filtreCerca, filtreEstat]);
 
   useEffect(() => {
     carregar();
@@ -128,6 +150,7 @@ export default function ObradorExpedicionsPage() {
     setForm(formInicial());
     setError('');
     setCercaMode('qr');
+    setScannerOpen(false);
   }
 
   async function handleCercar(e) {
@@ -169,6 +192,32 @@ export default function ObradorExpedicionsPage() {
     }
   }
 
+  function handleScanDetect(raw) {
+    setScannerOpen(false);
+    setCercaMode('qr');
+    const valor = normalitzarCodiQR(raw);
+    setCercaInput(valor);
+    setTimeout(() => {
+      // cerca automàtica amb el valor escanejat
+      (async () => {
+        setCercaError('');
+        setLotTrobat(null);
+        if (!valor) return;
+        setCercant(true);
+        try {
+          const dades = await getLotPerQR(valor);
+          const lot = normalitzarLotDesDeQR(dades);
+          if (!lot) throw new Error('Codi QR no trobat');
+          setLotTrobat(lot);
+        } catch (err) {
+          setCercaError(err?.message || 'Codi QR no trobat');
+        } finally {
+          setCercant(false);
+        }
+      })();
+    }, 0);
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
     setError('');
@@ -185,6 +234,10 @@ export default function ObradorExpedicionsPage() {
       setError('El client és obligatori.');
       return;
     }
+    if (!form.check_sortida) {
+      setError('Cal marcar la verificació del producte abans de sortir (check sortida).');
+      return;
+    }
 
     setEnviant(true);
     try {
@@ -192,7 +245,7 @@ export default function ObradorExpedicionsPage() {
         id_lot: lotTrobat.id,
         id_client: form.id_client.trim(),
         comanda_holded: form.comanda_holded.trim() || null,
-        check_sortida: form.check_sortida,
+        check_sortida: true,
         check_client: false,
         observacions: form.observacions.trim() || null
       });
@@ -225,6 +278,26 @@ export default function ObradorExpedicionsPage() {
       setError(err.message || 'Error en marcar com a entregat');
     } finally {
       setEntregantId(null);
+    }
+  }
+
+  async function handleAnular(exp) {
+    if (!exp?.id) return;
+    const ok = window.confirm(
+      `Anul·lar l'expedició del lot ${exp.obrador_lots?.codi_lot || ''}?\nEl lot tornarà a estat envasat.`
+    );
+    if (!ok) return;
+    setAnulantId(exp.id);
+    setError('');
+    try {
+      await anularExpedicio(exp.id);
+      setSuccessMsg('Expedició anul·lada. Lot tornat a envasat.');
+      setTimeout(() => setSuccessMsg(''), 5000);
+      await carregar();
+    } catch (err) {
+      setError(err.message || 'Error en anul·lar l\'expedició');
+    } finally {
+      setAnulantId(null);
     }
   }
 
@@ -296,7 +369,26 @@ export default function ObradorExpedicionsPage() {
       )}
 
       {mode === 'llistat' ? (
-        expedicions.length === 0 ? (
+        <>
+          <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+            <input
+              type="search"
+              value={filtreCerca}
+              onChange={(e) => setFiltreCerca(e.target.value)}
+              placeholder="Cercar client o comanda Holded…"
+              style={{ ...inputStyle, maxWidth: 280 }}
+            />
+            <select
+              value={filtreEstat}
+              onChange={(e) => setFiltreEstat(e.target.value)}
+              style={{ ...inputStyle, maxWidth: 180 }}
+            >
+              <option value="">Tots els estats</option>
+              <option value="en trànsit">En trànsit</option>
+              <option value="entregat">Entregat</option>
+            </select>
+          </div>
+        {expedicions.length === 0 ? (
           <p style={{ color: colors.textSecondary }}>Encara no hi ha expedicions registrades.</p>
         ) : (
           <div style={{ overflowX: 'auto', background: colors.card, border: `0.5px solid ${colors.border}`, borderRadius: 12 }}>
@@ -343,11 +435,13 @@ export default function ObradorExpedicionsPage() {
                     </td>
                     <td style={{ padding: '12px 16px' }}>{exp.comanda_holded || '—'}</td>
                     <td style={{ padding: '12px 16px' }}>
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                       {exp.estat === 'entregat' ? (
                         <span style={{ fontSize: 12, color: colors.textSecondary }}>
                           {exp.check_client ? 'Client OK' : '—'}
                         </span>
                       ) : (
+                        <>
                         <button
                           type="button"
                           disabled={entregantId === exp.id}
@@ -373,14 +467,53 @@ export default function ObradorExpedicionsPage() {
                         >
                           Marcar entregat
                         </button>
+                        <button
+                          type="button"
+                          disabled={anulantId === exp.id}
+                          onClick={() => handleAnular(exp)}
+                          style={{
+                            padding: '6px 12px',
+                            fontSize: 12,
+                            fontWeight: 600,
+                            borderRadius: 6,
+                            border: `0.5px solid ${danger}`,
+                            cursor: anulantId === exp.id ? 'wait' : 'pointer',
+                            background: 'transparent',
+                            color: danger,
+                            opacity: anulantId === exp.id ? 0.7 : 1
+                          }}
+                        >
+                          Anul·lar
+                        </button>
+                        </>
                       )}
+                      </div>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-        )
+        )}
+        {hasMore ? (
+          <button
+            type="button"
+            disabled={carregantMes}
+            onClick={() => carregar({ append: true, offset: expedicions.length })}
+            style={{
+              marginTop: 16,
+              padding: '10px 16px',
+              borderRadius: 8,
+              border: `0.5px solid ${colors.border}`,
+              background: colors.surface,
+              cursor: 'pointer',
+              fontWeight: 600
+            }}
+          >
+            {carregantMes ? 'Carregant…' : 'Carregar més'}
+          </button>
+        ) : null}
+        </>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
           {/* Pas 1: identificar lot */}
@@ -404,6 +537,24 @@ export default function ObradorExpedicionsPage() {
                   placeholder={cercaMode === 'qr' ? 'QR-... (majúscules o minúscules)' : 'LOT-20260612-001'}
                   style={{ ...inputStyle, flex: 1, minWidth: 200 }}
                 />
+                {cercaMode === 'qr' ? (
+                  <button
+                    type="button"
+                    onClick={() => setScannerOpen(true)}
+                    style={{
+                      padding: '10px 16px',
+                      fontSize: 14,
+                      fontWeight: 600,
+                      borderRadius: 8,
+                      border: `0.5px solid ${colors.border}`,
+                      cursor: 'pointer',
+                      background: colors.surface,
+                      color: colors.text
+                    }}
+                  >
+                    Càmera
+                  </button>
+                ) : null}
                 <button
                   type="submit"
                   disabled={cercant}
@@ -497,12 +648,18 @@ export default function ObradorExpedicionsPage() {
                   <input
                     id="id_client"
                     type="text"
+                    list="obrador-clients-list"
                     value={form.id_client}
                     onChange={(e) => setForm((f) => ({ ...f, id_client: e.target.value }))}
                     placeholder="Nom o codi client"
                     style={inputStyle}
                     required
                   />
+                  <datalist id="obrador-clients-list">
+                    {clients.map((c) => (
+                      <option key={c.id || c.nom} value={c.nom} />
+                    ))}
+                  </datalist>
                 </div>
                 <div>
                   <label style={labelStyle} htmlFor="comanda_holded">Comanda Holded</label>
@@ -521,8 +678,9 @@ export default function ObradorExpedicionsPage() {
                       type="checkbox"
                       checked={form.check_sortida}
                       onChange={(e) => setForm((f) => ({ ...f, check_sortida: e.target.checked }))}
+                      required
                     />
-                    Producte verificat abans de sortir (obrador / transport)
+                    Producte verificat abans de sortir (obligatori)
                   </label>
                   <p style={{ margin: '6px 0 0', fontSize: 12, color: colors.textSecondary }}>
                     Estat, etiquetatge i temperatura correctes en el moment de l&apos;expedició.
@@ -564,6 +722,14 @@ export default function ObradorExpedicionsPage() {
           )}
         </div>
       )}
+
+      {scannerOpen ? (
+        <ObradorQrScanner
+          colors={colors}
+          onClose={() => setScannerOpen(false)}
+          onDetect={handleScanDetect}
+        />
+      ) : null}
 
       {entregaModal ? (
         <div

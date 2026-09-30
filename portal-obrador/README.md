@@ -22,10 +22,12 @@ SQL necessari a Supabase:
 
 1. `database/create_obrador_ac3_tables.sql`
 2. `database/alter_obrador_ac3_v2.sql`
-3. `database/alter_obrador_expedicions_sortida.sql`
-4. `database/alter_obrador_atomic_flows.sql`
-5. `database/alter_obrador_rls_hardening.sql`
-6. `database/alter_obrador_portal_staff_identity.sql`
+3. `database/alter_obrador_expedicions_unique_lot.sql`
+4. `database/alter_obrador_check_sortida_required.sql`
+5. `database/alter_obrador_anular_expedicio_i_clients.sql`
+6. `database/alter_obrador_atomic_flows.sql`
+7. `database/alter_obrador_rls_hardening.sql`
+8. `database/alter_obrador_portal_staff_identity.sql`
 
 Opcional: executar `database/alter_obrador_proveidors_holded.sql` (CIF + vincle Holded per import/sync).
 
@@ -108,7 +110,7 @@ Opcional: domini propi (`obrador.solucionssocials.org`) a Netlify → Domain set
 - **Genèric**: qualsevol albarà (CIF, data, nº document si es detecten).
 - **Begudes**: format tipus BGRUP (es activa si el text conté "Begudes del Vallès" o CIF A59801696).
 - **JOTRI**: albarà Cuinats JOTRI S.L.U. (text "Cuinats JOTRI", "ALBARÀ DE VENDA" o CIF B17209693).
-- Més proveïdors: afegir parsers a `src/services/obradorAlbaranParser.js` (sincronitzar amb Kronos).
+- Més proveïdors: afegir parsers a `shared/obrador/albaranParser.js` (font única Kronos + portal).
 
 ## Kronos
 

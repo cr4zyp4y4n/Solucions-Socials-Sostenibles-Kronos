@@ -1,6 +1,7 @@
 import { supabase } from '../config/supabase';
 import { formatInTimeZone, fromZonedTime } from 'date-fns-tz';
 import { subDays } from 'date-fns';
+import { normalitzarCodiQR as normalitzarCodiQRShared } from '../utils/obradorTraceCode';
 
 const TIMEZONE_MADRID = 'Europe/Madrid';
 
@@ -469,8 +470,15 @@ export function subscribeObradorIoT(onChange) {
 
 // ── RECEPCIONS ─────────────────────────────────────────────────
 
-export async function getRecepcions(limit = 50) {
-  const { data, error } = await supabase
+export async function getRecepcions(limitOrOpts = 50, maybeOpts) {
+  const opts = typeof limitOrOpts === 'object' && limitOrOpts != null
+    ? limitOrOpts
+    : { limit: limitOrOpts, ...(maybeOpts || {}) };
+  const limit = opts.limit ?? 50;
+  const offset = opts.offset ?? 0;
+  const cerca = String(opts.cerca || '').trim();
+
+  let q = supabase
     .from('obrador_recepcions')
     .select(`
       id, id_proveidor, data_recepcio, lot_proveidor, temperatura_arribada,
@@ -478,7 +486,16 @@ export async function getRecepcions(limit = 50) {
       obrador_proveidors ( id, nom )
     `)
     .order('data_recepcio', { ascending: false })
-    .limit(limit);
+    .range(offset, offset + limit - 1);
+
+  if (cerca) {
+    q = q.or(
+      `lot_proveidor.ilike.%${cerca}%,observacions.ilike.%${cerca}%,operari.ilike.%${cerca}%`
+    );
+  }
+  if (opts.estat) q = q.eq('estat', opts.estat);
+
+  const { data, error } = await q;
   if (error) throw error;
   return data || [];
 }
@@ -493,12 +510,43 @@ export async function crearRecepcio(dades) {
   return data;
 }
 
+/** Actualitza camps d'una recepció (management). */
+export async function updateRecepcio(id, camps) {
+  const payload = { updated_at: new Date().toISOString() };
+  const allowed = [
+    'id_proveidor', 'lot_proveidor', 'temperatura_arribada', 'estat',
+    'caducitat', 'congelat', 'observacions', 'operari', 'id_operari'
+  ];
+  for (const key of allowed) {
+    if (Object.prototype.hasOwnProperty.call(camps, key)) {
+      payload[key] = camps[key];
+    }
+  }
+  const { data, error } = await supabase
+    .from('obrador_recepcions')
+    .update(payload)
+    .eq('id', id)
+    .select(`
+      id, id_proveidor, data_recepcio, lot_proveidor, temperatura_arribada,
+      estat, caducitat, congelat, observacions, operari, id_operari,
+      obrador_proveidors ( id, nom )
+    `)
+    .single();
+  if (error) throw error;
+  return data;
+}
+
 // ── LOTS ───────────────────────────────────────────────────────
 
-export async function getLots(limit = 50) {
-  const { data, error } = await supabase
-    .from('obrador_lots')
-    .select(`
+export async function getLots(limitOrOpts = 50, maybeOpts) {
+  const opts = typeof limitOrOpts === 'object' && limitOrOpts != null
+    ? limitOrOpts
+    : { limit: limitOrOpts, ...(maybeOpts || {}) };
+  const limit = opts.limit ?? 50;
+  const offset = opts.offset ?? 0;
+  const cerca = String(opts.cerca || '').trim();
+
+  const selectFull = `
       id, codi_lot, data_produccio, temp_final_coccio,
       estat, mostra_guardada, quantitat_kg, observacions, id_recepcio,
       obrador_productes ( nom, allergens, caducitat_dies ),
@@ -511,26 +559,39 @@ export async function getLots(limit = 50) {
           obrador_proveidors ( nom )
         )
       )
-    `)
-    .order('data_produccio', { ascending: false })
-    .limit(limit);
-
-  if (!error) return data || [];
-
-  if (error?.code === 'PGRST200' || /obrador_lot_recepcions/i.test(error?.message || '')) {
-    const fallback = await supabase
-      .from('obrador_lots')
-      .select(`
+    `;
+  const selectFallback = `
         id, codi_lot, data_produccio, temp_final_coccio,
         estat, mostra_guardada, quantitat_kg, observacions, id_recepcio,
         obrador_productes ( nom, allergens, caducitat_dies ),
         obrador_operaris ( nom ),
         obrador_etiquetes ( codi_qr, data_caducitat, allergens, data_envasat )
-      `)
+      `;
+
+  let q = supabase
+    .from('obrador_lots')
+    .select(selectFull)
+    .order('data_produccio', { ascending: false })
+    .range(offset, offset + limit - 1);
+
+  if (cerca) q = q.ilike('codi_lot', `%${cerca}%`);
+  if (opts.estat) q = q.eq('estat', opts.estat);
+
+  const { data, error } = await q;
+
+  if (!error) return data || [];
+
+  if (error?.code === 'PGRST200' || /obrador_lot_recepcions/i.test(error?.message || '')) {
+    let fallback = supabase
+      .from('obrador_lots')
+      .select(selectFallback)
       .order('data_produccio', { ascending: false })
-      .limit(limit);
-    if (fallback.error) throw fallback.error;
-    return (fallback.data || []).map((l) => ({ ...l, obrador_lot_recepcions: [] }));
+      .range(offset, offset + limit - 1);
+    if (cerca) fallback = fallback.ilike('codi_lot', `%${cerca}%`);
+    if (opts.estat) fallback = fallback.eq('estat', opts.estat);
+    const res = await fallback;
+    if (res.error) throw res.error;
+    return (res.data || []).map((l) => ({ ...l, obrador_lot_recepcions: [] }));
   }
 
   throw error;
@@ -604,14 +665,9 @@ export async function getLotPerCodi(codi_lot) {
   return data;
 }
 
-import { extractTraceCodeFromScan } from '../utils/obradorTraceCode';
-
 /** Normalitza el codi QR (URL ?trace=, QR-… o codi de lot). */
 export function normalitzarCodiQR(input) {
-  const t = extractTraceCodeFromScan(input);
-  if (!t) return '';
-  if (/^qr-/i.test(t)) return `QR-${t.slice(3)}`;
-  return t;
+  return normalitzarCodiQRShared(input);
 }
 
 export async function getLotPerQR(codiQR) {
@@ -700,8 +756,15 @@ export async function crearEtiqueta(id_lot, caducitat_dies, allergens) {
 
 // ── EXPEDICIONS ────────────────────────────────────────────────
 
-export async function getExpedicions(limit = 50) {
-  const { data, error } = await supabase
+export async function getExpedicions(limitOrOpts = 50, maybeOpts) {
+  const opts = typeof limitOrOpts === 'object' && limitOrOpts != null
+    ? limitOrOpts
+    : { limit: limitOrOpts, ...(maybeOpts || {}) };
+  const limit = opts.limit ?? 50;
+  const offset = opts.offset ?? 0;
+  const cerca = String(opts.cerca || '').trim();
+
+  let q = supabase
     .from('obrador_expedicions')
     .select(`
       id, id_client, data_sortida, comanda_holded, estat, check_client, check_sortida,
@@ -711,7 +774,14 @@ export async function getExpedicions(limit = 50) {
       )
     `)
     .order('data_sortida', { ascending: false })
-    .limit(limit);
+    .range(offset, offset + limit - 1);
+
+  if (cerca) {
+    q = q.or(`id_client.ilike.%${cerca}%,comanda_holded.ilike.%${cerca}%`);
+  }
+  if (opts.estat) q = q.eq('estat', opts.estat);
+
+  const { data, error } = await q;
   if (error) throw error;
   return data || [];
 }
@@ -726,6 +796,16 @@ export async function crearExpedicio(dades) {
     p_observacions: dades.observacions || null
   });
   if (error) throw error;
+
+  const nomClient = String(dades.id_client || '').trim();
+  if (nomClient) {
+    try {
+      await upsertClient(nomClient);
+    } catch {
+      /* el mestre de clients és best-effort */
+    }
+  }
+
   return data?.expedicio || null;
 }
 
@@ -734,6 +814,60 @@ export async function marcarExpedicioEntregada(id, { check_client = false } = {}
   const { data, error } = await supabase.rpc('obrador_marcar_expedicio_entregada', {
     p_id: id,
     p_check_client: Boolean(check_client)
+  });
+  if (error) throw error;
+  return data;
+}
+
+/** Anul·la una expedició en trànsit i torna el lot a envasat. */
+export async function anularExpedicio(id) {
+  const { data, error } = await supabase.rpc('obrador_anular_expedicio', { p_id: id });
+  if (error) throw error;
+  return data;
+}
+
+// ── CLIENTS ────────────────────────────────────────────────────
+
+export async function getClients(limit = 100, cerca = '') {
+  let q = supabase
+    .from('obrador_clients')
+    .select('id, nom, codi, actiu')
+    .eq('actiu', true)
+    .order('nom')
+    .limit(limit);
+  if (cerca) q = q.ilike('nom', `%${cerca}%`);
+  const { data, error } = await q;
+  if (error) {
+    // Taula encara no migrada → fallback des d'expedicions
+    if (/obrador_clients|does not exist|PGRST/i.test(error.message || '') || error.code === '42P01') {
+      const { data: rows, error: e2 } = await supabase
+        .from('obrador_expedicions')
+        .select('id_client')
+        .not('id_client', 'is', null)
+        .order('data_sortida', { ascending: false })
+        .limit(200);
+      if (e2) throw e2;
+      const seen = new Set();
+      const list = [];
+      for (const r of rows || []) {
+        const nom = String(r.id_client || '').trim();
+        if (!nom || seen.has(nom.toLowerCase())) continue;
+        if (cerca && !nom.toLowerCase().includes(cerca.toLowerCase())) continue;
+        seen.add(nom.toLowerCase());
+        list.push({ id: null, nom, codi: null, actiu: true });
+        if (list.length >= limit) break;
+      }
+      return list;
+    }
+    throw error;
+  }
+  return data || [];
+}
+
+export async function upsertClient(nom, codi = null) {
+  const { data, error } = await supabase.rpc('obrador_upsert_client', {
+    p_nom: nom,
+    p_codi: codi
   });
   if (error) throw error;
   return data;

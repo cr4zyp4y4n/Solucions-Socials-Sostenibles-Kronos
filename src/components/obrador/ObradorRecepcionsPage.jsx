@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useTheme } from '../ThemeContext';
-import { getProveidors, getRecepcions, crearRecepcio, PROVEIDORS_SCHEMA_SQL } from '../../services/obradorSupabaseService';
+import { getProveidors, getRecepcions, crearRecepcio, updateRecepcio, PROVEIDORS_SCHEMA_SQL } from '../../services/obradorSupabaseService';
 import { syncProveidorsFromHolded, HOLDED_COMPANIES } from '../../services/obradorHoldedSyncService';
 import {
   parseAlbaranText,
@@ -64,6 +64,13 @@ export default function ObradorRecepcionsPage() {
   const [holdedCompany, setHoldedCompany] = useState('solucions');
   const [schemaIncomplete, setSchemaIncomplete] = useState(false);
   const fileInputRef = useRef(null);
+  const [filtreCerca, setFiltreCerca] = useState('');
+  const [filtreEstat, setFiltreEstat] = useState('');
+  const [hasMore, setHasMore] = useState(false);
+  const [carregantMes, setCarregantMes] = useState(false);
+  const [editantId, setEditantId] = useState(null);
+
+  const PAGE_SIZE = 50;
 
   const inputStyle = {
     width: '100%',
@@ -84,11 +91,21 @@ export default function ObradorRecepcionsPage() {
     color: colors.textSecondary
   };
 
-  const carregar = useCallback(async () => {
-    setLoading(true);
+  const carregar = useCallback(async ({ append = false, offset = 0 } = {}) => {
+    if (!append) setLoading(true);
+    else setCarregantMes(true);
     try {
-      const [rec, provResult] = await Promise.all([getRecepcions(), getProveidors()]);
-      setRecepcions(rec);
+      const [rec, provResult] = await Promise.all([
+        getRecepcions({
+          limit: PAGE_SIZE,
+          offset,
+          cerca: filtreCerca,
+          estat: filtreEstat || undefined
+        }),
+        getProveidors()
+      ]);
+      setRecepcions((prev) => (append ? [...prev, ...rec] : rec));
+      setHasMore((rec || []).length >= PAGE_SIZE);
       setProveidors(provResult.proveidors);
       setSchemaIncomplete(provResult.schemaIncomplete);
     } catch (err) {
@@ -96,8 +113,9 @@ export default function ObradorRecepcionsPage() {
       setError(err.message);
     } finally {
       setLoading(false);
+      setCarregantMes(false);
     }
-  }, []);
+  }, [filtreCerca, filtreEstat]);
 
   useEffect(() => {
     carregar();
@@ -162,6 +180,7 @@ export default function ObradorRecepcionsPage() {
     }
 
     setMode('formulari');
+    setEditantId(null);
     setError('');
     setSuccessMsg('');
     setOcrProcessing(true);
@@ -224,7 +243,7 @@ export default function ObradorRecepcionsPage() {
 
     setEnviant(true);
     try {
-      await crearRecepcio({
+      const payload = {
         id_proveidor: form.id_proveidor,
         lot_proveidor: form.lot_proveidor || null,
         temperatura_arribada: tempNum,
@@ -233,16 +252,59 @@ export default function ObradorRecepcionsPage() {
         congelat: form.congelat,
         observacions: form.observacions || null,
         operari: form.operari || null
-      });
-      setSuccessMsg('Recepció registrada correctament');
+      };
+      if (editantId) {
+        await updateRecepcio(editantId, payload);
+        setSuccessMsg('Recepció actualitzada');
+      } else {
+        await crearRecepcio(payload);
+        setSuccessMsg('Recepció registrada correctament');
+      }
       setTimeout(() => setSuccessMsg(''), 4000);
       setForm(formInicial());
+      setEditantId(null);
       setMode('llistat');
       await carregar();
     } catch (err) {
-      setError(err.message || 'Error en registrar la recepció');
+      setError(err.message || 'Error en desar la recepció');
     } finally {
       setEnviant(false);
+    }
+  }
+
+  function obrirEdicio(r) {
+    setEditantId(r.id);
+    setForm({
+      id_proveidor: r.id_proveidor || '',
+      lot_proveidor: r.lot_proveidor || '',
+      temperatura_arribada: r.temperatura_arribada != null ? String(r.temperatura_arribada) : '',
+      estat: r.estat || 'bo',
+      caducitat: r.caducitat || '',
+      congelat: Boolean(r.congelat),
+      observacions: r.observacions || '',
+      operari: r.operari || ''
+    });
+    setError('');
+    setSuccessMsg('');
+    setMode('formulari');
+  }
+
+  async function anularRecepcio(r) {
+    const ok = window.confirm('Marcar aquesta recepció com a Rebutjada?');
+    if (!ok) return;
+    setError('');
+    try {
+      await updateRecepcio(r.id, {
+        estat: 'rebutjat',
+        observacions: r.observacions
+          ? `${r.observacions}\n[Anul·lada des de Kronos]`
+          : 'Anul·lada des de Kronos'
+      });
+      setSuccessMsg('Recepció marcada com a rebutjada');
+      setTimeout(() => setSuccessMsg(''), 4000);
+      await carregar();
+    } catch (err) {
+      setError(err.message || 'Error en anul·lar');
     }
   }
 
@@ -301,6 +363,8 @@ export default function ObradorRecepcionsPage() {
             <button
               type="button"
               onClick={() => {
+                setEditantId(null);
+                setForm(formInicial());
                 setMode('formulari');
                 setError('');
                 setSuccessMsg('');
@@ -345,6 +409,7 @@ export default function ObradorRecepcionsPage() {
               setMode('llistat');
               setError('');
               setForm(formInicial());
+              setEditantId(null);
               setOcrDraft(null);
             }}
             style={{
@@ -448,14 +513,34 @@ export default function ObradorRecepcionsPage() {
       )}
 
       {mode === 'llistat' ? (
-        recepcions.length === 0 ? (
+        <>
+          <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
+            <input
+              type="search"
+              value={filtreCerca}
+              onChange={(e) => setFiltreCerca(e.target.value)}
+              placeholder="Cercar lot / observacions / operari…"
+              style={{ ...inputStyle, maxWidth: 300 }}
+            />
+            <select
+              value={filtreEstat}
+              onChange={(e) => setFiltreEstat(e.target.value)}
+              style={{ ...inputStyle, maxWidth: 160 }}
+            >
+              <option value="">Tots els estats</option>
+              {ESTATS.map((e) => (
+                <option key={e.value} value={e.value}>{e.label}</option>
+              ))}
+            </select>
+          </div>
+        {recepcions.length === 0 ? (
           <p style={{ color: colors.textSecondary }}>Encara no hi ha recepcions registrades.</p>
         ) : (
           <div style={{ overflowX: 'auto', background: colors.card, border: `0.5px solid ${colors.border}`, borderRadius: 12 }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
               <thead>
                 <tr>
-                  {['Data', 'Proveïdor', 'Lot proveïdor', 'Temp.', 'Estat', 'Congelat'].map((col) => (
+                  {['Data', 'Proveïdor', 'Lot proveïdor', 'Temp.', 'Estat', 'Congelat', 'Acció'].map((col) => (
                     <th
                       key={col}
                       style={{
@@ -495,12 +580,69 @@ export default function ObradorRecepcionsPage() {
                       </span>
                     </td>
                     <td style={{ padding: '12px 16px' }}>{r.congelat ? 'Sí' : 'No'}</td>
+                    <td style={{ padding: '12px 16px' }}>
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        <button
+                          type="button"
+                          onClick={() => obrirEdicio(r)}
+                          style={{
+                            padding: '6px 12px',
+                            fontSize: 12,
+                            fontWeight: 600,
+                            borderRadius: 6,
+                            border: 'none',
+                            cursor: 'pointer',
+                            background: colors.primary,
+                            color: '#fff'
+                          }}
+                        >
+                          Editar
+                        </button>
+                        {r.estat !== 'rebutjat' ? (
+                          <button
+                            type="button"
+                            onClick={() => anularRecepcio(r)}
+                            style={{
+                              padding: '6px 12px',
+                              fontSize: 12,
+                              fontWeight: 600,
+                              borderRadius: 6,
+                              border: `0.5px solid ${danger}`,
+                              cursor: 'pointer',
+                              background: 'transparent',
+                              color: danger
+                            }}
+                          >
+                            Anul·lar
+                          </button>
+                        ) : null}
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-        )
+        )}
+        {hasMore ? (
+          <button
+            type="button"
+            disabled={carregantMes}
+            onClick={() => carregar({ append: true, offset: recepcions.length })}
+            style={{
+              marginTop: 16,
+              padding: '10px 16px',
+              borderRadius: 8,
+              border: `0.5px solid ${colors.border}`,
+              background: colors.surface,
+              cursor: 'pointer',
+              fontWeight: 600
+            }}
+          >
+            {carregantMes ? 'Carregant…' : 'Carregar més'}
+          </button>
+        ) : null}
+        </>
       ) : (
         <form
           onSubmit={handleSubmit}
@@ -710,7 +852,7 @@ export default function ObradorRecepcionsPage() {
               alignSelf: 'flex-start'
             }}
           >
-            {enviant ? 'Registrant...' : 'Registrar recepció'}
+            {enviant ? 'Desant...' : (editantId ? 'Desar canvis' : 'Registrar recepció')}
           </button>
         </form>
       )}
