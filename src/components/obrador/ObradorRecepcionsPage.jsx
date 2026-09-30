@@ -443,6 +443,10 @@ export default function ObradorRecepcionsPage() {
         </div>
       )}
 
+      {error && mode === 'llistat' && (
+        <p style={{ color: danger, marginBottom: 16 }}>{error}</p>
+      )}
+
       {mode === 'llistat' ? (
         recepcions.length === 0 ? (
           <p style={{ color: colors.textSecondary }}>Encara no hi ha recepcions registrades.</p>

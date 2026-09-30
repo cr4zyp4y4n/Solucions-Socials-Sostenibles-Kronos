@@ -134,6 +134,20 @@ async function countEnRang(table, column, daysAgo = 0) {
   return count || 0;
 }
 
+/** Recepcions d'avui incompletes per APPCC (sense temp. o sense lot proveïdor). */
+async function countRecepcionsAppccBuits(daysAgo = 0) {
+  const { data, error } = await supabase
+    .from('obrador_recepcions')
+    .select('id, temperatura_arribada, lot_proveidor')
+    .gte('data_recepcio', madridDayStartIso(daysAgo))
+    .lte('data_recepcio', madridDayEndIso(daysAgo));
+  if (error) throw error;
+  return (data || []).filter((r) => (
+    r.temperatura_arribada == null
+    || !String(r.lot_proveidor || '').trim()
+  )).length;
+}
+
 // ── SELECTS (formularis) ───────────────────────────────────────
 
 export const PROVEIDORS_SCHEMA_SQL = 'database/alter_obrador_proveidors_holded.sql';
@@ -487,8 +501,9 @@ export async function getLots(limit = 50) {
     .select(`
       id, codi_lot, data_produccio, temp_final_coccio,
       estat, mostra_guardada, quantitat_kg, observacions, id_recepcio,
-      obrador_productes ( nom ),
+      obrador_productes ( nom, allergens, caducitat_dies ),
       obrador_operaris ( nom ),
+      obrador_etiquetes ( codi_qr, data_caducitat, allergens, data_envasat ),
       obrador_lot_recepcions (
         ordre, id_recepcio,
         obrador_recepcions (
@@ -508,8 +523,9 @@ export async function getLots(limit = 50) {
       .select(`
         id, codi_lot, data_produccio, temp_final_coccio,
         estat, mostra_guardada, quantitat_kg, observacions, id_recepcio,
-        obrador_productes ( nom ),
-        obrador_operaris ( nom )
+        obrador_productes ( nom, allergens, caducitat_dies ),
+        obrador_operaris ( nom ),
+        obrador_etiquetes ( codi_qr, data_caducitat, allergens, data_envasat )
       `)
       .order('data_produccio', { ascending: false })
       .limit(limit);
@@ -866,7 +882,8 @@ export async function getKpisDashboard() {
     incidenciesObertes,
     expedicionsDia,
     etiquetesGenerades,
-    registresAppcc
+    registresAppcc,
+    registresAppccBuits
   ] = await Promise.all([
     countEnRang('obrador_lots', 'data_produccio', 0),
     countEnRang('obrador_lots', 'data_produccio', 1),
@@ -880,7 +897,8 @@ export async function getKpisDashboard() {
       }),
     countEnRang('obrador_expedicions', 'data_sortida', 0),
     countEnRang('obrador_etiquetes', 'data_envasat', 0),
-    countEnRang('obrador_recepcions', 'data_recepcio', 0)
+    countEnRang('obrador_recepcions', 'data_recepcio', 0),
+    countRecepcionsAppccBuits(0)
   ]);
 
   return {
@@ -891,7 +909,7 @@ export async function getKpisDashboard() {
     expedicionsDia,
     etiquetesGenerades,
     registresAppcc,
-    registresAppccBuits: 0
+    registresAppccBuits
   };
 }
 

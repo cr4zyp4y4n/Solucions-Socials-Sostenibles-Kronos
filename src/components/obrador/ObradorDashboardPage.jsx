@@ -317,7 +317,7 @@ export default function ObradorDashboardPage() {
             id: 'appcc',
             label: 'Registres APPCC',
             value: kpis.registresAppcc,
-            trend: kpis.registresAppccBuits > 0 ? `${kpis.registresAppccBuits} buits` : 'Recepcions avui',
+            trend: kpis.registresAppccBuits > 0 ? `${kpis.registresAppccBuits} incomplets` : 'Recepcions avui',
             trendClass: kpis.registresAppccBuits > 0 ? warning : success
           }
         ].map((item) => (

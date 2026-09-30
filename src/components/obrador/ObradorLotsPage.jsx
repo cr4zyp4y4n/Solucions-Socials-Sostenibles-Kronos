@@ -51,7 +51,7 @@ const formInicial = () => ({
   observacions: ''
 });
 
-function EtiquetaModal({ dades, onTancar, colors }) {
+function EtiquetaModal({ dades, onTancar, colors, titol = 'Etiqueta generada' }) {
   const { lot, producte, etiqueta } = dades;
   const allergens = (etiqueta.allergens?.length ? etiqueta.allergens : producte.allergens) || [];
   const qrValue = buildObradorQrPayload(etiqueta.codi_qr);
@@ -103,7 +103,7 @@ function EtiquetaModal({ dades, onTancar, colors }) {
         }}
       >
         <h2 style={{ margin: '0 0 16px', fontSize: 18, fontWeight: 600, color: colors.text }}>
-          Etiqueta generada
+          {titol}
         </h2>
 
         <div
@@ -352,7 +352,8 @@ export default function ObradorLotsPage() {
       setEtiquetaModal({
         lot,
         producte: producteSeleccionat,
-        etiqueta
+        etiqueta,
+        titol: 'Etiqueta generada'
       });
       setForm(formInicial());
     } catch (err) {
@@ -360,6 +361,22 @@ export default function ObradorLotsPage() {
     } finally {
       setEnviant(false);
     }
+  }
+
+  function obrirEtiquetaLot(lot) {
+    const etiquetaRaw = lot.obrador_etiquetes;
+    const etiqueta = Array.isArray(etiquetaRaw) ? etiquetaRaw[0] : etiquetaRaw;
+    if (!etiqueta?.codi_qr) {
+      setError('Aquest lot encara no té etiqueta generada.');
+      return;
+    }
+    setError('');
+    setEtiquetaModal({
+      lot,
+      producte: lot.obrador_productes || { nom: '—' },
+      etiqueta,
+      titol: 'Reimprimir etiqueta'
+    });
   }
 
   function tancarModal() {
@@ -379,7 +396,12 @@ export default function ObradorLotsPage() {
   return (
     <div style={{ padding: '32px', maxWidth: 1100, margin: '0 auto', color: colors.text }}>
       {etiquetaModal && (
-        <EtiquetaModal dades={etiquetaModal} onTancar={tancarModal} colors={colors} />
+        <EtiquetaModal
+          dades={etiquetaModal}
+          onTancar={tancarModal}
+          colors={colors}
+          titol={etiquetaModal.titol || 'Etiqueta'}
+        />
       )}
 
       {!etiquetaModal && (
@@ -423,6 +445,10 @@ export default function ObradorLotsPage() {
             )}
           </header>
 
+          {error && mode === 'llistat' && (
+            <p style={{ color: danger, marginBottom: 16 }}>{error}</p>
+          )}
+
           {mode === 'llistat' ? (
             lots.length === 0 ? (
               <p style={{ color: colors.textSecondary }}>Encara no hi ha lots registrats.</p>
@@ -431,7 +457,7 @@ export default function ObradorLotsPage() {
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
                   <thead>
                     <tr>
-                      {['Codi lot', 'Data', 'Producte', 'Recepcions', 'Operari', 'Temp. cocció', 'Estat', 'Mostra'].map((col) => (
+                      {['Codi lot', 'Data', 'Producte', 'Recepcions', 'Operari', 'Temp. cocció', 'Estat', 'Mostra', 'Acció'].map((col) => (
                         <th
                           key={col}
                           style={{
@@ -450,7 +476,11 @@ export default function ObradorLotsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {lots.map((lot) => (
+                    {lots.map((lot) => {
+                      const etiquetaRaw = lot.obrador_etiquetes;
+                      const etiqueta = Array.isArray(etiquetaRaw) ? etiquetaRaw[0] : etiquetaRaw;
+                      const teEtiqueta = Boolean(etiqueta?.codi_qr);
+                      return (
                       <tr key={lot.id} style={{ borderBottom: `1px solid ${colors.border}` }}>
                         <td style={{ padding: '12px 16px', fontWeight: 600 }}>{lot.codi_lot || '—'}</td>
                         <td style={{ padding: '12px 16px' }}>{formatData(lot.data_produccio)}</td>
@@ -484,8 +514,31 @@ export default function ObradorLotsPage() {
                           </span>
                         </td>
                         <td style={{ padding: '12px 16px' }}>{lot.mostra_guardada ? 'Sí' : 'No'}</td>
+                        <td style={{ padding: '12px 16px' }}>
+                          {teEtiqueta ? (
+                            <button
+                              type="button"
+                              onClick={() => obrirEtiquetaLot(lot)}
+                              style={{
+                                padding: '6px 12px',
+                                fontSize: 12,
+                                fontWeight: 600,
+                                borderRadius: 6,
+                                border: 'none',
+                                cursor: 'pointer',
+                                background: colors.primary,
+                                color: '#fff'
+                              }}
+                            >
+                              Etiqueta
+                            </button>
+                          ) : (
+                            <span style={{ fontSize: 12, color: colors.textSecondary }}>—</span>
+                          )}
+                        </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

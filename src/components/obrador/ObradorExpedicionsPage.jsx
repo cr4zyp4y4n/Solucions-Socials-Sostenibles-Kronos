@@ -291,6 +291,10 @@ export default function ObradorExpedicionsPage() {
         </div>
       )}
 
+      {error && mode === 'llistat' && !entregaModal && (
+        <p style={{ color: danger, marginBottom: 16 }}>{error}</p>
+      )}
+
       {mode === 'llistat' ? (
         expedicions.length === 0 ? (
           <p style={{ color: colors.textSecondary }}>Encara no hi ha expedicions registrades.</p>
@@ -347,11 +351,14 @@ export default function ObradorExpedicionsPage() {
                         <button
                           type="button"
                           disabled={entregantId === exp.id}
-                          onClick={() => setEntregaModal({
-                            id: exp.id,
-                            lot: exp.obrador_lots?.codi_lot,
-                            client: exp.id_client
-                          })}
+                          onClick={() => {
+                            setError('');
+                            setEntregaModal({
+                              id: exp.id,
+                              lot: exp.obrador_lots?.codi_lot,
+                              client: exp.id_client
+                            });
+                          }}
                           style={{
                             padding: '6px 12px',
                             fontSize: 12,
@@ -570,7 +577,12 @@ export default function ObradorExpedicionsPage() {
             zIndex: 1000,
             padding: 24
           }}
-          onClick={() => !entregantId && setEntregaModal(null)}
+          onClick={() => {
+            if (!entregantId) {
+              setError('');
+              setEntregaModal(null);
+            }
+          }}
         >
           <div
             style={{
@@ -589,6 +601,9 @@ export default function ObradorExpedicionsPage() {
               {' '}
               Marca com a entregat quan arribi al servei / catering.
             </p>
+            {error ? (
+              <p style={{ margin: '0 0 12px', color: danger, fontSize: 14 }}>{error}</p>
+            ) : null}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <button
                 type="button"
@@ -627,7 +642,7 @@ export default function ObradorExpedicionsPage() {
               <button
                 type="button"
                 disabled={Boolean(entregantId)}
-                onClick={() => setEntregaModal(null)}
+                onClick={() => { setError(''); setEntregaModal(null); }}
                 style={{
                   padding: '8px',
                   fontSize: 13,
