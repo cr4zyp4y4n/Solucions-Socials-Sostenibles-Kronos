@@ -97,6 +97,10 @@ Objetivo: cuadro de mando MENSUAL de gestión (distinto del dashboard operativo 
 
 ## 6. Decisiones pendientes de la reunión (rellenar después)
 
+Checklist operativa y propuesta de KPIs/SOPs: **`docs/ENFORTIM_DOSSIER_REUNION.md`**.  
+Índice SOP borrador: **`docs/sops/`**.  
+Esqueleto UI (sin esquema cerrado): pestanyes **Escandalls** i **KPIs mensuals** a `ObradorApp`.
+
 - [ ] ¿Modelo de escandall lo define externa o lo definimos internamente?
 - [ ] ¿Qué parte de D3 (servicios externos) queda tras reformulación y para qué?
 - [ ] ¿Perfil de prácticas: DAM/DAW (con Brian) o Admin i Finances?

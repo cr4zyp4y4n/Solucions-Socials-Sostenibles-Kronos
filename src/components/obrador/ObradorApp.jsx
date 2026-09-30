@@ -8,6 +8,8 @@ import ObradorProductesPage from './ObradorProductesPage';
 import ObradorLotsPage from './ObradorLotsPage';
 import ObradorExpedicionsPage from './ObradorExpedicionsPage';
 import ObradorIncidenciesPage from './ObradorIncidenciesPage';
+import ObradorEscandallsPage from './ObradorEscandallsPage';
+import ObradorKpisMensualPage from './ObradorKpisMensualPage';
 
 const TABS = [
   { id: 'dashboard', label: 'Dashboard' },
@@ -15,7 +17,9 @@ const TABS = [
   { id: 'productes', label: 'Productes', roles: ['admin', 'management', 'manager'] },
   { id: 'lots', label: 'Lots' },
   { id: 'expedicions', label: 'Expedicions' },
-  { id: 'incidencies', label: 'Incidències', roles: ['admin', 'management', 'manager'] }
+  { id: 'incidencies', label: 'Incidències', roles: ['admin', 'management', 'manager'] },
+  { id: 'escandalls', label: 'Escandalls', roles: ['admin', 'management', 'manager'], provisional: true },
+  { id: 'kpis-mensuals', label: 'KPIs mensuals', roles: ['admin', 'management', 'manager'], provisional: true }
 ];
 
 function ObradorShell() {
@@ -47,6 +51,10 @@ function ObradorShell() {
         return <ObradorExpedicionsPage />;
       case 'incidencies':
         return <ObradorIncidenciesPage />;
+      case 'escandalls':
+        return <ObradorEscandallsPage />;
+      case 'kpis-mensuals':
+        return <ObradorKpisMensualPage />;
       default:
         return <ObradorDashboardPage />;
     }
@@ -85,6 +93,9 @@ function ObradorShell() {
               }}
             >
               {tab.label}
+              {tab.provisional ? (
+                <span style={{ marginLeft: 6, fontSize: 10, opacity: 0.75 }}>·</span>
+              ) : null}
             </button>
           );
         })}

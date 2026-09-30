@@ -1,0 +1,153 @@
+# BRIEFING PARA CURSOR — Documento Enfortim/ESCALBRADOR para Sergi y Bruno
+# Uso: pasar este archivo a Cursor y pedir: "Genera un documento claro (PDF o DOCX/MD)
+# dirigido a Sergi y Bruno explicando el obrador Ac3, los escandalls, los KPI mensuales
+# y las decisiones de la reunión. Tono profesional, en castellano o catalán según pida Brian."
+#
+# Fecha briefing: 30/09/2026
+# Proyecto: SSS Kronos · Subvención Enfortim l'ESS 2026 · Exp. 2026_OVT_583379 (ESCALBRADOR)
+# Otorgado: 6.300 € · Ejecución formal: 14/12/2026 → 13/12/2027
+# Relación InnvESS: InnvESS = obrador + digitalización Ac3 (YA EN PRODUCCIÓN).
+# Enfortim = capa de gestión (SOPs, escandalls, dashboard KPI mensual, B2B).
+# REGLA: ningún gasto imputable a las dos subvenciones a la vez.
+
+================================================================================
+1. PARA QUÉ ES EL DOCUMENTO
+================================================================================
+Explicar a Sergi y Bruno, de forma sencilla y con ejemplos, cómo se relacionan:
+  - Recepciones (materia prima que entra)
+  - Productos / platos
+  - Lotes (producción del día, trazabilidad)
+  - Escandalls (ficha de coste por unidad de producto)
+  - KPIs mensuales (gestión Enfortim, distintos del dashboard diario)
+  - SOPs digitales (parte Brian) vs APPCC externa
+
+Y listar las preguntas / decisiones que hay que cerrar en la reunión antes de
+desarrollar en serio en Kronos.
+
+Documento ya borrador técnico en el repo (complementario):
+  docs/ENFORTIM_DOSSIER_REUNION.md
+  docs/sops/ (índice SOP borrador)
+Esqueleto UI provisional en Kronos: pestañas "Escandalls" y "KPIs mensuals"
+(sin esquema SQL cerrado — PRE-REUNIÓN).
+
+================================================================================
+2. QUÉ YA EXISTE (OBRADOR AC3 — INNVESS) — NO VOLVER A FINANCIAR CON ENFORTIM
+================================================================================
+Módulo Obrador en Kronos + portal móvil:
+  Recepciones (manual + OCR albarán) → asociación producto-proveedor →
+  creación de lote multi-MP + etiqueta QR → expedición (check salida obligatorio) →
+  entrega → incidencias lot/sensor → temperaturas IoT en dashboard DIARIO.
+
+Esto es TRAZABILIDAD y operación diaria. No es el control económico de escandalls.
+
+================================================================================
+3. CONCEPTOS CLAVE (explicación acordada con Brian — usar en el documento)
+================================================================================
+
+3.1 RECEPCIONES = lo que ENTRA al obrador
+  Alimentos de proveedores: carnes, vegetales, frutas, pan, arroz, etc.
+  Materia prima (MP). Datos: proveedor, lot proveedor, temperatura, estado, etc.
+
+3.2 PRODUCTO = el plato / elaborado del catálogo
+  Ejemplo: "Arroz con verduras".
+  Es lo que se cocina/envasa (obrador_productes).
+
+3.3 ESCANDALL = PLANTILLA de coste de 1 UNIDAD de ese producto
+  NO es el lote del día.
+  Es la ficha económica de referencia: por 1 kg (o 1 ración / 1 bandeja):
+    - ingredientes y cantidades (ej. 400 g arroz + 500 g verdura)
+    - merma %
+    - coste unitario (precios de compra, idealmente Holded)
+    - envase / otros costes asignados (pendiente de acordar si se incluyen)
+    - PVP → margen bruto € y %
+  Contenido de recetas (qué lleva cada plato): Bruno / Cristina.
+  Herramienta en Kronos (CRUD + export PDF/Excel): Brian — DESPUÉS de la reunión.
+  Compromiso Enfortim R2: ≥15 escandalls (líneas fred / rebosteria / frescos).
+
+3.4 LOTE = producción de UN DÍA de ese producto
+  Ejemplo: "Hoy hacemos 7,5 kg de Arroz con verduras" → LOT-YYYYMMDD-NNN + QR.
+  Usa recepciones REALES de MP de ese día.
+  Hoy en Kronos el lote NO está enlazado aún al escandall (solo producto + recepciones).
+  Con Enfortim la idea es: mismo producto → escandall para costes teóricos;
+  lote = lo fabricado hoy. Coste teórico del lote ≈ coste escandall × cantidad.
+
+3.5 RELACIÓN (frase corta para el documento)
+  Recepciones = entra.
+  Escandall = cuánto cuesta (en teoría) 1 unidad del plato.
+  Lote = cuántas unidades / kg hacemos hoy de ese plato (trazabilidad).
+  El lote NO ES el escandall; el lote SE BASA en el producto (y podrá usar el
+  escandall para saber coste/precio de referencia).
+
+================================================================================
+4. EJEMPLO NUMÉRICO PARA EL DOCUMENTO (inventado, solo didáctico)
+================================================================================
+Escandall por 1 kg "Arroz con verduras":
+  Arroz 400 g × 2,00 €/kg     = 0,80 €
+  Verduras 500 g × 3,00 €/kg  = 1,50 €
+  Aceite / otros              = 0,20 €
+  Coste / kg                  = 2,50 €
+  PVP / kg                    = 6,00 €
+  Margen / kg                 = 3,50 €
+
+Lote del día: 7,5 kg
+  Coste teórico ≈ 7,5 × 2,50 = 18,75 €
+  Venta teórica ≈ 7,5 × 6,00 = 45,00 €
+  Margen teórico ≈ 26,25 €
+
+================================================================================
+5. KPIs MENSUALES (ENFORTIM R3) — DISTINTOS DEL DASHBOARD DIARIO
+================================================================================
+Vista NUEVA en Kronos (no mezclar con dashboard operativo IoT / lots avui).
+Export PDF del informe mensual = entregable justificable (12 a lo largo del proyecto).
+
+Propuesta de 6 KPIs (a VALIDAR con Sergi):
+  1. Margen bruto por línea (fred / rebosteria / frescos) — sale de escandalls (R2)
+  2. Coste por lote producido — escandall × producción del mes
+  3. Lots / mes y % incidencias — datos Ac3 ya
+  4. Cumplimiento registros APPCC (%) — recepciones, check salida, IoT
+  5. Personas en inserción vinculadas al obrador — impacto (fuente a acordar)
+  6. Horas formación / nuevas contrataciones vulnerables — impacto (fuente a acordar)
+
+================================================================================
+6. SOPs DIGITALES (ENFORTIM R1 — parte Brian)
+================================================================================
+Documentar en docs/sops/ los flujos Kronos/portal (recepción, lote, etiqueta,
+expedición, entrega, incidencias, temperaturas, etc.) + export PDF.
+APPCC / manipulación alimentos = profesional EXTERNA (no Brian).
+Sistema de registros diario = YA HECHO (Ac3).
+
+================================================================================
+7. QUÉ PEDIR / DECIDIR EN LA REUNIÓN (checklist para el documento)
+================================================================================
+- ¿Quién define el modelo de ficha de escandall (externa vs interno)?
+- ¿Líneas exactas: fred / rebosteria / frescos?
+- ¿Cuáles son los ≥15 productos prioritarios?
+- ¿El escandall incluye solo MP (+ envase) o también tiempo/mano de obra/energía?
+- ¿Confirmar los 6 KPIs? ¿Fuente de datos de impacto (5 y 6)?
+- ¿Fecha de inicio real de desarrollo (infra antes de dic 2026 OK)?
+- ¿Prácticas: DAM/DAW con Brian u Admin. i Finances?
+- ¿Cómo evitar doble imputación InnvESS ↔ Enfortim?
+
+================================================================================
+8. INSTRUCCIONES PARA CURSOR AL GENERAR EL DOCUMENTO
+================================================================================
+- Destinatarios: Sergi y Bruno (coordinación Enfortim / obrador).
+- Estilo: claro, sin jerga innecesaria; tablas y el ejemplo del arroz con verduras.
+- Estructura sugerida:
+    1. Contexto subvención (2–3 párrafos)
+    2. Qué ya funciona (Ac3)
+    3. Qué añadimos con Enfortim (escandalls, KPI mensual, SOPs)
+    4. Explicación recepción → producto → escandall → lote (con ejemplo)
+    5. KPIs propuestos
+    6. Decisiones pendientes / agenda de reunión
+- NO presentar el esquema SQL como cerrado.
+- NO mezclar dashboard diario con KPI mensual.
+- Marcar el ejemplo numérico como ilustrativo.
+- Idioma: preguntar a Brian; por defecto castellano para Sergi/Bruno si no indica.
+- Formato de salida preferido: Markdown limpio listo para PDF, o DOCX si pide Brian.
+- Referencias internas (opcionales al final): CONTEXTO_ESCALBRADOR_Kronos.md,
+  docs/ENFORTIM_DOSSIER_REUNION.md, docs/sops/
+
+================================================================================
+FIN DEL BRIEFING
+================================================================================
