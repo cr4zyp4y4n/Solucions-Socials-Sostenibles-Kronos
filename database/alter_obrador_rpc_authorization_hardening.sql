@@ -1,23 +1,21 @@
 -- =============================================================================
--- Obrador — RPCs atòmiques per lots i expedicions
+-- Obrador: enduriment final de RPCs SECURITY DEFINER d'escriptura
 -- =============================================================================
--- Ús: executar aquest fitxer a Supabase SQL Editor després del schema base.
--- És idempotent i es pot reexecutar.
--- =============================================================================
-
-ALTER TABLE obrador_expedicions
-  ADD COLUMN IF NOT EXISTS check_sortida BOOLEAN DEFAULT false;
+-- Reexecutar després de les migracions d'obrador existents. Manté les operacions
+-- atòmiques, però evita que qualsevol usuari authenticated salti les RLS invocant
+-- directament les RPCs.
 
 CREATE OR REPLACE FUNCTION public.obrador_crear_lot_i_etiqueta(
   p_id_producte uuid,
-  p_id_recepcio uuid,
+  p_id_recepcio uuid DEFAULT NULL,
   p_id_operari uuid DEFAULT NULL,
   p_quantitat_kg numeric DEFAULT NULL,
   p_temp_final_coccio numeric DEFAULT NULL,
   p_mostra_guardada boolean DEFAULT true,
   p_observacions text DEFAULT NULL,
   p_caducitat_dies integer DEFAULT 3,
-  p_allergens text[] DEFAULT ARRAY[]::text[]
+  p_allergens text[] DEFAULT ARRAY[]::text[],
+  p_id_recepcions uuid[] DEFAULT NULL
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -25,31 +23,75 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
-  v_recepcio obrador_recepcions%ROWTYPE;
-  v_lot obrador_lots%ROWTYPE;
-  v_lot_final obrador_lots%ROWTYPE;
-  v_etiqueta obrador_etiquetes%ROWTYPE;
+  v_ids uuid[];
+  v_id uuid;
+  v_principal uuid;
+  v_recepcio public.obrador_recepcions%ROWTYPE;
+  v_lot public.obrador_lots%ROWTYPE;
+  v_lot_final public.obrador_lots%ROWTYPE;
+  v_etiqueta public.obrador_etiquetes%ROWTYPE;
   v_data_caducitat date;
   v_codi_qr text;
+  v_ordre integer := 0;
+  v_proveidors_producte uuid[];
+  v_prov_count integer;
 BEGIN
   IF NOT public.obrador_is_management_user() THEN
     RAISE EXCEPTION 'No autoritzat per crear lots.';
   END IF;
 
-  SELECT *
-  INTO v_recepcio
-  FROM obrador_recepcions
-  WHERE id = p_id_recepcio;
-
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'Recepció no trobada';
+  IF p_id_producte IS NULL THEN
+    RAISE EXCEPTION 'Producte obligatori';
   END IF;
 
-  IF COALESCE(lower(v_recepcio.estat), '') NOT IN ('bo', 'regular') THEN
-    RAISE EXCEPTION 'La recepció seleccionada està en estat "%" i no es pot utilitzar per producció.', COALESCE(v_recepcio.estat, 'desconegut');
+  IF p_id_recepcions IS NOT NULL AND COALESCE(array_length(p_id_recepcions, 1), 0) > 0 THEN
+    SELECT ARRAY(
+      SELECT DISTINCT x
+      FROM unnest(p_id_recepcions) AS x
+      WHERE x IS NOT NULL
+    ) INTO v_ids;
+  ELSIF p_id_recepcio IS NOT NULL THEN
+    v_ids := ARRAY[p_id_recepcio];
+  ELSE
+    RAISE EXCEPTION 'Cal almenys una recepció';
   END IF;
 
-  INSERT INTO obrador_lots (
+  IF COALESCE(array_length(v_ids, 1), 0) < 1 THEN
+    RAISE EXCEPTION 'Cal almenys una recepció';
+  END IF;
+
+  v_principal := v_ids[1];
+
+  FOREACH v_id IN ARRAY v_ids
+  LOOP
+    SELECT * INTO v_recepcio FROM public.obrador_recepcions WHERE id = v_id;
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'Recepció no trobada: %', v_id;
+    END IF;
+    IF COALESCE(lower(v_recepcio.estat), '') NOT IN ('bo', 'regular') THEN
+      RAISE EXCEPTION 'La recepció % està en estat "%" i no es pot utilitzar per producció.',
+        v_id, COALESCE(v_recepcio.estat, 'desconegut');
+    END IF;
+  END LOOP;
+
+  SELECT COALESCE(array_agg(pp.id_proveidor), ARRAY[]::uuid[])
+  INTO v_proveidors_producte
+  FROM public.obrador_producte_proveidors pp
+  WHERE pp.id_producte = p_id_producte;
+
+  v_prov_count := COALESCE(array_length(v_proveidors_producte, 1), 0);
+  IF v_prov_count > 0 THEN
+    FOREACH v_id IN ARRAY v_ids
+    LOOP
+      SELECT * INTO v_recepcio FROM public.obrador_recepcions WHERE id = v_id;
+      IF NOT (v_recepcio.id_proveidor = ANY (v_proveidors_producte)) THEN
+        RAISE EXCEPTION
+          'La recepció no correspon a un proveïdor associat a aquest producte.';
+      END IF;
+    END LOOP;
+  END IF;
+
+  INSERT INTO public.obrador_lots (
     id_producte,
     id_recepcio,
     id_operari,
@@ -61,7 +103,7 @@ BEGIN
   )
   VALUES (
     p_id_producte,
-    p_id_recepcio,
+    v_principal,
     p_id_operari,
     p_quantitat_kg,
     p_temp_final_coccio,
@@ -71,13 +113,21 @@ BEGIN
   )
   RETURNING * INTO v_lot;
 
+  FOREACH v_id IN ARRAY v_ids
+  LOOP
+    v_ordre := v_ordre + 1;
+    INSERT INTO public.obrador_lot_recepcions (id_lot, id_recepcio, ordre)
+    VALUES (v_lot.id, v_id, v_ordre)
+    ON CONFLICT (id_lot, id_recepcio) DO NOTHING;
+  END LOOP;
+
   v_data_caducitat := (
     (now() AT TIME ZONE 'Europe/Madrid')::date
     + COALESCE(NULLIF(p_caducitat_dies, 0), 3)
   );
   v_codi_qr := 'QR-' || v_lot.id::text || '-' || floor(extract(epoch from clock_timestamp()) * 1000)::bigint::text;
 
-  INSERT INTO obrador_etiquetes (
+  INSERT INTO public.obrador_etiquetes (
     id_lot,
     codi_qr,
     allergens,
@@ -91,7 +141,7 @@ BEGIN
   )
   RETURNING * INTO v_etiqueta;
 
-  UPDATE obrador_lots
+  UPDATE public.obrador_lots
   SET estat = 'envasat',
       updated_at = now()
   WHERE id = v_lot.id
@@ -104,8 +154,8 @@ BEGIN
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.obrador_crear_lot_i_etiqueta(uuid, uuid, uuid, numeric, numeric, boolean, text, integer, text[]) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.obrador_crear_lot_i_etiqueta(uuid, uuid, uuid, numeric, numeric, boolean, text, integer, text[]) TO authenticated;
+REVOKE ALL ON FUNCTION public.obrador_crear_lot_i_etiqueta(uuid, uuid, uuid, numeric, numeric, boolean, text, integer, text[], uuid[]) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.obrador_crear_lot_i_etiqueta(uuid, uuid, uuid, numeric, numeric, boolean, text, integer, text[], uuid[]) TO authenticated;
 
 CREATE OR REPLACE FUNCTION public.obrador_crear_expedicio_i_marcar_lot(
   p_id_lot uuid,
@@ -121,9 +171,9 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
-  v_lot obrador_lots%ROWTYPE;
-  v_lot_final obrador_lots%ROWTYPE;
-  v_expedicio obrador_expedicions%ROWTYPE;
+  v_lot public.obrador_lots%ROWTYPE;
+  v_lot_final public.obrador_lots%ROWTYPE;
+  v_expedicio public.obrador_expedicions%ROWTYPE;
 BEGIN
   IF NOT (
     public.obrador_is_management_user()
@@ -142,7 +192,7 @@ BEGIN
 
   SELECT *
   INTO v_lot
-  FROM obrador_lots
+  FROM public.obrador_lots
   WHERE id = p_id_lot
   FOR UPDATE;
 
@@ -157,11 +207,11 @@ BEGIN
     RAISE EXCEPTION 'Aquest lot està en estat "%" i no es pot expedir fins que estigui envasat.', COALESCE(v_lot.estat, 'desconegut');
   END IF;
 
-  IF EXISTS (SELECT 1 FROM obrador_expedicions WHERE id_lot = p_id_lot) THEN
+  IF EXISTS (SELECT 1 FROM public.obrador_expedicions WHERE id_lot = p_id_lot) THEN
     RAISE EXCEPTION 'Aquest lot ja té una expedició registrada.';
   END IF;
 
-  INSERT INTO obrador_expedicions (
+  INSERT INTO public.obrador_expedicions (
     id_lot,
     id_client,
     comanda_holded,
@@ -179,7 +229,7 @@ BEGIN
   )
   RETURNING * INTO v_expedicio;
 
-  UPDATE obrador_lots
+  UPDATE public.obrador_lots
   SET estat = 'expedit',
       updated_at = now()
   WHERE id = p_id_lot

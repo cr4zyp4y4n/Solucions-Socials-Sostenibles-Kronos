@@ -21,6 +21,13 @@ DECLARE
   v_lot_final obrador_lots%ROWTYPE;
   v_expedicio obrador_expedicions%ROWTYPE;
 BEGIN
+  IF NOT (
+    public.obrador_is_management_user()
+    OR public.obrador_is_portal_staff_user()
+  ) THEN
+    RAISE EXCEPTION 'No autoritzat per expedir lots.';
+  END IF;
+
   IF NOT COALESCE(p_check_sortida, false) THEN
     RAISE EXCEPTION 'Cal verificar el producte abans de sortir (check_sortida).';
   END IF;
