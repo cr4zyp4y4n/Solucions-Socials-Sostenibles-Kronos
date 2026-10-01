@@ -22,12 +22,14 @@ SQL necessari a Supabase:
 
 1. `database/create_obrador_ac3_tables.sql`
 2. `database/alter_obrador_ac3_v2.sql`
-3. `database/alter_obrador_expedicions_unique_lot.sql`
-4. `database/alter_obrador_check_sortida_required.sql`
-5. `database/alter_obrador_anular_expedicio_i_clients.sql`
-6. `database/alter_obrador_atomic_flows.sql`
-7. `database/alter_obrador_rls_hardening.sql`
-8. `database/alter_obrador_portal_staff_identity.sql`
+3. `database/alter_obrador_rls_hardening.sql`
+4. `database/alter_obrador_portal_staff_identity.sql`
+5. `database/alter_obrador_atomic_flows.sql`
+6. `database/alter_obrador_lot_multi_recepcio.sql`
+7. `database/alter_obrador_expedicions_unique_lot.sql`
+8. `database/alter_obrador_check_sortida_required.sql`
+9. `database/alter_obrador_anular_expedicio_i_clients.sql`
+10. `database/alter_obrador_rpc_authorization_hardening.sql`
 
 Opcional: executar `database/alter_obrador_proveidors_holded.sql` (CIF + vincle Holded per import/sync).
 
