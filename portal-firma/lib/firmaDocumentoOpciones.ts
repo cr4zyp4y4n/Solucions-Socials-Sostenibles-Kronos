@@ -11,6 +11,42 @@ function isMissingOpcionesColumn(message: string): boolean {
   return String(message || '').includes('opciones_aceptacion');
 }
 
+function normalizeRespuesta(raw: unknown): 'si' | 'no' | null {
+  const v = String(raw || '').trim().toLowerCase();
+  if (v === 'si' || v === 'sí' || v === 'yes' || v === 'true') return 'si';
+  if (v === 'no' || v === 'false') return 'no';
+  return null;
+}
+
+async function loadOpcionesFromAudit(documentoId: string): Promise<DocumentoOpcionesAceptacion | null> {
+  const { data } = await supabaseAdmin
+    .from('firma_auditorias')
+    .select('detalle, created_at')
+    .eq('documento_id', documentoId)
+    .eq('resultado', 'ok')
+    .order('created_at', { ascending: false })
+    .limit(20);
+
+  for (const row of data || []) {
+    const detalle = row.detalle && typeof row.detalle === 'object'
+      ? (row.detalle as Record<string, unknown>)
+      : {};
+    if (detalle.accion !== 'documento_lectura_confirmada') continue;
+
+    const respuesta = normalizeRespuesta(detalle.respuesta);
+    if (!respuesta) continue;
+
+    return {
+      respuesta,
+      lectura_confirmada: respuesta === 'si',
+      confirmado_at: String(detalle.confirmado_at || row.created_at || ''),
+      ...(detalle.formacion_acoso ? { formacion_acoso: true } : {})
+    };
+  }
+
+  return null;
+}
+
 export async function updateDocumentoLecturaConfirmada(
   documentoId: string,
   opciones: DocumentoOpcionesAceptacion,
@@ -49,9 +85,10 @@ export async function loadDocumentoOpciones(
     .maybeSingle();
 
   if (!error && data) {
+    const opciones = (data.opciones_aceptacion || null) as DocumentoOpcionesAceptacion | null;
     return {
       tipoDocumento: data.tipo_documento,
-      opciones: (data.opciones_aceptacion || null) as DocumentoOpcionesAceptacion | null
+      opciones: opciones || (await loadOpcionesFromAudit(documentoId))
     };
   }
 
@@ -61,7 +98,10 @@ export async function loadDocumentoOpciones(
       .select('tipo_documento')
       .eq('id', documentoId)
       .maybeSingle();
-    return { tipoDocumento: fallback?.tipo_documento, opciones: null };
+    return {
+      tipoDocumento: fallback?.tipo_documento,
+      opciones: await loadOpcionesFromAudit(documentoId)
+    };
   }
 
   return { tipoDocumento: undefined, opciones: null };
