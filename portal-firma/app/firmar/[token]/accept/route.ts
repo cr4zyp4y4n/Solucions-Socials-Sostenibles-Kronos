@@ -1,4 +1,9 @@
-import { buildAceptacionRespuestaLine, getFirmaDocMeta, normalizeRespuestaAceptacion } from '@/lib/firmaDocumentosMeta';
+import {
+  buildAceptacionRespuestaLine,
+  getFirmaDocMeta,
+  getReadStatementNo,
+  normalizeRespuestaAceptacion
+} from '@/lib/firmaDocumentosMeta';
 import { getOtpScopeIds, resolveFirmaToken } from '@/lib/resolveFirmaToken';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getRequestInfo } from '@/lib/requestInfo';
@@ -184,6 +189,54 @@ export async function POST(_req: Request, ctx: { params: Promise<{ token: string
     );
   }
 
+  const declaracionesAceptadas = await Promise.all(
+    resolved.documentos.map(async (d) => {
+      const { opciones } = await loadDocumentoOpciones(d.id);
+      const respuesta = normalizeRespuestaAceptacion(opciones);
+      if (!respuesta) {
+        return {
+          ok: false as const,
+          documentoId: d.id,
+          tipoDocumento: d.tipo_documento
+        };
+      }
+
+      return {
+        ok: true as const,
+        documento_id: d.id,
+        tipo_documento: d.tipo_documento,
+        respuesta,
+        lectura_confirmada: respuesta === 'si',
+        declaracion:
+          respuesta === 'si'
+            ? getFirmaDocMeta(d.tipo_documento).readStatement
+            : getReadStatementNo(d.tipo_documento),
+        aceptacion_linea: buildAceptacionRespuestaLine(d.tipo_documento, respuesta)
+      };
+    })
+  );
+
+  const missingDeclaraciones = declaracionesAceptadas.filter((d) => !d.ok);
+  if (missingDeclaraciones.length) {
+    return Response.json(
+      {
+        ok: false,
+        error: `No se puede firmar sin una respuesta Sí/No verificable en todos los documentos (faltan ${missingDeclaraciones.length}).`
+      },
+      { status: 400 }
+    );
+  }
+  const declaracionesAceptadasAudit = declaracionesAceptadas
+    .filter((d) => d.ok)
+    .map((d) => ({
+      documento_id: d.documento_id,
+      tipo_documento: d.tipo_documento,
+      respuesta: d.respuesta,
+      lectura_confirmada: d.lectura_confirmada,
+      declaracion: d.declaracion,
+      aceptacion_linea: d.aceptacion_linea
+    }));
+
   const { documentoId, envioId } = getOtpScopeIds(resolved);
   if (!documentoId) return Response.json({ ok: false, error: 'Documento no encontrado' }, { status: 404 });
 
@@ -293,20 +346,7 @@ export async function POST(_req: Request, ctx: { params: Promise<{ token: string
       storage_paths_firmados: signedPaths,
       sellado: anyPades ? 'pades_evidencias' : 'evidencias_sin_pades',
       pades_aplicado: anyPades,
-      declaraciones_aceptadas: await Promise.all(
-        resolved.documentos.map(async (d) => {
-          const { opciones } = await loadDocumentoOpciones(d.id);
-          const respuesta = normalizeRespuestaAceptacion(opciones) || 'si';
-          return {
-            documento_id: d.id,
-            tipo_documento: d.tipo_documento,
-            respuesta,
-            lectura_confirmada: respuesta === 'si',
-            declaracion: getFirmaDocMeta(d.tipo_documento).readStatement,
-            aceptacion_linea: buildAceptacionRespuestaLine(d.tipo_documento, respuesta)
-          };
-        })
-      )
+      declaraciones_aceptadas: declaracionesAceptadasAudit
     }
   });
 
