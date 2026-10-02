@@ -235,6 +235,29 @@ export async function POST(_req: Request, ctx: { params: Promise<{ token: string
   const dniConfirmadoEnPortal = requiereDni;
   const smsVerificadoAt = consumed[0]?.consumed_at || null;
   const entityKey = resolved.envio?.entity_key || null;
+  const declaracionesAceptadas = [];
+
+  for (const doc of resolved.documentos) {
+    const opcionesDoc = await loadDocumentoOpciones(doc.id);
+    const respuesta = normalizeRespuestaAceptacion(opcionesDoc.opciones);
+    if (!respuesta) {
+      return Response.json(
+        {
+          ok: false,
+          error: `No se pudo verificar la respuesta Sí/No del documento ${doc.file_name || doc.tipo_documento}. Vuelve a guardar la respuesta antes de firmar.`
+        },
+        { status: 400 }
+      );
+    }
+    declaracionesAceptadas.push({
+      documento_id: doc.id,
+      tipo_documento: doc.tipo_documento,
+      respuesta,
+      lectura_confirmada: respuesta === 'si',
+      declaracion: getFirmaDocMeta(doc.tipo_documento).readStatement,
+      aceptacion_linea: buildAceptacionRespuestaLine(doc.tipo_documento, respuesta)
+    });
+  }
 
   const signedPaths: string[] = [];
   let anyPades = false;
@@ -293,20 +316,7 @@ export async function POST(_req: Request, ctx: { params: Promise<{ token: string
       storage_paths_firmados: signedPaths,
       sellado: anyPades ? 'pades_evidencias' : 'evidencias_sin_pades',
       pades_aplicado: anyPades,
-      declaraciones_aceptadas: await Promise.all(
-        resolved.documentos.map(async (d) => {
-          const { opciones } = await loadDocumentoOpciones(d.id);
-          const respuesta = normalizeRespuestaAceptacion(opciones) || 'si';
-          return {
-            documento_id: d.id,
-            tipo_documento: d.tipo_documento,
-            respuesta,
-            lectura_confirmada: respuesta === 'si',
-            declaracion: getFirmaDocMeta(d.tipo_documento).readStatement,
-            aceptacion_linea: buildAceptacionRespuestaLine(d.tipo_documento, respuesta)
-          };
-        })
-      )
+      declaraciones_aceptadas: declaracionesAceptadas
     }
   });
 
