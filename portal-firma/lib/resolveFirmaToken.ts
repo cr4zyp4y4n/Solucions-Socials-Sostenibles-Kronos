@@ -1,6 +1,90 @@
 import { supabaseAdmin } from '@/lib/supabase';
 import { asSingle } from '@/lib/relation';
 
+const DOC_SELECT_WITH_OPCIONES =
+  'id, tipo_documento, estado, storage_path, storage_path_firmado, file_name, hash_pdf, orden, revisado_at, firmado_at, opciones_aceptacion, sello_posicion';
+
+const DOC_SELECT_FALLBACK =
+  'id, tipo_documento, estado, storage_path, storage_path_firmado, file_name, hash_pdf, orden, revisado_at, firmado_at, sello_posicion';
+
+const TOKEN_SELECT_WITH_OPCIONES = `
+      id,
+      token,
+      expires_at,
+      used_at,
+      revoked_at,
+      envio_id,
+      documento_id,
+      envio:firma_envios (
+        id,
+        nombre,
+        estado,
+        fecha_inicio,
+        fecha_fin,
+        firmado_at,
+        entity_key,
+        trabajador:firma_trabajadores (
+          id,
+          nombre,
+          dni,
+          telefono
+        ),
+        documentos:firma_documentos (
+          ${DOC_SELECT_WITH_OPCIONES}
+        )
+      ),
+      documento:firma_documentos!firma_tokens_documento_id_fkey (
+        ${DOC_SELECT_WITH_OPCIONES},
+        trabajador:firma_trabajadores (
+          id,
+          nombre,
+          dni,
+          telefono
+        )
+      )
+    `;
+
+const TOKEN_SELECT_FALLBACK = `
+      id,
+      token,
+      expires_at,
+      used_at,
+      revoked_at,
+      envio_id,
+      documento_id,
+      envio:firma_envios (
+        id,
+        nombre,
+        estado,
+        fecha_inicio,
+        fecha_fin,
+        firmado_at,
+        entity_key,
+        trabajador:firma_trabajadores (
+          id,
+          nombre,
+          dni,
+          telefono
+        ),
+        documentos:firma_documentos (
+          ${DOC_SELECT_FALLBACK}
+        )
+      ),
+      documento:firma_documentos!firma_tokens_documento_id_fkey (
+        ${DOC_SELECT_FALLBACK},
+        trabajador:firma_trabajadores (
+          id,
+          nombre,
+          dni,
+          telefono
+        )
+      )
+    `;
+
+function isMissingOpcionesColumn(message: string): boolean {
+  return String(message || '').includes('opciones_aceptacion');
+}
+
 export type FirmaDocumentoResolved = {
   id: string;
   tipo_documento: string;
@@ -66,70 +150,19 @@ export async function resolveFirmaToken(token: string): Promise<ResolvedFirmaCon
   const trimmed = String(token || '').trim();
   if (!trimmed) return null;
 
-  const { data: tokenRow, error } = await supabaseAdmin
+  let { data: tokenRow, error } = await supabaseAdmin
     .from('firma_tokens')
-    .select(
-      `
-      id,
-      token,
-      expires_at,
-      used_at,
-      revoked_at,
-      envio_id,
-      documento_id,
-      envio:firma_envios (
-        id,
-        nombre,
-        estado,
-        fecha_inicio,
-        fecha_fin,
-        firmado_at,
-        entity_key,
-        trabajador:firma_trabajadores (
-          id,
-          nombre,
-          dni,
-          telefono
-        ),
-        documentos:firma_documentos (
-          id,
-          tipo_documento,
-          estado,
-          storage_path,
-          storage_path_firmado,
-          file_name,
-          hash_pdf,
-          orden,
-          revisado_at,
-          firmado_at,
-          opciones_aceptacion,
-          sello_posicion
-        )
-      ),
-      documento:firma_documentos!firma_tokens_documento_id_fkey (
-        id,
-        tipo_documento,
-        estado,
-        storage_path,
-        storage_path_firmado,
-        file_name,
-        hash_pdf,
-        orden,
-        revisado_at,
-        firmado_at,
-        opciones_aceptacion,
-        sello_posicion,
-        trabajador:firma_trabajadores (
-          id,
-          nombre,
-          dni,
-          telefono
-        )
-      )
-    `
-    )
+    .select(TOKEN_SELECT_WITH_OPCIONES)
     .eq('token', trimmed)
     .maybeSingle();
+
+  if (error && isMissingOpcionesColumn(error.message)) {
+    ({ data: tokenRow, error } = await supabaseAdmin
+      .from('firma_tokens')
+      .select(TOKEN_SELECT_FALLBACK)
+      .eq('token', trimmed)
+      .maybeSingle());
+  }
 
   if (error) throw new Error(error.message);
   if (!tokenRow) return null;
@@ -186,13 +219,20 @@ export async function resolveFirmaToken(token: string): Promise<ResolvedFirmaCon
     };
     const { data: docsByEnvio, error: docsErr } = await supabaseAdmin
       .from('firma_documentos')
-      .select(
-        'id, tipo_documento, estado, storage_path, storage_path_firmado, file_name, hash_pdf, orden, revisado_at, firmado_at, opciones_aceptacion, sello_posicion'
-      )
+      .select(DOC_SELECT_WITH_OPCIONES)
       .eq('envio_id', envioRaw.id)
       .order('orden', { ascending: true });
     if (!docsErr && docsByEnvio?.length) {
       documentos = docsByEnvio.map(mapDocRow);
+    } else if (docsErr && isMissingOpcionesColumn(docsErr.message)) {
+      const { data: docsFallback } = await supabaseAdmin
+        .from('firma_documentos')
+        .select(DOC_SELECT_FALLBACK)
+        .eq('envio_id', envioRaw.id)
+        .order('orden', { ascending: true });
+      if (docsFallback?.length) {
+        documentos = docsFallback.map(mapDocRow);
+      }
     }
 
     const t = asSingle(envioRaw.trabajador);
@@ -228,13 +268,20 @@ export async function resolveFirmaToken(token: string): Promise<ResolvedFirmaCon
       };
       const { data: docsByEnvio, error: docsErr } = await supabaseAdmin
         .from('firma_documentos')
-        .select(
-          'id, tipo_documento, estado, storage_path, storage_path_firmado, file_name, hash_pdf, orden, revisado_at, firmado_at, opciones_aceptacion, sello_posicion'
-        )
+        .select(DOC_SELECT_WITH_OPCIONES)
         .eq('envio_id', envioRow.id)
         .order('orden', { ascending: true });
       if (!docsErr && docsByEnvio?.length) {
         documentos = docsByEnvio.map(mapDocRow);
+      } else if (docsErr && isMissingOpcionesColumn(docsErr.message)) {
+        const { data: docsFallback } = await supabaseAdmin
+          .from('firma_documentos')
+          .select(DOC_SELECT_FALLBACK)
+          .eq('envio_id', envioRow.id)
+          .order('orden', { ascending: true });
+        if (docsFallback?.length) {
+          documentos = docsFallback.map(mapDocRow);
+        }
       }
       const t = asSingle(envioRow.trabajador);
       if (t?.id && t.telefono) {
