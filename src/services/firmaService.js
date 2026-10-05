@@ -1,5 +1,6 @@
 /* global __FIRMA_SMS_API_BASE__, __FIRMA_SMS_API_SECRET__ */
 import { supabase } from '../config/supabase';
+import { fillPlantillaPdfFile } from '../utils/firmaPlantillaFill';
 
 const TABLE_TRABAJADORES = 'firma_trabajadores';
 const TABLE_ENVIOS = 'firma_envios';
@@ -578,9 +579,10 @@ class FirmaService {
     if (!list.length) throw new Error('Añade al menos un PDF al pack.');
 
     const tipos = list.map((i) => String(i.tipoDocumento || '').trim());
-    if (tipos.includes('vrp_consentimiento') && tipos.includes('vrp_renuncia')) {
+    const vrpTipos = tipos.filter((t) => t === 'vrp' || t === 'vrp_consentimiento' || t === 'vrp_renuncia');
+    if (vrpTipos.length > 1) {
       throw new Error(
-        'No puedes incluir VRP consentimiento y VRP renuncia en el mismo pack. Usa solo uno según la decisión del trabajador.'
+        'Solo puede haber un documento VRP en el pack. El trabajador elige aceptación o renuncia en el portal.'
       );
     }
 
@@ -1022,13 +1024,29 @@ class FirmaService {
   async loadPlantillas(entityKey = null) {
     let query = supabase
       .from(TABLE_PLANTILLAS)
-      .select('id, tipo_documento, entity_key, storage_path, file_name, hash_pdf, sello_posicion, created_at, updated_at')
+      .select('id, tipo_documento, entity_key, storage_path, file_name, hash_pdf, sello_posicion, campos_posicion, created_at, updated_at')
       .order('tipo_documento', { ascending: true });
     if (entityKey) query = query.eq('entity_key', entityKey);
     const { data, error } = await query;
     if (error) {
       const msg = String(error.message || '');
-      if (msg.includes('firma_plantillas') || error.code === '42P01' || error.code === 'PGRST205') {
+      // Columna nueva aún no aplicada (el error menciona firma_plantillas.campos_posicion)
+      if (msg.includes('campos_posicion') || error.code === 'PGRST204') {
+        let q2 = supabase
+          .from(TABLE_PLANTILLAS)
+          .select('id, tipo_documento, entity_key, storage_path, file_name, hash_pdf, sello_posicion, created_at, updated_at')
+          .order('tipo_documento', { ascending: true });
+        if (entityKey) q2 = q2.eq('entity_key', entityKey);
+        const { data: data2, error: err2 } = await q2;
+        if (err2) throw err2;
+        return data2 || [];
+      }
+      if (
+        error.code === '42P01' ||
+        error.code === 'PGRST205' ||
+        /relation .*firma_plantillas.* does not exist/i.test(msg) ||
+        /could not find the table .*firma_plantillas/i.test(msg)
+      ) {
         throw new Error(
           'Falta la tabla firma_plantillas en Supabase. Ejecuta database/create_firma_plantillas.sql'
         );
@@ -1044,11 +1062,24 @@ class FirmaService {
     if (!tipo || !entity) return null;
     const { data, error } = await supabase
       .from(TABLE_PLANTILLAS)
-      .select('id, tipo_documento, entity_key, storage_path, file_name, hash_pdf, sello_posicion, created_at, updated_at')
+      .select('id, tipo_documento, entity_key, storage_path, file_name, hash_pdf, sello_posicion, campos_posicion, created_at, updated_at')
       .eq('tipo_documento', tipo)
       .eq('entity_key', entity)
       .maybeSingle();
-    if (error) throw error;
+    if (error) {
+      const msg = String(error.message || '');
+      if (msg.includes('campos_posicion')) {
+        const { data: data2, error: err2 } = await supabase
+          .from(TABLE_PLANTILLAS)
+          .select('id, tipo_documento, entity_key, storage_path, file_name, hash_pdf, sello_posicion, created_at, updated_at')
+          .eq('tipo_documento', tipo)
+          .eq('entity_key', entity)
+          .maybeSingle();
+        if (err2) throw err2;
+        return data2 || null;
+      }
+      throw error;
+    }
     return data || null;
   }
 
@@ -1101,7 +1132,8 @@ class FirmaService {
   }
 
   /**
-   * Guarda la posición del sello visual en una plantilla (pageIndex, x, y, width, height en pts PDF).
+   * Guarda la(s) posición(es) del sello visual en una plantilla.
+   * Acepta un objeto {pageIndex,x,y,width,height} o un array (un sello por página).
    */
   async updatePlantillaSelloPosicion(plantillaId, selloPosicion) {
     if (!plantillaId) throw new Error('Falta plantillaId');
@@ -1119,6 +1151,37 @@ class FirmaService {
       if (msg.includes('sello_posicion')) {
         throw new Error(
           'Falta la columna sello_posicion. Ejecuta database/alter_firma_sello_posicion.sql en Supabase.'
+        );
+      }
+      throw error;
+    }
+    return data;
+  }
+
+  /**
+   * Guarda posiciones de campos auto-relleno (nombre, apellidos, dni, nombre_completo).
+   * Objeto mapa clave → {pageIndex,x,y,width,height,fontSize?}.
+   */
+  async updatePlantillaCamposPosicion(plantillaId, camposPosicion) {
+    if (!plantillaId) throw new Error('Falta plantillaId');
+    const payload =
+      camposPosicion && typeof camposPosicion === 'object' && Object.keys(camposPosicion).length
+        ? camposPosicion
+        : null;
+    const { data, error } = await supabase
+      .from(TABLE_PLANTILLAS)
+      .update({
+        campos_posicion: payload,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', plantillaId)
+      .select('id, tipo_documento, entity_key, storage_path, file_name, hash_pdf, sello_posicion, campos_posicion, created_at, updated_at')
+      .single();
+    if (error) {
+      const msg = String(error.message || '');
+      if (msg.includes('campos_posicion')) {
+        throw new Error(
+          'Falta la columna campos_posicion. Ejecuta database/alter_firma_campos_posicion.sql en Supabase.'
         );
       }
       throw error;
@@ -1144,8 +1207,11 @@ class FirmaService {
     return { ok: true };
   }
 
-  /** Descarga la plantilla como File listo para createEnvio / uploadPdf. */
-  async downloadPlantillaAsFile(plantilla) {
+  /**
+   * Descarga la plantilla como File listo para createEnvio / uploadPdf.
+   * Solo rellena las claves definidas en campos_posicion (opcionales por plantilla).
+   */
+  async downloadPlantillaAsFile(plantilla, { trabajador = null, entityKey = null, fecha = null } = {}) {
     if (!plantilla?.storage_path) throw new Error('Plantilla sin archivo');
     const { data, error } = await supabase.storage
       .from(BUCKET)
@@ -1156,9 +1222,23 @@ class FirmaService {
     if (!res.ok) throw new Error(`Error descargando plantilla (${res.status})`);
     const blob = await res.blob();
     const name = plantilla.file_name || `${plantilla.tipo_documento || 'plantilla'}.pdf`;
-    return new File([blob], name.endsWith('.pdf') ? name : `${name}.pdf`, {
+    let file = new File([blob], name.endsWith('.pdf') ? name : `${name}.pdf`, {
       type: 'application/pdf'
     });
+    if (plantilla.campos_posicion) {
+      file = await fillPlantillaPdfFile(file, plantilla.campos_posicion, {
+        nombreCompleto: trabajador?.nombreCompleto || '',
+        nombreHolded: trabajador?.nombre || '',
+        apellidos: trabajador?.apellidos || '',
+        dni: trabajador?.dni || '',
+        email: trabajador?.email || '',
+        telefono: trabajador?.telefono || '',
+        fechaNacimiento: trabajador?.fechaNacimiento || '',
+        entityKey: entityKey || plantilla.entity_key || '',
+        fecha: fecha || null
+      });
+    }
+    return file;
   }
 
   async getPlantillaSignedUrl(plantilla, expiresIn = 600) {

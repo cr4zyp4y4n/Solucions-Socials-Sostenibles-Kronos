@@ -19,7 +19,13 @@ export type FirmaDocumentoResolved = {
     y: number;
     width: number;
     height: number;
-  } | null;
+  } | Array<{
+    pageIndex: number;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }> | null;
 };
 
 export type FirmaTrabajadorResolved = {

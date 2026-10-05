@@ -1,6 +1,10 @@
 /**
  * Sello visual mínimo de aceptación (tipo widget de certificado).
  * No sustituye la hoja de evidencias: solo marca nombre, DNI y fecha en el PDF.
+ *
+ * `sello_posicion` en BD puede ser:
+ * - un objeto { pageIndex, x, y, width, height } (legado: 1 página)
+ * - un array de esos objetos (un sello por página)
  */
 import { PDFDocument, PDFPage, rgb, StandardFonts } from 'pdf-lib';
 import { formatMadridDateTime } from '@/lib/madridDate';
@@ -29,7 +33,7 @@ function toWinAnsiSafe(text: string): string {
 }
 
 export function normalizeSelloPosicion(raw: unknown): SelloPosicion | null {
-  if (!raw || typeof raw !== 'object') return null;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   const o = raw as Record<string, unknown>;
   const pageIndex = Number(o.pageIndex);
   const x = Number(o.x);
@@ -37,14 +41,27 @@ export function normalizeSelloPosicion(raw: unknown): SelloPosicion | null {
   const width = Number(o.width);
   const height = Number(o.height);
   if (![pageIndex, x, y, width, height].every((n) => Number.isFinite(n))) return null;
-  if (pageIndex < 0 || width < 40 || height < 20) return null;
+  if (pageIndex < 0 || width < 20 || height < 12) return null;
   return {
     pageIndex: Math.floor(pageIndex),
     x,
     y,
-    width: Math.min(Math.max(width, 80), 260),
-    height: Math.min(Math.max(height, 28), 70)
+    // No forzar tamaño: respetar lo colocado en el editor
+    width: Math.min(Math.max(width, 40), 400),
+    height: Math.min(Math.max(height, 18), 120)
   };
+}
+
+/** Normaliza 1 objeto legado o un array → lista (sin duplicar pageIndex; gana el último). */
+export function normalizeSelloPosiciones(raw: unknown): SelloPosicion[] {
+  if (raw == null) return [];
+  const list = Array.isArray(raw) ? raw : [raw];
+  const byPage = new Map<number, SelloPosicion>();
+  for (const item of list) {
+    const n = normalizeSelloPosicion(item);
+    if (n) byPage.set(n.pageIndex, n);
+  }
+  return [...byPage.values()].sort((a, b) => a.pageIndex - b.pageIndex);
 }
 
 /** Default: esquina inferior derecha de la última página del original. */

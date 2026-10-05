@@ -201,9 +201,9 @@ function generateEpis(ctx, episRows) {
   return docToBlob(doc);
 }
 
-function generateVrpConsentimiento(ctx) {
+function generateVrp(ctx) {
   const { doc, margin, maxW } = createDoc('vrp');
-  let y = writeTitle(doc, 'CONSENTIMIENTO – RECONOCIMIENTO MÉDICO (VRP)', margin, 22);
+  let y = writeTitle(doc, 'RECONOCIMIENTO MÉDICO / VRP – ACEPTACIÓN O RENUNCIA', margin, 22);
   y = writeParagraphs(doc, [`${ctx.localidad}, ${ctx.fechaLarga}`], margin, maxW, 22);
   y = writeFieldBlock(
     doc,
@@ -225,42 +225,10 @@ function generateVrpConsentimiento(ctx) {
       'La empresa pone a disposición del/de la trabajador/a, en cumplimiento del artículo 22 de la Ley ' +
         '31/1995 de Prevención de Riesgos Laborales, la realización de un reconocimiento médico / vigilancia ' +
         'de la salud en función de los riesgos inherentes al trabajo.',
-      'PRESTO MI CONSENTIMIENTO EXPRESO para someterme a dicho reconocimiento médico.',
-      'Para solicitar cita: PRESAL, S.L. — angeles.gonzalez@presal.com'
-    ],
-    margin,
-    maxW,
-    y
-  );
-  addClausulaFooter(doc, margin, maxW);
-  return docToBlob(doc);
-}
-
-function generateVrpRenuncia(ctx) {
-  const { doc, margin, maxW } = createDoc('vrp');
-  let y = writeTitle(doc, 'RENUNCIA – RECONOCIMIENTO MÉDICO (VRP)', margin, 22);
-  y = writeParagraphs(doc, [`${ctx.localidad}, ${ctx.fechaLarga}`], margin, maxW, 22);
-  y = writeFieldBlock(
-    doc,
-    [
-      ['EMPRESA', ctx.empresa],
-      ['NOMBRE Y APELLIDOS', ctx.nombreCompleto],
-      ['DNI', ctx.dni],
-      ['FECHA NACIMIENTO', ctx.fechaNacimiento],
-      ['PUESTO', ctx.puesto],
-      ['TELÉFONO', ctx.telefono],
-      ['EMAIL', ctx.email]
-    ],
-    margin,
-    y
-  );
-  y = writeParagraphs(
-    doc,
-    [
-      'He sido informado/a de que puedo someterme voluntariamente a un reconocimiento médico / vigilancia ' +
-        'de la salud conforme al artículo 22 de la Ley 31/1995 de Prevención de Riesgos Laborales.',
-      'DEJO CONSTANCIA EXPRESA DE MI RENUNCIA PERSONAL a la realización del reconocimiento médico, ' +
-        'habiendo sido informado/a de las consecuencias de esta decisión.'
+      'En el portal de firma Kronos el/la trabajador/a debe indicar expresamente:',
+      '• SÍ — Acepto / presto consentimiento para el reconocimiento médico (VRP).',
+      '• NO — Renuncio al reconocimiento médico / vigilancia de la salud.',
+      'Para solicitar cita (si acepta): PRESAL, S.L. — angeles.gonzalez@presal.com'
     ],
     margin,
     maxW,
@@ -372,10 +340,10 @@ export async function generateFirmaPdfBlob({
       return generateAcoso(ctx);
     case 'epis':
       return generateEpis(ctx, episRows);
+    case 'vrp':
     case 'vrp_consentimiento':
-      return generateVrpConsentimiento(ctx);
     case 'vrp_renuncia':
-      return generateVrpRenuncia(ctx);
+      return generateVrp(ctx);
     case 'baja':
       return generateBaja(ctx, { fechaFin, fechaInicio, motivo: motivoBaja });
     default:

@@ -39,7 +39,13 @@ async function stampAndUploadDocument({
       y: number;
       width: number;
       height: number;
-    } | null;
+    } | Array<{
+      pageIndex: number;
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+    }> | null;
   };
   tokenRowId: string;
   nowIso: string;
@@ -172,13 +178,14 @@ export async function POST(_req: Request, ctx: { params: Promise<{ token: string
     );
   }
 
-  const vrpConsent = resolved.documentos.some((d) => d.tipo_documento === 'vrp_consentimiento');
-  const vrpRenuncia = resolved.documentos.some((d) => d.tipo_documento === 'vrp_renuncia');
-  if (vrpConsent && vrpRenuncia) {
+  const vrpDocs = resolved.documentos.filter((d) =>
+    ['vrp', 'vrp_consentimiento', 'vrp_renuncia'].includes(d.tipo_documento)
+  );
+  if (vrpDocs.length > 1) {
     return Response.json(
       {
         ok: false,
-        error: 'El pack no puede incluir a la vez VRP consentimiento y VRP renuncia. Usa solo uno.'
+        error: 'El pack no puede incluir más de un documento VRP. Usa el tipo unificado (aceptación o renuncia en el portal).'
       },
       { status: 400 }
     );

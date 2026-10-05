@@ -1,8 +1,9 @@
 import React, { useMemo, useState } from 'react';
-import { Eye, MapPin, Trash2, Upload } from 'feather-icons-react';
+import { Eye, MapPin, Trash2, Type, Upload } from 'feather-icons-react';
 import { useTheme } from '../ThemeContext';
-import { getFirmaDocumentoLabel } from '../../constants/firmaDocumentos';
+import { FIRMA_DOCUMENTO_GRUPOS, getFirmaDocumentoLabel } from '../../constants/firmaDocumentos';
 import { getFirmaEmpresaNombre } from '../../constants/firmaEmpresas';
+import { normalizeCamposPosicion } from '../../utils/firmaPlantillaFill';
 import { FirmaButton, FirmaCard, FirmaFieldLabel, FirmaSelect } from './FirmaUi';
 
 export default function FirmaPlantillasPanel({
@@ -14,10 +15,11 @@ export default function FirmaPlantillasPanel({
   onDelete,
   onVer,
   onEditSello,
+  onEditCampos,
   uploadingTipo
 }) {
   const { colors } = useTheme();
-  const [tipoNuevo, setTipoNuevo] = useState('contrato');
+  const [tipoNuevo, setTipoNuevo] = useState('riesgos_psicosociales');
   const [fileNuevo, setFileNuevo] = useState(null);
 
   const filtradas = useMemo(
@@ -32,8 +34,8 @@ export default function FirmaPlantillasPanel({
         <p style={{ margin: '0 0 12px', fontSize: 13, color: colors.textSecondary, lineHeight: 1.45 }}>
           Una plantilla por tipo de documento y empresa. En <b>Nuevo pack</b>, si no subes PDF,
           Kronos usa esta plantilla; si no hay, genera desde Holded (cuando aplica).
-          El PDF de plantilla es estático (no rellena nombre/DNI del empleado).
-          Tras subirla, usa el pin para colocar el sello pequeño de aceptación.
+          Con el icono de texto eliges qué campos rellenar (Nombre, Mail, Teléfono, Fecha nacimiento…);
+          si no colocas ninguno, la plantilla se usa tal cual. Con el pin colocas el sello de aceptación.
         </p>
         <FirmaSelect
           value={selectedEntity}
@@ -51,15 +53,15 @@ export default function FirmaPlantillasPanel({
           <div>
             <FirmaFieldLabel>Tipo</FirmaFieldLabel>
             <FirmaSelect value={tipoNuevo} onChange={(e) => setTipoNuevo(e.target.value)}>
-              <option value="contrato">Contrato de trabajo</option>
-              <option value="riesgos_laborales">Riesgos laborales</option>
-              <option value="acoso">Protocolo acoso</option>
-              <option value="epis">EPIS</option>
-              <option value="vrp_consentimiento">VRP consentimiento</option>
-              <option value="vrp_renuncia">VRP renuncia</option>
-              <option value="baja">Baja</option>
-              <option value="pdp">Protección de datos</option>
-              <option value="otro">Otro</option>
+              {FIRMA_DOCUMENTO_GRUPOS.map((grupo) => (
+                <optgroup key={grupo.key} label={grupo.label}>
+                  {grupo.tipos.map((t) => (
+                    <option key={t.value} value={t.value}>
+                      {t.label}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
             </FirmaSelect>
           </div>
           <label
@@ -109,73 +111,101 @@ export default function FirmaPlantillasPanel({
           </div>
         ) : (
           <div style={{ display: 'grid', gap: 8 }}>
-            {filtradas.map((p) => (
-              <div
-                key={p.id}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: 10,
-                  padding: '10px 12px',
-                  borderRadius: 8,
-                  border: `1px solid ${colors.border}`,
-                  background: colors.surface
-                }}
-              >
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontWeight: 800, fontSize: 13 }}>
-                    {getFirmaDocumentoLabel(p.tipo_documento)}
-                    {p.sello_posicion ? (
-                      <span
-                        style={{
-                          marginLeft: 8,
-                          fontSize: 11,
-                          fontWeight: 700,
-                          color: colors.success || '#2e7d32'
-                        }}
+            {filtradas.map((p) => {
+              const nCampos = Object.keys(normalizeCamposPosicion(p.campos_posicion)).length;
+              return (
+                <div
+                  key={p.id}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: 10,
+                    padding: '10px 12px',
+                    borderRadius: 8,
+                    border: `1px solid ${colors.border}`,
+                    background: colors.surface
+                  }}
+                >
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 800, fontSize: 13 }}>
+                      {getFirmaDocumentoLabel(p.tipo_documento)}
+                      {p.sello_posicion ? (
+                        <span
+                          style={{
+                            marginLeft: 8,
+                            fontSize: 11,
+                            fontWeight: 700,
+                            color: colors.success || '#2e7d32'
+                          }}
+                        >
+                          · sello OK
+                          {Array.isArray(p.sello_posicion) && p.sello_posicion.length > 1
+                            ? ` (${p.sello_posicion.length} pág.)`
+                            : ''}
+                        </span>
+                      ) : null}
+                      {nCampos > 0 ? (
+                        <span
+                          style={{
+                            marginLeft: 8,
+                            fontSize: 11,
+                            fontWeight: 700,
+                            color: '#1565c0'
+                          }}
+                        >
+                          · campos OK ({nCampos})
+                        </span>
+                      ) : null}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 12,
+                        color: colors.textSecondary,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap'
+                      }}
+                    >
+                      {p.file_name}
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                    <FirmaButton size="sm" variant="ghost" onClick={() => onVer(p)} title="Ver PDF">
+                      <Eye size={14} />
+                    </FirmaButton>
+                    {onEditCampos ? (
+                      <FirmaButton
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => onEditCampos(p)}
+                        title="Posicionar Nombre / Apellidos / DNI"
                       >
-                        · sello OK
-                      </span>
+                        <Type size={14} />
+                      </FirmaButton>
                     ) : null}
-                  </div>
-                  <div
-                    style={{
-                      fontSize: 12,
-                      color: colors.textSecondary,
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap'
-                    }}
-                  >
-                    {p.file_name}
-                  </div>
-                </div>
-                <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-                  <FirmaButton size="sm" variant="ghost" onClick={() => onVer(p)} title="Ver PDF">
-                    <Eye size={14} />
-                  </FirmaButton>
-                  {onEditSello ? (
+                    {onEditSello ? (
+                      <FirmaButton
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => onEditSello(p)}
+                        title="Posicionar sello de aceptación"
+                      >
+                        <MapPin size={14} />
+                      </FirmaButton>
+                    ) : null}
                     <FirmaButton
                       size="sm"
                       variant="ghost"
-                      onClick={() => onEditSello(p)}
-                      title="Posicionar sello de aceptación"
+                      onClick={() => onDelete(p)}
+                      title="Eliminar plantilla"
                     >
-                      <MapPin size={14} />
+                      <Trash2 size={14} />
                     </FirmaButton>
-                  ) : null}
-                  <FirmaButton
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => onDelete(p)}
-                    title="Eliminar plantilla"
-                  >
-                    <Trash2 size={14} />
-                  </FirmaButton>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </FirmaCard>

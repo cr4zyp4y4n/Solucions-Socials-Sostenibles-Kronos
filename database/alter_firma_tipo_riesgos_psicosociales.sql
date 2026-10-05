@@ -1,9 +1,6 @@
--- Ampliar tipos de documento de firma (pack contratación: RPT, EPIS, acoso, VRP…)
--- Ejecutar en Supabase si al crear un pack sale:
--- violates check constraint "firma_documentos_tipo_documento_check"
---
--- El esquema original solo permitía: contrato, baja, anexo.
+-- Añadir tipo riesgos_psicosociales (protocolo riesgos psicosociales).
 -- Debe coincidir con src/constants/firmaDocumentos.js
+-- Ejecutar en Supabase SQL Editor.
 
 alter table if exists public.firma_documentos
   drop constraint if exists firma_documentos_tipo_documento_check;
@@ -18,7 +15,33 @@ alter table if exists public.firma_documentos
       'riesgos_laborales',
       'riesgos_psicosociales',
       'epis',
-      'vrp',
+      'vrp_consentimiento',
+      'vrp_renuncia',
+      'formacion_prl',
+      'acoso',
+      'pdp',
+      'confidencialidad',
+      'registro_horario',
+      'normas_internas',
+      'igualdad',
+      'baja',
+      'otro'
+    )
+  );
+
+alter table if exists public.firma_plantillas
+  drop constraint if exists firma_plantillas_tipo_chk;
+
+alter table if exists public.firma_plantillas
+  add constraint firma_plantillas_tipo_chk
+  check (
+    tipo_documento in (
+      'contrato',
+      'anexo',
+      'oferta_empleo',
+      'riesgos_laborales',
+      'riesgos_psicosociales',
+      'epis',
       'vrp_consentimiento',
       'vrp_renuncia',
       'formacion_prl',

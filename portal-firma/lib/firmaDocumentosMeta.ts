@@ -28,6 +28,12 @@ const META: Record<string, FirmaDocMeta> = {
     stampDeclaration: 'Acuse de recibo información RPT (art. 18 LPRL)',
     prepHint: 'Cumplimentar EMPRESA, nombre, DNI y fecha antes de subir.'
   },
+  riesgos_psicosociales: {
+    readStatement:
+      'He recibido el protocolo de actuación ante riesgos psicosociales y me comprometo a conocerlo y aplicarlo (art. 18 Ley 31/1995 PRL).',
+    stampDeclaration: 'Acuse de recibo protocolo riesgos psicosociales (art. 18 LPRL)',
+    prepHint: 'Usar la plantilla PDF del protocolo. Opcional: campos Nombre/DNI/Fecha en Kronos.'
+  },
   epis: {
     readStatement:
       'Confirmo haber recibido los equipos de protección individual indicados en este documento, así como la información e instrucciones para su uso correcto.',
@@ -41,17 +47,24 @@ const META: Record<string, FirmaDocMeta> = {
     optionalFormacionAcoso: true,
     prepHint: 'Cumplimentar EMPRESA, nombre y DNI. La solicitud de formación se registra en el portal.'
   },
+  vrp: {
+    readStatement:
+      'Acepto / presto mi consentimiento para la realización del reconocimiento médico / vigilancia de la salud (art. 22 LPRL).',
+    stampDeclaration: 'Respuesta VRP – reconocimiento médico (art. 22 LPRL)',
+    prepHint:
+      'Un solo documento. En el portal: Sí = acepta el VRP; No = renuncia al reconocimiento.'
+  },
   vrp_consentimiento: {
     readStatement:
       'Presto mi consentimiento expreso para la realización del reconocimiento médico / vigilancia de la salud que la empresa pone a mi disposición (art. 22 LPRL).',
     stampDeclaration: 'Consentimiento reconocimiento médico (art. 22 LPRL)',
-    prepHint: 'Usar solo si el trabajador desea el VRP. Si renuncia, sustituir por el documento de renuncia.'
+    prepHint: 'Tipo legado. Preferir el documento unificado «vrp».'
   },
   vrp_renuncia: {
     readStatement:
       'Dejo constancia expresa de mi renuncia personal a la realización del reconocimiento médico / vigilancia de la salud (art. 22 LPRL).',
     stampDeclaration: 'Renuncia reconocimiento médico (art. 22 LPRL)',
-    prepHint: 'Usar solo si el trabajador NO desea el VRP. No incluir ambos VRP en el mismo pack.'
+    prepHint: 'Tipo legado. Preferir el documento unificado «vrp».'
   },
   pdp: {
     readStatement: 'He leído la información sobre protección de datos (RGPD) y quedo informado/a.',
@@ -110,6 +123,8 @@ export function getFirmaDocMeta(tipo?: string | null): FirmaDocMeta {
 export function getReadStatementNo(tipo?: string | null): string {
   const key = String(tipo || '').trim();
   switch (key) {
+    case 'vrp':
+      return 'Renuncio al reconocimiento médico / vigilancia de la salud (art. 22 LPRL).';
     case 'vrp_consentimiento':
       return 'No presto mi consentimiento para la realización del reconocimiento médico / vigilancia de la salud (art. 22 LPRL).';
     case 'vrp_renuncia':
@@ -120,6 +135,8 @@ export function getReadStatementNo(tipo?: string | null): string {
       return 'No acepto / no me comprometo con el protocolo de acoso en los términos indicados.';
     case 'riesgos_laborales':
       return 'No confirmo haber recibido o aceptado la información RPT en los términos indicados.';
+    case 'riesgos_psicosociales':
+      return 'No acepto / no me comprometo con el protocolo de riesgos psicosociales en los términos indicados.';
     case 'epis':
       return 'No confirmo el recibo o la información de EPIS en los términos indicados.';
     case 'contrato':
@@ -141,6 +158,8 @@ export function normalizeRespuestaAceptacion(opciones?: DocOpciones | null): 'si
 export function buildAceptacionSiLine(tipoDocumento: string): string {
   const tipo = String(tipoDocumento || '').trim();
   switch (tipo) {
+    case 'vrp':
+      return 'Reconocimiento médico (VRP): Aceptado / consentimiento Sí';
     case 'vrp_consentimiento':
       return 'Consentimiento para reconocimiento médico (art. 22 LPRL): Sí';
     case 'vrp_renuncia':
@@ -151,6 +170,8 @@ export function buildAceptacionSiLine(tipoDocumento: string): string {
       return 'Protocolo de acoso recibido y aceptado (art. 18 LPRL): Sí';
     case 'riesgos_laborales':
       return 'Información RPT recibida y aceptada (art. 18 LPRL): Sí';
+    case 'riesgos_psicosociales':
+      return 'Protocolo de riesgos psicosociales recibido y aceptado (art. 18 LPRL): Sí';
     case 'epis':
       return 'Recibo e información de EPIS confirmados: Sí';
     case 'contrato':
@@ -168,6 +189,8 @@ export function buildAceptacionSiLine(tipoDocumento: string): string {
 export function buildAceptacionNoLine(tipoDocumento: string): string {
   const tipo = String(tipoDocumento || '').trim();
   switch (tipo) {
+    case 'vrp':
+      return 'Reconocimiento médico (VRP): Renuncia (No acepto)';
     case 'vrp_consentimiento':
       return 'Consentimiento para reconocimiento médico (art. 22 LPRL): No';
     case 'vrp_renuncia':
@@ -178,6 +201,8 @@ export function buildAceptacionNoLine(tipoDocumento: string): string {
       return 'Protocolo de acoso (art. 18 LPRL): No aceptado';
     case 'riesgos_laborales':
       return 'Información RPT (art. 18 LPRL): No aceptada';
+    case 'riesgos_psicosociales':
+      return 'Protocolo de riesgos psicosociales (art. 18 LPRL): No aceptado';
     case 'epis':
       return 'Recibo e información de EPIS: No confirmado';
     case 'contrato':

@@ -28,7 +28,7 @@ import { drawBrandedEvidencePage, type EvidenceSection } from '@/lib/evidencePag
 import {
   defaultSelloPosicion,
   drawAcceptanceStamp,
-  normalizeSelloPosicion,
+  normalizeSelloPosiciones,
   type SelloPosicion
 } from '@/lib/acceptanceStamp';
 
@@ -52,8 +52,8 @@ export type SealPdfEvidenceArgs = {
   entityKey?: string | null;
   documentoTitulo?: string | null;
   fileName?: string | null;
-  /** Posición del sello visual (plantilla / documento). */
-  selloPosicion?: SelloPosicion | null;
+  /** Posición(es) del sello visual: un objeto o array (una por página). */
+  selloPosicion?: SelloPosicion | SelloPosicion[] | null;
 };
 
 export type SealPdfEvidenceResult = {
@@ -292,32 +292,34 @@ export async function sealPdfWithEvidence(args: SealPdfEvidenceArgs): Promise<Se
   const lastOriginal = pages[pages.length - 1];
   const { width, height } = lastOriginal.getSize();
 
-  // Sello visual pequeño en el original (antes de la hoja de evidencias)
-  const normalized = normalizeSelloPosicion(args.selloPosicion);
-  let stampPageIndex = normalized
-    ? Math.min(normalized.pageIndex, originalPageCount - 1)
-    : originalPageCount - 1;
-  const stampPage = pages[stampPageIndex];
-  const stampBox = normalized
-    ? {
-        x: normalized.x,
-        y: normalized.y,
-        width: normalized.width,
-        height: normalized.height
-      }
-    : (() => {
-        const d = defaultSelloPosicion(stampPage);
-        return { x: d.x, y: d.y, width: d.width, height: d.height };
-      })();
+  // Sellos visuales en el original (antes de la hoja de evidencias): uno por página configurada
+  const positions = normalizeSelloPosiciones(args.selloPosicion);
+  const stampsToDraw =
+    positions.length > 0
+      ? positions
+      : (() => {
+          const lastIdx = originalPageCount - 1;
+          const d = defaultSelloPosicion(pages[lastIdx]);
+          return [{ ...d, pageIndex: lastIdx }];
+        })();
 
-  await drawAcceptanceStamp({
-    pdfDoc,
-    page: stampPage,
-    box: stampBox,
-    trabajadorNombre: args.trabajadorNombre,
-    trabajadorDni: args.trabajadorDni,
-    nowIso: args.nowIso
-  });
+  for (const pos of stampsToDraw) {
+    const stampPageIndex = Math.min(Math.max(0, pos.pageIndex), originalPageCount - 1);
+    const stampPage = pages[stampPageIndex];
+    await drawAcceptanceStamp({
+      pdfDoc,
+      page: stampPage,
+      box: {
+        x: pos.x,
+        y: pos.y,
+        width: pos.width,
+        height: pos.height
+      },
+      trabajadorNombre: args.trabajadorNombre,
+      trabajadorDni: args.trabajadorDni,
+      nowIso: args.nowIso
+    });
+  }
 
   const evidencePage = pdfDoc.addPage([width, height]);
 

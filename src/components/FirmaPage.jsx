@@ -16,6 +16,7 @@ import FirmaAuditoriaModal from './firma/FirmaAuditoriaModal';
 import FirmaNotificarBajaModal from './firma/FirmaNotificarBajaModal';
 import FirmaPlantillasPanel from './firma/FirmaPlantillasPanel';
 import FirmaSelloPositionModal from './firma/FirmaSelloPositionModal';
+import FirmaCamposPositionModal from './firma/FirmaCamposPositionModal';
 import { FirmaButton, FirmaTabs } from './firma/FirmaUi';
 import {
   buildFirmaEmailBody,
@@ -62,6 +63,9 @@ export default function FirmaPage() {
   const [selloEditorPlantilla, setSelloEditorPlantilla] = useState(null);
   const [selloEditorUrl, setSelloEditorUrl] = useState('');
   const [selloEditorSaving, setSelloEditorSaving] = useState(false);
+  const [camposEditorPlantilla, setCamposEditorPlantilla] = useState(null);
+  const [camposEditorUrl, setCamposEditorUrl] = useState('');
+  const [camposEditorSaving, setCamposEditorSaving] = useState(false);
 
   const notificarBajaEnvio = useMemo(
     () => envios.find((e) => e.id === notificarBajaEnvioId) || null,
@@ -419,6 +423,15 @@ export default function FirmaPage() {
       setError('El contrato laboral requiere subir el PDF o tener una plantilla de contrato guardada.');
       return;
     }
+    const psicosocialSinFuente = packItems.find(
+      (i) => i.tipoDocumento === 'riesgos_psicosociales' && !i.file && !plantillasByTipo.riesgos_psicosociales
+    );
+    if (psicosocialSinFuente) {
+      setError(
+        'Riesgos psicosociales requiere la plantilla PDF (o subir el documento). Sube «Protocolo Riesgos Psicosociales» en Plantillas.'
+      );
+      return;
+    }
     const notificacionSinFuente = packKind === 'notificacion'
       ? packItems.find((i) => !i.file && !plantillasByTipo[i.tipoDocumento])
       : null;
@@ -439,7 +452,11 @@ export default function FirmaPage() {
           if (!file) {
             const plantilla = plantillasByTipo[item.tipoDocumento];
             if (plantilla) {
-              file = await firmaService.downloadPlantillaAsFile(plantilla);
+              file = await firmaService.downloadPlantillaAsFile(plantilla, {
+                trabajador: selectedHoldedEmployee,
+                entityKey: selectedEntity,
+                fecha: envioForm.fechaInicio || envioForm.fechaFin || null
+              });
               origen = 'plantilla';
             } else {
               file = await generateFirmaPdfFile({
@@ -576,14 +593,63 @@ export default function FirmaPage() {
     setSelloEditorSaving(true);
     setError('');
     try {
-      await firmaService.updatePlantillaSelloPosicion(selloEditorPlantilla.id, selloPosicion);
+      const updated = await firmaService.updatePlantillaSelloPosicion(
+        selloEditorPlantilla.id,
+        selloPosicion
+      );
+      setSelloEditorPlantilla((prev) => (prev ? { ...prev, ...updated } : updated));
       await loadPlantillas();
-      setMessage('Posición del sello guardada en la plantilla.');
-      cerrarEditorSello();
+      const n = Array.isArray(selloPosicion) ? selloPosicion.length : 1;
+      setMessage(
+        n > 1
+          ? `Sellos actualizados (${n} páginas). Puedes seguir con otras páginas.`
+          : 'Posición del sello guardada. Puedes seguir con otras páginas.'
+      );
     } catch (e) {
       setError(e?.message || 'Error guardando la posición del sello.');
     } finally {
       setSelloEditorSaving(false);
+    }
+  };
+
+  const abrirEditorCampos = async (plantilla) => {
+    setError('');
+    try {
+      const url = await firmaService.getPlantillaSignedUrl(plantilla);
+      setCamposEditorUrl(url);
+      setCamposEditorPlantilla(plantilla);
+    } catch (e) {
+      setError(e?.message || 'No se pudo abrir el editor de campos.');
+    }
+  };
+
+  const cerrarEditorCampos = () => {
+    setCamposEditorPlantilla(null);
+    setCamposEditorUrl('');
+    setCamposEditorSaving(false);
+  };
+
+  const guardarPosicionCampos = async (camposPosicion) => {
+    if (!camposEditorPlantilla?.id) return;
+    setCamposEditorSaving(true);
+    setError('');
+    try {
+      const updated = await firmaService.updatePlantillaCamposPosicion(
+        camposEditorPlantilla.id,
+        camposPosicion
+      );
+      setCamposEditorPlantilla((prev) => (prev ? { ...prev, ...updated } : updated));
+      await loadPlantillas();
+      const n = Object.keys(camposPosicion || {}).length;
+      setMessage(
+        n
+          ? `Campos auto-relleno guardados (${n}). Al crear un pack se rellenan con el trabajador.`
+          : 'Campos auto-relleno eliminados de la plantilla.'
+      );
+    } catch (e) {
+      setError(e?.message || 'Error guardando los campos.');
+    } finally {
+      setCamposEditorSaving(false);
     }
   };
 
@@ -714,6 +780,7 @@ export default function FirmaPage() {
               onDelete={deletePlantilla}
               onVer={verPlantilla}
               onEditSello={abrirEditorSello}
+              onEditCampos={abrirEditorCampos}
               uploadingTipo={uploadingPlantillaTipo}
             />
           </motion.div>
@@ -800,6 +867,17 @@ export default function FirmaPage() {
           saving={selloEditorSaving}
           onSave={guardarPosicionSello}
           onClose={cerrarEditorSello}
+        />
+      ) : null}
+
+      {camposEditorPlantilla && camposEditorUrl ? (
+        <FirmaCamposPositionModal
+          open
+          plantilla={camposEditorPlantilla}
+          pdfUrl={camposEditorUrl}
+          saving={camposEditorSaving}
+          onSave={guardarPosicionCampos}
+          onClose={cerrarEditorCampos}
         />
       ) : null}
     </div>
