@@ -47,6 +47,18 @@ const META: Record<string, FirmaDocMeta> = {
     optionalFormacionAcoso: true,
     prepHint: 'Cumplimentar EMPRESA, nombre y DNI. La solicitud de formación se registra en el portal.'
   },
+  protocol_citas_medicas: {
+    readStatement:
+      'He recibido el protocolo de citas médicas y me comprometo a conocerlo y cumplirlo.',
+    stampDeclaration: 'Acuse de recibo protocolo de citas médicas',
+    prepHint: 'Usar la plantilla PDF del protocolo. Opcional: campos Nombre/DNI/Fecha en Kronos.'
+  },
+  protocol_absencies: {
+    readStatement:
+      'He recibido el protocolo de ausencias y me comprometo a conocerlo y cumplirlo.',
+    stampDeclaration: 'Acuse de recibo protocolo de ausencias',
+    prepHint: 'Usar la plantilla PDF del protocolo. Opcional: campos Nombre/DNI/Fecha en Kronos.'
+  },
   vrp: {
     readStatement:
       'Acepto / presto mi consentimiento para la realización del reconocimiento médico / vigilancia de la salud (art. 22 LPRL).',

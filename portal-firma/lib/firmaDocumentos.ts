@@ -11,6 +11,8 @@ const LABEL_BY_VALUE: Record<string, string> = {
   vrp_renuncia: 'VRP – Renuncia reconocimiento médico (legado)',
   formacion_prl: 'Formación / información PRL',
   acoso: 'Protocolo de prevención del acoso',
+  protocol_citas_medicas: 'Protocolo de citas médicas',
+  protocol_absencies: 'Protocolo de ausencias',
   pdp: 'Protección de datos (RGPD)',
   confidencialidad: 'Compromiso de confidencialidad',
   registro_horario: 'Información registro horario',

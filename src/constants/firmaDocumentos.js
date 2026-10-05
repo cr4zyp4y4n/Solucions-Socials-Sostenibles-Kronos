@@ -30,6 +30,8 @@ export const FIRMA_DOCUMENTO_GRUPOS = [
     label: 'Políticas y normativa interna',
     tipos: [
       { value: 'acoso', label: 'Protocolo de prevención del acoso' },
+      { value: 'protocol_citas_medicas', label: 'Protocolo de citas médicas' },
+      { value: 'protocol_absencies', label: "Protocolo de ausencias" },
       { value: 'pdp', label: 'Protección de datos (RGPD)' },
       { value: 'confidencialidad', label: 'Compromiso de confidencialidad' },
       { value: 'registro_horario', label: 'Información registro horario' },
@@ -71,6 +73,10 @@ export const FIRMA_DOC_PREP_HINTS = {
     'Sin PDF: usa la plantilla del protocolo de riesgos psicosociales (no se genera desde Holded).',
   epis: 'Sin PDF: plantilla o generación Holded. Añade filas EPI abajo si generas.',
   acoso: 'Sin PDF: plantilla o generación Holded. Formación opcional en el portal.',
+  protocol_citas_medicas:
+    'Sin PDF: usa la plantilla del protocolo de citas médicas (no se genera desde Holded).',
+  protocol_absencies:
+    'Sin PDF: usa la plantilla del protocolo de ausencias (no se genera desde Holded).',
   vrp:
     'Un solo documento: en el portal el trabajador elige Sí (acepta VRP) o No (renuncia). Plantilla o generación Holded.',
   contrato:
@@ -93,6 +99,8 @@ export const FIRMA_DEFAULT_CONTRATACION_PACK = [
   'riesgos_laborales',
   'riesgos_psicosociales',
   'acoso',
+  'protocol_citas_medicas',
+  'protocol_absencies',
   'epis',
   'vrp'
 ];

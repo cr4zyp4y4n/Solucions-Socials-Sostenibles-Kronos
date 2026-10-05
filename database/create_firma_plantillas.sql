@@ -25,6 +25,8 @@ create table if not exists public.firma_plantillas (
       'vrp_renuncia',
       'formacion_prl',
       'acoso',
+      'protocol_citas_medicas',
+      'protocol_absencies',
       'pdp',
       'confidencialidad',
       'registro_horario',

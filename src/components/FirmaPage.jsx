@@ -423,12 +423,19 @@ export default function FirmaPage() {
       setError('El contrato laboral requiere subir el PDF o tener una plantilla de contrato guardada.');
       return;
     }
-    const psicosocialSinFuente = packItems.find(
-      (i) => i.tipoDocumento === 'riesgos_psicosociales' && !i.file && !plantillasByTipo.riesgos_psicosociales
-    );
-    if (psicosocialSinFuente) {
+    const plantillaObligatoriaSinFuente = packItems.find((i) => {
+      const t = i.tipoDocumento;
+      if (i.file || plantillasByTipo[t]) return false;
+      return (
+        t === 'riesgos_psicosociales' ||
+        t === 'protocol_citas_medicas' ||
+        t === 'protocol_absencies'
+      );
+    });
+    if (plantillaObligatoriaSinFuente) {
+      const label = getFirmaDocumentoLabel(plantillaObligatoriaSinFuente.tipoDocumento);
       setError(
-        'Riesgos psicosociales requiere la plantilla PDF (o subir el documento). Sube «Protocolo Riesgos Psicosociales» en Plantillas.'
+        `${label} requiere la plantilla PDF (o subir el documento). Súbela en Plantillas.`
       );
       return;
     }
