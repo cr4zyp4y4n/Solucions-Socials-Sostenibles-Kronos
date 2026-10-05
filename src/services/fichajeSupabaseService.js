@@ -80,6 +80,7 @@ class FichajeSupabaseService {
         .select('*')
         .eq('empleado_id', empleadoId)
         .eq('fecha', fechaStr)
+        .is('anulado_at', null)
         .maybeSingle();
 
       if (error) throw error;
@@ -102,6 +103,7 @@ class FichajeSupabaseService {
         .select('*')
         .eq('empleado_id', empleadoId)
         .is('hora_salida', null)
+        .is('anulado_at', null)
         .order('fecha', { ascending: false });
 
       if (error) throw error;
@@ -243,6 +245,7 @@ class FichajeSupabaseService {
         .eq('empleado_id', empleadoId)
         .gte('fecha', fechaInicio.toISOString().split('T')[0])
         .lte('fecha', fechaFin.toISOString().split('T')[0])
+        .is('anulado_at', null)
         .order('fecha', { ascending: false });
 
       if (error) throw error;
@@ -264,6 +267,9 @@ class FichajeSupabaseService {
         .from('fichajes')
         .select('*');
 
+      if (!filtros.incluirAnulados) {
+        query = query.is('anulado_at', null);
+      }
       if (filtros.empleadoId) {
         query = query.eq('empleado_id', filtros.empleadoId);
       }
@@ -785,6 +791,9 @@ class FichajeSupabaseService {
         .single();
 
       if (errorActual) throw errorActual;
+      if (fichajeActual?.anulado_at) {
+        throw new Error('No se puede modificar un fichaje anulado');
+      }
 
       // Guardar valor original
       const valorOriginal = {
@@ -893,6 +902,63 @@ class FichajeSupabaseService {
     }
   }
 
+  /**
+   * Auditoría de fichajes en un rango de fechas (para export inspección).
+   * @param {Date} fechaInicio
+   * @param {Date} fechaFin
+   * @param {string|null} empleadoId
+   */
+  async obtenerAuditoriaEnRango(fechaInicio, fechaFin, empleadoId = null) {
+    try {
+      const inicio = fechaInicio.toISOString().split('T')[0];
+      const fin = fechaFin.toISOString().split('T')[0];
+
+      let fichajesQuery = supabase
+        .from('fichajes')
+        .select('id, empleado_id, fecha')
+        .gte('fecha', inicio)
+        .lte('fecha', fin);
+      if (empleadoId) fichajesQuery = fichajesQuery.eq('empleado_id', empleadoId);
+
+      const { data: fichajes, error: errF } = await fichajesQuery;
+      if (errF) throw errF;
+      const ids = (fichajes || []).map((f) => f.id);
+      if (ids.length === 0) return { success: true, data: [] };
+
+      const byId = Object.fromEntries((fichajes || []).map((f) => [f.id, f]));
+
+      // PostgREST: lotes de ids
+      const lotes = [];
+      for (let i = 0; i < ids.length; i += 100) {
+        lotes.push(ids.slice(i, i + 100));
+      }
+      const rows = [];
+      for (const lote of lotes) {
+        const { data, error } = await supabase
+          .from('fichajes_auditoria')
+          .select(`
+            *,
+            quien:user_profiles(id, name, email)
+          `)
+          .in('fichaje_id', lote)
+          .order('cuando', { ascending: true });
+        if (error) throw error;
+        (data || []).forEach((a) => {
+          const f = byId[a.fichaje_id] || {};
+          rows.push({
+            ...a,
+            empleado_id: f.empleado_id,
+            fecha_fichaje: f.fecha
+          });
+        });
+      }
+      return { success: true, data: rows };
+    } catch (error) {
+      console.error('Error obteniendo auditoría en rango:', error);
+      return { success: false, error: error.message, data: [] };
+    }
+  }
+
   // =====================================================
   // RESUMENES Y ESTADÍSTICAS
   // =====================================================
@@ -933,7 +999,8 @@ class FichajeSupabaseService {
         .select('*')
         .eq('es_modificado', true)
         .eq('notificado_trabajador', true)
-        .eq('validado_por_trabajador', false);
+        .eq('validado_por_trabajador', false)
+        .is('anulado_at', null);
 
       if (empleadoId) {
         query = query.eq('empleado_id', empleadoId);
@@ -946,6 +1013,68 @@ class FichajeSupabaseService {
     } catch (error) {
       console.error('Error obteniendo fichajes pendientes:', error);
       return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Anulación lógica (no borra). Requiere motivo. Conserva auditoría.
+   * @param {string} fichajeId
+   * @param {string} motivo
+   */
+  async anularFichaje(fichajeId, motivo) {
+    try {
+      const { data, error } = await supabase.rpc('anular_fichaje', {
+        p_fichaje_id: fichajeId,
+        p_motivo: motivo
+      });
+      if (error) throw error;
+      return { success: true, data: data || null };
+    } catch (error) {
+      console.error('Error anulando fichaje:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Vincula el usuario autenticado con un empleado_id (Holded) para RLS.
+   * Llamar tras validar un código de fichaje.
+   */
+  async vincularEmpleadoUsuario(empleadoId) {
+    try {
+      if (!empleadoId) return { success: false, error: 'Falta empleado_id' };
+      // No vincular a roles de gestión: evitan acotar el SELECT al probar códigos ajenos
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user?.id) {
+          const { data: profile } = await supabase
+            .from('user_profiles')
+            .select('role')
+            .eq('id', user.id)
+            .maybeSingle();
+          const role = String(profile?.role || user.user_metadata?.role || '').toLowerCase();
+          const privilegiado = [
+            'admin', 'management', 'manager', 'jefe', 'administrador',
+            'gestion', 'gestión', 'inspeccion', 'inspector'
+          ].includes(role);
+          if (privilegiado) {
+            return { success: true, skipped: true, reason: 'rol_privilegiado' };
+          }
+        }
+      } catch (_) {
+        /* seguir con vínculo normal */
+      }
+      const { data, error } = await supabase.rpc('vincular_empleado_fichaje', {
+        p_empleado_id: String(empleadoId)
+      });
+      if (error) {
+        // Si aún no se ejecutó el SQL, no romper el flujo de fichaje
+        console.warn('vincular_empleado_fichaje:', error.message);
+        return { success: false, error: error.message };
+      }
+      return { success: true, data };
+    } catch (error) {
+      console.warn('vincularEmpleadoUsuario:', error?.message || error);
+      return { success: false, error: error?.message };
     }
   }
 }

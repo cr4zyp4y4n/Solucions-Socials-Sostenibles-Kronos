@@ -1,11 +1,17 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Calendar, Plus, Trash2, RefreshCw, CheckCircle, AlertCircle } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { Plus, Trash2, RefreshCw, CheckCircle, AlertCircle, Search } from 'lucide-react';
 import fichajeSupabaseService from '../services/fichajeSupabaseService';
 import { useTheme } from './ThemeContext';
 import { useAuth } from './AuthContext';
-import { KronosButton, KronosCard, KronosFieldLabel, KronosInput, KronosSelect } from './kronos';
 import { ambitoFestivoLabel, FESTIVO_COLOR } from './panelFichajes/panelFichajesHelpers';
 import { formatDateShortMadrid } from '../utils/timeUtils';
+import AdminSectionHeader from './AdminSectionHeader';
+
+const AMBITOS = [
+  { value: 'estatal', label: 'Estatal' },
+  { value: 'autonomico', label: 'Autonómico' },
+  { value: 'local', label: 'Local' }
+];
 
 const FichajeFestivosAdmin = () => {
   const { colors } = useTheme();
@@ -18,6 +24,9 @@ const FichajeFestivosAdmin = () => {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ fecha: '', nombre: '', ambito: 'estatal' });
   const [saving, setSaving] = useState(false);
+  const [search, setSearch] = useState('');
+  const [filterAmbito, setFilterAmbito] = useState('all');
+  const [filterEstado, setFilterEstado] = useState('all');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -37,6 +46,23 @@ const FichajeFestivosAdmin = () => {
   useEffect(() => {
     load();
   }, [load]);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return festivos.filter((f) => {
+      if (filterAmbito !== 'all' && f.ambito !== filterAmbito) return false;
+      if (filterEstado === 'activo' && !f.activo) return false;
+      if (filterEstado === 'inactivo' && f.activo) return false;
+      if (!q) return true;
+      const blob = [f.nombre, f.fecha, ambitoFestivoLabel(f.ambito), formatDateShortMadrid(f.fecha)]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      return blob.includes(q);
+    });
+  }, [festivos, search, filterAmbito, filterEstado]);
+
+  const activosCount = festivos.filter((f) => f.activo).length;
 
   const handleCrear = async () => {
     if (!form.fecha || !form.nombre.trim()) {
@@ -86,56 +112,114 @@ const FichajeFestivosAdmin = () => {
     }
   };
 
+  const inputStyle = {
+    width: '100%',
+    padding: '10px 12px',
+    borderRadius: 8,
+    border: `1px solid ${colors.border}`,
+    background: colors.background,
+    color: colors.text,
+    fontSize: 14,
+    boxSizing: 'border-box',
+    fontFamily: 'inherit'
+  };
+
+  const btnPrimary = {
+    padding: '10px 16px',
+    backgroundColor: colors.primary,
+    color: 'white',
+    border: 'none',
+    borderRadius: 8,
+    fontSize: 14,
+    fontWeight: 600,
+    cursor: 'pointer',
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 8,
+    fontFamily: 'inherit'
+  };
+
+  const btnGhost = {
+    padding: '10px 14px',
+    backgroundColor: colors.surface,
+    color: colors.text,
+    border: `1px solid ${colors.border}`,
+    borderRadius: 8,
+    fontSize: 14,
+    fontWeight: 600,
+    cursor: 'pointer',
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 8,
+    fontFamily: 'inherit'
+  };
+
+  const ambitoBadge = (ambito) => {
+    const map = {
+      estatal: colors.primary,
+      autonomico: colors.info || colors.primary,
+      local: FESTIVO_COLOR
+    };
+    const c = map[ambito] || colors.textSecondary;
+    return {
+      display: 'inline-block',
+      padding: '4px 10px',
+      borderRadius: 8,
+      fontSize: 12,
+      fontWeight: 600,
+      backgroundColor: c + '18',
+      color: c
+    };
+  };
+
   return (
     <div>
-      <div
-        style={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          alignItems: 'flex-start',
-          justifyContent: 'space-between',
-          gap: 12,
-          marginBottom: 18
-        }}
-      >
-        <div>
-          <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: colors.text, display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Calendar size={20} color={FESTIVO_COLOR} />
-            Festivos Barcelona
-          </h3>
-          <p style={{ margin: '6px 0 0', fontSize: 13, color: colors.textSecondary, maxWidth: 560 }}>
-            Calendario laboral de la ciudad (estatal + Cataluña + locales). No resta de vacaciones.
-            Fuente inicial: Ajuntament de Barcelona.
-          </p>
-        </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-          <KronosSelect
-            value={anio}
-            onChange={(e) => setAnio(Number(e.target.value))}
-            style={{ width: 110 }}
-          >
-            {[anio - 1, anio, anio + 1, anio + 2].filter((y, i, a) => a.indexOf(y) === i).map((y) => (
-              <option key={y} value={y}>{y}</option>
-            ))}
-          </KronosSelect>
-          <KronosButton size="sm" variant="ghost" onClick={load} disabled={loading}>
-            <RefreshCw size={15} />
-            Actualizar
-          </KronosButton>
-          <KronosButton size="sm" onClick={() => setShowForm((v) => !v)}>
-            <Plus size={15} />
-            {showForm ? 'Cancelar' : 'Añadir'}
-          </KronosButton>
-        </div>
-      </div>
+      <AdminSectionHeader
+        title="Festivos"
+        description="Calendario laboral (estatal + Cataluña + locales). No resta de vacaciones."
+        colors={colors}
+        actions={
+          <>
+            <select
+              value={anio}
+              onChange={(e) => setAnio(Number(e.target.value))}
+              style={{ ...inputStyle, width: 110, padding: '9px 10px' }}
+            >
+              {[anio - 1, anio, anio + 1, anio + 2]
+                .filter((y, i, a) => a.indexOf(y) === i)
+                .map((y) => (
+                  <option key={y} value={y}>{y}</option>
+                ))}
+            </select>
+            <button type="button" onClick={load} disabled={loading} style={btnGhost}>
+              <RefreshCw size={15} />
+              Actualizar
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowForm((v) => !v)}
+              style={btnPrimary}
+            >
+              <Plus size={15} />
+              {showForm ? 'Cancelar' : 'Añadir'}
+            </button>
+          </>
+        }
+      />
+
+      <p style={{ margin: '0 0 16px 0', fontSize: 13, color: colors.textSecondary }}>
+        {festivos.length} festivo{festivos.length === 1 ? '' : 's'} en {anio}
+        {festivos.length > 0 ? ` · ${activosCount} activo${activosCount === 1 ? '' : 's'}` : ''}
+      </p>
 
       {error ? (
         <div
           style={{
             marginBottom: 12,
-            padding: '10px 12px',
+            padding: '12px 14px',
             borderRadius: 8,
-            background: `${colors.error}14`,
+            background: `${colors.error}15`,
+            border: `1px solid ${colors.error}`,
             color: colors.error,
             fontSize: 13,
             display: 'flex',
@@ -144,16 +228,18 @@ const FichajeFestivosAdmin = () => {
           }}
         >
           <AlertCircle size={16} />
-          {error}
+          <span style={{ flex: 1 }}>{error}</span>
+          <button type="button" onClick={() => setError('')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: colors.error }}>×</button>
         </div>
       ) : null}
       {success ? (
         <div
           style={{
             marginBottom: 12,
-            padding: '10px 12px',
+            padding: '12px 14px',
             borderRadius: 8,
-            background: `${colors.success}14`,
+            background: `${colors.success}15`,
+            border: `1px solid ${colors.success}`,
             color: colors.success,
             fontSize: 13,
             display: 'flex',
@@ -167,100 +253,231 @@ const FichajeFestivosAdmin = () => {
       ) : null}
 
       {showForm ? (
-        <KronosCard style={{ marginBottom: 16, padding: 16 }}>
+        <div
+          style={{
+            marginBottom: 16,
+            padding: 16,
+            background: colors.surface,
+            border: `1px solid ${colors.border}`,
+            borderRadius: 12
+          }}
+        >
+          <div style={{ fontSize: 14, fontWeight: 600, color: colors.text, marginBottom: 12 }}>
+            Nuevo festivo
+          </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
             <div>
-              <KronosFieldLabel>Fecha</KronosFieldLabel>
-              <KronosInput
+              <label style={{ display: 'block', fontSize: 13, marginBottom: 6, color: colors.text }}>Fecha</label>
+              <input
                 type="date"
                 value={form.fecha}
                 onChange={(e) => setForm((f) => ({ ...f, fecha: e.target.value }))}
+                style={inputStyle}
               />
             </div>
             <div>
-              <KronosFieldLabel>Nombre</KronosFieldLabel>
-              <KronosInput
+              <label style={{ display: 'block', fontSize: 13, marginBottom: 6, color: colors.text }}>Nombre</label>
+              <input
                 value={form.nombre}
                 onChange={(e) => setForm((f) => ({ ...f, nombre: e.target.value }))}
                 placeholder="Ej. La Mercè"
+                style={inputStyle}
               />
             </div>
             <div>
-              <KronosFieldLabel>Ámbito</KronosFieldLabel>
-              <KronosSelect
+              <label style={{ display: 'block', fontSize: 13, marginBottom: 6, color: colors.text }}>Ámbito</label>
+              <select
                 value={form.ambito}
                 onChange={(e) => setForm((f) => ({ ...f, ambito: e.target.value }))}
+                style={inputStyle}
               >
-                <option value="estatal">Estatal</option>
-                <option value="autonomico">Autonómico</option>
-                <option value="local">Local</option>
-              </KronosSelect>
+                {AMBITOS.map((a) => (
+                  <option key={a.value} value={a.value}>{a.label}</option>
+                ))}
+              </select>
             </div>
           </div>
-          <div style={{ marginTop: 12 }}>
-            <KronosButton size="sm" onClick={handleCrear} disabled={saving}>
-              Guardar festivo
-            </KronosButton>
+          <div style={{ marginTop: 14 }}>
+            <button type="button" onClick={handleCrear} disabled={saving} style={btnPrimary}>
+              {saving ? 'Guardando…' : 'Guardar festivo'}
+            </button>
           </div>
-        </KronosCard>
+        </div>
       ) : null}
 
-      <KronosCard style={{ padding: 0, overflow: 'hidden' }}>
-        {loading ? (
-          <div style={{ padding: 28, textAlign: 'center', color: colors.textSecondary }}>Cargando…</div>
-        ) : festivos.length === 0 ? (
-          <div style={{ padding: 28, textAlign: 'center', color: colors.textSecondary }}>
-            No hay festivos para {anio}. Ejecuta el SQL de seed o añádelos manualmente.
+      <div
+        style={{
+          display: 'flex',
+          gap: 12,
+          flexWrap: 'wrap',
+          alignItems: 'center',
+          marginBottom: 16
+        }}
+      >
+        <div style={{ position: 'relative', flex: '1 1 220px', minWidth: 200, maxWidth: 360 }}>
+          <Search
+            size={16}
+            color={colors.textSecondary}
+            style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)' }}
+          />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Buscar por nombre o fecha…"
+            style={{ ...inputStyle, paddingLeft: 36 }}
+          />
+        </div>
+        <select
+          value={filterAmbito}
+          onChange={(e) => setFilterAmbito(e.target.value)}
+          style={{ ...inputStyle, width: 'auto', minWidth: 140 }}
+        >
+          <option value="all">Todos los ámbitos</option>
+          {AMBITOS.map((a) => (
+            <option key={a.value} value={a.value}>{a.label}</option>
+          ))}
+        </select>
+        <select
+          value={filterEstado}
+          onChange={(e) => setFilterEstado(e.target.value)}
+          style={{ ...inputStyle, width: 'auto', minWidth: 130 }}
+        >
+          <option value="all">Todos</option>
+          <option value="activo">Activos</option>
+          <option value="inactivo">Inactivos</option>
+        </select>
+      </div>
+
+      <div
+        style={{
+          backgroundColor: colors.surface,
+          borderRadius: 12,
+          border: `1px solid ${colors.border}`,
+          overflow: 'hidden'
+        }}
+      >
+        {loading && festivos.length === 0 ? (
+          <div style={{ padding: 48, textAlign: 'center', color: colors.textSecondary }}>
+            Cargando festivos…
           </div>
         ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-            <thead>
-              <tr style={{ background: colors.background, textAlign: 'left' }}>
-                <th style={{ padding: '10px 14px', fontWeight: 600, color: colors.textSecondary }}>Fecha</th>
-                <th style={{ padding: '10px 14px', fontWeight: 600, color: colors.textSecondary }}>Nombre</th>
-                <th style={{ padding: '10px 14px', fontWeight: 600, color: colors.textSecondary }}>Ámbito</th>
-                <th style={{ padding: '10px 14px', fontWeight: 600, color: colors.textSecondary }}>Estado</th>
-                <th style={{ padding: '10px 14px', fontWeight: 600, color: colors.textSecondary }} />
-              </tr>
-            </thead>
-            <tbody>
-              {festivos.map((f) => (
-                <tr key={f.id} style={{ borderTop: `1px solid ${colors.border}`, opacity: f.activo ? 1 : 0.55 }}>
-                  <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>{formatDateShortMadrid(f.fecha)}</td>
-                  <td style={{ padding: '10px 14px', fontWeight: 600 }}>{f.nombre}</td>
-                  <td style={{ padding: '10px 14px' }}>{ambitoFestivoLabel(f.ambito)}</td>
-                  <td style={{ padding: '10px 14px' }}>
-                    <button
-                      type="button"
-                      onClick={() => handleToggleActivo(f)}
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr
+                  style={{
+                    backgroundColor: colors.background,
+                    borderBottom: `2px solid ${colors.border}`
+                  }}
+                >
+                  {['Fecha', 'Nombre', 'Ámbito', 'Estado', 'Acciones'].map((h) => (
+                    <th
+                      key={h}
                       style={{
-                        border: 'none',
-                        background: f.activo ? `${FESTIVO_COLOR}18` : `${colors.textSecondary}18`,
-                        color: f.activo ? FESTIVO_COLOR : colors.textSecondary,
-                        borderRadius: 6,
-                        padding: '3px 8px',
-                        fontSize: 12,
+                        padding: 16,
+                        textAlign: h === 'Estado' || h === 'Acciones' ? 'center' : 'left',
+                        color: colors.text,
                         fontWeight: 600,
-                        cursor: 'pointer',
-                        fontFamily: 'inherit'
+                        fontSize: 13
                       }}
                     >
-                      {f.activo ? 'Activo' : 'Inactivo'}
-                    </button>
-                  </td>
-                  <td style={{ padding: '10px 14px', textAlign: 'right' }}>
-                    <KronosButton size="sm" variant="ghost" onClick={() => handleEliminar(f)} title="Eliminar">
-                      <Trash2 size={14} />
-                    </KronosButton>
-                  </td>
+                      {h}
+                    </th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {filtered.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={5}
+                      style={{ padding: 40, textAlign: 'center', color: colors.textSecondary }}
+                    >
+                      {festivos.length === 0
+                        ? `No hay festivos para ${anio}. Ejecuta el SQL de seed o añádelos manualmente.`
+                        : 'No hay resultados con esos filtros'}
+                    </td>
+                  </tr>
+                ) : (
+                  filtered.map((f) => (
+                    <tr
+                      key={f.id}
+                      style={{
+                        borderBottom: `1px solid ${colors.border}`,
+                        opacity: f.activo ? 1 : 0.65
+                      }}
+                    >
+                      <td
+                        style={{
+                          padding: 16,
+                          color: colors.text,
+                          whiteSpace: 'nowrap',
+                          fontVariantNumeric: 'tabular-nums'
+                        }}
+                      >
+                        {formatDateShortMadrid(f.fecha)}
+                      </td>
+                      <td style={{ padding: 16, color: colors.text, fontWeight: 600 }}>
+                        {f.nombre}
+                      </td>
+                      <td style={{ padding: 16 }}>
+                        <span style={ambitoBadge(f.ambito)}>
+                          {ambitoFestivoLabel(f.ambito)}
+                        </span>
+                      </td>
+                      <td style={{ padding: 16, textAlign: 'center' }}>
+                        <button
+                          type="button"
+                          onClick={() => handleToggleActivo(f)}
+                          title={f.activo ? 'Desactivar' : 'Activar'}
+                          style={{
+                            padding: '4px 12px',
+                            borderRadius: 12,
+                            fontSize: 12,
+                            fontWeight: 600,
+                            border: 'none',
+                            cursor: 'pointer',
+                            fontFamily: 'inherit',
+                            backgroundColor: f.activo
+                              ? colors.success + '20'
+                              : colors.error + '20',
+                            color: f.activo ? colors.success : colors.error
+                          }}
+                        >
+                          {f.activo ? 'Activo' : 'Inactivo'}
+                        </button>
+                      </td>
+                      <td style={{ padding: 16, textAlign: 'center' }}>
+                        <button
+                          type="button"
+                          onClick={() => handleEliminar(f)}
+                          title="Eliminar"
+                          style={{
+                            padding: 8,
+                            borderRadius: 8,
+                            border: `1px solid ${colors.border}`,
+                            background: 'transparent',
+                            color: colors.error,
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center'
+                          }}
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         )}
-      </KronosCard>
+      </div>
     </div>
   );
 };
 
 export default FichajeFestivosAdmin;
+
+

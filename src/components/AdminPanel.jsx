@@ -30,25 +30,78 @@ import {
   CheckCircle,
   BarChart2,
   TrendingUp,
-  ExternalLink
+  ExternalLink,
+  Link2
 } from 'feather-icons-react';
-import { supabase } from '../config/supabase';
+import { supabase, authService } from '../config/supabase';
 import FichajeAdminSection from './FichajeAdminSection';
 import FichajeCodigosAdmin from './FichajeCodigosAdmin';
 import FichajeDescansosAdmin from './FichajeDescansosAdmin';
 import FichajeFestivosAdmin from './FichajeFestivosAdmin';
+import FichajeVinculosAdmin from './FichajeVinculosAdmin';
+import AuditLog from './AuditLog';
+
+/** Secciones del Panel de Administrador (landing + grupos). */
+const ADMIN_SECTIONS = [
+  {
+    id: 'acceso',
+    title: 'Acceso',
+    description: 'Cuentas Kronos, roles y registro de actividad',
+    items: [
+      { key: 'usuarios', label: 'Usuarios', icon: Users },
+      { key: 'auditoria', label: 'Auditoría', icon: Activity },
+      { key: 'vinculos-fichaje', label: 'Vínculos fichaje', icon: Link2 }
+    ]
+  },
+  {
+    id: 'config-fichaje',
+    title: 'Configuración de fichaje',
+    description: 'Códigos, descansos y festivos',
+    items: [
+      { key: 'codigos-fichaje', label: 'Códigos', icon: Key },
+      { key: 'descansos-fichaje', label: 'Reglas de descanso', icon: Clock },
+      { key: 'festivos-fichaje', label: 'Festivos', icon: Calendar }
+    ]
+  },
+  {
+    id: 'inspeccion',
+    title: 'Inspección de fichajes',
+    description: 'Registros, anulación y export para inspección',
+    items: [{ key: 'fichajes', label: 'Registros e inspección', icon: Clock }]
+  }
+];
 
 const AdminPanel = () => {
   const { user } = useAuth();
   const { colors } = useTheme();
   const { navigateTo } = useNavigation();
 
-  // Estados principales
-  const [activeTab, setActiveTab] = useState('usuarios'); // 'usuarios', 'fichajes', 'codigos-fichaje', 'descansos-fichaje', 'festivos-fichaje'
+  // Estados principales — landing por defecto
+  const [activeTab, setActiveTab] = useState('home');
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [showCreateUser, setShowCreateUser] = useState(false);
+  const [creatingUser, setCreatingUser] = useState(false);
+  const [newUserForm, setNewUserForm] = useState({
+    name: '',
+    email: '',
+    password: '',
+    role: 'user'
+  });
+
+  useEffect(() => {
+    try {
+      const tab = sessionStorage.getItem('kronos_admin_tab');
+      if (tab) {
+        setActiveTab(tab);
+        sessionStorage.removeItem('kronos_admin_tab');
+      }
+    } catch (_) {
+      /* ignore */
+    }
+  }, []);
 
   // Estados de edición
   const [editingUser, setEditingUser] = useState(null);
@@ -78,6 +131,42 @@ const AdminPanel = () => {
     managers: 0,
     regularUsers: 0
   });
+  const [health, setHealth] = useState({
+    loading: true,
+    activeUsers: 0,
+    pendingVinculos: 0
+  });
+
+  const ROLES_SIN_VINCULO = new Set([
+    'admin', 'management', 'manager', 'jefe', 'administrador',
+    'gestion', 'gestión', 'inspeccion', 'inspector'
+  ]);
+
+  const refreshHealth = async (userData) => {
+    const list = userData || users;
+    try {
+      const { data: vinculos, error: vErr } = await supabase
+        .from('fichajes_empleado_usuarios')
+        .select('user_id')
+        .eq('activo', true);
+      if (vErr) throw vErr;
+      const linked = new Set((vinculos || []).map((v) => v.user_id));
+      const activeUsers = list.filter((u) => !u.disabled).length;
+      const pendingVinculos = list.filter((u) => {
+        if (u.disabled) return false;
+        const role = String(u.role || '').toLowerCase();
+        if (ROLES_SIN_VINCULO.has(role)) return false;
+        return !linked.has(u.id);
+      }).length;
+      setHealth({ loading: false, activeUsers, pendingVinculos });
+    } catch (_) {
+      setHealth({
+        loading: false,
+        activeUsers: list.filter((u) => !u.disabled).length,
+        pendingVinculos: 0
+      });
+    }
+  };
 
   // Verificar si el usuario actual es administrador
   const verifyAdminStatus = async () => {
@@ -161,6 +250,7 @@ const AdminPanel = () => {
       console.log('✅ AdminPanel: Usuarios cargados exitosamente');
       setUsers(data || []);
       calculateStats(data || []);
+      await refreshHealth(data || []);
     } catch (e) {
       console.error('❌ AdminPanel: Error inesperado:', e);
       setError('Error inesperado al cargar usuarios');
@@ -215,9 +305,12 @@ const AdminPanel = () => {
     if (!isAdmin) return;
 
     try {
-      if (userId === user.id && updates.role && updates.role !== user?.user_metadata?.role) {
-        setError('No puedes cambiar tu propio rol');
-        return;
+      if (userId === user.id && updates.role) {
+        const currentRole = users.find((u) => u.id === userId)?.role;
+        if (currentRole && updates.role !== currentRole) {
+          setError('No puedes cambiar tu propio rol');
+          return;
+        }
       }
 
       const { error: profileError } = await supabase
@@ -227,11 +320,8 @@ const AdminPanel = () => {
 
       if (profileError) throw profileError;
 
-      if (updates.role) {
-        await supabase.auth.admin.updateUserById(userId, {
-          user_metadata: { role: updates.role }
-        });
-      }
+      // El rol efectivo vive en user_profiles (Layout/Auth lo priorizan).
+      // No usamos auth.admin.updateUserById: requiere service_role y falla con anon key.
 
       setSuccess('Usuario actualizado correctamente');
       setTimeout(() => setSuccess(''), 3000);
@@ -242,26 +332,22 @@ const AdminPanel = () => {
     }
   };
 
-  // Resetear contraseña
-  const handleResetPassword = async (userId, newPass) => {
-    if (!isAdmin || !newPass || newPass.length < 6) {
-      setError('La contraseña debe tener al menos 6 caracteres');
+  // Resetear contraseña: envía email de recuperación (funciona con anon key)
+  const handleSendPasswordReset = async (email) => {
+    if (!isAdmin || !email) {
+      setError('Email no disponible');
       return;
     }
-
     try {
-      const { error } = await supabase.auth.admin.updateUserById(userId, {
-        password: newPass
+      const { error } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
+        redirectTo: undefined
       });
-
       if (error) throw error;
-
-      setSuccess('Contraseña actualizada correctamente');
-      setTimeout(() => setSuccess(''), 3000);
+      setSuccess(`Email de restablecimiento enviado a ${email}`);
+      setTimeout(() => setSuccess(''), 5000);
       setShowPasswordReset(false);
-      setNewPassword('');
     } catch (e) {
-      setError(`Error al resetear contraseña: ${e.message}`);
+      setError(`No se pudo enviar el email: ${e.message}`);
     }
   };
 
@@ -312,6 +398,52 @@ const AdminPanel = () => {
       await loadUsers();
     } catch (e) {
       setError(`Error al eliminar usuario: ${e.message}`);
+    }
+  };
+
+  const handleCreateUser = async (e) => {
+    e?.preventDefault();
+    if (!isAdmin) return;
+    const email = newUserForm.email.trim().toLowerCase();
+    const name = newUserForm.name.trim();
+    const password = newUserForm.password;
+    const role = newUserForm.role || 'user';
+    if (!email || !password || password.length < 8) {
+      setError('Email y contraseña (mín. 8 caracteres) son obligatorios');
+      return;
+    }
+    setCreatingUser(true);
+    setError('');
+    try {
+      const { data, error: signErr } = await authService.adminCreateUser(email, password, {
+        name: name || email.split('@')[0],
+        role
+      });
+      if (signErr) throw signErr;
+      const newId = data?.user?.id;
+      if (newId) {
+        await supabase
+          .from('user_profiles')
+          .upsert(
+            {
+              id: newId,
+              email,
+              name: name || email.split('@')[0],
+              role,
+              disabled: false
+            },
+            { onConflict: 'id' }
+          );
+      }
+      setSuccess('Usuario creado. Ya puede iniciar sesión.');
+      setTimeout(() => setSuccess(''), 4000);
+      setShowCreateUser(false);
+      setNewUserForm({ name: '', email: '', password: '', role: 'user' });
+      await loadUsers();
+    } catch (err) {
+      setError(`Error al crear usuario: ${err.message}`);
+    } finally {
+      setCreatingUser(false);
     }
   };
 
@@ -402,8 +534,8 @@ const AdminPanel = () => {
       margin: '0 auto'
     }}>
       {/* Header */}
-      <div style={{ marginBottom: '32px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
+      <div style={{ marginBottom: activeTab === 'home' ? '28px' : '20px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px', flexWrap: 'wrap' }}>
           <Shield size={32} color={colors.primary} />
           <h1 style={{
             fontSize: '28px',
@@ -411,126 +543,84 @@ const AdminPanel = () => {
             color: colors.text,
             margin: 0
           }}>
-            Panel de Administración
+            Panel de Administrador
           </h1>
+          {activeTab !== 'home' && (
+            <button
+              type="button"
+              onClick={() => setActiveTab('home')}
+              style={{
+                marginLeft: 'auto',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '8px 14px',
+                background: 'transparent',
+                border: `1px solid ${colors.border}`,
+                borderRadius: 8,
+                color: colors.text,
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: 'pointer'
+              }}
+            >
+              <ChevronLeft size={16} />
+              Inicio del panel
+            </button>
+          )}
         </div>
         <p style={{
           fontSize: '15px',
           color: colors.textSecondary,
           margin: 0
         }}>
-          Gestión completa de usuarios, permisos, seguridad y fichajes del sistema
+          {activeTab === 'home'
+            ? 'Elige una sección. El día a día de fichaje está en Panel Fichajes (RRHH).'
+            : 'Usuarios, permisos, fichajes y configuración administrativa del sistema'}
         </p>
       </div>
 
-      {/* Pestañas */}
-      <div style={{
-        display: 'flex',
-        gap: '8px',
-        marginBottom: '24px',
-        borderBottom: `2px solid ${colors.border}`
-      }}>
-        <button
-          onClick={() => setActiveTab('usuarios')}
-          style={{
-            padding: '12px 24px',
-            backgroundColor: 'transparent',
-            border: 'none',
-            borderBottom: activeTab === 'usuarios' ? `3px solid ${colors.primary}` : '3px solid transparent',
-            color: activeTab === 'usuarios' ? colors.primary : colors.textSecondary,
-            fontSize: '15px',
-            fontWeight: activeTab === 'usuarios' ? '600' : '500',
-            cursor: 'pointer',
-            transition: 'all 0.2s',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px'
-          }}
-        >
-          <Users size={18} />
-          Usuarios
-        </button>
-        <button
-          onClick={() => setActiveTab('fichajes')}
-          style={{
-            padding: '12px 24px',
-            backgroundColor: 'transparent',
-            border: 'none',
-            borderBottom: activeTab === 'fichajes' ? `3px solid ${colors.primary}` : '3px solid transparent',
-            color: activeTab === 'fichajes' ? colors.primary : colors.textSecondary,
-            fontSize: '15px',
-            fontWeight: activeTab === 'fichajes' ? '600' : '500',
-            cursor: 'pointer',
-            transition: 'all 0.2s',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px'
-          }}
-        >
-          <Clock size={18} />
-          Fichajes
-        </button>
-        <button
-          onClick={() => setActiveTab('codigos-fichaje')}
-          style={{
-            padding: '12px 24px',
-            backgroundColor: 'transparent',
-            border: 'none',
-            borderBottom: activeTab === 'codigos-fichaje' ? `3px solid ${colors.primary}` : '3px solid transparent',
-            color: activeTab === 'codigos-fichaje' ? colors.primary : colors.textSecondary,
-            fontSize: '15px',
-            fontWeight: activeTab === 'codigos-fichaje' ? '600' : '500',
-            cursor: 'pointer',
-            transition: 'all 0.2s',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px'
-          }}
-        >
-          <Key size={18} />
-          Códigos de Fichaje
-        </button>
-        <button
-          onClick={() => setActiveTab('descansos-fichaje')}
-          style={{
-            padding: '12px 24px',
-            backgroundColor: 'transparent',
-            border: 'none',
-            borderBottom: activeTab === 'descansos-fichaje' ? `3px solid ${colors.primary}` : '3px solid transparent',
-            color: activeTab === 'descansos-fichaje' ? colors.primary : colors.textSecondary,
-            fontSize: '15px',
-            fontWeight: activeTab === 'descansos-fichaje' ? '600' : '500',
-            cursor: 'pointer',
-            transition: 'all 0.2s',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px'
-          }}
-        >
-          <Clock size={18} />
-          Reglas de Descanso
-        </button>
-        <button
-          onClick={() => setActiveTab('festivos-fichaje')}
-          style={{
-            padding: '12px 24px',
-            backgroundColor: 'transparent',
-            border: 'none',
-            borderBottom: activeTab === 'festivos-fichaje' ? `3px solid ${colors.primary}` : '3px solid transparent',
-            color: activeTab === 'festivos-fichaje' ? colors.primary : colors.textSecondary,
-            fontSize: '15px',
-            fontWeight: activeTab === 'festivos-fichaje' ? '600' : '500',
-            cursor: 'pointer',
-            transition: 'all 0.2s',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px'
-          }}
-        >
-          <Calendar size={18} />
-          Festivos
-        </button>
-      </div>
+      {/* Nav secundaria (cuando no estás en la landing) */}
+      {activeTab !== 'home' && (
+        <div style={{
+          display: 'flex',
+          gap: 6,
+          marginBottom: 20,
+          flexWrap: 'wrap',
+          paddingBottom: 12,
+          borderBottom: `1px solid ${colors.border}`
+        }}>
+          {ADMIN_SECTIONS.flatMap((sec) =>
+            sec.items.map((item) => {
+              const Icon = item.icon;
+              const active = activeTab === item.key;
+              return (
+                <button
+                  key={item.key}
+                  type="button"
+                  onClick={() => setActiveTab(item.key)}
+                  style={{
+                    padding: '8px 14px',
+                    backgroundColor: active ? colors.primary + '18' : 'transparent',
+                    border: `1px solid ${active ? colors.primary : colors.border}`,
+                    borderRadius: 8,
+                    color: active ? colors.primary : colors.textSecondary,
+                    fontSize: 13,
+                    fontWeight: active ? 600 : 500,
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6
+                  }}
+                >
+                  <Icon size={15} />
+                  {item.label}
+                </button>
+              );
+            })
+          )}
+        </div>
+      )}
 
       {/* Mensajes */}
       <AnimatePresence>
@@ -601,134 +691,234 @@ const AdminPanel = () => {
         )}
       </AnimatePresence>
 
-      {/* Contenido según pestaña activa */}
-      {activeTab === 'fichajes' ? (
-        <>
-          <div style={{
-            marginBottom: '20px',
-            padding: '16px',
-            backgroundColor: colors.surface,
-            borderRadius: '12px',
-            border: `1px solid ${colors.border}`,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            flexWrap: 'wrap',
-            gap: '12px'
-          }}>
-            <span style={{ fontSize: '14px', color: colors.textSecondary }}>
-              Vista resumida de fichajes por empleado y período. Para el panel completo con estado en tiempo real y resumen por empleado:
-            </span>
-            <button
-              type="button"
-              onClick={() => navigateTo('panel-fichajes')}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '10px 18px',
-                backgroundColor: colors.primary,
-                color: '#fff',
-                border: 'none',
-                borderRadius: '8px',
-                fontSize: '14px',
-                fontWeight: '600',
-                cursor: 'pointer'
-              }}
-            >
-              <ExternalLink size={18} />
-              Abrir Panel Fichajes
-            </button>
-          </div>
-          <FichajeAdminSection />
-        </>
+      {/* Contenido según sección activa */}
+      {activeTab === 'home' ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
+          <p
+            style={{
+              margin: 0,
+              fontSize: 14,
+              color: colors.textSecondary,
+              padding: '12px 16px',
+              backgroundColor: colors.surface,
+              border: `1px solid ${colors.border}`,
+              borderRadius: 10,
+              lineHeight: 1.45
+            }}
+          >
+            {health.loading ? (
+              'Cargando estado…'
+            ) : (
+              <>
+                <span style={{ color: colors.text, fontWeight: 600 }}>
+                  {health.activeUsers} usuario{health.activeUsers === 1 ? '' : 's'} activo{health.activeUsers === 1 ? '' : 's'}
+                </span>
+                {' · '}
+                {health.pendingVinculos === 0 ? (
+                  <span style={{ color: colors.success || colors.text }}>
+                    todos los operativos tienen vínculo de fichaje
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('vinculos-fichaje')}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      padding: 0,
+                      color: colors.warning || colors.primary,
+                      fontWeight: 600,
+                      fontSize: 14,
+                      cursor: 'pointer',
+                      textDecoration: 'underline'
+                    }}
+                  >
+                    {health.pendingVinculos} vínculo{health.pendingVinculos === 1 ? '' : 's'} pendiente{health.pendingVinculos === 1 ? '' : 's'}
+                  </button>
+                )}
+              </>
+            )}
+          </p>
+
+          {ADMIN_SECTIONS.map((sec) => (
+            <section key={sec.id}>
+              <h2 style={{
+                fontSize: 16,
+                fontWeight: 700,
+                color: colors.text,
+                margin: '0 0 4px 0'
+              }}>
+                {sec.title}
+              </h2>
+              <p style={{
+                fontSize: 13,
+                color: colors.textSecondary,
+                margin: '0 0 12px 0'
+              }}>
+                {sec.description}
+              </p>
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+                gap: 12
+              }}>
+                {sec.items.map((item) => {
+                  const Icon = item.icon;
+                  return (
+                    <button
+                      key={item.key}
+                      type="button"
+                      onClick={() => setActiveTab(item.key)}
+                      style={{
+                        textAlign: 'left',
+                        padding: '18px 16px',
+                        backgroundColor: colors.surface,
+                        border: `1px solid ${colors.border}`,
+                        borderRadius: 12,
+                        cursor: 'pointer',
+                        color: colors.text,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 10
+                      }}
+                    >
+                      <Icon size={22} color={colors.primary} />
+                      <span style={{ fontSize: 15, fontWeight: 600 }}>{item.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+          ))}
+
+          <section>
+            <h2 style={{
+              fontSize: 16,
+              fontWeight: 700,
+              color: colors.text,
+              margin: '0 0 4px 0'
+            }}>
+              Enlaces rápidos
+            </h2>
+            <p style={{
+              fontSize: 13,
+              color: colors.textSecondary,
+              margin: '0 0 12px 0'
+            }}>
+              Otras pantallas de administración fuera de este panel
+            </p>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+              gap: 12
+            }}>
+              <button
+                type="button"
+                onClick={() => navigateTo('panel-fichajes')}
+                style={{
+                  textAlign: 'left',
+                  padding: '18px 16px',
+                  backgroundColor: colors.surface,
+                  border: `1px solid ${colors.border}`,
+                  borderRadius: 12,
+                  cursor: 'pointer',
+                  color: colors.text,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 10
+                }}
+              >
+                <Activity size={22} color={colors.primary} />
+                <span style={{ fontSize: 15, fontWeight: 600 }}>Panel Fichajes (RRHH)</span>
+                <span style={{ fontSize: 12, color: colors.textSecondary }}>
+                  Operativa diaria por empleado
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => navigateTo('settings')}
+                style={{
+                  textAlign: 'left',
+                  padding: '18px 16px',
+                  backgroundColor: colors.surface,
+                  border: `1px solid ${colors.border}`,
+                  borderRadius: 12,
+                  cursor: 'pointer',
+                  color: colors.text,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 10
+                }}
+              >
+                <ExternalLink size={22} color={colors.primary} />
+                <span style={{ fontSize: 15, fontWeight: 600 }}>Configuración</span>
+                <span style={{ fontSize: 12, color: colors.textSecondary }}>
+                  Ajustes generales de Kronos
+                </span>
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : activeTab === 'fichajes' ? (
+        <FichajeAdminSection />
       ) : activeTab === 'codigos-fichaje' ? (
         <FichajeCodigosAdmin />
       ) : activeTab === 'descansos-fichaje' ? (
         <FichajeDescansosAdmin />
       ) : activeTab === 'festivos-fichaje' ? (
         <FichajeFestivosAdmin />
-      ) : (
+      ) : activeTab === 'auditoria' ? (
+        <AuditLog embedded />
+      ) : activeTab === 'vinculos-fichaje' ? (
+        <FichajeVinculosAdmin />
+      ) : activeTab === 'usuarios' ? (
         <>
-          {/* Estadísticas */}
           <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-            gap: '16px',
-            marginBottom: '32px'
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: 20,
+            flexWrap: 'wrap',
+            gap: 12
           }}>
-            <div style={{
-              padding: '20px',
-              backgroundColor: colors.surface,
-              borderRadius: '12px',
-              border: `1px solid ${colors.border}`
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
-                <Users size={24} color={colors.primary} />
-                <TrendingUp size={16} color={colors.success} />
-              </div>
-              <div style={{ fontSize: '28px', fontWeight: '700', color: colors.text, marginBottom: '4px' }}>
-                {stats.total}
-              </div>
-              <div style={{ fontSize: '13px', color: colors.textSecondary }}>
-                Total Usuarios
-              </div>
+            <div>
+              <h2 style={{ fontSize: 20, fontWeight: 700, color: colors.text, margin: 0 }}>
+                Usuarios Kronos
+              </h2>
+              <p style={{ fontSize: 13, color: colors.textSecondary, margin: '4px 0 0 0' }}>
+                Crea cuentas, asigna roles y activa o desactiva el acceso
+              </p>
             </div>
-
-            <div style={{
-              padding: '20px',
-              backgroundColor: colors.surface,
-              borderRadius: '12px',
-              border: `1px solid ${colors.border}`
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
-                <Activity size={24} color={colors.success} />
-                <CheckCircle size={16} color={colors.success} />
-              </div>
-              <div style={{ fontSize: '28px', fontWeight: '700', color: colors.success, marginBottom: '4px' }}>
-                {stats.active}
-              </div>
-              <div style={{ fontSize: '13px', color: colors.textSecondary }}>
-                Activos
-              </div>
-            </div>
-
-            <div style={{
-              padding: '20px',
-              backgroundColor: colors.surface,
-              borderRadius: '12px',
-              border: `1px solid ${colors.border}`
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
-                <Shield size={24} color={colors.error} />
-                <BarChart2 size={16} color={colors.error} />
-              </div>
-              <div style={{ fontSize: '28px', fontWeight: '700', color: colors.error, marginBottom: '4px' }}>
-                {stats.admins}
-              </div>
-              <div style={{ fontSize: '13px', color: colors.textSecondary }}>
-                Administradores
-              </div>
-            </div>
-
-            <div style={{
-              padding: '20px',
-              backgroundColor: colors.surface,
-              borderRadius: '12px',
-              border: `1px solid ${colors.border}`
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
-                <User size={24} color={colors.info} />
-                <Users size={16} color={colors.info} />
-              </div>
-              <div style={{ fontSize: '28px', fontWeight: '700', color: colors.info, marginBottom: '4px' }}>
-                {stats.regularUsers}
-              </div>
-              <div style={{ fontSize: '13px', color: colors.textSecondary }}>
-                Usuarios Regulares
-              </div>
-            </div>
+            <button
+              type="button"
+              onClick={() => setShowCreateUser(true)}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '10px 16px',
+                backgroundColor: colors.primary,
+                color: '#fff',
+                border: 'none',
+                borderRadius: 8,
+                fontWeight: 600,
+                fontSize: 14,
+                cursor: 'pointer'
+              }}
+            >
+              <UserPlus size={18} />
+              Crear usuario
+            </button>
           </div>
+
+          {/* Resumen compacto */}
+          <p style={{
+            margin: '0 0 16px 0',
+            fontSize: 13,
+            color: colors.textSecondary
+          }}>
+            {stats.active} activos · {stats.inactive} inactivos · {stats.admins} admin · {stats.managers} gestión/manager
+          </p>
 
           {/* Búsqueda y Filtros */}
           <div style={{
@@ -1182,6 +1372,149 @@ const AdminPanel = () => {
 
           {/* Modal de Edición */}
           <AnimatePresence>
+            {showCreateUser && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                style={{
+                  position: 'fixed',
+                  inset: 0,
+                  background: 'rgba(0,0,0,0.5)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  zIndex: 1000,
+                  padding: 20
+                }}
+                onClick={() => !creatingUser && setShowCreateUser(false)}
+              >
+                <motion.div
+                  initial={{ scale: 0.95, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.95, opacity: 0 }}
+                  onClick={(e) => e.stopPropagation()}
+                  style={{
+                    background: colors.surface,
+                    borderRadius: 16,
+                    width: '100%',
+                    maxWidth: 440,
+                    padding: 24,
+                    border: `1px solid ${colors.border}`
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                    <h3 style={{ margin: 0, fontSize: 18, color: colors.text }}>Crear usuario</h3>
+                    <button
+                      type="button"
+                      onClick={() => setShowCreateUser(false)}
+                      disabled={creatingUser}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: colors.textSecondary }}
+                    >
+                      <X size={20} />
+                    </button>
+                  </div>
+                  <form onSubmit={handleCreateUser} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: 13, marginBottom: 6, color: colors.text }}>Nombre</label>
+                      <input
+                        value={newUserForm.name}
+                        onChange={(e) => setNewUserForm({ ...newUserForm, name: e.target.value })}
+                        style={{
+                          width: '100%',
+                          padding: 10,
+                          borderRadius: 8,
+                          border: `1px solid ${colors.border}`,
+                          background: colors.background,
+                          color: colors.text,
+                          boxSizing: 'border-box'
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: 13, marginBottom: 6, color: colors.text }}>Email *</label>
+                      <input
+                        type="email"
+                        required
+                        value={newUserForm.email}
+                        onChange={(e) => setNewUserForm({ ...newUserForm, email: e.target.value })}
+                        style={{
+                          width: '100%',
+                          padding: 10,
+                          borderRadius: 8,
+                          border: `1px solid ${colors.border}`,
+                          background: colors.background,
+                          color: colors.text,
+                          boxSizing: 'border-box'
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: 13, marginBottom: 6, color: colors.text }}>Contraseña temporal *</label>
+                      <input
+                        type="password"
+                        required
+                        minLength={8}
+                        value={newUserForm.password}
+                        onChange={(e) => setNewUserForm({ ...newUserForm, password: e.target.value })}
+                        style={{
+                          width: '100%',
+                          padding: 10,
+                          borderRadius: 8,
+                          border: `1px solid ${colors.border}`,
+                          background: colors.background,
+                          color: colors.text,
+                          boxSizing: 'border-box'
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: 13, marginBottom: 6, color: colors.text }}>Rol</label>
+                      <select
+                        value={newUserForm.role}
+                        onChange={(e) => setNewUserForm({ ...newUserForm, role: e.target.value })}
+                        style={{
+                          width: '100%',
+                          padding: 10,
+                          borderRadius: 8,
+                          border: `1px solid ${colors.border}`,
+                          background: colors.background,
+                          color: colors.text
+                        }}
+                      >
+                        <option value="user">Usuario</option>
+                        <option value="tienda">Tienda</option>
+                        <option value="manager">Manager</option>
+                        <option value="management">Gestión</option>
+                        <option value="admin">Admin</option>
+                      </select>
+                    </div>
+                    <p style={{ margin: 0, fontSize: 12, color: colors.textSecondary }}>
+                      Tu sesión de admin no se cierra. Entrega la contraseña temporal al usuario.
+                    </p>
+                    <button
+                      type="submit"
+                      disabled={creatingUser}
+                      style={{
+                        marginTop: 8,
+                        padding: '12px 16px',
+                        borderRadius: 8,
+                        border: 'none',
+                        background: colors.primary,
+                        color: '#fff',
+                        fontWeight: 600,
+                        cursor: creatingUser ? 'wait' : 'pointer'
+                      }}
+                    >
+                      {creatingUser ? 'Creando…' : 'Crear cuenta'}
+                    </button>
+                  </form>
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <AnimatePresence>
             {editingUser && (
               <motion.div
                 initial={{ opacity: 0 }}
@@ -1420,6 +1753,7 @@ const AdminPanel = () => {
 
                         {!showPasswordReset ? (
                           <button
+                            type="button"
                             onClick={() => setShowPasswordReset(true)}
                             style={{
                               width: '100%',
@@ -1434,97 +1768,45 @@ const AdminPanel = () => {
                               display: 'flex',
                               alignItems: 'center',
                               justifyContent: 'center',
-                              gap: '8px',
-                              transition: 'all 0.2s'
+                              gap: '8px'
                             }}
                           >
                             <Key size={16} />
-                            Cambiar Contraseña
+                            Restablecer contraseña
                           </button>
                         ) : (
-                          <div style={{ display: 'grid', gap: '12px' }}>
-                            <div>
-                              <label style={{
-                                fontSize: '13px',
-                                fontWeight: '600',
-                                color: colors.text,
-                                marginBottom: '6px',
-                                display: 'block'
-                              }}>
-                                Nueva contraseña
-                              </label>
-                              <div style={{ position: 'relative' }}>
-                                <input
-                                  type={showPassword ? 'text' : 'password'}
-                                  value={newPassword}
-                                  onChange={(e) => setNewPassword(e.target.value)}
-                                  style={{
-                                    width: '100%',
-                                    padding: '12px',
-                                    paddingRight: '40px',
-                                    border: `1px solid ${colors.border}`,
-                                    borderRadius: '8px',
-                                    fontSize: '14px',
-                                    color: colors.text,
-                                    backgroundColor: colors.background,
-                                    outline: 'none'
-                                  }}
-                                  placeholder="Mínimo 6 caracteres"
-                                />
-                                <button
-                                  onClick={() => setShowPassword(!showPassword)}
-                                  style={{
-                                    position: 'absolute',
-                                    right: '12px',
-                                    top: '50%',
-                                    transform: 'translateY(-50%)',
-                                    background: 'none',
-                                    border: 'none',
-                                    cursor: 'pointer',
-                                    color: colors.textSecondary
-                                  }}
-                                >
-                                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                                </button>
-                              </div>
-                              <p style={{ fontSize: '11px', color: colors.textSecondary, marginTop: '4px', margin: '4px 0 0 0' }}>
-                                La nueva contraseña será aplicada inmediatamente
-                              </p>
-                            </div>
-
-                            <div style={{ display: 'flex', gap: '8px' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                            <p style={{ margin: 0, fontSize: 13, color: colors.textSecondary }}>
+                              Se enviará un email a <strong>{editingUser.email}</strong> con el enlace para
+                              elegir una nueva contraseña.
+                            </p>
+                            <div style={{ display: 'flex', gap: 8 }}>
                               <button
-                                onClick={() => handleResetPassword(editingUser.id, newPassword)}
-                                disabled={!newPassword || newPassword.length < 6}
+                                type="button"
+                                onClick={() => handleSendPasswordReset(editingUser.email)}
                                 style={{
                                   flex: 1,
-                                  padding: '10px',
-                                  backgroundColor: colors.success,
-                                  color: 'white',
+                                  padding: '10px 12px',
+                                  background: colors.primary,
+                                  color: '#fff',
                                   border: 'none',
-                                  borderRadius: '6px',
-                                  cursor: (!newPassword || newPassword.length < 6) ? 'not-allowed' : 'pointer',
-                                  fontSize: '13px',
-                                  fontWeight: '600',
-                                  opacity: (!newPassword || newPassword.length < 6) ? 0.5 : 1
+                                  borderRadius: 8,
+                                  fontWeight: 600,
+                                  cursor: 'pointer'
                                 }}
                               >
-                                Guardar Nueva Contraseña
+                                Enviar email
                               </button>
                               <button
-                                onClick={() => {
-                                  setShowPasswordReset(false);
-                                  setNewPassword('');
-                                }}
+                                type="button"
+                                onClick={() => setShowPasswordReset(false)}
                                 style={{
-                                  padding: '10px 16px',
-                                  backgroundColor: 'transparent',
-                                  color: colors.textSecondary,
+                                  padding: '10px 12px',
+                                  background: 'transparent',
                                   border: `1px solid ${colors.border}`,
-                                  borderRadius: '6px',
-                                  cursor: 'pointer',
-                                  fontSize: '13px',
-                                  fontWeight: '600'
+                                  borderRadius: 8,
+                                  color: colors.text,
+                                  cursor: 'pointer'
                                 }}
                               >
                                 Cancelar
@@ -1696,7 +1978,7 @@ const AdminPanel = () => {
         `}
           </style>
         </>
-      )}
+      ) : null}
     </div>
   );
 };

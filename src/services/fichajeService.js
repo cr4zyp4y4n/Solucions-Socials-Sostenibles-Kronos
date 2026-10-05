@@ -98,6 +98,21 @@ class FichajeService {
         return resultado;
       }
 
+      // Tipificar horas con jornada Holded (si hay contrato); no bloquear la salida si falla
+      try {
+        const jornada = await this.obtenerJornadaHolded(empleadoId);
+        if (jornada.horasJornadaRef != null || jornada.contratoParcial != null) {
+          await this.recalcularHoras(fichaje.id, {
+            horasJornadaRef: jornada.horasJornadaRef,
+            contratoParcial: jornada.contratoParcial
+          });
+        } else {
+          await this.recalcularHoras(fichaje.id);
+        }
+      } catch (err) {
+        console.warn('Tipificación post-salida:', err?.message || err);
+      }
+
       return {
         success: true,
         message: 'Salida registrada correctamente',
@@ -323,11 +338,33 @@ class FichajeService {
           }
         }
         // Si es de días anteriores, cerrarlo automáticamente
+        // Usar salida = entrada + 8h (tope 14h) para no generar miles de horas (DECIMAL overflow / datos absurdos)
         else if (fechaFichaje < hoy) {
           console.log(`🔒 Cerrando automáticamente fichaje del ${fichaje.fecha} (día anterior)`);
+          let horaSalidaLocal = null;
+          if (fichaje.hora_entrada) {
+            const entrada = new Date(fichaje.hora_entrada);
+            const salidaEstimada = new Date(entrada.getTime() + 8 * 60 * 60 * 1000);
+            // Formato wall-clock Europe/Madrid que espera la RPC
+            const fmt = new Intl.DateTimeFormat('en-CA', {
+              timeZone: 'Europe/Madrid',
+              year: 'numeric',
+              month: '2-digit',
+              day: '2-digit',
+              hour: '2-digit',
+              minute: '2-digit',
+              second: '2-digit',
+              hour12: false
+            });
+            const parts = Object.fromEntries(
+              fmt.formatToParts(salidaEstimada).filter(p => p.type !== 'literal').map(p => [p.type, p.value])
+            );
+            horaSalidaLocal = `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}:${parts.second}`;
+          }
           const resultadoCierre = await fichajeSupabaseService.cerrarFichajeAutomaticamente(
             fichaje.id,
-            'Cerrado automáticamente por el servidor: fichaje de día anterior sin salida registrada.'
+            'Cerrado automáticamente por el servidor: fichaje de día anterior sin salida registrada.',
+            horaSalidaLocal
           );
           
           if (resultadoCierre.success) {
@@ -658,7 +695,7 @@ class FichajeService {
    * @param {string} fichajeId - ID del fichaje
    * @private
    */
-  async recalcularHoras(fichajeId) {
+  async recalcularHoras(fichajeId, opciones = {}) {
     try {
       // Obtener fichaje
       const { data: fichaje } = await supabase
@@ -675,7 +712,7 @@ class FichajeService {
       const { data: pausas } = await fichajeSupabaseService.obtenerPausas(fichajeId);
       
       // Calcular minutos de pausas
-      const minutosPausas = pausas
+      const minutosPausas = (pausas || [])
         .filter(p => p.fin)
         .reduce((total, p) => total + (p.duracion_minutos || 0), 0);
 
@@ -686,18 +723,135 @@ class FichajeService {
       
       // Calcular horas trabajadas (restando pausas)
       const horasTrabajadas = horasTotales - (minutosPausas / 60);
+      const ht = Math.round(horasTrabajadas * 100) / 100;
+      const htot = Math.round(horasTotales * 100) / 100;
+
+      const jornadaRef = opciones.horasJornadaRef != null
+        ? opciones.horasJornadaRef
+        : fichaje.horas_jornada_ref;
+      const parcial = opciones.contratoParcial != null
+        ? opciones.contratoParcial
+        : !!fichaje.contrato_parcial;
+
+      let tip = {
+        horas_ordinarias: ht,
+        horas_extraordinarias: 0,
+        horas_complementarias: 0
+      };
+      if (!fichaje.tipificacion_manual) {
+        tip = this.tipificarHoras(ht, jornadaRef, parcial);
+      } else {
+        tip = {
+          horas_ordinarias: fichaje.horas_ordinarias ?? ht,
+          horas_extraordinarias: fichaje.horas_extraordinarias ?? 0,
+          horas_complementarias: fichaje.horas_complementarias ?? 0
+        };
+      }
+
+      const update = {
+        horas_trabajadas: ht,
+        horas_totales: htot,
+        ...tip
+      };
+      if (opciones.horasJornadaRef != null) {
+        update.horas_jornada_ref = opciones.horasJornadaRef;
+      }
+      if (opciones.contratoParcial != null) {
+        update.contrato_parcial = !!opciones.contratoParcial;
+      }
 
       // Actualizar
       await supabase
         .from('fichajes')
-        .update({
-          horas_trabajadas: Math.round(horasTrabajadas * 100) / 100,
-          horas_totales: Math.round(horasTotales * 100) / 100
-        })
+        .update(update)
         .eq('id', fichajeId);
     } catch (error) {
       console.error('Error recalculando horas:', error);
     }
+  }
+
+  /**
+   * Obtiene jornada diaria y si es parcial desde Holded (Solucions o Menjar).
+   */
+  async obtenerJornadaHolded(empleadoId) {
+    if (!empleadoId) return { horasJornadaRef: null, contratoParcial: null };
+    let raw = null;
+    for (const company of ['solucions', 'menjar']) {
+      try {
+        raw = await holdedEmployeesService.getEmployee(empleadoId, company);
+        if (raw && (raw.id || raw._id)) break;
+      } catch (_) {
+        raw = null;
+      }
+    }
+    if (!raw) return { horasJornadaRef: null, contratoParcial: null };
+
+    const contract = raw.currentContract || raw.contract || null;
+    const hoursRaw =
+      contract?.scheduleHours ??
+      raw.weeklyHours ??
+      raw.weekly_hours ??
+      raw.hoursPerWeek ??
+      null;
+    const horasJornadaRef = this.parseJornadaDiaria(hoursRaw);
+    const modo = String(contract?.scheduleMode || '').toLowerCase();
+    const pct = Number(raw.percentageHours ?? raw.percentage_hours ?? raw.workPercentage);
+    let contratoParcial = false;
+    if (Number.isFinite(pct) && pct > 0 && pct < 100) contratoParcial = true;
+    if (modo.includes('part') || modo.includes('parcial')) contratoParcial = true;
+    if (horasJornadaRef != null && horasJornadaRef > 0 && horasJornadaRef < 7.5) {
+      contratoParcial = true;
+    }
+    return { horasJornadaRef, contratoParcial };
+  }
+
+  /**
+   * Tipifica horas trabajadas según jornada de referencia.
+   * Sin jornada → todo ordinario. Exceso → extraordinarias (completo) o complementarias (parcial).
+   */
+  tipificarHoras(horasTrabajadas, jornadaRef, contratoParcial = false) {
+    const trab = Math.max(Number(horasTrabajadas) || 0, 0);
+    const ref = jornadaRef != null && Number(jornadaRef) > 0 ? Number(jornadaRef) : null;
+    if (ref == null) {
+      return {
+        horas_ordinarias: Math.round(trab * 100) / 100,
+        horas_extraordinarias: 0,
+        horas_complementarias: 0
+      };
+    }
+    const ord = Math.min(trab, ref);
+    const exc = Math.max(trab - ref, 0);
+    if (contratoParcial) {
+      return {
+        horas_ordinarias: Math.round(ord * 100) / 100,
+        horas_extraordinarias: 0,
+        horas_complementarias: Math.round(exc * 100) / 100
+      };
+    }
+    return {
+      horas_ordinarias: Math.round(ord * 100) / 100,
+      horas_extraordinarias: Math.round(exc * 100) / 100,
+      horas_complementarias: 0
+    };
+  }
+
+  /**
+   * Parsea texto de jornada (p.ej. "8h", "40 h/semana", "6,5") a horas/día.
+   */
+  parseJornadaDiaria(texto) {
+    if (texto == null || texto === '') return null;
+    if (typeof texto === 'number' && Number.isFinite(texto)) {
+      return texto > 12 ? Math.round((texto / 5) * 100) / 100 : texto;
+    }
+    const s = String(texto).trim().toLowerCase().replace(',', '.');
+    const m = s.match(/(\d+(?:\.\d+)?)/);
+    if (!m) return null;
+    let n = parseFloat(m[1]);
+    if (!Number.isFinite(n) || n <= 0) return null;
+    if (s.includes('sem') || n > 12) {
+      n = n / 5;
+    }
+    return Math.round(n * 100) / 100;
   }
 
   /**

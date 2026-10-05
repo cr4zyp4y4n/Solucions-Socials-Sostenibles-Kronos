@@ -298,10 +298,49 @@ const FichajeDetailsModal = ({ fichaje, empleadoNombre, onClose, onEdit }) => {
                         {formatearHorasDecimal(fichaje.horas_totales)}
                       </p>
                     </div>
+
+                    <div>
+                      <label style={{
+                        fontSize: '12px',
+                        color: colors.textSecondary,
+                        textTransform: 'uppercase',
+                        fontWeight: '600',
+                        letterSpacing: '0.5px'
+                      }}>
+                        Ordinarias / Extra / Compl.
+                      </label>
+                      <p style={{
+                        fontSize: '15px',
+                        color: colors.text,
+                        margin: '4px 0 0 0',
+                        fontWeight: '500'
+                      }}>
+                        {formatearHorasDecimal(fichaje.horas_ordinarias ?? fichaje.horas_trabajadas)}
+                        {' / '}
+                        {formatearHorasDecimal(fichaje.horas_extraordinarias || 0)}
+                        {' / '}
+                        {formatearHorasDecimal(fichaje.horas_complementarias || 0)}
+                      </p>
+                    </div>
                   </div>
 
                   {/* Estado */}
                   <div style={{ marginTop: '16px', display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                    {fichaje.anulado_at && (
+                      <div style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '6px 12px',
+                        backgroundColor: colors.error + '15',
+                        borderRadius: '6px'
+                      }}>
+                        <XCircle size={14} color={colors.error} />
+                        <span style={{ color: colors.error, fontSize: '12px', fontWeight: '600' }}>
+                          Anulado{fichaje.anulado_motivo ? `: ${fichaje.anulado_motivo}` : ''}
+                        </span>
+                      </div>
+                    )}
                     {fichaje.es_modificado && (
                       <div style={{
                         display: 'inline-flex',

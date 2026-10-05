@@ -43,6 +43,13 @@ class FichajeCodigosService {
         };
       }
 
+      try {
+        const { default: fichajeSupabaseService } = await import('./fichajeSupabaseService');
+        await fichajeSupabaseService.vincularEmpleadoUsuario(data.empleado_id);
+      } catch (_) {
+        /* ignore */
+      }
+
       return {
         success: true,
         data: {

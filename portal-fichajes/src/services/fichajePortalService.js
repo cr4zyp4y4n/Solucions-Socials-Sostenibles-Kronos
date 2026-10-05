@@ -7,7 +7,7 @@ import { supabase } from '../config/supabase';
 
 export async function obtenerTodosFichajes(filtros = {}) {
   try {
-    let query = supabase.from('fichajes').select('*');
+    let query = supabase.from('fichajes').select('*').is('anulado_at', null);
 
     if (filtros.empleadoId) query = query.eq('empleado_id', filtros.empleadoId);
     if (filtros.fechaInicio) query = query.gte('fecha', filtros.fechaInicio.toISOString().split('T')[0]);
@@ -32,6 +32,7 @@ export async function obtenerFichajesEmpleado(empleadoId, fechaInicio, fechaFin)
       .eq('empleado_id', empleadoId)
       .gte('fecha', fechaInicio.toISOString().split('T')[0])
       .lte('fecha', fechaFin.toISOString().split('T')[0])
+      .is('anulado_at', null)
       .order('fecha', { ascending: false });
 
     if (error) throw error;
@@ -238,6 +239,12 @@ export async function obtenerEmpleadoPorCodigo(codigo) {
       .maybeSingle();
     if (error) throw error;
     if (!data || !data.empleado_id) return { success: false, error: 'Código no válido' };
+    // Vincular auth.uid() ↔ empleado_id para RLS (si el SQL ya está aplicado)
+    try {
+      await supabase.rpc('vincular_empleado_fichaje', { p_empleado_id: data.empleado_id });
+    } catch (_) {
+      /* ignore hasta migrar SQL */
+    }
     return {
       success: true,
       data: {
@@ -262,6 +269,7 @@ export async function obtenerFichajeDia(empleadoId, fecha = new Date()) {
       .select('*')
       .eq('empleado_id', empleadoId)
       .eq('fecha', fechaStr)
+      .is('anulado_at', null)
       .maybeSingle();
     if (error) throw error;
     return { success: true, data: data || null };
@@ -405,5 +413,70 @@ export async function registrarSalida(empleadoId) {
   } catch (err) {
     console.error('Error registrando salida:', err);
     return { success: false, error: err.message || 'Error al registrar la salida' };
+  }
+}
+
+/** Pausa activa (sin fin) del fichaje del día */
+export async function obtenerPausaActiva(fichajeId) {
+  try {
+    if (!fichajeId) return { success: true, data: null };
+    const { data, error } = await supabase
+      .from('fichajes_pausas')
+      .select('*')
+      .eq('fichaje_id', fichajeId)
+      .is('fin', null)
+      .order('inicio', { ascending: false })
+      .limit(1);
+    if (error) throw error;
+    return { success: true, data: data?.[0] || null };
+  } catch (err) {
+    return { success: false, data: null, error: err.message };
+  }
+}
+
+export async function obtenerPausas(fichajeId) {
+  try {
+    if (!fichajeId) return { success: true, data: [] };
+    const { data, error } = await supabase
+      .from('fichajes_pausas')
+      .select('*')
+      .eq('fichaje_id', fichajeId)
+      .order('inicio', { ascending: true });
+    if (error) throw error;
+    return { success: true, data: data || [] };
+  } catch (err) {
+    return { success: false, data: [], error: err.message };
+  }
+}
+
+export async function iniciarPausa(fichajeId, tipo = 'descanso', descripcion = null) {
+  try {
+    if (!fichajeId) return { success: false, error: 'Sin fichaje de entrada' };
+    const activa = await obtenerPausaActiva(fichajeId);
+    if (activa.data) return { success: false, error: 'Ya tienes una pausa activa' };
+    const { data, error } = await supabase
+      .from('fichajes_pausas')
+      .insert({
+        fichaje_id: fichajeId,
+        tipo,
+        inicio: null,
+        descripcion
+      })
+      .select()
+      .single();
+    if (error) throw error;
+    return { success: true, data };
+  } catch (err) {
+    return { success: false, error: err.message || 'Error al iniciar pausa' };
+  }
+}
+
+export async function finalizarPausa(pausaId) {
+  try {
+    const { data, error } = await supabase.rpc('finalizar_pausa_fichaje', { p_pausa_id: pausaId });
+    if (error) throw error;
+    return { success: true, data: data?.[0] || null };
+  } catch (err) {
+    return { success: false, error: err.message || 'Error al finalizar pausa' };
   }
 }

@@ -62,6 +62,34 @@ export const authService = {
     return { data, error };
   },
 
+  /**
+   * Crear usuario sin reemplazar la sesión del admin (cliente efímero).
+   * Luego el admin puede ajustar rol en user_profiles.
+   */
+  async adminCreateUser(email, password, userData = {}) {
+    const ephemeral = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+        detectSessionInUrl: false,
+        storageKey: `kronos-admin-create-${Date.now()}`
+      }
+    });
+    const { data, error } = await ephemeral.auth.signUp({
+      email,
+      password,
+      options: {
+        data: userData
+      }
+    });
+    try {
+      await ephemeral.auth.signOut({ scope: 'local' });
+    } catch (_) {
+      /* ignore */
+    }
+    return { data, error };
+  },
+
   // Cerrar sesión
   async signOut() {
     const { error } = await supabase.auth.signOut();
