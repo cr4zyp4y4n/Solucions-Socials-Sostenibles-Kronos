@@ -68,6 +68,21 @@ import {
   loadPigFacturacionPendiente
 } from '../services/pigFacturacionPendienteService';
 import SectionHeader from './SectionHeader';
+import {
+  PigButton,
+  PigCard,
+  PigChip,
+  PigFieldLabel,
+  PigFilePick,
+  PigHint,
+  PigInput,
+  PigSectionTitle,
+  PigSelect,
+  PigSheetBadge,
+  PigStatusText,
+  PigTabPanel,
+  PigTabs
+} from './pig/PigUi';
 import { buildPrevisionTesoreriaFromFiles } from '../services/pigPrevisionTesoreriaService';
 import {
   applyPigComparativaCuentaResultadosFormulas,
@@ -4316,6 +4331,34 @@ export default function PIGPage() {
   const [previsionPig2025, setPrevisionPig2025] = useState(null);
   const [previsionTesoreriaLoading, setPrevisionTesoreriaLoading] = useState(false);
   const [previsionTesoreriaStatus, setPrevisionTesoreriaStatus] = useState('');
+  const [mainTab, setMainTab] = useState('generar'); // generar | datos | prevision
+  const [datosSubTab, setDatosSubTab] = useState('estimados');
+  const [estimadosLineaOpen, setEstimadosLineaOpen] = useState('CATERING');
+
+  const isEisss = pigEmpresa !== 'MH';
+  const mainTabs = useMemo(
+    () => [
+      { id: 'generar', label: 'Generar PIG' },
+      { id: 'datos', label: 'Datos del año' },
+      { id: 'prevision', label: 'Previsión 18 meses' }
+    ],
+    []
+  );
+  const datosTabs = useMemo(
+    () => [
+      { id: 'estimados', label: 'Estimados', sheet: 'PIG LINEA / SUBV 740' },
+      { id: 'objetivos', label: 'Objetivos', sheet: 'COMPARATIVA ANUAL' },
+      { id: 'itinerario', label: 'Itinerario E.I', sheet: 'PIG / CR GENERAL EISSS' },
+      { id: 'subv_anteriores', label: 'Subv. anteriores', sheet: 'CR GENERAL EISSS' },
+      { id: 'caja_corto', label: 'Caja corto', sheet: 'TESORERÍA (PIG Normal)' },
+      { id: 'previsiones', label: 'Previsiones CR', sheet: 'TESORERÍA (CR)' }
+    ],
+    []
+  );
+
+  useEffect(() => {
+    if (!isEisss && mainTab !== 'generar') setMainTab('generar');
+  }, [isEisss, mainTab]);
 
   const loadEstimadosForYear = useCallback(async (year) => {
     const y = Number(year);
@@ -5457,977 +5500,734 @@ export default function PIGPage() {
         </div>
       ) : null}
 
-      <div style={{ display: 'grid', gap: 12, maxWidth: 720 }}>
-        <div style={{ padding: 14, borderRadius: 12, border: `1px solid ${colors.border}`, background: colors.surface }}>
-          <div style={{ fontSize: 13, fontWeight: 950, marginBottom: 10 }}>Empresa</div>
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            {[
-              { id: 'EISSS', label: 'EISSS' },
-              { id: 'MH', label: 'Menjar d’Hort' }
-            ].map((opt) => (
-              <button
-                key={opt.id}
-                onClick={() => setPigEmpresa(opt.id)}
-                style={{
-                  padding: '10px 12px',
-                  borderRadius: 10,
-                  border: `1px solid ${pigEmpresa === opt.id ? colors.primary : colors.border}`,
-                  background: pigEmpresa === opt.id ? colors.primary : colors.background,
-                  color: pigEmpresa === opt.id ? 'white' : colors.text,
-                  fontWeight: 950,
-                  cursor: 'pointer'
-                }}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
-          <div style={{ marginTop: 8, fontSize: 12, color: colors.textSecondary, lineHeight: 1.35 }}>
-            Selecciona la empresa para generar el Excel con las hojas correspondientes (no se mezclan EISSS y MH).
-          </div>
-        </div>
-        <div style={{ padding: 14, borderRadius: 12, border: `1px solid ${colors.border}`, background: colors.surface }}>
-          <div style={{ fontSize: 13, fontWeight: 950, marginBottom: 8 }}>1) Archivo anual (Pèrdues i guanys)</div>
-          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 10, cursor: 'pointer', border: `1px solid ${colors.border}`, background: colors.background, fontWeight: 900 }}>
-            <Upload size={18} />
-            {anualFile ? anualFile.name : 'Seleccionar archivo'}
-            <input
-              type="file"
-              accept=".csv,.xlsx,.xls,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-              style={{ display: 'none' }}
-              onChange={(e) => setAnualFile(e.target.files?.[0] || null)}
-            />
-          </label>
-        </div>
+      <div style={{ maxWidth: 1100, display: 'grid', gap: 16 }}>
+        {isEisss ? (
+          <PigTabs tabs={mainTabs} active={mainTab} onChange={setMainTab} />
+        ) : null}
 
-        <div style={{ padding: 14, borderRadius: 12, border: `1px solid ${colors.border}`, background: colors.surface }}>
-          <div style={{ fontSize: 13, fontWeight: 950, marginBottom: 8 }}>2) Archivo mensual (Pèrdues i guanys Mensual)</div>
-          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 10, cursor: 'pointer', border: `1px solid ${colors.border}`, background: colors.background, fontWeight: 900 }}>
-            <Upload size={18} />
-            {mensualFile ? mensualFile.name : 'Seleccionar archivo'}
-            <input
-              type="file"
-              accept=".csv,.xlsx,.xls,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-              style={{ display: 'none' }}
-              onChange={(e) => setMensualFile(e.target.files?.[0] || null)}
-            />
-          </label>
-        </div>
+        {mainTab === 'generar' || !isEisss ? (
+          <PigTabPanel>
+            <PigCard>
+              <PigSectionTitle hint="Selecciona la empresa para generar el Excel con las hojas correspondientes (no se mezclan EISSS y MH).">
+                Empresa
+              </PigSectionTitle>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {[
+                  { id: 'EISSS', label: 'EISSS' },
+                  { id: 'MH', label: 'Menjar d’Hort' }
+                ].map((opt) => (
+                  <PigChip key={opt.id} active={pigEmpresa === opt.id} onClick={() => setPigEmpresa(opt.id)}>
+                    {opt.label}
+                  </PigChip>
+                ))}
+              </div>
+            </PigCard>
 
-        {pigEmpresa !== 'MH' && (
-          <div style={{ padding: 14, borderRadius: 12, border: `1px solid ${colors.border}`, background: colors.surface }}>
-            <div style={{ fontSize: 13, fontWeight: 950, marginBottom: 4 }}>Previsión tesorería 18 meses (jun 2026 – dic 2027)</div>
-            <div style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 12, lineHeight: 1.4 }}>
-              Excel <b>independiente</b> del PIG. Sube el último PIG exportado de <b>2026</b> y el de <b>2025</b>.
-              Jun–dic 2026: valores fijos validados. 2027 entradas: cobrada Holded 2025 (mayo/junio = media 2025+2026; agosto = 0). Salidas: gastos CR 2025.
-            </div>
-            <div style={{ display: 'grid', gap: 10, marginBottom: 12 }}>
-              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 10, cursor: 'pointer', border: `1px solid ${colors.border}`, background: colors.background, fontWeight: 900, width: 'fit-content' }}>
-                <Upload size={18} />
-                {previsionPig2026 ? previsionPig2026.name : 'PIG 2026 (.xlsx)'}
-                <input
-                  type="file"
-                  accept=".xlsx,.xls,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                  style={{ display: 'none' }}
-                  onChange={(e) => setPrevisionPig2026(e.target.files?.[0] || null)}
+            <div style={{ display: 'grid', gap: 14, gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))' }}>
+              <PigCard>
+                <PigSectionTitle>1) Archivo anual (Pèrdues i guanys)</PigSectionTitle>
+                <PigFilePick
+                  label={<Upload size={18} />}
+                  file={anualFile}
+                  accept=".csv,.xlsx,.xls,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                  onChange={(e) => setAnualFile(e.target.files?.[0] || null)}
                 />
-              </label>
-              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 10, cursor: 'pointer', border: `1px solid ${colors.border}`, background: colors.background, fontWeight: 900, width: 'fit-content' }}>
-                <Upload size={18} />
-                {previsionPig2025 ? previsionPig2025.name : 'PIG 2025 (.xlsx)'}
-                <input
-                  type="file"
-                  accept=".xlsx,.xls,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                  style={{ display: 'none' }}
-                  onChange={(e) => setPrevisionPig2025(e.target.files?.[0] || null)}
+              </PigCard>
+              <PigCard>
+                <PigSectionTitle>2) Archivo mensual (Pèrdues i guanys Mensual)</PigSectionTitle>
+                <PigFilePick
+                  label={<Upload size={18} />}
+                  file={mensualFile}
+                  accept=".csv,.xlsx,.xls,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                  onChange={(e) => setMensualFile(e.target.files?.[0] || null)}
                 />
-              </label>
+              </PigCard>
             </div>
-            <button
-              type="button"
-              onClick={generatePrevisionTesoreriaExcel}
-              disabled={!canGeneratePrevisionTesoreria || previsionTesoreriaLoading}
+
+            <PigCard
               style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 10,
-                padding: '10px 14px',
-                borderRadius: 10,
-                cursor: canGeneratePrevisionTesoreria && !previsionTesoreriaLoading ? 'pointer' : 'not-allowed',
-                border: `1px solid ${canGeneratePrevisionTesoreria ? colors.primary : colors.border}`,
-                background: canGeneratePrevisionTesoreria ? colors.primary : colors.surface,
-                color: canGeneratePrevisionTesoreria ? 'white' : colors.textSecondary,
-                fontWeight: 950,
-                opacity: canGeneratePrevisionTesoreria ? 1 : 0.7
+                position: 'sticky',
+                bottom: 12,
+                zIndex: 5,
+                boxShadow: `0 8px 24px ${colors.border}88`
               }}
             >
-              <Download size={18} />
-              {previsionTesoreriaLoading ? 'Generando…' : 'Generar previsión tesorería'}
-            </button>
-            {previsionTesoreriaStatus ? (
-              <div style={{ marginTop: 10, fontSize: 12, color: colors.textSecondary, lineHeight: 1.4 }}>
-                {previsionTesoreriaStatus}
+              <PigSectionTitle hint={isEisss ? 'Genera el PIG con los CSV y los datos del año ya guardados (o se guardan al generar si el año coincide).' : null}>
+                Generar
+              </PigSectionTitle>
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                <PigButton variant="primary" onClick={() => generateExcel()} disabled={!canGenerate}>
+                  <Download size={18} />
+                  Generar Excel
+                </PigButton>
+                {isEisss ? (
+                  <PigButton
+                    onClick={() => generateExcel({ cuentaResultados: true })}
+                    disabled={!canGenerate}
+                    title="Mismo PIG EISSS sin subvenciones de Holded ni estimados (para cuenta de resultados)"
+                  >
+                    <Download size={18} />
+                    EISSS Cuenta Resultados
+                  </PigButton>
+                ) : null}
               </div>
-            ) : null}
-          </div>
-        )}
+              {isEisss ? (
+                <PigHint style={{ marginTop: 12 }}>
+                  <b>EISSS Cuenta Resultados</b> genera el PIG EISSS <b>sin subvenciones de Holded</b>, con las subvenciones
+                  hardcodeadas (Catering / Idoni / Koiki / Estructura SUBV 740) en las tablas grandes.
+                  Incluye también la hoja <b>PRESUPUESTOS</b> y <b>FACTURACIÓN PENDIENTE</b>
+                  (misma lógica que Informe Sergi: pendientes/parciales y cobros pendientes por línea).
+                </PigHint>
+              ) : null}
+            </PigCard>
+          </PigTabPanel>
+        ) : null}
 
-        {pigEmpresa !== 'MH' && (
-          <div style={{ padding: 14, borderRadius: 12, border: `1px solid ${colors.border}`, background: colors.surface }}>
-            <div style={{ fontSize: 13, fontWeight: 950, marginBottom: 4 }}>Estimados de subvención (PIG LINEA)</div>
-            <div style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 10, lineHeight: 1.35 }}>
-              Los cambios <b>no se guardan solos</b>: pulsa <b>Guardar estimados</b> (o genera el Excel del mismo año) antes de cerrar Kronos.
-            </div>
-            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'end', marginBottom: 12 }}>
-              <label style={{ display: 'grid', gap: 6, minWidth: 120 }}>
-                <div style={{ fontSize: 12, fontWeight: 900, color: colors.textSecondary }}>Año</div>
-                <input
-                  value={estimadosYear}
-                  onChange={(e) => setEstimadosYear(e.target.value.replace(/[^\d]/g, '').slice(0, 4))}
-                  placeholder="2026"
-                  style={{
-                    padding: '10px 12px',
-                    borderRadius: 10,
-                    border: `1px solid ${colors.border}`,
-                    background: colors.background,
-                    color: colors.text,
-                    fontWeight: 800
-                  }}
-                />
-              </label>
-              <button
-                type="button"
-                onClick={saveEstimadosSubv}
-                disabled={estimadosSaving || estimadosLoading}
-                style={{
-                  padding: '10px 14px',
-                  borderRadius: 10,
-                  border: `1px solid ${colors.primary}`,
-                  background: colors.primary,
-                  color: 'white',
-                  fontWeight: 900,
-                  cursor: estimadosSaving || estimadosLoading ? 'not-allowed' : 'pointer',
-                  opacity: estimadosSaving || estimadosLoading ? 0.7 : 1
-                }}
-              >
-                {estimadosSaving ? 'Guardando…' : 'Guardar estimados'}
-              </button>
-            </div>
-            <div style={{ display: 'grid', gap: 16 }}>
-              {[
-                { linea: 'CATERING', label: 'CATERING' },
-                { linea: 'IDONI', label: 'IDONI' },
-                { linea: 'KOIKI', label: 'KOIKI' },
-                { linea: 'ESTRUCTURA', label: 'ESTRUCTURA (hoja SUBV 740)' }
-              ].map((row) => (
-                <div
-                  key={row.linea}
-                  style={{
-                    display: 'grid',
-                    gap: 10,
-                    padding: 12,
-                    borderRadius: 10,
-                    border: `1px solid ${colors.border}`,
-                    background: colors.background
-                  }}
-                >
-                  <div style={{ fontSize: 13, fontWeight: 950, color: colors.text }}>{row.label}</div>
-                  {[1, 2].map((slotNum) => {
-                    const slotKey = `subv${slotNum}`;
-                    const tramos = estimadosSubv[row.linea]?.[slotKey]?.tramos || [
-                      { amount: '', from: 1, to: 12 },
-                      { amount: '', from: 1, to: 12 }
-                    ];
-                    return (
-                      <div key={slotKey} style={{ display: 'grid', gap: 8 }}>
-                        <div style={{ fontSize: 12, fontWeight: 900, color: colors.textSecondary }}>
-                          Subvención {slotNum}{slotNum === 2 ? ' (opcional)' : ''}
-                        </div>
-                        {[0, 1].map((tramoIdx) => (
-                          <div
-                            key={tramoIdx}
-                            style={{
-                              display: 'grid',
-                              gridTemplateColumns: 'minmax(90px, 1fr) repeat(2, minmax(88px, 110px))',
-                              gap: 8,
-                              alignItems: 'end'
-                            }}
-                          >
-                            <label style={{ display: 'grid', gap: 4 }}>
-                              <div style={{ fontSize: 11, fontWeight: 800, color: colors.textSecondary }}>
-                                {tramoIdx === 0 ? 'Importe €/mes' : '2º tramo (opcional)'}
-                              </div>
-                              <input
-                                value={tramos[tramoIdx]?.amount ?? ''}
-                                onChange={(e) => setEstimadosSubv((prev) => {
-                                  const current = prev[row.linea]?.[slotKey] || { tramos: [{ amount: '', from: 1, to: 12 }, { amount: '', from: 1, to: 12 }] };
-                                  const nextTramos = [...(current.tramos || [])];
-                                  while (nextTramos.length < 2) nextTramos.push({ amount: '', from: 1, to: 12 });
-                                  nextTramos[tramoIdx] = { ...nextTramos[tramoIdx], amount: e.target.value };
-                                  return {
-                                    ...prev,
-                                    [row.linea]: {
-                                      ...prev[row.linea],
-                                      [slotKey]: { tramos: nextTramos }
-                                    }
-                                  };
-                                })}
-                                placeholder={tramoIdx === 0 ? 'Ej: 2100' : 'Ej: 1500'}
-                                disabled={estimadosLoading}
-                                style={{
-                                  padding: '8px 10px',
-                                  borderRadius: 8,
-                                  border: `1px solid ${colors.border}`,
-                                  background: colors.surface,
-                                  color: colors.text,
-                                  fontWeight: 800
-                                }}
-                              />
-                            </label>
-                            <label style={{ display: 'grid', gap: 4 }}>
-                              <div style={{ fontSize: 11, fontWeight: 800, color: colors.textSecondary }}>Des de</div>
-                              <select
-                                value={tramos[tramoIdx]?.from ?? 1}
-                                onChange={(e) => setEstimadosSubv((prev) => {
-                                  const current = prev[row.linea]?.[slotKey] || { tramos: [{ amount: '', from: 1, to: 12 }, { amount: '', from: 1, to: 12 }] };
-                                  const nextTramos = [...(current.tramos || [])];
-                                  while (nextTramos.length < 2) nextTramos.push({ amount: '', from: 1, to: 12 });
-                                  nextTramos[tramoIdx] = { ...nextTramos[tramoIdx], from: Number(e.target.value) };
-                                  return {
-                                    ...prev,
-                                    [row.linea]: {
-                                      ...prev[row.linea],
-                                      [slotKey]: { tramos: nextTramos }
-                                    }
-                                  };
-                                })}
-                                disabled={estimadosLoading}
-                                style={{
-                                  padding: '8px 10px',
-                                  borderRadius: 8,
-                                  border: `1px solid ${colors.border}`,
-                                  background: colors.surface,
-                                  color: colors.text,
-                                  fontWeight: 700
-                                }}
-                              >
-                                {PIG_ESTIMADO_MONTH_OPTIONS.map((opt) => (
-                                  <option key={`${row.linea}-${slotKey}-${tramoIdx}-from-${opt.value}`} value={opt.value}>
-                                    {opt.label}
-                                  </option>
-                                ))}
-                              </select>
-                            </label>
-                            <label style={{ display: 'grid', gap: 4 }}>
-                              <div style={{ fontSize: 11, fontWeight: 800, color: colors.textSecondary }}>Fins a</div>
-                              <select
-                                value={tramos[tramoIdx]?.to ?? 12}
-                                onChange={(e) => setEstimadosSubv((prev) => {
-                                  const current = prev[row.linea]?.[slotKey] || { tramos: [{ amount: '', from: 1, to: 12 }, { amount: '', from: 1, to: 12 }] };
-                                  const nextTramos = [...(current.tramos || [])];
-                                  while (nextTramos.length < 2) nextTramos.push({ amount: '', from: 1, to: 12 });
-                                  nextTramos[tramoIdx] = { ...nextTramos[tramoIdx], to: Number(e.target.value) };
-                                  return {
-                                    ...prev,
-                                    [row.linea]: {
-                                      ...prev[row.linea],
-                                      [slotKey]: { tramos: nextTramos }
-                                    }
-                                  };
-                                })}
-                                disabled={estimadosLoading}
-                                style={{
-                                  padding: '8px 10px',
-                                  borderRadius: 8,
-                                  border: `1px solid ${colors.border}`,
-                                  background: colors.surface,
-                                  color: colors.text,
-                                  fontWeight: 700
-                                }}
-                              >
-                                {PIG_ESTIMADO_MONTH_OPTIONS.map((opt) => (
-                                  <option key={`${row.linea}-${slotKey}-${tramoIdx}-to-${opt.value}`} value={opt.value}>
-                                    {opt.label}
-                                  </option>
-                                ))}
-                              </select>
-                            </label>
-                          </div>
-                        ))}
-                      </div>
-                    );
-                  })}
+        {isEisss && mainTab === 'datos' ? (
+          <PigTabPanel>
+            <PigCard>
+              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'end', justifyContent: 'space-between' }}>
+                <div>
+                  <PigSectionTitle hint="Todos los bloques de esta pestaña usan el mismo año. Los cambios no se guardan solos: usa Guardar en cada bloque o genera el Excel del mismo año.">
+                    Datos del año
+                  </PigSectionTitle>
                 </div>
-              ))}
-            </div>
-            <div style={{ marginTop: 8, fontSize: 12, color: colors.textSecondary, lineHeight: 1.35 }}>
-              Cada subvención puede tener hasta <b>2 tramos</b> (mismo estimado, distinto importe por meses). Ejemplo: 2.100 € de Gener a Maig y 1.500 € de Juny a Desembre.
-              Si hay segunda subvención, se añade otra fila <b>ESTIMADO DE SUBVENCIÓN 2 ANTES DE INGRESO</b> en el Excel.
-            </div>
-            {estimadosStatus ? (
-              <div style={{ marginTop: 8, fontSize: 12, fontWeight: 800, color: colors.textSecondary }}>
-                {estimadosStatus}
-              </div>
-            ) : null}
-          </div>
-        )}
-
-        {pigEmpresa !== 'MH' && (
-          <div style={{ padding: 14, borderRadius: 12, border: `1px solid ${colors.border}`, background: colors.surface }}>
-            <div style={{ fontSize: 13, fontWeight: 950, marginBottom: 4 }}>Objetivos (COMPARATIVA ANUAL)</div>
-            <div style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 10, lineHeight: 1.35 }}>
-              Usan el mismo <b>año</b> que los estimados de subvención. Los cambios <b>no se guardan solos</b>: pulsa <b>Guardar objetivos</b> (o genera el Excel del mismo año) antes de cerrar Kronos.
-            </div>
-            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'end', marginBottom: 12 }}>
-              <button
-                type="button"
-                onClick={saveObjetivosComparativa}
-                disabled={objetivosSaving || objetivosLoading}
-                style={{
-                  padding: '10px 14px',
-                  borderRadius: 10,
-                  border: `1px solid ${colors.primary}`,
-                  background: colors.primary,
-                  color: 'white',
-                  fontWeight: 900,
-                  cursor: objetivosSaving || objetivosLoading ? 'not-allowed' : 'pointer',
-                  opacity: objetivosSaving || objetivosLoading ? 0.7 : 1
-                }}
-              >
-                {objetivosSaving ? 'Guardando…' : 'Guardar objetivos'}
-              </button>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-              {[
-                { key: 'cateringNormal', label: 'CATERING · Normal' },
-                { key: 'cateringOptim', label: 'CATERING · Òptim' },
-                { key: 'idoniNormal', label: 'IDONI · Normal' },
-                { key: 'idoniOptim', label: 'IDONI · Òptim' },
-                { key: 'koikiNormal', label: 'KOIKI · Normal' },
-                { key: 'koikiOptim', label: 'KOIKI · Òptim' }
-              ].map((f) => (
-                <label key={f.key} style={{ display: 'grid', gap: 6 }}>
-                  <div style={{ fontSize: 12, fontWeight: 900, color: colors.textSecondary }}>{f.label}</div>
-                  <input
-                    value={objetivosComparativa[f.key]}
-                    onChange={(e) => setObjetivosComparativa((prev) => ({ ...prev, [f.key]: e.target.value }))}
-                    placeholder="Ej: 650000"
-                    disabled={objetivosLoading}
-                    style={{
-                      padding: '10px 12px',
-                      borderRadius: 10,
-                      border: `1px solid ${colors.border}`,
-                      background: colors.background,
-                      color: colors.text,
-                      fontWeight: 800
-                    }}
+                <label style={{ display: 'grid', gap: 6, minWidth: 120 }}>
+                  <PigFieldLabel>Año</PigFieldLabel>
+                  <PigInput
+                    value={estimadosYear}
+                    onChange={(e) => setEstimadosYear(e.target.value.replace(/[^\d]/g, '').slice(0, 4))}
+                    placeholder="2026"
+                    style={{ maxWidth: 140 }}
                   />
                 </label>
-              ))}
-            </div>
-            <div style={{ marginTop: 8, fontSize: 12, color: colors.textSecondary, lineHeight: 1.35 }}>
-              Estos valores alimentan las columnas <b>OBJECTIU 25</b>: se calcula el “restante” restando la <b>BASE 2025</b> mes a mes (cadena tipo H3-F4, H4-F5...).
-            </div>
-            {objetivosStatus ? (
-              <div style={{ marginTop: 8, fontSize: 12, fontWeight: 800, color: colors.textSecondary }}>
-                {objetivosStatus}
               </div>
-            ) : null}
-          </div>
-        )}
+              <div style={{ marginTop: 14 }}>
+                <PigTabs tabs={datosTabs} active={datosSubTab} onChange={setDatosSubTab} />
+              </div>
+            </PigCard>
 
-        {pigEmpresa !== 'MH' && (
-          <div style={{ padding: 14, borderRadius: 12, border: `1px solid ${colors.border}`, background: colors.surface }}>
-            <div style={{ fontSize: 13, fontWeight: 950, marginBottom: 4 }}>
-              Itinerario E.I (PIG / CR GENERAL EISSS)
-            </div>
-            <div style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 10, lineHeight: 1.35 }}>
-              Tablas editables debajo de la minitabla al generar <b>PIG GENERAL EISSS</b> o <b>EISSS Cuenta Resultados</b>.
-              Mismo año que estimados/objetivos. Pulsa <b>Guardar itinerario</b> (o genera el Excel) para persistir.
-            </div>
-            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
-              <button
-                type="button"
-                onClick={saveItinerarioEi}
-                disabled={itinerarioSaving || itinerarioLoading}
-                style={{
-                  padding: '10px 14px',
-                  borderRadius: 10,
-                  border: `1px solid ${colors.primary}`,
-                  background: colors.primary,
-                  color: 'white',
-                  fontWeight: 900,
-                  cursor: itinerarioSaving || itinerarioLoading ? 'not-allowed' : 'pointer',
-                  opacity: itinerarioSaving || itinerarioLoading ? 0.7 : 1
-                }}
-              >
-                {itinerarioSaving ? 'Guardando…' : 'Guardar itinerario'}
-              </button>
-            </div>
-            {[
-              { key: 'semestre1', label: '1r semestre', withObs: false },
-              { key: 'semestre2', label: '2n semestre', withObs: true }
-            ].map((sem) => (
-              <div key={sem.key} style={{ marginBottom: 16 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                  <div style={{ fontSize: 12, fontWeight: 900 }}>{sem.label}</div>
-                  <button
-                    type="button"
-                    onClick={() => setItinerarioEi((prev) => ({
-                      ...prev,
-                      [sem.key]: [...(prev[sem.key] || []), createEmptyItinerarioRow()]
-                    }))}
-                    style={{
-                      padding: '6px 10px',
-                      borderRadius: 8,
-                      border: `1px solid ${colors.border}`,
-                      background: colors.background,
-                      color: colors.text,
-                      fontWeight: 800,
-                      cursor: 'pointer'
-                    }}
+            {datosSubTab === 'estimados' ? (
+              <PigCard>
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                  <div>
+                    <PigSheetBadge style={{ marginBottom: 8 }}>PIG LINEA · SUBV 740</PigSheetBadge>
+                    <PigSectionTitle hint="Hasta 2 subvenciones por línea y 2 tramos por subvención (importe + meses).">
+                      Estimados de subvención
+                    </PigSectionTitle>
+                  </div>
+                  <PigButton
+                    variant="primary"
+                    onClick={saveEstimadosSubv}
+                    disabled={estimadosSaving || estimadosLoading}
                   >
-                    + Fila
-                  </button>
+                    {estimadosSaving ? 'Guardando…' : 'Guardar estimados'}
+                  </PigButton>
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {(itinerarioEi[sem.key] || []).map((row, idx) => (
+
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
+                  {[
+                    { linea: 'CATERING', label: 'CATERING' },
+                    { linea: 'IDONI', label: 'IDONI' },
+                    { linea: 'KOIKI', label: 'KOIKI' },
+                    { linea: 'ESTRUCTURA', label: 'ESTRUCTURA' }
+                  ].map((row) => (
+                    <PigChip
+                      key={row.linea}
+                      active={estimadosLineaOpen === row.linea}
+                      onClick={() => setEstimadosLineaOpen(row.linea)}
+                    >
+                      {row.label}
+                    </PigChip>
+                  ))}
+                </div>
+
+                {(() => {
+                  const lineas = [
+                    { linea: 'CATERING', label: 'CATERING' },
+                    { linea: 'IDONI', label: 'IDONI' },
+                    { linea: 'KOIKI', label: 'KOIKI' },
+                    { linea: 'ESTRUCTURA', label: 'ESTRUCTURA (hoja SUBV 740)' }
+                  ];
+                  const row = lineas.find((l) => l.linea === estimadosLineaOpen) || lineas[0];
+                  return (
                     <div
-                      key={`${sem.key}-${idx}`}
                       style={{
                         display: 'grid',
-                        gridTemplateColumns: sem.withObs ? '0.9fr 1.4fr 1fr 0.6fr 0.4fr 1.6fr auto' : '0.9fr 1.4fr 1fr 0.6fr 0.4fr auto',
+                        gap: 12,
+                        padding: 14,
+                        borderRadius: 12,
+                        border: `1px solid ${colors.border}`,
+                        background: colors.background
+                      }}
+                    >
+                      <div style={{ fontSize: 13, fontWeight: 950 }}>{row.label}</div>
+                      {[1, 2].map((slotNum) => {
+                        const slotKey = `subv${slotNum}`;
+                        const tramos = estimadosSubv[row.linea]?.[slotKey]?.tramos || [
+                          { amount: '', from: 1, to: 12 },
+                          { amount: '', from: 1, to: 12 }
+                        ];
+                        return (
+                          <div
+                            key={slotKey}
+                            style={{
+                              display: 'grid',
+                              gap: 10,
+                              padding: 12,
+                              borderRadius: 10,
+                              border: `1px solid ${colors.border}`,
+                              background: colors.surface
+                            }}
+                          >
+                            <div style={{ fontSize: 12, fontWeight: 900, color: colors.textSecondary }}>
+                              Subvención {slotNum}{slotNum === 2 ? ' (opcional)' : ''}
+                            </div>
+                            {[0, 1].map((tramoIdx) => (
+                              <div
+                                key={tramoIdx}
+                                style={{
+                                  display: 'grid',
+                                  gridTemplateColumns: 'minmax(100px, 1.2fr) repeat(2, minmax(100px, 130px))',
+                                  gap: 8,
+                                  alignItems: 'end'
+                                }}
+                              >
+                                <label style={{ display: 'grid', gap: 4 }}>
+                                  <PigFieldLabel>
+                                    {tramoIdx === 0 ? 'Importe €/mes' : '2º tramo (opcional)'}
+                                  </PigFieldLabel>
+                                  <PigInput
+                                    value={tramos[tramoIdx]?.amount ?? ''}
+                                    onChange={(e) => setEstimadosSubv((prev) => {
+                                      const current = prev[row.linea]?.[slotKey] || { tramos: [{ amount: '', from: 1, to: 12 }, { amount: '', from: 1, to: 12 }] };
+                                      const nextTramos = [...(current.tramos || [])];
+                                      while (nextTramos.length < 2) nextTramos.push({ amount: '', from: 1, to: 12 });
+                                      nextTramos[tramoIdx] = { ...nextTramos[tramoIdx], amount: e.target.value };
+                                      return {
+                                        ...prev,
+                                        [row.linea]: {
+                                          ...prev[row.linea],
+                                          [slotKey]: { tramos: nextTramos }
+                                        }
+                                      };
+                                    })}
+                                    placeholder={tramoIdx === 0 ? 'Ej: 2100' : 'Ej: 1500'}
+                                    disabled={estimadosLoading}
+                                    style={{ padding: '8px 10px', fontSize: 13 }}
+                                  />
+                                </label>
+                                <label style={{ display: 'grid', gap: 4 }}>
+                                  <PigFieldLabel>Des de</PigFieldLabel>
+                                  <PigSelect
+                                    value={tramos[tramoIdx]?.from ?? 1}
+                                    onChange={(e) => setEstimadosSubv((prev) => {
+                                      const current = prev[row.linea]?.[slotKey] || { tramos: [{ amount: '', from: 1, to: 12 }, { amount: '', from: 1, to: 12 }] };
+                                      const nextTramos = [...(current.tramos || [])];
+                                      while (nextTramos.length < 2) nextTramos.push({ amount: '', from: 1, to: 12 });
+                                      nextTramos[tramoIdx] = { ...nextTramos[tramoIdx], from: Number(e.target.value) };
+                                      return {
+                                        ...prev,
+                                        [row.linea]: {
+                                          ...prev[row.linea],
+                                          [slotKey]: { tramos: nextTramos }
+                                        }
+                                      };
+                                    })}
+                                    disabled={estimadosLoading}
+                                    style={{ padding: '8px 10px', fontSize: 13 }}
+                                  >
+                                    {PIG_ESTIMADO_MONTH_OPTIONS.map((opt) => (
+                                      <option key={`${row.linea}-${slotKey}-${tramoIdx}-from-${opt.value}`} value={opt.value}>
+                                        {opt.label}
+                                      </option>
+                                    ))}
+                                  </PigSelect>
+                                </label>
+                                <label style={{ display: 'grid', gap: 4 }}>
+                                  <PigFieldLabel>Fins a</PigFieldLabel>
+                                  <PigSelect
+                                    value={tramos[tramoIdx]?.to ?? 12}
+                                    onChange={(e) => setEstimadosSubv((prev) => {
+                                      const current = prev[row.linea]?.[slotKey] || { tramos: [{ amount: '', from: 1, to: 12 }, { amount: '', from: 1, to: 12 }] };
+                                      const nextTramos = [...(current.tramos || [])];
+                                      while (nextTramos.length < 2) nextTramos.push({ amount: '', from: 1, to: 12 });
+                                      nextTramos[tramoIdx] = { ...nextTramos[tramoIdx], to: Number(e.target.value) };
+                                      return {
+                                        ...prev,
+                                        [row.linea]: {
+                                          ...prev[row.linea],
+                                          [slotKey]: { tramos: nextTramos }
+                                        }
+                                      };
+                                    })}
+                                    disabled={estimadosLoading}
+                                    style={{ padding: '8px 10px', fontSize: 13 }}
+                                  >
+                                    {PIG_ESTIMADO_MONTH_OPTIONS.map((opt) => (
+                                      <option key={`${row.linea}-${slotKey}-${tramoIdx}-to-${opt.value}`} value={opt.value}>
+                                        {opt.label}
+                                      </option>
+                                    ))}
+                                  </PigSelect>
+                                </label>
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+
+                <PigHint style={{ marginTop: 12 }}>
+                  Cada subvención puede tener hasta <b>2 tramos</b> (mismo estimado, distinto importe por meses). Ejemplo: 2.100 € de Gener a Maig y 1.500 € de Juny a Desembre.
+                  Si hay segunda subvención, se añade otra fila <b>ESTIMADO DE SUBVENCIÓN 2 ANTES DE INGRESO</b> en el Excel.
+                </PigHint>
+                <PigStatusText>{estimadosStatus}</PigStatusText>
+              </PigCard>
+            ) : null}
+
+            {datosSubTab === 'objetivos' ? (
+              <PigCard>
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                  <div>
+                    <PigSheetBadge style={{ marginBottom: 8 }}>COMPARATIVA ANUAL</PigSheetBadge>
+                    <PigSectionTitle hint="Alimentan las columnas OBJECTIU 25 (restante = objetivo − BASE 2025 mes a mes).">
+                      Objetivos
+                    </PigSectionTitle>
+                  </div>
+                  <PigButton
+                    variant="primary"
+                    onClick={saveObjetivosComparativa}
+                    disabled={objetivosSaving || objetivosLoading}
+                  >
+                    {objetivosSaving ? 'Guardando…' : 'Guardar objetivos'}
+                  </PigButton>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
+                  {[
+                    { key: 'cateringNormal', label: 'CATERING · Normal' },
+                    { key: 'cateringOptim', label: 'CATERING · Òptim' },
+                    { key: 'idoniNormal', label: 'IDONI · Normal' },
+                    { key: 'idoniOptim', label: 'IDONI · Òptim' },
+                    { key: 'koikiNormal', label: 'KOIKI · Normal' },
+                    { key: 'koikiOptim', label: 'KOIKI · Òptim' }
+                  ].map((f) => (
+                    <label key={f.key} style={{ display: 'grid', gap: 6 }}>
+                      <PigFieldLabel>{f.label}</PigFieldLabel>
+                      <PigInput
+                        value={objetivosComparativa[f.key]}
+                        onChange={(e) => setObjetivosComparativa((prev) => ({ ...prev, [f.key]: e.target.value }))}
+                        placeholder="Ej: 650000"
+                        disabled={objetivosLoading}
+                      />
+                    </label>
+                  ))}
+                </div>
+                <PigStatusText>{objetivosStatus}</PigStatusText>
+              </PigCard>
+            ) : null}
+
+            {datosSubTab === 'itinerario' ? (
+              <PigCard>
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                  <div>
+                    <PigSheetBadge style={{ marginBottom: 8 }}>PIG GENERAL EISSS · CR GENERAL EISSS</PigSheetBadge>
+                    <PigSectionTitle hint="Tablas editables debajo de la minitabla al generar PIG GENERAL EISSS o EISSS Cuenta Resultados.">
+                      Itinerario E.I
+                    </PigSectionTitle>
+                  </div>
+                  <PigButton
+                    variant="primary"
+                    onClick={saveItinerarioEi}
+                    disabled={itinerarioSaving || itinerarioLoading}
+                  >
+                    {itinerarioSaving ? 'Guardando…' : 'Guardar itinerario'}
+                  </PigButton>
+                </div>
+                {[
+                  { key: 'semestre1', label: '1r semestre', withObs: false },
+                  { key: 'semestre2', label: '2n semestre', withObs: true }
+                ].map((sem) => (
+                  <div key={sem.key} style={{ marginBottom: 18 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                      <div style={{ fontSize: 13, fontWeight: 900 }}>{sem.label}</div>
+                      <PigButton
+                        size="sm"
+                        onClick={() => setItinerarioEi((prev) => ({
+                          ...prev,
+                          [sem.key]: [...(prev[sem.key] || []), createEmptyItinerarioRow()]
+                        }))}
+                      >
+                        + Fila
+                      </PigButton>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {(itinerarioEi[sem.key] || []).map((row, idx) => (
+                        <div
+                          key={`${sem.key}-${idx}`}
+                          style={{
+                            display: 'grid',
+                            gridTemplateColumns: sem.withObs
+                              ? '0.9fr 1.4fr 1fr 0.6fr 0.4fr 1.6fr auto'
+                              : '0.9fr 1.4fr 1fr 0.6fr 0.4fr auto',
+                            gap: 6,
+                            alignItems: 'center'
+                          }}
+                        >
+                          {['linea', 'trabajador', 'fecha', 'jornada', 'num_orden'].map((field) => (
+                            <PigInput
+                              key={field}
+                              value={row[field] || ''}
+                              placeholder={field}
+                              disabled={itinerarioLoading}
+                              onChange={(e) => setItinerarioEi((prev) => {
+                                const next = [...(prev[sem.key] || [])];
+                                next[idx] = { ...next[idx], [field]: e.target.value };
+                                return { ...prev, [sem.key]: next };
+                              })}
+                              style={{ padding: '8px 10px', fontSize: 12 }}
+                            />
+                          ))}
+                          {sem.withObs ? (
+                            <PigInput
+                              value={row.observaciones || ''}
+                              placeholder="observaciones"
+                              disabled={itinerarioLoading}
+                              onChange={(e) => setItinerarioEi((prev) => {
+                                const next = [...(prev[sem.key] || [])];
+                                next[idx] = { ...next[idx], observaciones: e.target.value };
+                                return { ...prev, [sem.key]: next };
+                              })}
+                              style={{ padding: '8px 10px', fontSize: 12 }}
+                            />
+                          ) : null}
+                          <PigButton
+                            size="sm"
+                            variant="danger"
+                            onClick={() => setItinerarioEi((prev) => ({
+                              ...prev,
+                              [sem.key]: (prev[sem.key] || []).filter((_, i) => i !== idx)
+                            }))}
+                          >
+                            ×
+                          </PigButton>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+                <PigStatusText>{itinerarioStatus}</PigStatusText>
+              </PigCard>
+            ) : null}
+
+            {datosSubTab === 'subv_anteriores' ? (
+              <PigCard>
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                  <div>
+                    <PigSheetBadge style={{ marginBottom: 8 }}>CR GENERAL EISSS</PigSheetBadge>
+                    <PigSectionTitle hint="Bloque al inicio de la tabla izquierda en CR GENERAL EISSS (hojas 1 y 2). El título es fijo; las filas no suman a ningún total.">
+                      {PIG_CR_SUBV_EJERCICIOS_ANTERIORES_TITLE}
+                    </PigSectionTitle>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <PigButton
+                      variant="primary"
+                      onClick={saveCrSubvEjAnteriores}
+                      disabled={crSubvEjAnterioresSaving || crSubvEjAnterioresLoading}
+                    >
+                      {crSubvEjAnterioresSaving ? 'Guardando…' : 'Guardar subv. anteriores'}
+                    </PigButton>
+                    <PigButton
+                      onClick={() => setCrSubvEjAnteriores((prev) => [
+                        ...(prev || []),
+                        createEmptyCrSubvEjerciciosAnterioresRow()
+                      ])}
+                    >
+                      + Fila
+                    </PigButton>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {(crSubvEjAnteriores || []).map((row, idx) => (
+                    <div
+                      key={`cr-subv-ej-${idx}`}
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: '1.6fr 0.7fr auto',
                         gap: 6,
                         alignItems: 'center'
                       }}
                     >
-                      {['linea', 'trabajador', 'fecha', 'jornada', 'num_orden'].map((field) => (
-                        <input
-                          key={field}
-                          value={row[field] || ''}
-                          placeholder={field}
-                          disabled={itinerarioLoading}
-                          onChange={(e) => setItinerarioEi((prev) => {
-                            const next = [...(prev[sem.key] || [])];
-                            next[idx] = { ...next[idx], [field]: e.target.value };
-                            return { ...prev, [sem.key]: next };
-                          })}
-                          style={{
-                            padding: '8px 10px',
-                            borderRadius: 8,
-                            border: `1px solid ${colors.border}`,
-                            background: colors.background,
-                            color: colors.text,
-                            fontSize: 12,
-                            fontWeight: 700
-                          }}
-                        />
-                      ))}
-                      {sem.withObs ? (
-                        <input
-                          value={row.observaciones || ''}
-                          placeholder="observaciones"
-                          disabled={itinerarioLoading}
-                          onChange={(e) => setItinerarioEi((prev) => {
-                            const next = [...(prev[sem.key] || [])];
-                            next[idx] = { ...next[idx], observaciones: e.target.value };
-                            return { ...prev, [sem.key]: next };
-                          })}
-                          style={{
-                            padding: '8px 10px',
-                            borderRadius: 8,
-                            border: `1px solid ${colors.border}`,
-                            background: colors.background,
-                            color: colors.text,
-                            fontSize: 12,
-                            fontWeight: 700
-                          }}
-                        />
-                      ) : null}
-                      <button
-                        type="button"
-                        onClick={() => setItinerarioEi((prev) => ({
-                          ...prev,
-                          [sem.key]: (prev[sem.key] || []).filter((_, i) => i !== idx)
-                        }))}
-                        style={{
-                          padding: '8px 10px',
-                          borderRadius: 8,
-                          border: `1px solid ${colors.border}`,
-                          background: colors.background,
-                          color: colors.error || '#c0392b',
-                          fontWeight: 800,
-                          cursor: 'pointer'
-                        }}
+                      <PigInput
+                        value={row.concepto || ''}
+                        placeholder="Nombre / concepto"
+                        disabled={crSubvEjAnterioresLoading}
+                        onChange={(e) => setCrSubvEjAnteriores((prev) => {
+                          const next = [...(prev || [])];
+                          next[idx] = { ...next[idx], concepto: e.target.value };
+                          return next;
+                        })}
+                        style={{ padding: '8px 10px', fontSize: 12 }}
+                      />
+                      <PigInput
+                        value={row.importe || ''}
+                        placeholder="Importe"
+                        disabled={crSubvEjAnterioresLoading}
+                        onChange={(e) => setCrSubvEjAnteriores((prev) => {
+                          const next = [...(prev || [])];
+                          next[idx] = { ...next[idx], importe: e.target.value };
+                          return next;
+                        })}
+                        style={{ padding: '8px 10px', fontSize: 12 }}
+                      />
+                      <PigButton
+                        size="sm"
+                        variant="danger"
+                        onClick={() => setCrSubvEjAnteriores((prev) => (prev || []).filter((_, i) => i !== idx))}
                       >
                         ×
-                      </button>
+                      </PigButton>
                     </div>
                   ))}
                 </div>
-              </div>
-            ))}
-            {itinerarioStatus ? (
-              <div style={{ marginTop: 8, fontSize: 12, fontWeight: 800, color: colors.textSecondary }}>
-                {itinerarioStatus}
-              </div>
-            ) : null}
-          </div>
-        )}
-
-        {pigEmpresa !== 'MH' && (
-          <div style={{ padding: 14, borderRadius: 12, border: `1px solid ${colors.border}`, background: colors.surface }}>
-            <div style={{ fontSize: 13, fontWeight: 950, marginBottom: 4 }}>
-              {PIG_CR_SUBV_EJERCICIOS_ANTERIORES_TITLE} (Cuenta Resultados)
-            </div>
-            <div style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 10, lineHeight: 1.35 }}>
-              Bloque al inicio de la tabla izquierda en <b>CR GENERAL EISSS</b> (hojas 1 y 2).
-              El título es fijo; añade filas con nombre e importe. <b>No suman</b> a ningún total.
-              Mismo año que estimados. Pulsa guardar o genera el Excel CR.
-            </div>
-            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
-              <button
-                type="button"
-                onClick={saveCrSubvEjAnteriores}
-                disabled={crSubvEjAnterioresSaving || crSubvEjAnterioresLoading}
-                style={{
-                  padding: '10px 14px',
-                  borderRadius: 10,
-                  border: `1px solid ${colors.primary}`,
-                  background: colors.primary,
-                  color: 'white',
-                  fontWeight: 900,
-                  cursor: crSubvEjAnterioresSaving || crSubvEjAnterioresLoading ? 'not-allowed' : 'pointer',
-                  opacity: crSubvEjAnterioresSaving || crSubvEjAnterioresLoading ? 0.7 : 1
-                }}
-              >
-                {crSubvEjAnterioresSaving ? 'Guardando…' : 'Guardar subv. anteriores'}
-              </button>
-              <button
-                type="button"
-                onClick={() => setCrSubvEjAnteriores((prev) => [
-                  ...(prev || []),
-                  createEmptyCrSubvEjerciciosAnterioresRow()
-                ])}
-                style={{
-                  padding: '10px 14px',
-                  borderRadius: 10,
-                  border: `1px solid ${colors.border}`,
-                  background: colors.background,
-                  color: colors.text,
-                  fontWeight: 900,
-                  cursor: 'pointer'
-                }}
-              >
-                + Fila
-              </button>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {(crSubvEjAnteriores || []).map((row, idx) => (
                 <div
-                  key={`cr-subv-ej-${idx}`}
                   style={{
+                    marginTop: 12,
                     display: 'grid',
                     gridTemplateColumns: '1.6fr 0.7fr auto',
                     gap: 6,
                     alignItems: 'center'
                   }}
                 >
-                  <input
-                    value={row.concepto || ''}
-                    placeholder="Nombre / concepto"
-                    disabled={crSubvEjAnterioresLoading}
-                    onChange={(e) => setCrSubvEjAnteriores((prev) => {
-                      const next = [...(prev || [])];
-                      next[idx] = { ...next[idx], concepto: e.target.value };
-                      return next;
+                  <div style={{ fontSize: 12, fontWeight: 950 }}>
+                    {PIG_CR_SUBV_EJERCICIOS_ANTERIORES_TOTAL_LABEL}
+                  </div>
+                  <div style={{ fontSize: 12, fontWeight: 950, textAlign: 'right', paddingRight: 8 }}>
+                    {sumCrSubvEjerciciosAnteriores(crSubvEjAnteriores).toLocaleString('es-ES', {
+                      minimumFractionDigits: 0,
+                      maximumFractionDigits: 2
                     })}
-                    style={{
-                      padding: '8px 10px',
-                      borderRadius: 8,
-                      border: `1px solid ${colors.border}`,
-                      background: colors.background,
-                      color: colors.text,
-                      fontSize: 12,
-                      fontWeight: 700
-                    }}
-                  />
-                  <input
-                    value={row.importe || ''}
-                    placeholder="Importe"
-                    disabled={crSubvEjAnterioresLoading}
-                    onChange={(e) => setCrSubvEjAnteriores((prev) => {
-                      const next = [...(prev || [])];
-                      next[idx] = { ...next[idx], importe: e.target.value };
-                      return next;
-                    })}
-                    style={{
-                      padding: '8px 10px',
-                      borderRadius: 8,
-                      border: `1px solid ${colors.border}`,
-                      background: colors.background,
-                      color: colors.text,
-                      fontSize: 12,
-                      fontWeight: 700
-                    }}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setCrSubvEjAnteriores((prev) => (prev || []).filter((_, i) => i !== idx))}
-                    style={{
-                      padding: '8px 10px',
-                      borderRadius: 8,
-                      border: `1px solid ${colors.border}`,
-                      background: colors.background,
-                      color: colors.error || '#c0392b',
-                      fontWeight: 800,
-                      cursor: 'pointer'
-                    }}
-                  >
-                    ×
-                  </button>
+                  </div>
+                  <div />
                 </div>
-              ))}
-            </div>
-            <div
-              style={{
-                marginTop: 10,
-                display: 'grid',
-                gridTemplateColumns: '1.6fr 0.7fr auto',
-                gap: 6,
-                alignItems: 'center'
-              }}
-            >
-              <div style={{ fontSize: 12, fontWeight: 950 }}>
-                {PIG_CR_SUBV_EJERCICIOS_ANTERIORES_TOTAL_LABEL}
-              </div>
-              <div style={{ fontSize: 12, fontWeight: 950, textAlign: 'right', paddingRight: 8 }}>
-                {sumCrSubvEjerciciosAnteriores(crSubvEjAnteriores).toLocaleString('es-ES', {
-                  minimumFractionDigits: 0,
-                  maximumFractionDigits: 2
-                })}
-              </div>
-              <div />
-            </div>
-            {crSubvEjAnterioresStatus ? (
-              <div style={{ marginTop: 8, fontSize: 12, fontWeight: 800, color: colors.textSecondary }}>
-                {crSubvEjAnterioresStatus}
-              </div>
+                <PigStatusText>{crSubvEjAnterioresStatus}</PigStatusText>
+              </PigCard>
             ) : null}
-          </div>
-        )}
 
-        {pigEmpresa !== 'MH' && (
-          <div style={{ padding: 14, borderRadius: 12, border: `1px solid ${colors.border}`, background: colors.surface }}>
-            <div style={{ fontSize: 13, fontWeight: 950, marginBottom: 4 }}>
-              Proveedores caja a corto (PIG Normal)
-            </div>
-            <div style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 10, lineHeight: 1.35 }}>
-              Solo estos dos importes son manuales. El resto (nóminas, SS, autónomos, financiaciones)
-              se rellena solo al <b>generar el PIG Normal</b> desde Holded.
-            </div>
-            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
-              <button
-                type="button"
-                onClick={saveTesoreriaCajaCorto}
-                disabled={cajaCortoSaving || cajaCortoLoading}
-                style={{
-                  padding: '10px 14px',
-                  borderRadius: 10,
-                  border: `1px solid ${colors.primary}`,
-                  background: colors.primary,
-                  color: 'white',
-                  fontWeight: 900,
-                  cursor: cajaCortoSaving || cajaCortoLoading ? 'not-allowed' : 'pointer',
-                  opacity: cajaCortoSaving || cajaCortoLoading ? 0.7 : 1
-                }}
-              >
-                {cajaCortoSaving ? 'Guardando…' : 'Guardar proveedores'}
-              </button>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {(() => {
-                const pagos = tesoreriaCajaCorto.pagos || [];
-                const domIdx = pagos.findIndex((r) => /DOMICILIAD/i.test(String(r?.concepto || '')));
-                const rangoIdx = pagos.findIndex(
-                  (r) => /PROVEEDORES/i.test(String(r?.concepto || ''))
-                    && !/DOMICILIAD/i.test(String(r?.concepto || ''))
-                );
-                const slots = [
-                  { idx: domIdx, placeholder: 'PROVEEDORES DOMICILIADOS' },
-                  { idx: rangoIdx, placeholder: 'PROVEEDORES 1 AL 5 DE SEPTIEMBRE' }
-                ].filter((s) => s.idx >= 0);
-                return slots.map(({ idx, placeholder }) => {
-                  const row = pagos[idx] || {};
-                  return (
-                    <div
-                      key={`proveedor-${idx}`}
-                      style={{
-                        display: 'grid',
-                        gridTemplateColumns: '1.6fr 0.7fr',
-                        gap: 6,
-                        alignItems: 'center'
-                      }}
-                    >
-                      <input
-                        value={row.concepto || ''}
-                        placeholder={placeholder}
-                        disabled={cajaCortoLoading}
-                        onChange={(e) => setTesoreriaCajaCorto((prev) => {
-                          const next = [...(prev.pagos || [])];
-                          next[idx] = { ...next[idx], concepto: e.target.value };
-                          return { ...prev, pagos: next };
-                        })}
-                        style={{
-                          padding: '8px 10px',
-                          borderRadius: 8,
-                          border: `1px solid ${colors.border}`,
-                          background: colors.background,
-                          color: colors.text,
-                          fontSize: 12,
-                          fontWeight: 700
-                        }}
-                      />
-                      <input
-                        value={row.importe || ''}
-                        placeholder="Importe"
-                        disabled={cajaCortoLoading}
-                        onChange={(e) => setTesoreriaCajaCorto((prev) => {
-                          const next = [...(prev.pagos || [])];
-                          next[idx] = { ...next[idx], importe: e.target.value };
-                          return { ...prev, pagos: next };
-                        })}
-                        style={{
-                          padding: '8px 10px',
-                          borderRadius: 8,
-                          border: `1px solid ${colors.border}`,
-                          background: colors.background,
-                          color: colors.text,
-                          fontSize: 12,
-                          fontWeight: 700
-                        }}
-                      />
-                    </div>
-                  );
-                });
-              })()}
-            </div>
-            {cajaCortoStatus ? (
-              <div style={{ marginTop: 8, fontSize: 12, fontWeight: 800, color: colors.textSecondary }}>
-                {cajaCortoStatus}
-              </div>
-            ) : null}
-          </div>
-        )}
-
-        {pigEmpresa !== 'MH' && (
-          <div style={{ padding: 14, borderRadius: 12, border: `1px solid ${colors.border}`, background: colors.surface }}>
-            <div style={{ fontSize: 13, fontWeight: 950, marginBottom: 4 }}>
-              Previsiones TESORERÍA (Cuenta Resultados)
-            </div>
-            <div style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 10, lineHeight: 1.35 }}>
-              Tablas debajo de Caixa/Fiare en la hoja <b>TESORERÍA</b> del Excel CR.
-              Pulsa <b>Guardar previsiones</b> (o genera el Excel CR) para persistir.
-            </div>
-            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
-              <button
-                type="button"
-                onClick={saveTesoreriaPrevisiones}
-                disabled={previsionesSaving || previsionesLoading}
-                style={{
-                  padding: '10px 14px',
-                  borderRadius: 10,
-                  border: `1px solid ${colors.primary}`,
-                  background: colors.primary,
-                  color: 'white',
-                  fontWeight: 900,
-                  cursor: previsionesSaving || previsionesLoading ? 'not-allowed' : 'pointer',
-                  opacity: previsionesSaving || previsionesLoading ? 0.7 : 1
-                }}
-              >
-                {previsionesSaving ? 'Guardando…' : 'Guardar previsiones'}
-              </button>
-            </div>
-            {[
-              { key: 'ingresos_por_subv', label: 'Ingresos por subvenciones' },
-              { key: 'por_aprobar', label: 'Subvenciones por aprobar' }
-            ].map((block) => (
-              <div key={block.key} style={{ marginBottom: 16 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                  <div style={{ fontSize: 12, fontWeight: 900 }}>{block.label}</div>
-                  <button
-                    type="button"
-                    onClick={() => setTesoreriaPrevisiones((prev) => ({
-                      ...prev,
-                      [block.key]: [...(prev[block.key] || []), createEmptyPrevisionRow()]
-                    }))}
-                    style={{
-                      padding: '6px 10px',
-                      borderRadius: 8,
-                      border: `1px solid ${colors.border}`,
-                      background: colors.background,
-                      color: colors.text,
-                      fontWeight: 800,
-                      cursor: 'pointer'
-                    }}
+            {datosSubTab === 'caja_corto' ? (
+              <PigCard>
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                  <div>
+                    <PigSheetBadge style={{ marginBottom: 8 }}>TESORERÍA (PIG Normal)</PigSheetBadge>
+                    <PigSectionTitle hint="Solo estos dos importes son manuales. El resto (nóminas, SS, autónomos, financiaciones) se rellena solo al generar el PIG Normal desde Holded.">
+                      Proveedores caja a corto
+                    </PigSectionTitle>
+                  </div>
+                  <PigButton
+                    variant="primary"
+                    onClick={saveTesoreriaCajaCorto}
+                    disabled={cajaCortoSaving || cajaCortoLoading}
                   >
-                    + Fila
-                  </button>
+                    {cajaCortoSaving ? 'Guardando…' : 'Guardar proveedores'}
+                  </PigButton>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {(tesoreriaPrevisiones[block.key] || []).map((row, idx) => (
-                    <div
-                      key={`${block.key}-${idx}`}
-                      style={{
-                        display: 'grid',
-                        gridTemplateColumns: '1.4fr 0.7fr 1.6fr auto',
-                        gap: 6,
-                        alignItems: 'center'
-                      }}
-                    >
-                      <input
-                        value={row.concepto || ''}
-                        placeholder="Concepto"
-                        disabled={previsionesLoading}
-                        onChange={(e) => setTesoreriaPrevisiones((prev) => {
-                          const next = [...(prev[block.key] || [])];
-                          next[idx] = { ...next[idx], concepto: e.target.value };
-                          return { ...prev, [block.key]: next };
-                        })}
-                        style={{
-                          padding: '8px 10px',
-                          borderRadius: 8,
-                          border: `1px solid ${colors.border}`,
-                          background: colors.background,
-                          color: colors.text,
-                          fontSize: 12,
-                          fontWeight: 700
-                        }}
-                      />
-                      <input
-                        value={row.ingreso || ''}
-                        placeholder="Ingreso"
-                        disabled={previsionesLoading}
-                        onChange={(e) => setTesoreriaPrevisiones((prev) => {
-                          const next = [...(prev[block.key] || [])];
-                          next[idx] = { ...next[idx], ingreso: e.target.value };
-                          return { ...prev, [block.key]: next };
-                        })}
-                        style={{
-                          padding: '8px 10px',
-                          borderRadius: 8,
-                          border: `1px solid ${colors.border}`,
-                          background: colors.background,
-                          color: colors.text,
-                          fontSize: 12,
-                          fontWeight: 700
-                        }}
-                      />
-                      <input
-                        value={row.observacion || ''}
-                        placeholder="Observación"
-                        disabled={previsionesLoading}
-                        onChange={(e) => setTesoreriaPrevisiones((prev) => {
-                          const next = [...(prev[block.key] || [])];
-                          next[idx] = { ...next[idx], observacion: e.target.value };
-                          return { ...prev, [block.key]: next };
-                        })}
-                        style={{
-                          padding: '8px 10px',
-                          borderRadius: 8,
-                          border: `1px solid ${colors.border}`,
-                          background: colors.background,
-                          color: colors.text,
-                          fontSize: 12,
-                          fontWeight: 700
-                        }}
-                      />
-                      <button
-                        type="button"
+                  {(() => {
+                    const pagos = tesoreriaCajaCorto.pagos || [];
+                    const domIdx = pagos.findIndex((r) => /DOMICILIAD/i.test(String(r?.concepto || '')));
+                    const rangoIdx = pagos.findIndex(
+                      (r) => /PROVEEDORES/i.test(String(r?.concepto || ''))
+                        && !/DOMICILIAD/i.test(String(r?.concepto || ''))
+                    );
+                    const slots = [
+                      { idx: domIdx, placeholder: 'PROVEEDORES DOMICILIADOS' },
+                      { idx: rangoIdx, placeholder: 'PROVEEDORES 1 AL 5 DE SEPTIEMBRE' }
+                    ].filter((s) => s.idx >= 0);
+                    return slots.map(({ idx, placeholder }) => {
+                      const row = pagos[idx] || {};
+                      return (
+                        <div
+                          key={`proveedor-${idx}`}
+                          style={{
+                            display: 'grid',
+                            gridTemplateColumns: '1.6fr 0.7fr',
+                            gap: 6,
+                            alignItems: 'center'
+                          }}
+                        >
+                          <PigInput
+                            value={row.concepto || ''}
+                            placeholder={placeholder}
+                            disabled={cajaCortoLoading}
+                            onChange={(e) => setTesoreriaCajaCorto((prev) => {
+                              const next = [...(prev.pagos || [])];
+                              next[idx] = { ...next[idx], concepto: e.target.value };
+                              return { ...prev, pagos: next };
+                            })}
+                            style={{ padding: '8px 10px', fontSize: 12 }}
+                          />
+                          <PigInput
+                            value={row.importe || ''}
+                            placeholder="Importe"
+                            disabled={cajaCortoLoading}
+                            onChange={(e) => setTesoreriaCajaCorto((prev) => {
+                              const next = [...(prev.pagos || [])];
+                              next[idx] = { ...next[idx], importe: e.target.value };
+                              return { ...prev, pagos: next };
+                            })}
+                            style={{ padding: '8px 10px', fontSize: 12 }}
+                          />
+                        </div>
+                      );
+                    });
+                  })()}
+                </div>
+                <PigStatusText>{cajaCortoStatus}</PigStatusText>
+              </PigCard>
+            ) : null}
+
+            {datosSubTab === 'previsiones' ? (
+              <PigCard>
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                  <div>
+                    <PigSheetBadge style={{ marginBottom: 8 }}>TESORERÍA (Cuenta Resultados)</PigSheetBadge>
+                    <PigSectionTitle hint="Tablas debajo de Caixa/Fiare en la hoja TESORERÍA del Excel CR.">
+                      Previsiones TESORERÍA
+                    </PigSectionTitle>
+                  </div>
+                  <PigButton
+                    variant="primary"
+                    onClick={saveTesoreriaPrevisiones}
+                    disabled={previsionesSaving || previsionesLoading}
+                  >
+                    {previsionesSaving ? 'Guardando…' : 'Guardar previsiones'}
+                  </PigButton>
+                </div>
+                {[
+                  { key: 'ingresos_por_subv', label: 'Ingresos por subvenciones' },
+                  { key: 'por_aprobar', label: 'Subvenciones por aprobar' }
+                ].map((block) => (
+                  <div key={block.key} style={{ marginBottom: 16 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                      <div style={{ fontSize: 13, fontWeight: 900 }}>{block.label}</div>
+                      <PigButton
+                        size="sm"
                         onClick={() => setTesoreriaPrevisiones((prev) => ({
                           ...prev,
-                          [block.key]: (prev[block.key] || []).filter((_, i) => i !== idx)
+                          [block.key]: [...(prev[block.key] || []), createEmptyPrevisionRow()]
                         }))}
-                        style={{
-                          padding: '8px 10px',
-                          borderRadius: 8,
-                          border: `1px solid ${colors.border}`,
-                          background: colors.background,
-                          color: colors.error || '#c0392b',
-                          fontWeight: 800,
-                          cursor: 'pointer'
-                        }}
                       >
-                        ×
-                      </button>
+                        + Fila
+                      </PigButton>
                     </div>
-                  ))}
-                </div>
-              </div>
-            ))}
-            {previsionesStatus ? (
-              <div style={{ marginTop: 8, fontSize: 12, fontWeight: 800, color: colors.textSecondary }}>
-                {previsionesStatus}
-              </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {(tesoreriaPrevisiones[block.key] || []).map((row, idx) => (
+                        <div
+                          key={`${block.key}-${idx}`}
+                          style={{
+                            display: 'grid',
+                            gridTemplateColumns: '1.4fr 0.7fr 1.6fr auto',
+                            gap: 6,
+                            alignItems: 'center'
+                          }}
+                        >
+                          <PigInput
+                            value={row.concepto || ''}
+                            placeholder="Concepto"
+                            disabled={previsionesLoading}
+                            onChange={(e) => setTesoreriaPrevisiones((prev) => {
+                              const next = [...(prev[block.key] || [])];
+                              next[idx] = { ...next[idx], concepto: e.target.value };
+                              return { ...prev, [block.key]: next };
+                            })}
+                            style={{ padding: '8px 10px', fontSize: 12 }}
+                          />
+                          <PigInput
+                            value={row.ingreso || ''}
+                            placeholder="Ingreso"
+                            disabled={previsionesLoading}
+                            onChange={(e) => setTesoreriaPrevisiones((prev) => {
+                              const next = [...(prev[block.key] || [])];
+                              next[idx] = { ...next[idx], ingreso: e.target.value };
+                              return { ...prev, [block.key]: next };
+                            })}
+                            style={{ padding: '8px 10px', fontSize: 12 }}
+                          />
+                          <PigInput
+                            value={row.observacion || ''}
+                            placeholder="Observación"
+                            disabled={previsionesLoading}
+                            onChange={(e) => setTesoreriaPrevisiones((prev) => {
+                              const next = [...(prev[block.key] || [])];
+                              next[idx] = { ...next[idx], observacion: e.target.value };
+                              return { ...prev, [block.key]: next };
+                            })}
+                            style={{ padding: '8px 10px', fontSize: 12 }}
+                          />
+                          <PigButton
+                            size="sm"
+                            variant="danger"
+                            onClick={() => setTesoreriaPrevisiones((prev) => ({
+                              ...prev,
+                              [block.key]: (prev[block.key] || []).filter((_, i) => i !== idx)
+                            }))}
+                          >
+                            ×
+                          </PigButton>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+                <PigStatusText>{previsionesStatus}</PigStatusText>
+              </PigCard>
             ) : null}
-          </div>
-        )}
+          </PigTabPanel>
+        ) : null}
 
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          <button
-            onClick={() => generateExcel()}
-            disabled={!canGenerate}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 10,
-              padding: '10px 14px',
-              borderRadius: 10,
-              cursor: canGenerate ? 'pointer' : 'not-allowed',
-              border: `1px solid ${canGenerate ? colors.primary : colors.border}`,
-              background: canGenerate ? colors.primary : colors.surface,
-              color: canGenerate ? 'white' : colors.textSecondary,
-              fontWeight: 950,
-              opacity: canGenerate ? 1 : 0.7
-            }}
-          >
-            <Download size={18} />
-            Generar Excel
-          </button>
-          {pigEmpresa !== 'MH' && (
-            <button
-              onClick={() => generateExcel({ cuentaResultados: true })}
-              disabled={!canGenerate}
-              title="Mismo PIG EISSS sin subvenciones de Holded ni estimados (para cuenta de resultados)"
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 10,
-                padding: '10px 14px',
-                borderRadius: 10,
-                cursor: canGenerate ? 'pointer' : 'not-allowed',
-                border: `1px solid ${canGenerate ? colors.border : colors.border}`,
-                background: canGenerate ? colors.surface : colors.surface,
-                color: canGenerate ? colors.text : colors.textSecondary,
-                fontWeight: 950,
-                opacity: canGenerate ? 1 : 0.7
-              }}
-            >
-              <Download size={18} />
-              EISSS Cuenta Resultados
-            </button>
-          )}
-        </div>
-        {pigEmpresa !== 'MH' && (
-          <div style={{ fontSize: 12, color: colors.textSecondary, lineHeight: 1.4 }}>
-            <b>EISSS Cuenta Resultados</b> genera el PIG EISSS <b>sin subvenciones de Holded</b>, con las subvenciones
-            hardcodeadas (Catering / Idoni / Koiki / Estructura SUBV 740) en las tablas grandes.
-            Incluye también la hoja <b>PRESUPUESTOS</b> y <b>FACTURACIÓN PENDIENTE</b>
-            (misma lógica que Informe Sergi: pendientes/parciales y cobros pendientes por línea).
-          </div>
-        )}
+        {isEisss && mainTab === 'prevision' ? (
+          <PigTabPanel>
+            <PigCard>
+              <PigSectionTitle hint={(
+                <>
+                  Excel <b>independiente</b> del PIG. Sube el último PIG exportado de <b>2026</b> y el de <b>2025</b>.
+                  Jun–dic 2026: valores fijos validados. 2027 entradas: cobrada Holded 2025 (mayo/junio = media 2025+2026; agosto = 0). Salidas: gastos CR 2025.
+                </>
+              )}
+              >
+                Previsión tesorería 18 meses (jun 2026 – dic 2027)
+              </PigSectionTitle>
+              <div style={{ display: 'grid', gap: 12, marginBottom: 14 }}>
+                <PigFilePick
+                  label={<Upload size={18} />}
+                  file={previsionPig2026}
+                  emptyLabel="PIG 2026 (.xlsx)"
+                  accept=".xlsx,.xls,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                  onChange={(e) => setPrevisionPig2026(e.target.files?.[0] || null)}
+                />
+                <PigFilePick
+                  label={<Upload size={18} />}
+                  file={previsionPig2025}
+                  emptyLabel="PIG 2025 (.xlsx)"
+                  accept=".xlsx,.xls,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                  onChange={(e) => setPrevisionPig2025(e.target.files?.[0] || null)}
+                />
+              </div>
+              <PigButton
+                variant="primary"
+                onClick={generatePrevisionTesoreriaExcel}
+                disabled={!canGeneratePrevisionTesoreria || previsionTesoreriaLoading}
+              >
+                <Download size={18} />
+                {previsionTesoreriaLoading ? 'Generando…' : 'Generar previsión tesorería'}
+              </PigButton>
+              <PigStatusText>{previsionTesoreriaStatus}</PigStatusText>
+            </PigCard>
+          </PigTabPanel>
+        ) : null}
       </div>
     </div>
   );
 }
-
