@@ -17,6 +17,8 @@ import fichajeCodigosService from '../services/fichajeCodigosService';
 import holdedEmployeesService from '../services/holdedEmployeesService';
 import { useTheme } from './ThemeContext';
 import { useAuth } from './AuthContext';
+import AdminSectionHeader from './AdminSectionHeader';
+import AdminModal from './AdminModal';
 
 const FichajeCodigosAdmin = () => {
   const { colors } = useTheme();
@@ -292,74 +294,77 @@ const FichajeCodigosAdmin = () => {
 
   return (
     <div>
-      {/* Header con acciones */}
+      <AdminSectionHeader
+        title="Códigos de fichaje"
+        description="Códigos que usan los trabajadores para identificarse al fichar (sin login)."
+        colors={colors}
+        actions={
+          <>
+            <button
+              onClick={() => setShowImportModal(true)}
+              style={{
+                padding: '10px 16px',
+                backgroundColor: colors.info || colors.primary,
+                color: 'white',
+                border: 'none',
+                borderRadius: '8px',
+                fontSize: '14px',
+                fontWeight: '600',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}
+            >
+              <Upload size={18} />
+              Importar Excel
+            </button>
+            <button
+              onClick={() => openModal()}
+              style={{
+                padding: '10px 16px',
+                backgroundColor: colors.primary,
+                color: 'white',
+                border: 'none',
+                borderRadius: '8px',
+                fontSize: '14px',
+                fontWeight: '600',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}
+            >
+              <Plus size={18} />
+              Nuevo código
+            </button>
+          </>
+        }
+      />
+
       <div style={{
         display: 'flex',
-        justifyContent: 'space-between',
+        gap: '12px',
         alignItems: 'center',
-        marginBottom: '24px',
-        flexWrap: 'wrap',
-        gap: '16px'
+        marginBottom: '20px'
       }}>
-        <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flex: 1, minWidth: '300px' }}>
-          <Search size={20} color={colors.textSecondary} />
-          <input
-            type="text"
-            placeholder="Buscar por código, empleado o descripción..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            style={{
-              flex: 1,
-              padding: '10px 16px',
-              border: `1px solid ${colors.border}`,
-              borderRadius: '8px',
-              fontSize: '14px',
-              color: colors.text,
-              backgroundColor: colors.background,
-              outline: 'none'
-            }}
-          />
-        </div>
-        <div style={{ display: 'flex', gap: '12px' }}>
-          <button
-            onClick={() => setShowImportModal(true)}
-            style={{
-              padding: '10px 20px',
-              backgroundColor: colors.info,
-              color: 'white',
-              border: 'none',
-              borderRadius: '8px',
-              fontSize: '14px',
-              fontWeight: '600',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px'
-            }}
-          >
-            <Upload size={18} />
-            Importar Excel
-          </button>
-          <button
-            onClick={() => openModal()}
-            style={{
-              padding: '10px 20px',
-              backgroundColor: colors.primary,
-              color: 'white',
-              border: 'none',
-              borderRadius: '8px',
-              fontSize: '14px',
-              fontWeight: '600',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px'
-            }}
-          >
-            <Plus size={18} />
-            Nuevo Código
-          </button>
-        </div>
+        <Search size={18} color={colors.textSecondary} />
+        <input
+          type="text"
+          placeholder="Buscar por código, empleado o descripción..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          style={{
+            flex: 1,
+            padding: '10px 16px',
+            border: `1px solid ${colors.border}`,
+            borderRadius: '8px',
+            fontSize: '14px',
+            color: colors.text,
+            backgroundColor: colors.background,
+            outline: 'none'
+          }}
+        />
       </div>
 
       {/* Mensajes */}
@@ -550,369 +555,283 @@ const FichajeCodigosAdmin = () => {
         </div>
       )}
 
-      {/* Modal de creación/edición */}
-      {showModal && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.5)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1000,
-          padding: '20px'
-        }}>
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.9 }}
-            style={{
-              backgroundColor: colors.surface,
-              borderRadius: '12px',
-              padding: '24px',
-              width: '100%',
-              maxWidth: '500px',
-              border: `1px solid ${colors.border}`
-            }}
-          >
-            <h2 style={{ 
-              fontSize: '20px', 
-              fontWeight: '600', 
-              color: colors.text,
-              marginBottom: '20px'
-            }}>
-              {editingCodigo ? 'Editar Código' : 'Nuevo Código'}
-            </h2>
-            
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <div>
-                <label style={{ 
-                  display: 'block', 
-                  fontSize: '14px', 
-                  fontWeight: '600', 
-                  color: colors.text, 
-                  marginBottom: '8px' 
-                }}>
-                  Código *
-                </label>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'stretch' }}>
-                  <input
-                    type="text"
-                    value={generandoCodigo && !editingCodigo ? 'Generando…' : formData.codigo}
-                    readOnly
-                    disabled={!!editingCodigo || generandoCodigo}
-                    placeholder="Se genera automáticamente"
-                    style={{
-                      flex: 1,
-                      padding: '12px',
-                      border: `1px solid ${colors.border}`,
-                      borderRadius: '8px',
-                      fontSize: '18px',
-                      letterSpacing: '0.12em',
-                      color: colors.text,
-                      backgroundColor: colors.background,
-                      outline: 'none',
-                      fontFamily: 'monospace',
-                      fontWeight: '700'
-                    }}
-                  />
-                  {!editingCodigo ? (
-                    <button
-                      type="button"
-                      onClick={() => void regenerarCodigo()}
-                      disabled={generandoCodigo || loading}
-                      title="Generar otro código"
-                      style={{
-                        padding: '0 14px',
-                        border: `1px solid ${colors.border}`,
-                        borderRadius: 8,
-                        background: colors.surface,
-                        color: colors.text,
-                        cursor: generandoCodigo ? 'wait' : 'pointer',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: 6,
-                        fontSize: 13,
-                        fontWeight: 600,
-                        fontFamily: 'inherit'
-                      }}
-                    >
-                      <RefreshCw size={16} />
-                      Otro
-                    </button>
-                  ) : null}
-                </div>
-                <p style={{ margin: '6px 0 0', fontSize: 12, color: colors.textSecondary }}>
-                  {editingCodigo
-                    ? 'El código existente no se modifica (solo empleado/descripción).'
-                    : 'Código aleatorio de 6 dígitos; se comprueba que no exista ya en la base de datos.'}
-                </p>
-              </div>
-              
-              <div>
-                <label style={{ 
-                  display: 'block', 
-                  fontSize: '14px', 
-                  fontWeight: '600', 
-                  color: colors.text, 
-                  marginBottom: '8px' 
-                }}>
-                  Empleado *
-                </label>
-                <select
-                  value={formData.empleadoId}
-                  onChange={(e) => setFormData({ ...formData, empleadoId: e.target.value })}
-                  style={{
-                    width: '100%',
-                    padding: '12px',
-                    border: `1px solid ${colors.border}`,
-                    borderRadius: '8px',
-                    fontSize: '14px',
-                    color: colors.text,
-                    backgroundColor: colors.background,
-                    outline: 'none'
-                  }}
-                >
-                  <option value="">-- Selecciona un empleado --</option>
-                  {empleados.map(emp => (
-                    <option key={emp.id} value={emp.id}>{emp.nombreCompleto || emp.name}</option>
-                  ))}
-                </select>
-              </div>
-              
-              <div>
-                <label style={{ 
-                  display: 'block', 
-                  fontSize: '14px', 
-                  fontWeight: '600', 
-                  color: colors.text, 
-                  marginBottom: '8px' 
-                }}>
-                  Descripción (opcional)
-                </label>
-                <input
-                  type="text"
-                  value={formData.descripcion}
-                  onChange={(e) => setFormData({ ...formData, descripcion: e.target.value })}
-                  placeholder="Descripción opcional del código"
-                  style={{
-                    width: '100%',
-                    padding: '12px',
-                    border: `1px solid ${colors.border}`,
-                    borderRadius: '8px',
-                    fontSize: '14px',
-                    color: colors.text,
-                    backgroundColor: colors.background,
-                    outline: 'none'
-                  }}
-                />
-              </div>
-            </div>
-            
-            <div style={{ display: 'flex', gap: '12px', marginTop: '24px', justifyContent: 'flex-end' }}>
-              <button
-                onClick={() => setShowModal(false)}
-                disabled={loading}
-                style={{
-                  padding: '10px 20px',
-                  backgroundColor: 'transparent',
-                  color: colors.text,
-                  border: `1px solid ${colors.border}`,
-                  borderRadius: '8px',
-                  fontSize: '14px',
-                  fontWeight: '600',
-                  cursor: loading ? 'not-allowed' : 'pointer',
-                  opacity: loading ? 0.6 : 1
-                }}
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleSave}
-                disabled={loading}
-                style={{
-                  padding: '10px 20px',
-                  backgroundColor: colors.primary,
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '8px',
-                  fontSize: '14px',
-                  fontWeight: '600',
-                  cursor: loading ? 'not-allowed' : 'pointer',
-                  opacity: loading ? 0.6 : 1
-                }}
-              >
-                {loading ? 'Guardando...' : 'Guardar'}
-              </button>
-            </div>
-          </motion.div>
-        </div>
-      )}
-
-      {/* Modal de importación Excel */}
-      {showImportModal && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.5)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1000,
-          padding: '20px'
-        }}>
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.9 }}
-            style={{
-              backgroundColor: colors.surface,
-              borderRadius: '12px',
-              padding: '24px',
-              width: '100%',
-              maxWidth: '600px',
-              border: `1px solid ${colors.border}`
-            }}
-          >
-            <h2 style={{ 
-              fontSize: '20px', 
-              fontWeight: '600', 
-              color: colors.text,
-              marginBottom: '20px'
-            }}>
-              Importar Códigos desde Excel
-            </h2>
-            
-            <div style={{ marginBottom: '20px' }}>
-              <p style={{ fontSize: '14px', color: colors.textSecondary, marginBottom: '16px' }}>
-                El archivo Excel debe tener las siguientes columnas:
-              </p>
-              <ul style={{ 
-                fontSize: '13px', 
-                color: colors.textSecondary,
-                paddingLeft: '20px',
-                marginBottom: '16px'
-              }}>
-                <li><strong>CLAVE</strong> (o "Código", "codigo", "code"): Código único de fichaje</li>
-                <li><strong>NOMBRE</strong> (o "Nombre", "empleado", "employee"): Nombre completo del empleado</li>
-                <li><strong>Descripción</strong> (opcional): Descripción del código</li>
-              </ul>
-              <p style={{ 
-                fontSize: '12px', 
-                color: colors.textSecondary,
-                fontStyle: 'italic',
-                marginTop: '8px'
-              }}>
-                El sistema buscará automáticamente el empleado en Holded por su nombre.
-              </p>
-            </div>
-            
-            <div style={{ marginBottom: '20px' }}>
+      <AdminModal
+        open={showModal}
+        onClose={() => !loading && setShowModal(false)}
+        title={editingCodigo ? 'Editar código' : 'Nuevo código'}
+        description={
+          editingCodigo
+            ? 'El código existente no se modifica (solo empleado/descripción).'
+            : 'Se genera un código aleatorio de 6 dígitos único en base de datos.'
+        }
+        colors={colors}
+        closeDisabled={loading}
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => setShowModal(false)}
+              disabled={loading}
+              style={{
+                padding: '10px 16px',
+                backgroundColor: 'transparent',
+                color: colors.text,
+                border: `1px solid ${colors.border}`,
+                borderRadius: 8,
+                fontSize: 14,
+                fontWeight: 600,
+                cursor: loading ? 'not-allowed' : 'pointer',
+                opacity: loading ? 0.6 : 1
+              }}
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={loading}
+              style={{
+                padding: '10px 16px',
+                backgroundColor: colors.primary,
+                color: 'white',
+                border: 'none',
+                borderRadius: 8,
+                fontSize: 14,
+                fontWeight: 600,
+                cursor: loading ? 'not-allowed' : 'pointer',
+                opacity: loading ? 0.6 : 1
+              }}
+            >
+              {loading ? 'Guardando…' : 'Guardar'}
+            </button>
+          </>
+        }
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div>
+            <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: colors.text, marginBottom: 8 }}>
+              Código *
+            </label>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'stretch' }}>
               <input
-                type="file"
-                accept=".xlsx,.xls"
-                onChange={(e) => setImportFile(e.target.files?.[0] || null)}
+                type="text"
+                value={generandoCodigo && !editingCodigo ? 'Generando…' : formData.codigo}
+                readOnly
+                disabled={!!editingCodigo || generandoCodigo}
+                placeholder="Se genera automáticamente"
                 style={{
-                  width: '100%',
-                  padding: '12px',
+                  flex: 1,
+                  padding: 12,
                   border: `1px solid ${colors.border}`,
-                  borderRadius: '8px',
-                  fontSize: '14px',
+                  borderRadius: 8,
+                  fontSize: 18,
+                  letterSpacing: '0.12em',
                   color: colors.text,
-                  backgroundColor: colors.background
+                  backgroundColor: colors.background,
+                  outline: 'none',
+                  fontFamily: 'monospace',
+                  fontWeight: 700
                 }}
               />
+              {!editingCodigo ? (
+                <button
+                  type="button"
+                  onClick={() => void regenerarCodigo()}
+                  disabled={generandoCodigo || loading}
+                  title="Generar otro código"
+                  style={{
+                    padding: '0 14px',
+                    border: `1px solid ${colors.border}`,
+                    borderRadius: 8,
+                    background: colors.surface,
+                    color: colors.text,
+                    cursor: generandoCodigo ? 'wait' : 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    fontSize: 13,
+                    fontWeight: 600,
+                    fontFamily: 'inherit'
+                  }}
+                >
+                  <RefreshCw size={16} />
+                  Otro
+                </button>
+              ) : null}
             </div>
-            
-            {importResult && (
-              <div style={{
-                padding: '12px',
-                backgroundColor: colors.info + '15',
-                border: `1px solid ${colors.info}`,
-                borderRadius: '8px',
-                marginBottom: '16px',
-                fontSize: '13px',
-                color: colors.text
-              }}>
-                <div><strong>Exitosos:</strong> {importResult.exitosos}</div>
-                <div><strong>Errores:</strong> {importResult.errores}</div>
-                {importResult.erroresDetalle && importResult.erroresDetalle.length > 0 && (
-                  <div style={{ marginTop: '8px' }}>
-                    <strong>Detalles de errores:</strong>
-                    <ul style={{ marginTop: '4px', paddingLeft: '20px' }}>
-                      {importResult.erroresDetalle.slice(0, 5).map((err, idx) => (
-                        <li key={idx}>Fila {err.fila}: {err.error}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </div>
-            )}
-            
-            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-              <button
-                onClick={() => {
-                  setShowImportModal(false);
-                  setImportFile(null);
-                  setImportResult(null);
-                }}
-                disabled={importing}
-                style={{
-                  padding: '10px 20px',
-                  backgroundColor: 'transparent',
-                  color: colors.text,
-                  border: `1px solid ${colors.border}`,
-                  borderRadius: '8px',
-                  fontSize: '14px',
-                  fontWeight: '600',
-                  cursor: importing ? 'not-allowed' : 'pointer',
-                  opacity: importing ? 0.6 : 1
-                }}
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleImport}
-                disabled={importing || !importFile}
-                style={{
-                  padding: '10px 20px',
-                  backgroundColor: colors.primary,
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '8px',
-                  fontSize: '14px',
-                  fontWeight: '600',
-                  cursor: importing || !importFile ? 'not-allowed' : 'pointer',
-                  opacity: importing || !importFile ? 0.6 : 1,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px'
-                }}
-              >
-                {importing ? (
-                  <>
-                    <RefreshCw size={16} style={{ animation: 'spin 1s linear infinite' }} />
-                    Importando...
-                  </>
-                ) : (
-                  <>
-                    <Upload size={16} />
-                    Importar
-                  </>
-                )}
-              </button>
-            </div>
-          </motion.div>
-        </div>
-      )}
+          </div>
 
-      {/* CSS para animación */}
+          <div>
+            <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: colors.text, marginBottom: 8 }}>
+              Empleado *
+            </label>
+            <select
+              value={formData.empleadoId}
+              onChange={(e) => setFormData({ ...formData, empleadoId: e.target.value })}
+              style={{
+                width: '100%',
+                padding: 12,
+                border: `1px solid ${colors.border}`,
+                borderRadius: 8,
+                fontSize: 14,
+                color: colors.text,
+                backgroundColor: colors.background,
+                outline: 'none'
+              }}
+            >
+              <option value="">-- Selecciona un empleado --</option>
+              {empleados.map((emp) => (
+                <option key={emp.id} value={emp.id}>{emp.nombreCompleto || emp.name}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: colors.text, marginBottom: 8 }}>
+              Descripción (opcional)
+            </label>
+            <input
+              type="text"
+              value={formData.descripcion}
+              onChange={(e) => setFormData({ ...formData, descripcion: e.target.value })}
+              placeholder="Descripción opcional del código"
+              style={{
+                width: '100%',
+                padding: 12,
+                border: `1px solid ${colors.border}`,
+                borderRadius: 8,
+                fontSize: 14,
+                color: colors.text,
+                backgroundColor: colors.background,
+                outline: 'none',
+                boxSizing: 'border-box'
+              }}
+            />
+          </div>
+        </div>
+      </AdminModal>
+
+      <AdminModal
+        open={showImportModal}
+        onClose={() => {
+          if (importing) return;
+          setShowImportModal(false);
+          setImportFile(null);
+          setImportResult(null);
+        }}
+        title="Importar códigos desde Excel"
+        description="El sistema buscará el empleado en Holded por nombre."
+        colors={colors}
+        maxWidth={600}
+        closeDisabled={importing}
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => {
+                setShowImportModal(false);
+                setImportFile(null);
+                setImportResult(null);
+              }}
+              disabled={importing}
+              style={{
+                padding: '10px 16px',
+                backgroundColor: 'transparent',
+                color: colors.text,
+                border: `1px solid ${colors.border}`,
+                borderRadius: 8,
+                fontSize: 14,
+                fontWeight: 600,
+                cursor: importing ? 'not-allowed' : 'pointer',
+                opacity: importing ? 0.6 : 1
+              }}
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={handleImport}
+              disabled={importing || !importFile}
+              style={{
+                padding: '10px 16px',
+                backgroundColor: colors.primary,
+                color: 'white',
+                border: 'none',
+                borderRadius: 8,
+                fontSize: 14,
+                fontWeight: 600,
+                cursor: importing || !importFile ? 'not-allowed' : 'pointer',
+                opacity: importing || !importFile ? 0.6 : 1,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8
+              }}
+            >
+              {importing ? (
+                <>
+                  <RefreshCw size={16} style={{ animation: 'spin 1s linear infinite' }} />
+                  Importando…
+                </>
+              ) : (
+                <>
+                  <Upload size={16} />
+                  Importar
+                </>
+              )}
+            </button>
+          </>
+        }
+      >
+        <div style={{ marginBottom: 16 }}>
+          <p style={{ fontSize: 14, color: colors.textSecondary, margin: '0 0 12px' }}>
+            Columnas esperadas:
+          </p>
+          <ul style={{ fontSize: 13, color: colors.textSecondary, paddingLeft: 20, margin: 0 }}>
+            <li><strong>CLAVE</strong> (o Código / codigo / code)</li>
+            <li><strong>NOMBRE</strong> (o Nombre / empleado / employee)</li>
+            <li><strong>Descripción</strong> (opcional)</li>
+          </ul>
+        </div>
+
+        <input
+          type="file"
+          accept=".xlsx,.xls"
+          onChange={(e) => setImportFile(e.target.files?.[0] || null)}
+          style={{
+            width: '100%',
+            padding: 12,
+            border: `1px solid ${colors.border}`,
+            borderRadius: 8,
+            fontSize: 14,
+            color: colors.text,
+            backgroundColor: colors.background,
+            boxSizing: 'border-box'
+          }}
+        />
+
+        {importResult && (
+          <div style={{
+            marginTop: 16,
+            padding: 12,
+            backgroundColor: (colors.info || colors.primary) + '15',
+            border: `1px solid ${colors.info || colors.primary}`,
+            borderRadius: 8,
+            fontSize: 13,
+            color: colors.text
+          }}>
+            <div><strong>Exitosos:</strong> {importResult.exitosos}</div>
+            <div><strong>Errores:</strong> {importResult.errores}</div>
+            {importResult.erroresDetalle?.length > 0 && (
+              <ul style={{ marginTop: 8, paddingLeft: 20 }}>
+                {importResult.erroresDetalle.slice(0, 5).map((err, idx) => (
+                  <li key={idx}>Fila {err.fila}: {err.error}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+      </AdminModal>
+
       <style>
         {`
           @keyframes spin {

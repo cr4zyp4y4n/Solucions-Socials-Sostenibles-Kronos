@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Clock, Save, AlertCircle } from 'lucide-react';
 import fichajeService from '../services/fichajeService';
+import fichajeSupabaseService from '../services/fichajeSupabaseService';
 import { useTheme } from './ThemeContext';
 import { formatTimeMadrid, formatDateFullMadrid, toDatetimeLocalMadrid } from '../utils/timeUtils';
 import { useAuth } from './AuthContext';
@@ -12,11 +13,18 @@ const FichajeEditModal = ({ fichaje, empleadoNombre, onClose, onSave }) => {
   
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [anulando, setAnulando] = useState(false);
   
   // Estados del formulario
   const [horaEntrada, setHoraEntrada] = useState('');
   const [horaSalida, setHoraSalida] = useState('');
   const [motivo, setMotivo] = useState('');
+  const [horasJornadaRef, setHorasJornadaRef] = useState('');
+  const [contratoParcial, setContratoParcial] = useState(false);
+  const [tipificacionManual, setTipificacionManual] = useState(false);
+  const [horasOrdinarias, setHorasOrdinarias] = useState('');
+  const [horasExtraordinarias, setHorasExtraordinarias] = useState('');
+  const [horasComplementarias, setHorasComplementarias] = useState('');
   
   useEffect(() => {
     if (fichaje) {
@@ -25,8 +33,48 @@ const FichajeEditModal = ({ fichaje, empleadoNombre, onClose, onSave }) => {
       const salida = toDatetimeLocalMadrid(fichaje.hora_salida);
       setHoraEntrada(entrada);
       setHoraSalida(salida);
+      setHorasJornadaRef(
+        fichaje.horas_jornada_ref != null && fichaje.horas_jornada_ref !== ''
+          ? String(fichaje.horas_jornada_ref)
+          : ''
+      );
+      setContratoParcial(!!fichaje.contrato_parcial);
+      setTipificacionManual(!!fichaje.tipificacion_manual);
+      setHorasOrdinarias(
+        fichaje.horas_ordinarias != null ? String(fichaje.horas_ordinarias) : ''
+      );
+      setHorasExtraordinarias(
+        fichaje.horas_extraordinarias != null ? String(fichaje.horas_extraordinarias) : '0'
+      );
+      setHorasComplementarias(
+        fichaje.horas_complementarias != null ? String(fichaje.horas_complementarias) : '0'
+      );
     }
   }, [fichaje]);
+
+  const handleAnular = async () => {
+    if (!motivo.trim() || motivo.trim().length < 3) {
+      setError('Para anular hace falta un motivo (mín. 3 caracteres). El registro no se borra.');
+      return;
+    }
+    if (!window.confirm(
+      '¿Anular este fichaje? No se elimina: queda marcado como anulado con auditoría (cumplimiento registro horario).'
+    )) {
+      return;
+    }
+    setAnulando(true);
+    setError('');
+    try {
+      const res = await fichajeSupabaseService.anularFichaje(fichaje.id, motivo.trim());
+      if (!res.success) throw new Error(res.error || 'No se pudo anular');
+      if (onSave) onSave();
+      onClose();
+    } catch (err) {
+      setError(err.message || 'Error al anular');
+    } finally {
+      setAnulando(false);
+    }
+  };
 
   const handleSave = async () => {
     if (!motivo.trim()) {
@@ -56,6 +104,24 @@ const FichajeEditModal = ({ fichaje, empleadoNombre, onClose, onSave }) => {
         cambios.hora_salida = new Date(horaSalida).toISOString();
       } else {
         cambios.hora_salida = null;
+      }
+
+      if (horasJornadaRef !== '') {
+        const n = parseFloat(String(horasJornadaRef).replace(',', '.'));
+        if (!Number.isNaN(n)) cambios.horas_jornada_ref = n;
+      } else {
+        cambios.horas_jornada_ref = null;
+      }
+      cambios.contrato_parcial = !!contratoParcial;
+      cambios.tipificacion_manual = !!tipificacionManual;
+      if (tipificacionManual) {
+        const parseH = (v) => {
+          const n = parseFloat(String(v).replace(',', '.'));
+          return Number.isNaN(n) ? 0 : n;
+        };
+        cambios.horas_ordinarias = parseH(horasOrdinarias);
+        cambios.horas_extraordinarias = parseH(horasExtraordinarias);
+        cambios.horas_complementarias = parseH(horasComplementarias);
       }
 
       const resultado = await fichajeService.modificarFichaje(
@@ -304,6 +370,101 @@ const FichajeEditModal = ({ fichaje, empleadoNombre, onClose, onSave }) => {
                 </p>
               </div>
 
+              {/* Tipología de horas */}
+              <div style={{
+                padding: '14px',
+                borderRadius: '10px',
+                border: `1px solid ${colors.border}`,
+                backgroundColor: colors.background
+              }}>
+                <p style={{
+                  margin: '0 0 12px 0',
+                  fontSize: '14px',
+                  fontWeight: '600',
+                  color: colors.text
+                }}>
+                  Tipología de horas
+                </p>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', color: colors.textSecondary, marginBottom: 6 }}>
+                      Jornada ref. (h/día)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.25"
+                      min="0"
+                      value={horasJornadaRef}
+                      onChange={(e) => setHorasJornadaRef(e.target.value)}
+                      placeholder="ej. 8"
+                      style={{
+                        width: '100%',
+                        padding: '10px',
+                        border: `1px solid ${colors.border}`,
+                        borderRadius: '8px',
+                        fontSize: '14px',
+                        color: colors.text,
+                        backgroundColor: colors.surface,
+                        boxSizing: 'border-box'
+                      }}
+                    />
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, justifyContent: 'center' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: colors.text }}>
+                      <input
+                        type="checkbox"
+                        checked={contratoParcial}
+                        onChange={(e) => setContratoParcial(e.target.checked)}
+                      />
+                      Contrato parcial (exceso → complementarias)
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: colors.text }}>
+                      <input
+                        type="checkbox"
+                        checked={tipificacionManual}
+                        onChange={(e) => setTipificacionManual(e.target.checked)}
+                      />
+                      Tipificación manual
+                    </label>
+                  </div>
+                </div>
+                {tipificacionManual && (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginTop: 12 }}>
+                    {[
+                      ['Ordinarias', horasOrdinarias, setHorasOrdinarias],
+                      ['Extraordinarias', horasExtraordinarias, setHorasExtraordinarias],
+                      ['Complementarias', horasComplementarias, setHorasComplementarias]
+                    ].map(([label, val, setter]) => (
+                      <div key={label}>
+                        <label style={{ display: 'block', fontSize: '12px', color: colors.textSecondary, marginBottom: 6 }}>
+                          {label}
+                        </label>
+                        <input
+                          type="number"
+                          step="0.25"
+                          min="0"
+                          value={val}
+                          onChange={(e) => setter(e.target.value)}
+                          style={{
+                            width: '100%',
+                            padding: '10px',
+                            border: `1px solid ${colors.border}`,
+                            borderRadius: '8px',
+                            fontSize: '14px',
+                            color: colors.text,
+                            backgroundColor: colors.surface,
+                            boxSizing: 'border-box'
+                          }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <p style={{ margin: '10px 0 0 0', fontSize: 12, color: colors.textSecondary }}>
+                  Sin jornada de referencia, todas las horas se contabilizan como ordinarias.
+                </p>
+              </div>
+
               {/* Motivo */}
               <div>
                 <label style={{
@@ -351,63 +512,88 @@ const FichajeEditModal = ({ fichaje, empleadoNombre, onClose, onSave }) => {
             padding: '16px 24px',
             borderTop: `1px solid ${colors.border}`,
             display: 'flex',
-            justifyContent: 'flex-end',
-            gap: '12px'
+            justifyContent: 'space-between',
+            gap: '12px',
+            flexWrap: 'wrap',
+            alignItems: 'center'
           }}>
             <button
-              onClick={onClose}
-              disabled={loading}
+              type="button"
+              onClick={handleAnular}
+              disabled={loading || anulando || !!fichaje?.anulado_at}
               style={{
-                padding: '10px 24px',
+                padding: '10px 16px',
                 backgroundColor: 'transparent',
-                color: colors.text,
-                border: `1px solid ${colors.border}`,
+                color: colors.error || '#b91c1c',
+                border: `1px solid ${colors.error || '#b91c1c'}`,
                 borderRadius: '8px',
-                fontSize: '14px',
+                fontSize: '13px',
                 fontWeight: '600',
-                cursor: loading ? 'not-allowed' : 'pointer',
-                opacity: loading ? 0.5 : 1
+                cursor: loading || anulando || fichaje?.anulado_at ? 'not-allowed' : 'pointer',
+                opacity: fichaje?.anulado_at ? 0.45 : 1
               }}
+              title="No borra el registro: lo marca como anulado con motivo y auditoría"
             >
-              Cancelar
+              {anulando ? 'Anulando…' : 'Anular fichaje (no borrar)'}
             </button>
-            <button
-              onClick={handleSave}
-              disabled={loading}
-              style={{
-                padding: '10px 24px',
-                backgroundColor: colors.primary,
-                color: 'white',
-                border: 'none',
-                borderRadius: '8px',
-                fontSize: '14px',
-                fontWeight: '600',
-                cursor: loading ? 'not-allowed' : 'pointer',
-                opacity: loading ? 0.5 : 1,
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px'
-              }}
-            >
-              {loading ? (
-                <>
-                  <div style={{
-                    width: '16px',
-                    height: '16px',
-                    border: `2px solid rgba(255,255,255,0.3)`,
-                    borderTop: `2px solid white`,
-                    borderRadius: '50%',
-                    animation: 'spin 1s linear infinite'
-                  }} />
-                  Guardando...
-                </>
-              ) : (
-                <>
-                  <Save size={16} />
-                  Guardar Cambios
-                </>
-              )}
-            </button>
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <button
+                type="button"
+                onClick={onClose}
+                disabled={loading || anulando}
+                style={{
+                  padding: '10px 24px',
+                  backgroundColor: 'transparent',
+                  color: colors.text,
+                  border: `1px solid ${colors.border}`,
+                  borderRadius: '8px',
+                  fontSize: '14px',
+                  fontWeight: '600',
+                  cursor: loading || anulando ? 'not-allowed' : 'pointer',
+                  opacity: loading || anulando ? 0.5 : 1
+                }}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={loading || anulando || !!fichaje?.anulado_at}
+                style={{
+                  padding: '10px 24px',
+                  backgroundColor: colors.primary,
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '8px',
+                  fontSize: '14px',
+                  fontWeight: '600',
+                  cursor: loading || anulando ? 'not-allowed' : 'pointer',
+                  opacity: loading || anulando || fichaje?.anulado_at ? 0.5 : 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}
+              >
+                {loading ? (
+                  <>
+                    <div style={{
+                      width: '16px',
+                      height: '16px',
+                      border: `2px solid rgba(255,255,255,0.3)`,
+                      borderTop: `2px solid white`,
+                      borderRadius: '50%',
+                      animation: 'spin 1s linear infinite'
+                    }} />
+                    Guardando...
+                  </>
+                ) : (
+                  <>
+                    <Save size={16} />
+                    Guardar Cambios
+                  </>
+                )}
+              </button>
+            </div>
           </div>
 
           {/* CSS para animación */}

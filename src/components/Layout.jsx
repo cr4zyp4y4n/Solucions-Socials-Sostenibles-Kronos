@@ -31,7 +31,6 @@ import OnboardingPage from './OnboardingPage';
 import UserProfile from './UserProfile';
 import UserManagement from './UserManagement';
 import AdminPanel from './AdminPanel';
-import AuditLog from './AuditLog';
 import HoldedTest from './HoldedTest';
 import ProvidersContacts from './ProvidersContacts';
 import InnuvaConverterPage from './InnuvaConverterPage';
@@ -680,14 +679,20 @@ const Layout = () => {
         return <SettingsPage />;
       case 'users':
         if (!isAdmin) {
-          return <AccessDenied message="Solo los administradores pueden acceder a la gestión de usuarios." />;
+          return <AccessDenied message="Solo los administradores pueden acceder al Panel de Administrador." />;
         }
         return <AdminPanel />;
       case 'audit':
+        // Legacy: Auditoría vive dentro del Panel de Administrador
         if (!isAdmin) {
           return <AccessDenied message="Solo los administradores pueden acceder a la auditoría." />;
         }
-        return <AuditLog />;
+        try {
+          sessionStorage.setItem('kronos_admin_tab', 'auditoria');
+        } catch (_) {
+          /* ignore */
+        }
+        return <AdminPanel />;
 
       case 'profile':
         return <UserProfile onShowOnboarding={() => setShowOnboarding(true)} />;

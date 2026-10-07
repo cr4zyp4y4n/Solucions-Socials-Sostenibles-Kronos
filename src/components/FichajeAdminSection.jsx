@@ -25,10 +25,14 @@ import { useTheme } from './ThemeContext';
 import { useAuth } from './AuthContext';
 import FichajeDetailsModal from './FichajeDetailsModal';
 import FichajeEditModal from './FichajeEditModal';
+import { useNavigation } from './NavigationContext';
+import { ExternalLink } from 'lucide-react';
+import AdminSectionHeader from './AdminSectionHeader';
 
 const FichajeAdminSection = () => {
   const { colors } = useTheme();
   const { user } = useAuth();
+  const { navigateTo } = useNavigation();
   
   // Estados
   const [fichajes, setFichajes] = useState([]);
@@ -52,6 +56,7 @@ const FichajeAdminSection = () => {
   const [fechaFin, setFechaFin] = useState(() => {
     return new Date().toISOString().split('T')[0];
   });
+  const [incluirAnulados, setIncluirAnulados] = useState(false);
   
   // Estados para modales
   const [selectedFichaje, setSelectedFichaje] = useState(null);
@@ -87,18 +92,14 @@ const FichajeAdminSection = () => {
     setLoading(true);
     setError('');
     try {
-      // PRIMERO: Verificar y cerrar fichajes olvidados de todos los empleados
-      // Esto asegura que cuando el admin vea los fichajes, los olvidados ya estén cerrados
-      try {
-        await fichajeService.verificarYcerrarFichajesOlvidadosTodos();
-      } catch (err) {
-        console.warn('Error verificando fichajes olvidados (no crítico):', err);
-        // No fallar si hay error, solo continuar
-      }
+      // PRIMERO: Verificar y cerrar fichajes olvidados — desactivado aquí:
+      // genera ruido/errores al abrir inspección; el cierre sigue en el flujo de fichar / cron SMS.
+      // try { await fichajeService.verificarYcerrarFichajesOlvidadosTodos(); } catch ...
 
       const filtros = {
         fechaInicio: new Date(fechaInicio),
-        fechaFin: new Date(fechaFin)
+        fechaFin: new Date(fechaFin),
+        incluirAnulados
       };
       
       if (filterEmpleado !== 'all') {
@@ -140,7 +141,7 @@ const FichajeAdminSection = () => {
 
   useEffect(() => {
     loadFichajes();
-  }, [fechaInicio, fechaFin, filterEmpleado]);
+  }, [fechaInicio, fechaFin, filterEmpleado, incluirAnulados]);
 
   // Actualizar pausas activas cada 30 segundos para fichajes en curso (separado para evitar bucles)
   useEffect(() => {
@@ -207,7 +208,7 @@ const FichajeAdminSection = () => {
     return empleado?.nombreCompleto || empleadoId;
   };
 
-  // Exportar a PDF
+  // Exportar a PDF (inspección: tipología + anulados si el filtro está activo)
   const exportarPDF = () => {
     try {
       // Crear ventana de impresión
@@ -223,46 +224,51 @@ const FichajeAdminSection = () => {
         minute: '2-digit'
       });
 
+      const sumOrd = filteredFichajes.reduce((s, f) => s + (Number(f.horas_ordinarias) || 0), 0);
+      const sumExt = filteredFichajes.reduce((s, f) => s + (Number(f.horas_extraordinarias) || 0), 0);
+      const sumComp = filteredFichajes.reduce((s, f) => s + (Number(f.horas_complementarias) || 0), 0);
+      const nAnulados = filteredFichajes.filter(f => f.anulado_at).length;
+
       // Generar contenido HTML para el PDF
       const contenidoHTML = `
         <!DOCTYPE html>
         <html>
           <head>
-            <title>Registro de Fichajes - ${fechaInicioFormateada} a ${fechaFinFormateada}</title>
+            <title>Registro de Fichajes (inspección) - ${fechaInicioFormateada} a ${fechaFinFormateada}</title>
             <style>
               @page {
-                size: A4;
+                size: A4 landscape;
                 margin: 1cm;
               }
               body {
                 font-family: Arial, sans-serif;
-                font-size: 11px;
+                font-size: 10px;
                 margin: 0;
-                padding: 20px;
+                padding: 16px;
               }
               .header {
                 text-align: center;
-                margin-bottom: 30px;
+                margin-bottom: 20px;
                 border-bottom: 2px solid #333;
-                padding-bottom: 15px;
+                padding-bottom: 12px;
               }
               .header h1 {
                 margin: 0;
-                font-size: 20px;
+                font-size: 18px;
                 color: #333;
               }
               .header p {
-                margin: 5px 0;
+                margin: 4px 0;
                 color: #666;
               }
               table {
                 width: 100%;
                 border-collapse: collapse;
-                margin-bottom: 20px;
+                margin-bottom: 16px;
               }
               th, td {
                 border: 1px solid #ddd;
-                padding: 8px;
+                padding: 5px;
                 text-align: left;
               }
               th {
@@ -270,40 +276,45 @@ const FichajeAdminSection = () => {
                 font-weight: bold;
                 text-align: center;
               }
-              tr:nth-child(even) {
+              tr.anulado {
+                background-color: #fde8e8;
+                text-decoration: line-through;
+              }
+              tr:nth-child(even):not(.anulado) {
                 background-color: #f9f9f9;
               }
               .footer {
-                margin-top: 30px;
-                padding-top: 15px;
+                margin-top: 20px;
+                padding-top: 12px;
                 border-top: 1px solid #ddd;
-                font-size: 10px;
+                font-size: 9px;
                 color: #666;
                 text-align: center;
               }
               .summary {
-                margin-top: 20px;
-                padding: 15px;
+                margin-top: 16px;
+                padding: 12px;
                 background-color: #f5f5f5;
                 border-radius: 5px;
               }
               .summary h3 {
                 margin-top: 0;
-                font-size: 14px;
+                font-size: 13px;
               }
               .summary-item {
                 display: inline-block;
-                margin-right: 20px;
-                font-size: 12px;
+                margin-right: 16px;
+                font-size: 11px;
               }
             </style>
           </head>
           <body>
             <div class="header">
-              <h1>Registro de Fichajes</h1>
+              <h1>Registro de jornada — exportación inspección</h1>
               <p><strong>Período:</strong> ${fechaInicioFormateada} a ${fechaFinFormateada}</p>
               <p><strong>Fecha de exportación:</strong> ${fechaExportacion}</p>
               ${filterEmpleado !== 'all' ? `<p><strong>Empleado:</strong> ${getEmpleadoNombre(filterEmpleado)}</p>` : ''}
+              <p><strong>Anulados incluidos:</strong> ${incluirAnulados ? 'Sí' : 'No'}</p>
             </div>
             
             <table>
@@ -313,23 +324,27 @@ const FichajeAdminSection = () => {
                   <th>Empleado</th>
                   <th>Entrada</th>
                   <th>Salida</th>
-                  <th>Horas Trabajadas</th>
-                  <th>Horas Totales</th>
-                  <th>Modificado</th>
-                  <th>Validado</th>
+                  <th>Trab.</th>
+                  <th>Ord.</th>
+                  <th>Extra</th>
+                  <th>Compl.</th>
+                  <th>Estado</th>
+                  <th>Motivo anulación</th>
                 </tr>
               </thead>
               <tbody>
                 ${filteredFichajes.map(fichaje => `
-                  <tr>
+                  <tr class="${fichaje.anulado_at ? 'anulado' : ''}">
                     <td>${formatDate(fichaje.fecha)}</td>
                     <td>${getEmpleadoNombre(fichaje.empleado_id)}</td>
                     <td>${formatTime(fichaje.hora_entrada)}</td>
                     <td>${fichaje.hora_salida ? formatTime(fichaje.hora_salida) : '-'}</td>
                     <td style="text-align: center;">${formatearHorasDecimal(fichaje.horas_trabajadas)}</td>
-                    <td style="text-align: center;">${formatearHorasDecimal(fichaje.horas_totales)}</td>
-                    <td style="text-align: center;">${fichaje.es_modificado ? 'Sí' : 'No'}</td>
-                    <td style="text-align: center;">${fichaje.validado_por_trabajador ? 'Sí' : 'No'}</td>
+                    <td style="text-align: center;">${formatearHorasDecimal(fichaje.horas_ordinarias ?? fichaje.horas_trabajadas)}</td>
+                    <td style="text-align: center;">${formatearHorasDecimal(fichaje.horas_extraordinarias || 0)}</td>
+                    <td style="text-align: center;">${formatearHorasDecimal(fichaje.horas_complementarias || 0)}</td>
+                    <td style="text-align: center;">${fichaje.anulado_at ? 'ANULADO' : (fichaje.es_modificado ? 'Modificado' : 'OK')}</td>
+                    <td>${fichaje.anulado_motivo || ''}</td>
                   </tr>
                 `).join('')}
               </tbody>
@@ -337,15 +352,17 @@ const FichajeAdminSection = () => {
             
             <div class="summary">
               <h3>Resumen</h3>
-              <div class="summary-item"><strong>Total fichajes:</strong> ${filteredFichajes.length}</div>
-              <div class="summary-item"><strong>Fichajes completos:</strong> ${filteredFichajes.filter(f => f.hora_salida).length}</div>
-              <div class="summary-item"><strong>Fichajes modificados:</strong> ${filteredFichajes.filter(f => f.es_modificado).length}</div>
-              <div class="summary-item"><strong>Total horas trabajadas:</strong> ${formatearHorasDecimal(filteredFichajes.reduce((sum, f) => sum + (f.horas_trabajadas || 0), 0))}</div>
+              <div class="summary-item"><strong>Total registros:</strong> ${filteredFichajes.length}</div>
+              <div class="summary-item"><strong>Anulados:</strong> ${nAnulados}</div>
+              <div class="summary-item"><strong>Horas trabajadas:</strong> ${formatearHorasDecimal(filteredFichajes.reduce((sum, f) => sum + (f.anulado_at ? 0 : (f.horas_trabajadas || 0)), 0))}</div>
+              <div class="summary-item"><strong>Ordinarias:</strong> ${formatearHorasDecimal(sumOrd)}</div>
+              <div class="summary-item"><strong>Extraordinarias:</strong> ${formatearHorasDecimal(sumExt)}</div>
+              <div class="summary-item"><strong>Complementarias:</strong> ${formatearHorasDecimal(sumComp)}</div>
             </div>
             
             <div class="footer">
-              <p>Documento generado el ${fechaExportacion} - Sistema de Fichaje SSS Kronos</p>
-              <p>Este documento cumple con la normativa laboral española sobre registro de jornada</p>
+              <p>Documento generado el ${fechaExportacion} — Kronos SSS · registro de jornada</p>
+              <p>Retención mínima 4 años. Los registros anulados no se eliminan; quedan marcados con motivo y auditoría.</p>
             </div>
           </body>
         </html>
@@ -368,31 +385,49 @@ const FichajeAdminSection = () => {
     }
   };
 
-  // Exportar a CSV
+  // Exportar a CSV (inspección)
   const exportarCSV = () => {
     try {
       const headers = [
         'Fecha',
         'Empleado',
+        'EmpleadoId',
         'Hora Entrada',
         'Hora Salida',
         'Horas Trabajadas',
-        'Horas Totales',
+        'Horas Ordinarias',
+        'Horas Extraordinarias',
+        'Horas Complementarias',
+        'Jornada Ref',
+        'Contrato Parcial',
         'Pausas',
         'Modificado',
-        'Validado'
+        'Validado',
+        'Anulado',
+        'Anulado At',
+        'Motivo Anulacion',
+        'FichajeId'
       ];
 
       const rows = filteredFichajes.map(fichaje => [
         formatDate(fichaje.fecha),
         getEmpleadoNombre(fichaje.empleado_id),
+        fichaje.empleado_id,
         formatTime(fichaje.hora_entrada),
-        formatTime(fichaje.hora_salida),
+        fichaje.hora_salida ? formatTime(fichaje.hora_salida) : '',
         fichaje.horas_trabajadas || 0,
-        fichaje.horas_totales || 0,
+        fichaje.horas_ordinarias ?? fichaje.horas_trabajadas ?? 0,
+        fichaje.horas_extraordinarias || 0,
+        fichaje.horas_complementarias || 0,
+        fichaje.horas_jornada_ref ?? '',
+        fichaje.contrato_parcial ? 'Sí' : 'No',
         fichaje.num_pausas || 0,
         fichaje.es_modificado ? 'Sí' : 'No',
-        fichaje.validado_por_trabajador ? 'Sí' : 'No'
+        fichaje.validado_por_trabajador ? 'Sí' : 'No',
+        fichaje.anulado_at ? 'Sí' : 'No',
+        fichaje.anulado_at || '',
+        (fichaje.anulado_motivo || '').replace(/;/g, ','),
+        fichaje.id
       ]);
 
       const csvContent = [
@@ -404,87 +439,160 @@ const FichajeAdminSection = () => {
       const link = document.createElement('a');
       const url = URL.createObjectURL(blob);
       link.setAttribute('href', url);
-      link.setAttribute('download', `fichajes_${new Date().toISOString().split('T')[0]}.csv`);
+      link.setAttribute('download', `fichajes_inspeccion_${new Date().toISOString().split('T')[0]}.csv`);
       link.style.visibility = 'hidden';
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
 
-      setSuccess('CSV exportado correctamente');
+      setSuccess('CSV de inspección exportado correctamente');
       setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
       setError('Error al exportar CSV: ' + err.message);
     }
   };
 
+  const exportarAuditoriaCSV = async () => {
+    try {
+      setLoading(true);
+      const res = await fichajeSupabaseService.obtenerAuditoriaEnRango(
+        new Date(fechaInicio),
+        new Date(fechaFin),
+        filterEmpleado !== 'all' ? filterEmpleado : null
+      );
+      if (!res.success) throw new Error(res.error || 'No se pudo cargar auditoría');
+
+      const headers = [
+        'Fecha fichaje',
+        'Empleado',
+        'EmpleadoId',
+        'FichajeId',
+        'Accion',
+        'Cuando',
+        'Quien',
+        'Email',
+        'Motivo'
+      ];
+      const rows = (res.data || []).map((a) => [
+        a.fecha_fichaje || '',
+        getEmpleadoNombre(a.empleado_id),
+        a.empleado_id || '',
+        a.fichaje_id || '',
+        a.accion || '',
+        a.cuando || '',
+        a.quien?.name || a.quien || '',
+        a.quien?.email || '',
+        (a.motivo || '').replace(/;/g, ',')
+      ]);
+
+      const csvContent = [headers.join(';'), ...rows.map((r) => r.join(';'))].join('\n');
+      const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      const url = URL.createObjectURL(blob);
+      link.setAttribute('href', url);
+      link.setAttribute('download', `fichajes_auditoria_${new Date().toISOString().split('T')[0]}.csv`);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setSuccess(`Auditoría exportada (${rows.length} eventos)`);
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (err) {
+      setError('Error al exportar auditoría: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div>
-      {/* Header con acciones */}
-      <div style={{ 
-        display: 'flex', 
-        justifyContent: 'space-between', 
-        alignItems: 'center',
-        marginBottom: '24px'
-      }}>
-        <div>
-          <h2 style={{ 
-            fontSize: '24px', 
-            fontWeight: '700', 
-            color: colors.text,
-            margin: 0,
-            marginBottom: '8px'
-          }}>
-            Gestión de Fichajes
-          </h2>
-          <p style={{ 
-            fontSize: '14px', 
-            color: colors.textSecondary,
-            margin: 0
-          }}>
-            Administra y exporta los registros de fichaje de todos los empleados
-          </p>
-        </div>
-        <div style={{ display: 'flex', gap: '12px' }}>
-          <button
-            onClick={exportarCSV}
-            style={{
-              padding: '12px 24px',
-              backgroundColor: colors.primary,
-              color: 'white',
-              border: 'none',
-              borderRadius: '8px',
-              fontSize: '14px',
-              fontWeight: '600',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px'
-            }}
-          >
-            <Download size={18} />
-            Exportar CSV
-          </button>
-          <button
-            onClick={exportarPDF}
-            style={{
-              padding: '12px 24px',
-              backgroundColor: colors.warning,
-              color: 'white',
-              border: 'none',
-              borderRadius: '8px',
-              fontSize: '14px',
-              fontWeight: '600',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px'
-            }}
-          >
-            <FileDown size={18} />
-            Exportar PDF
-          </button>
-        </div>
-      </div>
+      <AdminSectionHeader
+        title="Inspección de fichajes"
+        description="Registros del periodo: editar, anular y export. Para el día a día por empleado usa Panel Fichajes (RRHH)."
+        colors={colors}
+        actions={
+          <>
+            <button
+              type="button"
+              onClick={() => navigateTo('panel-fichajes')}
+              style={{
+                padding: '10px 16px',
+                backgroundColor: colors.surface,
+                color: colors.text,
+                border: `1px solid ${colors.border}`,
+                borderRadius: '8px',
+                fontSize: '14px',
+                fontWeight: '600',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}
+            >
+              <ExternalLink size={18} />
+              Panel Fichajes RRHH
+            </button>
+            <button
+              onClick={exportarCSV}
+              style={{
+                padding: '10px 16px',
+                backgroundColor: colors.primary,
+                color: 'white',
+                border: 'none',
+                borderRadius: '8px',
+                fontSize: '14px',
+                fontWeight: '600',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}
+            >
+              <Download size={18} />
+              Exportar CSV
+            </button>
+            <button
+              onClick={exportarPDF}
+              style={{
+                padding: '10px 16px',
+                backgroundColor: colors.warning,
+                color: 'white',
+                border: 'none',
+                borderRadius: '8px',
+                fontSize: '14px',
+                fontWeight: '600',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}
+            >
+              <FileDown size={18} />
+              Exportar PDF
+            </button>
+            <button
+              onClick={exportarAuditoriaCSV}
+              disabled={loading}
+              style={{
+                padding: '10px 16px',
+                backgroundColor: colors.surface,
+                color: colors.text,
+                border: `1px solid ${colors.border}`,
+                borderRadius: '8px',
+                fontSize: '14px',
+                fontWeight: '600',
+                cursor: loading ? 'wait' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}
+            >
+              <FileText size={18} />
+              Auditoría CSV
+            </button>
+          </>
+        }
+      />
 
       {/* Mensajes */}
       <AnimatePresence>
@@ -672,6 +780,28 @@ const FichajeAdminSection = () => {
               }}
             />
           </div>
+
+          {/* Incluir anulados (inspección) */}
+          <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+            <label style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+              fontSize: '14px',
+              fontWeight: '500',
+              color: colors.text,
+              cursor: 'pointer',
+              paddingBottom: '12px'
+            }}>
+              <input
+                type="checkbox"
+                checked={incluirAnulados}
+                onChange={(e) => setIncluirAnulados(e.target.checked)}
+                style={{ width: 16, height: 16 }}
+              />
+              Incluir anulados (inspección)
+            </label>
+          </div>
         </div>
 
         <div style={{ 
@@ -777,10 +907,31 @@ const FichajeAdminSection = () => {
                       <span style={{ color: colors.text, fontSize: '14px', fontWeight: '600' }}>
                         {formatearHorasDecimal(fichaje.horas_trabajadas)}
                       </span>
+                      {(fichaje.horas_extraordinarias > 0 || fichaje.horas_complementarias > 0) && (
+                        <div style={{ fontSize: '11px', color: colors.textSecondary, marginTop: 4 }}>
+                          Ord {formatearHorasDecimal(fichaje.horas_ordinarias ?? 0)}
+                          {fichaje.horas_extraordinarias > 0 ? ` · Ext ${formatearHorasDecimal(fichaje.horas_extraordinarias)}` : ''}
+                          {fichaje.horas_complementarias > 0 ? ` · Comp ${formatearHorasDecimal(fichaje.horas_complementarias)}` : ''}
+                        </div>
+                      )}
                     </td>
                     <td style={{ padding: '16px', textAlign: 'center' }}>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'center' }}>
-                        {fichaje.hora_salida ? (
+                        {fichaje.anulado_at ? (
+                          <div style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            padding: '6px 12px',
+                            backgroundColor: (colors.error || '#b91c1c') + '15',
+                            borderRadius: '6px'
+                          }}>
+                            <XCircle size={14} color={colors.error || '#b91c1c'} />
+                            <span style={{ color: colors.error || '#b91c1c', fontSize: '12px', fontWeight: '600' }}>
+                              Anulado
+                            </span>
+                          </div>
+                        ) : fichaje.hora_salida ? (
                           <div style={{
                             display: 'inline-flex',
                             alignItems: 'center',

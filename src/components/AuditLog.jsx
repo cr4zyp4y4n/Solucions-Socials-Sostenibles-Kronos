@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from './AuthContext';
 import { useTheme } from './ThemeContext';
+import AdminSectionHeader from './AdminSectionHeader';
 import { 
   Activity, 
   User, 
@@ -15,7 +16,7 @@ import {
 } from 'feather-icons-react';
 import { supabase } from '../config/supabase';
 
-const AuditLog = () => {
+const AuditLog = ({ embedded = false }) => {
   const { user } = useAuth();
   const { colors } = useTheme();
   const [auditLogs, setAuditLogs] = useState([]);
@@ -23,6 +24,9 @@ const AuditLog = () => {
   const [error, setError] = useState('');
   const [showDetails, setShowDetails] = useState({});
   const [dbRole, setDbRole] = useState(null);
+  const [filterAction, setFilterAction] = useState('all');
+  const [fechaDesde, setFechaDesde] = useState('');
+  const [fechaHasta, setFechaHasta] = useState('');
   const isAdmin = dbRole === 'admin';
 
   useEffect(() => {
@@ -56,11 +60,20 @@ const AuditLog = () => {
     setError('');
     
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('audit_logs')
         .select('*')
         .order('created_at', { ascending: false })
-        .limit(100);
+        .limit(200);
+
+      if (fechaDesde) {
+        query = query.gte('created_at', `${fechaDesde}T00:00:00`);
+      }
+      if (fechaHasta) {
+        query = query.lte('created_at', `${fechaHasta}T23:59:59`);
+      }
+
+      const { data, error } = await query;
 
       if (error) {
         setError(`Error al cargar el historial: ${error.message}`);
@@ -73,6 +86,11 @@ const AuditLog = () => {
       setLoading(false);
     }
   };
+
+  const filteredLogs = useMemo(() => {
+    if (filterAction === 'all') return auditLogs;
+    return auditLogs.filter((l) => l.action === filterAction);
+  }, [auditLogs, filterAction]);
 
   const getActionIcon = (action) => {
     switch (action) {
@@ -186,30 +204,67 @@ const AuditLog = () => {
   }
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 24 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5, ease: 'easeOut' }}
+    <div
       style={{
         width: '100%',
-        minHeight: '100%',
-        backgroundColor: colors.background,
-        display: 'block',
-        padding: '24px',
+        padding: embedded ? 0 : 24,
         boxSizing: 'border-box',
+        backgroundColor: embedded ? 'transparent' : colors.background
       }}
     >
-      {/* Título de la sección */}
-      <h1 style={{
-        color: colors.text,
-        fontSize: 28,
-        fontWeight: 700,
-        margin: '0 0 32px 0',
-        letterSpacing: '-0.5px',
-        userSelect: 'none',
-      }}>
-        Historial de Auditoría
-      </h1>
+      <AdminSectionHeader
+        title="Auditoría"
+        description="Cambios recientes en el sistema."
+        colors={colors}
+        actions={
+          <button
+            type="button"
+            onClick={loadAuditLogs}
+            style={{
+              padding: '8px 14px',
+              borderRadius: 8,
+              border: `1px solid ${colors.border}`,
+              background: colors.surface,
+              color: colors.text,
+              fontWeight: 600,
+              fontSize: 13,
+              cursor: 'pointer'
+            }}
+          >
+            Actualizar
+          </button>
+        }
+      />
+
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 16, alignItems: 'flex-end' }}>
+        <div>
+          <label style={{ display: 'block', fontSize: 12, color: colors.textSecondary, marginBottom: 4 }}>Acción</label>
+          <select
+            value={filterAction}
+            onChange={(e) => setFilterAction(e.target.value)}
+            style={{ padding: '8px 10px', borderRadius: 8, border: `1px solid ${colors.border}`, background: colors.surface, color: colors.text }}
+          >
+            <option value="all">Todas</option>
+            <option value="INSERT">Creación</option>
+            <option value="UPDATE">Actualización</option>
+            <option value="DELETE">Eliminación</option>
+          </select>
+        </div>
+        <div>
+          <label style={{ display: 'block', fontSize: 12, color: colors.textSecondary, marginBottom: 4 }}>Desde</label>
+          <input type="date" value={fechaDesde} onChange={(e) => setFechaDesde(e.target.value)}
+            style={{ padding: '8px 10px', borderRadius: 8, border: `1px solid ${colors.border}`, background: colors.surface, color: colors.text }} />
+        </div>
+        <div>
+          <label style={{ display: 'block', fontSize: 12, color: colors.textSecondary, marginBottom: 4 }}>Hasta</label>
+          <input type="date" value={fechaHasta} onChange={(e) => setFechaHasta(e.target.value)}
+            style={{ padding: '8px 10px', borderRadius: 8, border: `1px solid ${colors.border}`, background: colors.surface, color: colors.text }} />
+        </div>
+        <button type="button" onClick={loadAuditLogs}
+          style={{ padding: '8px 14px', borderRadius: 8, border: 'none', background: colors.primary, color: '#fff', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>
+          Aplicar fechas
+        </button>
+      </div>
 
       {/* Mensajes de error */}
       <AnimatePresence>
@@ -242,10 +297,10 @@ const AuditLog = () => {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4, delay: 0.1 }}
         style={{
-          maxWidth: 1200,
+          maxWidth: embedded ? 'none' : 1200,
           background: colors.surface,
-          borderRadius: 16,
-          boxShadow: '0 2px 12px rgba(0,0,0,0.06)',
+          borderRadius: embedded ? 12 : 16,
+          boxShadow: embedded ? 'none' : '0 2px 12px rgba(0,0,0,0.06)',
           border: `1px solid ${colors.border}`,
           overflow: 'hidden',
         }}
@@ -258,7 +313,7 @@ const AuditLog = () => {
           }}>
             Cargando historial...
           </div>
-        ) : auditLogs.length === 0 ? (
+        ) : filteredLogs.length === 0 ? (
           <div style={{
             padding: '60px 32px',
             textAlign: 'center',
@@ -272,7 +327,7 @@ const AuditLog = () => {
             scrollbarWidth: 'thin',
             scrollbarColor: `${colors.border} transparent`
           }}>
-            {auditLogs.map((log, index) => {
+            {filteredLogs.map((log, index) => {
               const actionColor = getActionColor(log.action);
               const isExpanded = showDetails[log.id];
               
@@ -468,7 +523,7 @@ const AuditLog = () => {
           </div>
         )}
       </motion.div>
-    </motion.div>
+    </div>
   );
 };
 

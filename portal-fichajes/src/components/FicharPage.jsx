@@ -18,6 +18,7 @@ export default function FicharPage({ user }) {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [obteniendoUbicacion, setObteniendoUbicacion] = useState(false);
+  const [pausaActiva, setPausaActiva] = useState(null);
   const ubicacionCachedRef = useRef(null);
 
   const getUbicacionParaFichaje = async () => {
@@ -59,6 +60,12 @@ export default function FicharPage({ user }) {
     if (!empleado?.empleadoId) return;
     const res = await fichajePortalService.obtenerFichajeDia(empleado.empleadoId, new Date());
     setEstadoDia(res.data || null);
+    if (res.data?.id) {
+      const p = await fichajePortalService.obtenerPausaActiva(res.data.id);
+      setPausaActiva(p.data || null);
+    } else {
+      setPausaActiva(null);
+    }
     const avisos = await fichajePortalService.obtenerCierresAutomaticosPendientesAviso(empleado.empleadoId);
     setCierresAutoAviso(avisos.data || []);
   };
@@ -152,6 +159,10 @@ export default function FicharPage({ user }) {
 
   const handleFicharSalida = async () => {
     if (!empleado?.empleadoId) return;
+    if (pausaActiva) {
+      setError('Finaliza la pausa antes de fichar la salida');
+      return;
+    }
     setLoading(true);
     setError('');
     setSuccess('');
@@ -171,9 +182,52 @@ export default function FicharPage({ user }) {
     }
   };
 
+  const handleIniciarPausa = async (tipo) => {
+    if (!estadoDia?.id) return;
+    setLoading(true);
+    setError('');
+    setSuccess('');
+    try {
+      const res = await fichajePortalService.iniciarPausa(estadoDia.id, tipo);
+      if (res.success) {
+        setSuccess(tipo === 'comida' ? 'Pausa de comida iniciada' : 'Descanso iniciado');
+        setTimeout(() => setSuccess(''), 2500);
+        await loadEstadoDia();
+      } else {
+        setError(res.error || 'No se pudo iniciar la pausa');
+      }
+    } catch (err) {
+      setError('Error al iniciar la pausa');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleFinalizarPausa = async () => {
+    if (!pausaActiva?.id) return;
+    setLoading(true);
+    setError('');
+    setSuccess('');
+    try {
+      const res = await fichajePortalService.finalizarPausa(pausaActiva.id);
+      if (res.success) {
+        setSuccess('Pausa finalizada');
+        setTimeout(() => setSuccess(''), 2500);
+        await loadEstadoDia();
+      } else {
+        setError(res.error || 'No se pudo finalizar la pausa');
+      }
+    } catch (err) {
+      setError('Error al finalizar la pausa');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const clearEmpleado = () => {
     setEmpleado(null);
     setEstadoDia(null);
+    setPausaActiva(null);
     setCierresAutoAviso([]);
     setCodigo('');
     setError('');
@@ -365,34 +419,117 @@ export default function FicharPage({ user }) {
                 )}
               </button>
             ) : estadoDia && !estadoDia.hora_salida ? (
-              <button
-                type="button"
-                onClick={handleFicharSalida}
-                disabled={loading}
-                style={{
-                  padding: 14,
-                  fontSize: 16,
-                  fontWeight: 600,
-                  color: 'white',
-                  background: colors.info,
-                  border: 'none',
-                  borderRadius: 8,
-                  cursor: loading ? 'wait' : 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 8,
-                }}
-              >
-                {loading ? (
-                  <Loader2 size={20} className="spin" />
-                ) : (
-                  <>
-                    <LogOut size={20} />
-                    Fichar salida
-                  </>
-                )}
-              </button>
+              <>
+                {pausaActiva ? (
+                  <div
+                    style={{
+                      padding: 12,
+                      borderRadius: 8,
+                      background: `${colors.warning}18`,
+                      border: `1px solid ${colors.warning}66`,
+                      fontSize: 13,
+                      color: colors.text,
+                      marginBottom: 4,
+                    }}
+                  >
+                    Pausa activa ({pausaActiva.tipo || 'descanso'}) desde{' '}
+                    {pausaActiva.inicio ? formatTimeMadrid(pausaActiva.inicio) : '…'}
+                  </div>
+                ) : null}
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  {pausaActiva ? (
+                    <button
+                      type="button"
+                      onClick={handleFinalizarPausa}
+                      disabled={loading}
+                      style={{
+                        flex: 1,
+                        minWidth: 140,
+                        padding: 12,
+                        fontSize: 14,
+                        fontWeight: 600,
+                        color: colors.text,
+                        background: colors.card,
+                        border: `1px solid ${colors.border}`,
+                        borderRadius: 8,
+                        cursor: loading ? 'wait' : 'pointer',
+                      }}
+                    >
+                      Finalizar pausa
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => handleIniciarPausa('descanso')}
+                        disabled={loading}
+                        style={{
+                          flex: 1,
+                          minWidth: 120,
+                          padding: 12,
+                          fontSize: 14,
+                          fontWeight: 600,
+                          color: colors.text,
+                          background: colors.card,
+                          border: `1px solid ${colors.border}`,
+                          borderRadius: 8,
+                          cursor: loading ? 'wait' : 'pointer',
+                        }}
+                      >
+                        Descanso
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleIniciarPausa('comida')}
+                        disabled={loading}
+                        style={{
+                          flex: 1,
+                          minWidth: 120,
+                          padding: 12,
+                          fontSize: 14,
+                          fontWeight: 600,
+                          color: colors.text,
+                          background: colors.card,
+                          border: `1px solid ${colors.border}`,
+                          borderRadius: 8,
+                          cursor: loading ? 'wait' : 'pointer',
+                        }}
+                      >
+                        Comida
+                      </button>
+                    </>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={handleFicharSalida}
+                  disabled={loading || !!pausaActiva}
+                  style={{
+                    padding: 14,
+                    fontSize: 16,
+                    fontWeight: 600,
+                    color: 'white',
+                    background: pausaActiva ? colors.border : colors.info,
+                    border: 'none',
+                    borderRadius: 8,
+                    cursor: loading || pausaActiva ? 'not-allowed' : 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 8,
+                    opacity: pausaActiva ? 0.6 : 1,
+                  }}
+                >
+                  {loading ? (
+                    <Loader2 size={20} className="spin" />
+                  ) : (
+                    <>
+                      <LogOut size={20} />
+                      Fichar salida
+                    </>
+                  )}
+                </button>
+              </>
             ) : (
               <div
                 style={{

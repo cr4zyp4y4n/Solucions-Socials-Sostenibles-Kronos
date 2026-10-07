@@ -19,6 +19,8 @@ import fichajeDescansosService from '../services/fichajeDescansosService';
 import holdedEmployeesService from '../services/holdedEmployeesService';
 import { useTheme } from './ThemeContext';
 import { useAuth } from './AuthContext';
+import AdminSectionHeader from './AdminSectionHeader';
+import AdminModal from './AdminModal';
 
 const FichajeDescansosAdmin = () => {
   const { colors } = useTheme();
@@ -218,71 +220,54 @@ const FichajeDescansosAdmin = () => {
   };
 
   return (
-    <div style={{ padding: '24px' }}>
-      {/* Header */}
-      <div style={{ 
-        display: 'flex', 
-        justifyContent: 'space-between', 
-        alignItems: 'center',
-        marginBottom: '24px'
-      }}>
-        <div>
-          <h2 style={{ 
-            fontSize: '24px', 
-            fontWeight: '600', 
-            color: colors.text,
-            marginBottom: '8px'
-          }}>
-            Reglas de Descanso
-          </h2>
-          <p style={{ 
-            fontSize: '14px', 
-            color: colors.textSecondary 
-          }}>
-            Gestiona las reglas de descanso automático por empleado
-          </p>
-        </div>
-        <div style={{ display: 'flex', gap: '12px' }}>
-          <button
-            onClick={() => setShowImportModal(true)}
-            style={{
-              padding: '10px 20px',
-              backgroundColor: colors.info,
-              color: 'white',
-              border: 'none',
-              borderRadius: '8px',
-              fontSize: '14px',
-              fontWeight: '600',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px'
-            }}
-          >
-            <Upload size={18} />
-            Importar Excel
-          </button>
-          <button
-            onClick={() => openModal()}
-            style={{
-              padding: '10px 20px',
-              backgroundColor: colors.primary,
-              color: 'white',
-              border: 'none',
-              borderRadius: '8px',
-              fontSize: '14px',
-              fontWeight: '600',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px'
-            }}
-          >
-            <Plus size={18} />
-            Nueva Regla
-          </button>
-        </div>
-      </div>
+    <div>
+      <AdminSectionHeader
+        title="Reglas de descanso"
+        description="Pausas obligatorias o condicionales por empleado (comida / descanso)."
+        colors={colors}
+        actions={
+          <>
+            <button
+              onClick={() => setShowImportModal(true)}
+              style={{
+                padding: '10px 16px',
+                backgroundColor: colors.info || colors.primary,
+                color: 'white',
+                border: 'none',
+                borderRadius: '8px',
+                fontSize: '14px',
+                fontWeight: '600',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}
+            >
+              <Upload size={18} />
+              Importar Excel
+            </button>
+            <button
+              onClick={() => openModal()}
+              style={{
+                padding: '10px 16px',
+                backgroundColor: colors.primary,
+                color: 'white',
+                border: 'none',
+                borderRadius: '8px',
+                fontSize: '14px',
+                fontWeight: '600',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}
+            >
+              <Plus size={18} />
+              Nueva regla
+            </button>
+          </>
+        }
+      />
 
       {/* Mensajes */}
       <AnimatePresence>
@@ -535,424 +520,316 @@ const FichajeDescansosAdmin = () => {
         )}
       </div>
 
-      {/* Modal de creación/edición */}
-      {showModal && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.5)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1000,
-          padding: '20px'
-        }}>
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.9 }}
-            style={{
-              backgroundColor: colors.surface,
-              borderRadius: '12px',
-              padding: '24px',
-              width: '100%',
-              maxWidth: '600px',
-              border: `1px solid ${colors.border}`,
-              maxHeight: '90vh',
-              overflowY: 'auto'
-            }}
-          >
-            <h2 style={{ 
-              fontSize: '20px', 
-              fontWeight: '600', 
-              color: colors.text,
-              marginBottom: '20px'
-            }}>
-              {editingRegla ? 'Editar Regla de Descanso' : 'Nueva Regla de Descanso'}
-            </h2>
-            
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <div>
-                <label style={{ 
-                  display: 'block', 
-                  fontSize: '14px', 
-                  fontWeight: '500', 
-                  color: colors.text,
-                  marginBottom: '8px'
-                }}>
-                  Empleado *
-                </label>
-                <select
-                  value={formData.empleadoId}
-                  onChange={(e) => setFormData({ ...formData, empleadoId: e.target.value })}
-                  style={{
-                    width: '100%',
-                    padding: '12px',
-                    border: `1px solid ${colors.border}`,
-                    borderRadius: '8px',
-                    fontSize: '14px',
-                    color: colors.text,
-                    backgroundColor: colors.background,
-                    outline: 'none'
-                  }}
-                >
-                  <option value="">Seleccionar empleado...</option>
-                  {empleados.map(emp => (
-                    <option key={emp.id} value={emp.id}>
-                      {emp.nombreCompleto || emp.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
+      <AdminModal
+        open={showModal}
+        onClose={() => !loading && setShowModal(false)}
+        title={editingRegla ? 'Editar regla de descanso' : 'Nueva regla de descanso'}
+        description="Define cuándo y cuánto debe pausar cada empleado."
+        colors={colors}
+        maxWidth={600}
+        closeDisabled={loading}
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => setShowModal(false)}
+              disabled={loading}
+              style={{
+                padding: '10px 16px',
+                backgroundColor: 'transparent',
+                color: colors.text,
+                border: `1px solid ${colors.border}`,
+                borderRadius: 8,
+                fontSize: 14,
+                fontWeight: 600,
+                cursor: loading ? 'not-allowed' : 'pointer',
+                opacity: loading ? 0.6 : 1
+              }}
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={loading}
+              style={{
+                padding: '10px 16px',
+                backgroundColor: colors.primary,
+                color: 'white',
+                border: 'none',
+                borderRadius: 8,
+                fontSize: 14,
+                fontWeight: 600,
+                cursor: loading ? 'not-allowed' : 'pointer',
+                opacity: loading ? 0.6 : 1
+              }}
+            >
+              {loading ? 'Guardando…' : 'Guardar'}
+            </button>
+          </>
+        }
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div>
+            <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: colors.text, marginBottom: 8 }}>
+              Empleado *
+            </label>
+            <select
+              value={formData.empleadoId}
+              onChange={(e) => setFormData({ ...formData, empleadoId: e.target.value })}
+              style={{
+                width: '100%',
+                padding: 12,
+                border: `1px solid ${colors.border}`,
+                borderRadius: 8,
+                fontSize: 14,
+                color: colors.text,
+                backgroundColor: colors.background,
+                outline: 'none'
+              }}
+            >
+              <option value="">Seleccionar empleado…</option>
+              {empleados.map((emp) => (
+                <option key={emp.id} value={emp.id}>
+                  {emp.nombreCompleto || emp.name}
+                </option>
+              ))}
+            </select>
+          </div>
 
-              <div>
-                <label style={{ 
-                  display: 'block', 
-                  fontSize: '14px', 
-                  fontWeight: '500', 
-                  color: colors.text,
-                  marginBottom: '8px'
-                }}>
-                  Jornada Laboral
-                </label>
-                <input
-                  type="text"
-                  value={formData.jornada_laboral}
-                  onChange={(e) => setFormData({ ...formData, jornada_laboral: e.target.value })}
-                  placeholder="Ej: Completa, Parcial, etc."
-                  style={{
-                    width: '100%',
-                    padding: '12px',
-                    border: `1px solid ${colors.border}`,
-                    borderRadius: '8px',
-                    fontSize: '14px',
-                    color: colors.text,
-                    backgroundColor: colors.background,
-                    outline: 'none'
-                  }}
-                />
-              </div>
+          <div>
+            <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: colors.text, marginBottom: 8 }}>
+              Jornada laboral
+            </label>
+            <input
+              type="text"
+              value={formData.jornada_laboral}
+              onChange={(e) => setFormData({ ...formData, jornada_laboral: e.target.value })}
+              placeholder="Ej: Completa, Parcial…"
+              style={{
+                width: '100%',
+                padding: 12,
+                border: `1px solid ${colors.border}`,
+                borderRadius: 8,
+                fontSize: 14,
+                color: colors.text,
+                backgroundColor: colors.background,
+                outline: 'none',
+                boxSizing: 'border-box'
+              }}
+            />
+          </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                <div>
-                  <label style={{ 
-                    display: 'block', 
-                    fontSize: '14px', 
-                    fontWeight: '500', 
-                    color: colors.text,
-                    marginBottom: '8px'
-                  }}>
-                    Horas Mínimas
-                  </label>
-                  <input
-                    type="number"
-                    step="0.5"
-                    value={formData.horas_minimas}
-                    onChange={(e) => setFormData({ ...formData, horas_minimas: e.target.value })}
-                    placeholder="Ej: 5.0"
-                    style={{
-                      width: '100%',
-                      padding: '12px',
-                      border: `1px solid ${colors.border}`,
-                      borderRadius: '8px',
-                      fontSize: '14px',
-                      color: colors.text,
-                      backgroundColor: colors.background,
-                      outline: 'none'
-                    }}
-                  />
-                </div>
-
-                <div>
-                  <label style={{ 
-                    display: 'block', 
-                    fontSize: '14px', 
-                    fontWeight: '500', 
-                    color: colors.text,
-                    marginBottom: '8px'
-                  }}>
-                    Duración (minutos)
-                  </label>
-                  <input
-                    type="number"
-                    value={formData.duracion_minutos}
-                    onChange={(e) => setFormData({ ...formData, duracion_minutos: e.target.value })}
-                    placeholder="Ej: 20, 30"
-                    style={{
-                      width: '100%',
-                      padding: '12px',
-                      border: `1px solid ${colors.border}`,
-                      borderRadius: '8px',
-                      fontSize: '14px',
-                      color: colors.text,
-                      backgroundColor: colors.background,
-                      outline: 'none'
-                    }}
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label style={{ 
-                  display: 'block', 
-                  fontSize: '14px', 
-                  fontWeight: '500', 
-                  color: colors.text,
-                  marginBottom: '8px'
-                }}>
-                  Tipo de Descanso
-                </label>
-                <select
-                  value={formData.tipo_descanso}
-                  onChange={(e) => setFormData({ ...formData, tipo_descanso: e.target.value })}
-                  style={{
-                    width: '100%',
-                    padding: '12px',
-                    border: `1px solid ${colors.border}`,
-                    borderRadius: '8px',
-                    fontSize: '14px',
-                    color: colors.text,
-                    backgroundColor: colors.background,
-                    outline: 'none'
-                  }}
-                >
-                  <option value="">Sin descanso</option>
-                  <option value="descanso">Descanso</option>
-                  <option value="comida">Comida</option>
-                  <option value="cafe">Café</option>
-                </select>
-              </div>
-
-              <div>
-                <label style={{ 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  gap: '8px',
-                  fontSize: '14px', 
-                  fontWeight: '500', 
-                  color: colors.text,
-                  cursor: 'pointer'
-                }}>
-                  <input
-                    type="checkbox"
-                    checked={formData.activo}
-                    onChange={(e) => setFormData({ ...formData, activo: e.target.checked })}
-                    style={{
-                      width: '18px',
-                      height: '18px',
-                      cursor: 'pointer'
-                    }}
-                  />
-                  Regla activa
-                </label>
-              </div>
-            </div>
-            
-            <div style={{ display: 'flex', gap: '12px', marginTop: '24px', justifyContent: 'flex-end' }}>
-              <button
-                onClick={() => setShowModal(false)}
-                disabled={loading}
-                style={{
-                  padding: '10px 20px',
-                  backgroundColor: 'transparent',
-                  color: colors.text,
-                  border: `1px solid ${colors.border}`,
-                  borderRadius: '8px',
-                  fontSize: '14px',
-                  fontWeight: '600',
-                  cursor: loading ? 'not-allowed' : 'pointer',
-                  opacity: loading ? 0.6 : 1
-                }}
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleSave}
-                disabled={loading}
-                style={{
-                  padding: '10px 20px',
-                  backgroundColor: colors.primary,
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '8px',
-                  fontSize: '14px',
-                  fontWeight: '600',
-                  cursor: loading ? 'not-allowed' : 'pointer',
-                  opacity: loading ? 0.6 : 1
-                }}
-              >
-                {loading ? 'Guardando...' : 'Guardar'}
-              </button>
-            </div>
-          </motion.div>
-        </div>
-      )}
-
-      {/* Modal de importación Excel */}
-      {showImportModal && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.5)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1000,
-          padding: '20px'
-        }}>
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.9 }}
-            style={{
-              backgroundColor: colors.surface,
-              borderRadius: '12px',
-              padding: '24px',
-              width: '100%',
-              maxWidth: '600px',
-              border: `1px solid ${colors.border}`
-            }}
-          >
-            <h2 style={{ 
-              fontSize: '20px', 
-              fontWeight: '600', 
-              color: colors.text,
-              marginBottom: '20px'
-            }}>
-              Importar Reglas desde Excel
-            </h2>
-            
-            <div style={{ marginBottom: '20px' }}>
-              <p style={{ fontSize: '14px', color: colors.textSecondary, marginBottom: '16px' }}>
-                El archivo Excel debe tener las siguientes columnas en la <strong>hoja 2</strong>:
-              </p>
-              <ul style={{ 
-                fontSize: '13px', 
-                color: colors.textSecondary,
-                paddingLeft: '20px',
-                marginBottom: '16px'
-              }}>
-                <li><strong>TRABAJADOR</strong> (o "Nombre", "Empleado"): Nombre completo del empleado</li>
-                <li><strong>JORNADA LABORAL</strong>: Tipo de jornada</li>
-                <li><strong>BREAK</strong> (o "Descanso", "Pausa"): Tipo y duración del descanso (ej: "20m", "30m", "comida")</li>
-                <li><strong>CENTRO</strong>, <strong>EMPRESA</strong>, <strong>CONVENIO</strong> (opcionales): Información adicional</li>
-              </ul>
-              <p style={{ 
-                fontSize: '12px', 
-                color: colors.textSecondary,
-                fontStyle: 'italic',
-                marginTop: '8px'
-              }}>
-                El sistema buscará automáticamente el empleado en Holded por su nombre y creará las reglas de descanso.
-              </p>
-            </div>
-            
-            <div style={{ marginBottom: '20px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+            <div>
+              <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: colors.text, marginBottom: 8 }}>
+                Horas mínimas
+              </label>
               <input
-                type="file"
-                accept=".xlsx,.xls"
-                onChange={(e) => setImportFile(e.target.files?.[0] || null)}
+                type="number"
+                step="0.5"
+                value={formData.horas_minimas}
+                onChange={(e) => setFormData({ ...formData, horas_minimas: e.target.value })}
+                placeholder="Ej: 5.0"
                 style={{
                   width: '100%',
-                  padding: '12px',
+                  padding: 12,
                   border: `1px solid ${colors.border}`,
-                  borderRadius: '8px',
-                  fontSize: '14px',
+                  borderRadius: 8,
+                  fontSize: 14,
                   color: colors.text,
-                  backgroundColor: colors.background
+                  backgroundColor: colors.background,
+                  outline: 'none',
+                  boxSizing: 'border-box'
                 }}
               />
             </div>
-            
-            {importResult && (
-              <div style={{
-                padding: '12px',
-                backgroundColor: colors.info + '15',
-                border: `1px solid ${colors.info}`,
-                borderRadius: '8px',
-                marginBottom: '16px',
-                fontSize: '13px',
-                color: colors.text
-              }}>
-                <div><strong>Exitosos:</strong> {importResult.exitosos}</div>
-                <div><strong>Errores:</strong> {importResult.errores}</div>
-                {importResult.erroresDetalle && importResult.erroresDetalle.length > 0 && (
-                  <div style={{ marginTop: '8px' }}>
-                    <strong>Detalles de errores:</strong>
-                    <ul style={{ marginTop: '4px', paddingLeft: '20px' }}>
-                      {importResult.erroresDetalle.slice(0, 5).map((err, idx) => (
-                        <li key={idx}>Fila {err.fila}: {err.error}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </div>
-            )}
-            
-            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-              <button
-                onClick={() => {
-                  setShowImportModal(false);
-                  setImportFile(null);
-                  setImportResult(null);
-                }}
-                disabled={importing}
+            <div>
+              <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: colors.text, marginBottom: 8 }}>
+                Duración (minutos)
+              </label>
+              <input
+                type="number"
+                value={formData.duracion_minutos}
+                onChange={(e) => setFormData({ ...formData, duracion_minutos: e.target.value })}
+                placeholder="Ej: 20, 30"
                 style={{
-                  padding: '10px 20px',
-                  backgroundColor: 'transparent',
-                  color: colors.text,
+                  width: '100%',
+                  padding: 12,
                   border: `1px solid ${colors.border}`,
-                  borderRadius: '8px',
-                  fontSize: '14px',
-                  fontWeight: '600',
-                  cursor: importing ? 'not-allowed' : 'pointer',
-                  opacity: importing ? 0.6 : 1
+                  borderRadius: 8,
+                  fontSize: 14,
+                  color: colors.text,
+                  backgroundColor: colors.background,
+                  outline: 'none',
+                  boxSizing: 'border-box'
                 }}
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleImport}
-                disabled={importing || !importFile}
-                style={{
-                  padding: '10px 20px',
-                  backgroundColor: colors.primary,
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '8px',
-                  fontSize: '14px',
-                  fontWeight: '600',
-                  cursor: importing || !importFile ? 'not-allowed' : 'pointer',
-                  opacity: importing || !importFile ? 0.6 : 1,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px'
-                }}
-              >
-                {importing ? (
-                  <>
-                    <RefreshCw size={16} style={{ animation: 'spin 1s linear infinite' }} />
-                    Importando...
-                  </>
-                ) : (
-                  <>
-                    <Upload size={16} />
-                    Importar
-                  </>
-                )}
-              </button>
+              />
             </div>
-          </motion.div>
-        </div>
-      )}
+          </div>
 
-      {/* CSS para animación */}
+          <div>
+            <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: colors.text, marginBottom: 8 }}>
+              Tipo de descanso
+            </label>
+            <select
+              value={formData.tipo_descanso}
+              onChange={(e) => setFormData({ ...formData, tipo_descanso: e.target.value })}
+              style={{
+                width: '100%',
+                padding: 12,
+                border: `1px solid ${colors.border}`,
+                borderRadius: 8,
+                fontSize: 14,
+                color: colors.text,
+                backgroundColor: colors.background,
+                outline: 'none'
+              }}
+            >
+              <option value="">Sin descanso</option>
+              <option value="descanso">Descanso</option>
+              <option value="comida">Comida</option>
+              <option value="cafe">Café</option>
+            </select>
+          </div>
+
+          <label style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            fontSize: 14,
+            fontWeight: 500,
+            color: colors.text,
+            cursor: 'pointer'
+          }}>
+            <input
+              type="checkbox"
+              checked={formData.activo}
+              onChange={(e) => setFormData({ ...formData, activo: e.target.checked })}
+              style={{ width: 18, height: 18, cursor: 'pointer' }}
+            />
+            Regla activa
+          </label>
+        </div>
+      </AdminModal>
+
+      <AdminModal
+        open={showImportModal}
+        onClose={() => {
+          if (importing) return;
+          setShowImportModal(false);
+          setImportFile(null);
+          setImportResult(null);
+        }}
+        title="Importar reglas desde Excel"
+        description="Usa la hoja 2 del archivo. El empleado se resuelve por nombre en Holded."
+        colors={colors}
+        maxWidth={600}
+        closeDisabled={importing}
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => {
+                setShowImportModal(false);
+                setImportFile(null);
+                setImportResult(null);
+              }}
+              disabled={importing}
+              style={{
+                padding: '10px 16px',
+                backgroundColor: 'transparent',
+                color: colors.text,
+                border: `1px solid ${colors.border}`,
+                borderRadius: 8,
+                fontSize: 14,
+                fontWeight: 600,
+                cursor: importing ? 'not-allowed' : 'pointer',
+                opacity: importing ? 0.6 : 1
+              }}
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={handleImport}
+              disabled={importing || !importFile}
+              style={{
+                padding: '10px 16px',
+                backgroundColor: colors.primary,
+                color: 'white',
+                border: 'none',
+                borderRadius: 8,
+                fontSize: 14,
+                fontWeight: 600,
+                cursor: importing || !importFile ? 'not-allowed' : 'pointer',
+                opacity: importing || !importFile ? 0.6 : 1,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8
+              }}
+            >
+              {importing ? (
+                <>
+                  <RefreshCw size={16} style={{ animation: 'spin 1s linear infinite' }} />
+                  Importando…
+                </>
+              ) : (
+                <>
+                  <Upload size={16} />
+                  Importar
+                </>
+              )}
+            </button>
+          </>
+        }
+      >
+        <ul style={{ fontSize: 13, color: colors.textSecondary, paddingLeft: 20, margin: '0 0 16px' }}>
+          <li><strong>TRABAJADOR</strong> (o Nombre / Empleado)</li>
+          <li><strong>JORNADA LABORAL</strong></li>
+          <li><strong>BREAK</strong> (o Descanso / Pausa): ej. 20m, 30m, comida</li>
+          <li><strong>CENTRO</strong>, <strong>EMPRESA</strong>, <strong>CONVENIO</strong> (opcionales)</li>
+        </ul>
+
+        <input
+          type="file"
+          accept=".xlsx,.xls"
+          onChange={(e) => setImportFile(e.target.files?.[0] || null)}
+          style={{
+            width: '100%',
+            padding: 12,
+            border: `1px solid ${colors.border}`,
+            borderRadius: 8,
+            fontSize: 14,
+            color: colors.text,
+            backgroundColor: colors.background,
+            boxSizing: 'border-box'
+          }}
+        />
+
+        {importResult && (
+          <div style={{
+            marginTop: 16,
+            padding: 12,
+            backgroundColor: (colors.info || colors.primary) + '15',
+            border: `1px solid ${colors.info || colors.primary}`,
+            borderRadius: 8,
+            fontSize: 13,
+            color: colors.text
+          }}>
+            <div><strong>Exitosos:</strong> {importResult.exitosos}</div>
+            <div><strong>Errores:</strong> {importResult.errores}</div>
+            {importResult.erroresDetalle?.length > 0 && (
+              <ul style={{ marginTop: 8, paddingLeft: 20 }}>
+                {importResult.erroresDetalle.slice(0, 5).map((err, idx) => (
+                  <li key={idx}>Fila {err.fila}: {err.error}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+      </AdminModal>
+
       <style>
         {`
           @keyframes spin {

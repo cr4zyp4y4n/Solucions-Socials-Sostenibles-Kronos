@@ -1,3 +1,31 @@
+## v2.8.1
+
+### Fichaje — retención 4 años + tipología + export inspección
+
+- **Retención:** DELETE denegado en pausas/auditoría; vista `fichajes_retencion_activa`; sin purge automático.
+- **Tipología:** `horas_ordinarias` / `extraordinarias` / `complementarias` (+ jornada ref y tipificación manual en edición).
+- **Export inspección:** CSV/PDF con tipología y anulados; checkbox «Incluir anulados».
+
+**SQL (obligatorio):** `database/alter_fichajes_retencion_tipologia.sql`
+
+---
+
+## v2.8.0
+
+### Fichaje — inalterabilidad + RLS + pausas portal (RDL 8/2019)
+
+- **Soft-delete:** no se borran fichajes; anulación con motivo (`anulado_at` / RPC `anular_fichaje`) y auditoría.
+- **RLS:** acceso por trabajador vía `fichajes_empleado_usuarios` (vinculación al validar código); roles de gestión/inspección mantienen visión global; transición sin mapeo = acceso amplio.
+- **Kronos:** anular desde el modal de edición; resúmenes sin fichajes anulados.
+- **Portal fichajes:** pausas Descanso/Comida durante la jornada abierta.
+- **Docs:** `docs/FICHAJE_CUMPLIMIENTO_RDL.md` (retención 4 años y tipología de horas = pendientes).
+
+**SQL (obligatorio en Supabase):** `database/alter_fichajes_inalterabilidad_rls.sql`
+
+**Redeploy:** portal-fichajes (pausas). Kronos: reiniciar app tras actualizar.
+
+---
+
 ## v2.7.0
 
 ### Obrador Ac3 — proveïdors Compres 2026 + sensors IoT (TTN)

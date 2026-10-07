@@ -41,8 +41,7 @@ export const ALL_MENU_ITEMS = [
   { key: 'licitacions', label: 'Licitaciones', icon: FileText, roles: ['admin', 'management', 'manager'] },
   { key: 'contacts', label: 'Contactos', icon: CreditCard, roles: ['admin', 'management', 'manager'] },
   { key: 'socios', label: 'Socios IDONI', icon: Users, roles: ['admin', 'management', 'manager', 'tienda'] },
-  { key: 'users', label: 'Usuarios', icon: Shield, roles: ['admin'] },
-  { key: 'audit', label: 'Auditoría', icon: Activity, roles: ['admin'] },
+  { key: 'users', label: 'Panel de Administrador', icon: Shield, roles: ['admin'] },
   { key: 'settings', label: 'Configuración', icon: Settings, roles: ['admin', 'management', 'manager', 'user', 'tienda'] }
 ];
 
@@ -88,7 +87,7 @@ export const SIDEBAR_GROUPS = [
     key: 'admin',
     label: 'Administración',
     icon: Shield,
-    itemKeys: ['users', 'audit']
+    itemKeys: ['users']
   }
 ];
 
