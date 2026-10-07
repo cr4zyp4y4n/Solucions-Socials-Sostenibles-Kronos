@@ -1,8 +1,10 @@
 # CONTEXTO ESCALBRADOR — Módulos Kronos vinculados a la subvención Enfortim l'ESS 2026
 
-> Documento de contexto para Cursor. Última actualización: 10/07/2026.
+> Documento de contexto para Cursor. Última actualización: 30/09/2026.
 > Estado: PRE-REUNIÓN. Pendiente de validar reparto interno/externo con Sergi y Bruno.
 > NO empezar desarrollo pesado de estos módulos hasta cerrar la reunión de coordinación.
+>
+> **Contexto operativo completo Ac3 + Enfortim:** `docs/OBRADOR_AC3_ENFORTIM_CONTEXTO_CURSOR.md`
 
 ## 1. Situación
 

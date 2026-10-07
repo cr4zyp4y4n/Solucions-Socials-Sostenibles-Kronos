@@ -1,0 +1,326 @@
+# KRONOS → SSS INTERNAL: brief de diseño
+# Para rediseñar https://solucions.netlify.app/ (repo DevWebsite)
+# alineado con SSS Kronos (Electron + React).
+# Fuente de verdad en Kronos: src/components/ThemeContext.jsx
+# Generado: 2026-09-21
+
+================================================================================
+1. QUÉ ES CADA COSA
+================================================================================
+
+- SSS KRONOS: app de escritorio Electron+React (repo Solucions-Socials-Sostenibles-Kronos).
+- SSS INTERNAL (solucions.netlify.app): portal web de descargas corporativo + fichaje/login.
+  Repo: Solucions-Socials-Sostenibles-DEV/Solucions-Socials-Sostenibles-DevWebsite
+- Portal fichajes inspección (resumenfichajesss.netlify.app): OTRO sitio.
+  Carpeta en Kronos: portal-fichajes/ — NO confundir con Internal.
+
+OBJETIVO DE ESTE REDISEÑO:
+Que Internal se sienta como Kronos: mismos colores, tipografía soberana del sistema,
+cards claras, verde #4CAF50 como acento, sin estética “landing genérica AI”
+(evitar purple gradients, cream+serif terracotta, broadsheet, glow excesivo).
+
+================================================================================
+2. PALETA OFICIAL (ThemeContext.jsx)
+================================================================================
+
+MODO CLARO (usar por defecto en web Internal):
+  background:     #fafafa     ← fondo de página
+  surface / card: #ffffff     ← paneles, cards, header
+  primary:        #4CAF50     ← verde marca SSS (CTAs, logo accents, links activos)
+  secondary:      #666666
+  text:           #333333
+  textSecondary:  #666666
+  border:         #e0e0e0
+  sidebar/header: #ffffff
+  hover:          #f5f5f5
+  success:        #4CAF50
+  warning:        #ff9800
+  error:          #f44336
+  info:           #2196F3
+  idoni:          #ff69b4     ← solo marca IDONI / BonCor si aplica
+
+MODO OSCURO (opcional en Internal; Kronos sí lo tiene):
+  background:     #1a1a1a
+  surface/card:   #2d2d2d / #333333
+  primary:        #4CAF50     ← mismo verde
+  text:           #ffffff
+  textSecondary:  #b0b0b0
+  border:         #404040
+  hover:          #404040
+  success/warning/error/info/idoni: iguales
+
+TOKENS ÚTILES (alfa sobre primary):
+  fondo suave seleccionado:  #4CAF5012  o  primary + "12"
+  borde suave:               #4CAF5033
+  sombra ligera verde:       0 1px 4px rgba(76,175,80,0.04)
+  sombra card:               0 2px 8px rgba(0,0,0,0.04)
+  sombra dropdown/modal:     0 8px 32px rgba(0,0,0,0.12)
+
+================================================================================
+3. TIPOGRAFÍA
+================================================================================
+
+font-family (Kronos body / index.css):
+  -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif
+
+NO introducir: Inter como default de marketing, display serifs, mono solo para códigos.
+
+Jerarquía típica Kronos:
+  - Título página / hero corto:  font-weight 700–800, ~22–28px, color text
+  - Subtítulo:                   13–14px, textSecondary, line-height 1.45
+  - Labels de campo:             12px, font-weight 700, textSecondary
+  - Botón primario:              14px, font-weight 800, color #fff
+  - Botón secundario:            14px, font-weight 700
+  - Badge / chip:                10–11px, font-weight 800, uppercase a veces
+
+Splash / branding usa Arial explícito en algunos textos; para web Internal
+basta el stack del sistema.
+
+================================================================================
+4. FORMA, RADIO Y ESPACIADO
+================================================================================
+
+Radios frecuentes:
+  - Cards / modales login:     16px
+  - Botones:                   8–10px (Firma usa 10; login a veces 8)
+  - Inputs:                    8–10px
+  - Chips / badges:            12px o pill 999
+  - Logo en header:            8px
+  - Iconos circular status:    50%
+
+Padding:
+  - Card estándar:             16–20px
+  - Página:                    24px
+  - Login card:                24–32px
+  - Botón md:                  10px 14px
+  - Botón sm:                  7px 11px
+
+Gaps: 8 / 12 / 16 / 18
+
+Bordes: siempre 1px solid colors.border (casi nunca bordes gruesos).
+Sombras: muy suaves; Kronos no es “multi-layer neumorphism”.
+
+================================================================================
+5. COMPONENTES (patrones Kronos)
+================================================================================
+
+CARD:
+  background: surface (#fff)
+  border: 1px solid #e0e0e0
+  border-radius: 16px
+  padding: 20px
+  (opcional) box-shadow: 0 2px 8px rgba(0,0,0,0.04)
+
+BOTÓN PRIMARIO:
+  background: #4CAF50
+  color: #fff
+  border: none
+  border-radius: 10px
+  font-weight: 800
+  padding: 10px 14px
+  hover: ligeramente más oscuro (#43A047) o opacity 0.9
+  disabled: opacity 0.55
+
+BOTÓN SECUNDARIO / GHOST:
+  secondary: border 1px #e0e0e0, background #fafafa o #fff, color #333, weight 700
+  ghost: transparente, color textSecondary, weight 600
+
+INPUT:
+  padding: 10px 12px
+  border-radius: 10px
+  border: 1px solid #e0e0e0
+  background: #fafafa (o surface)
+  focus: borderColor = #4CAF50
+
+NAV / HEADER:
+  fondo blanco, borde inferior 1px #e0e0e0
+  logo SSS + nombre producto en weight 700
+  ítems: textSecondary; activo = primary + weight 600–700
+  botones nav tipo chip con borderRadius 8
+
+BADGE ESTADO:
+  fondo color+15% alfa, texto del color, border color+30% alfa, radius 12, weight 600
+
+MOTION (framer-motion en Kronos):
+  - Entrada cards: opacity 0→1, y 8→0, ~0.25–0.28s
+  - Splash: scale logo + barra progreso verde
+  - Evitar animaciones ruidosas / parallax marketing
+
+ICONOS:
+  Kronos usa feather-icons-react / lucide en portales.
+  Trazo fino, color primary o textSecondary. No emojis como iconografía principal
+  (Internal hoy usa 🖥️📱; sustituir por iconos SVG si se rediseña).
+
+================================================================================
+6. MARCA / LOGO
+================================================================================
+
+Logo oficial Kronos splash/header:
+  "Logo Minimalist SSS Highest Opacity.PNG"
+  (ruta en Kronos: src/assets/…)
+
+En dark mode: filter brightness(1.2) contrast(1.2) sobre el logo.
+
+Nombre producto:
+  - App: "SSS Kronos" / "Kronos"
+  - Org: "Solucions Socials Sostenibles" / "Solucions Socials"
+  - Internal título actual: "SOLUCIONS SOCIALS INTERNAL" / "Portal de Descargas Corporativo"
+  - Footer legal hoy: "IDONI BONCOR" — mantener solo si sigue siendo correcto legalmente
+
+Acento de marca = verde Material #4CAF50 (NO indigo/purple).
+
+================================================================================
+7. LAYOUT SUGERIDO PARA INTERNAL (rediseño)
+================================================================================
+
+Estructura tipo Kronos (limpia, no landing ruidosa):
+
+1) HEADER fijo o sticky
+   - Logo SSS + "SSS INTERNAL"
+   - Nav: Inicio | Descargas | Fichaje | Contacto | Iniciar sesión
+   - Fondo surface, borde inferior sutil
+
+2) HERO corto (primera viewport)
+   - Un solo título: SOLUCIONS SOCIALS / SSS INTERNAL
+   - Una frase: Portal de descargas y herramientas internas
+   - Sin stats, sin collage, sin badges flotantes sobre imagen
+   - Fondo #fafafa; opcional franja/acento verde muy suave
+
+3) GRID DE APPS (Desktop / Mobile)
+   - 1–2 cards (radius 16) con icono, título, descripción corta
+   - CTA primario "Descargar" (verde) + secundario "Documentación" / "Notas"
+   - Misma jerarquía tipográfica Kronos
+
+4) SECCIÓN FICHAJE / LOGIN
+   - Card centrada estilo LoginPage Kronos (radius 16, padding 32)
+   - Inputs focus verde
+
+5) FOOTER
+   - Privacidad | Cookies | Ayuda
+   - Copyright
+   - Tipografía pequeña textSecondary
+
+Responsive:
+  - Mobile-first: nav colapsable (ya hay menú)
+  - Cards a 1 columna en móvil, 2 en desktop
+  - Evitar overflow horizontal
+
+================================================================================
+8. QUÉ NO HACER (anti-patrones)
+================================================================================
+
+- Gradientes púrpura / indigo “AI default”
+- Fondo cream + serif + terracotta
+- Layout periódico/broadsheet
+- Dark mode forzado sin toggle
+- Pills rounded-full en exceso + multi-shadow glow
+- Emojis como sustituto de iconos de producto
+- Hero con stats, chips flotantes, collage de imágenes
+- Cards dentro del hero sin necesidad
+
+================================================================================
+9. CONTENIDO / FUNCIONALIDAD A PRESERVAR
+================================================================================
+
+Internal NO es solo estética. Mantener:
+- Descargas Kronos Desktop desde releases GitHub:
+    owner/repo: cr4zyp4y4n / Solucions-Socials-Sostenibles-Kronos
+- Descargas Kronos Mobile desde:
+    Solucions-Socials-Sostenibles-DEV / Solucions-Socials-Sostenibles-Kronos-Mobile
+- Flujos: Documentación, Notas de versión, Contacto, Fichaje, Login (Supabase)
+- Auth Supabase + roles user_profiles si ya existen
+
+Rediseñar = UI/UX visual Kronos; no romper APIs ni URLs de release.
+
+================================================================================
+10. CHECKLIST PARA EL OTRO CURSOR (DevWebsite)
+================================================================================
+
+[ ] Copiar tokens de color claro a CSS variables (--bg, --surface, --primary, …)
+[ ] Sustituir tipografía por el stack sistema de Kronos
+[ ] Header blanco + borde #e0e0e0 + logo SSS
+[ ] Cards radius 16, border #e0e0e0, sombra suave
+[ ] CTAs #4CAF50, weight 800, radius 10
+[ ] Inputs focus border #4CAF50
+[ ] Quitar emojis de iconos de producto → SVG (Monitor / Smartphone)
+[ ] Hero mínimo (marca + 1 frase + CTAs)
+[ ] Probar móvil + desktop
+[ ] Verificar que Descargar Desktop/Mobile siguen resolviendo browser_download_url
+[ ] Dark mode: opcional; si se añade, mismos tokens oscuros de ThemeContext
+
+================================================================================
+11. FRAGMENTO CSS DE PARTIDA (pegar en DevWebsite)
+================================================================================
+
+:root {
+  --bg: #fafafa;
+  --surface: #ffffff;
+  --primary: #4CAF50;
+  --primary-hover: #43A047;
+  --text: #333333;
+  --text-secondary: #666666;
+  --border: #e0e0e0;
+  --hover: #f5f5f5;
+  --success: #4CAF50;
+  --warning: #ff9800;
+  --error: #f44336;
+  --info: #2196F3;
+  --radius-card: 16px;
+  --radius-btn: 10px;
+  --radius-input: 10px;
+  --shadow-card: 0 2px 8px rgba(0,0,0,0.04);
+  --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  padding: 20px;
+}
+
+.btn-primary {
+  background: var(--primary);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-btn);
+  padding: 10px 14px;
+  font-weight: 800;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.btn-primary:hover { background: var(--primary-hover); }
+
+.btn-secondary {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-btn);
+  padding: 10px 14px;
+  font-weight: 700;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+================================================================================
+12. REFERENCIAS EN EL REPO KRONOS
+================================================================================
+
+- src/components/ThemeContext.jsx          ← paleta
+- src/index.css                            ← font stack
+- src/components/SplashScreen.jsx          ← branding splash
+- src/components/LoginPage.jsx             ← card login
+- src/components/Layout.jsx                ← header/sidebar
+- src/components/firma/FirmaUi.jsx         ← botones/cards/inputs modernos
+- Logo: "Logo Minimalist SSS Highest Opacity.PNG" (assets)
+
+FIN
