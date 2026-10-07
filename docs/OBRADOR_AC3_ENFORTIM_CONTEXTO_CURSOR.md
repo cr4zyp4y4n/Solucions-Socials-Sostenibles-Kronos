@@ -6,7 +6,7 @@
 > Stack: Electron + React + Supabase (+ `portal-obrador` Vite/Netlify).
 
 Complementarios:
-- `CONTEXTO_ESCALBRADOR_Kronos.md` — subvención Enfortim y reglas PRE-REUNIÓN
+- `docs/CONTEXTO_ESCALBRADOR_Kronos.md` — subvención Enfortim y reglas PRE-REUNIÓN
 - `docs/ENFORTIM_DOSSIER_REUNION.md` — agenda/decisiones Sergi–Bruno
 - `docs/ENFORTIM_BRIEFING_CURSOR_SERGI_BRUNO.txt` — briefing para generar doc externo
 - `docs/sops/` — borradores SOP (R1 Brian)

@@ -9,7 +9,7 @@
 ## TASCA 1 — Llistat de proveïdors seleccionables a l'app
 
 ### Context
-Compres ens ha passat el llistat oficial de proveïdors. El fitxer net és `proveidors_obrador_2026.csv` (71 files). Cada proveïdor té un `estat_us`:
+Compres ens ha passat el llistat oficial de proveïdors. El fitxer net és `docs/interno/proveidors_obrador_2026.csv` (71 files, local/gitignored). Cada proveïdor té un `estat_us`:
 
 | estat_us | Significat | Quants |
 |---|---|---|

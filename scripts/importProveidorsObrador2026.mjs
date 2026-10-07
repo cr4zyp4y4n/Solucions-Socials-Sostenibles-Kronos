@@ -1,10 +1,11 @@
 /**
- * Importació one-shot: proveidors_obrador_2026.csv → obrador_proveidors
+ * Importació one-shot: docs/interno/proveidors_obrador_2026.csv → obrador_proveidors
  *
  * REQUISITS:
  *  1. Executat alter_obrador_proveidors_estat_us.sql a Supabase
  *  2. .env amb SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY (recomanat)
  *     o SUPABASE_ANON_KEY + sessió amb rol management (RLS)
+ *  3. CSV local en docs/interno/ (carpeta gitignored)
  *
  * Ús (des de l'arrel del repo):
  *   node scripts/importProveidorsObrador2026.mjs
@@ -20,7 +21,7 @@ import { createClient } from '@supabase/supabase-js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
-const CSV_PATH = path.join(ROOT, 'proveidors_obrador_2026.csv');
+const CSV_PATH = path.join(ROOT, 'docs', 'interno', 'proveidors_obrador_2026.csv');
 const DRY_RUN = process.argv.includes('--dry-run');
 
 function loadEnv() {

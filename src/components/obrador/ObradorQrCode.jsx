@@ -1,6 +1,6 @@
 import React from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import logoObrador from '../../../PNGCORCOLOR.png';
+import logoObrador from '../../assets/PNGCORCOLOR.png';
 
 /** QR d'etiqueta obrador amb logo SSS al centre (nivell H per mantenir lectura). */
 export default function ObradorQrCode({ value, size = 160 }) {
