@@ -351,8 +351,15 @@ export function applyPigComparativaCuentaResultadosFormulas(ws, meta = {}) {
   }
 }
 
-/** TESORERÍA: TOTAL Caixa/Fiare + TOTAL general; previsiones debajo = SUMA importes. */
+/** TESORERÍA: disponibilitat (PIG Normal) o TOTAL Caixa/Fiare (CR); previsiones = SUMA importes. */
 export function applyPigTesoreriaCuentaResultadosFormulas(ws, meta = {}) {
+  const disp = meta.disponibilitat;
+  if (disp?.totalRow >= 0 && disp.lliureRows?.length) {
+    const col = Number.isFinite(disp.saldoCol) ? disp.saldoCol : 1;
+    const cached = ws[XLSX.utils.encode_cell({ r: disp.totalRow, c: col })]?.v ?? 0;
+    setFormulaCell(ws, disp.totalRow, col, sumCellsFormula(disp.lliureRows, col), cached);
+  }
+
   const saldoCol = Number.isFinite(meta?.saldoCol) ? meta.saldoCol : 2;
 
   for (const g of meta.bankGroups || []) {
@@ -369,13 +376,13 @@ export function applyPigTesoreriaCuentaResultadosFormulas(ws, meta = {}) {
   }
 
   const groupTotalRows = (meta.bankGroups || []).map((g) => g.totalRow).filter((r) => r != null);
-  if (meta.grandTotalRow != null && groupTotalRows.length) {
+  if (meta.grandTotalRow >= 0 && groupTotalRows.length) {
     const cached = ws[XLSX.utils.encode_cell({ r: meta.grandTotalRow, c: saldoCol })]?.v ?? 0;
     setFormulaCell(ws, meta.grandTotalRow, saldoCol, sumCellsFormula(groupTotalRows, saldoCol), cached);
   }
 
   // TOTAL - INVES - BCREDIT: resta comptes INNVESS i BCREDIT del total
-  if (meta.totalSinInvesRow != null && meta.grandTotalRow != null) {
+  if (!meta.disponibilitat && meta.totalSinInvesRow >= 0 && meta.grandTotalRow >= 0) {
     const deductRows = [...(meta.innvessDataRows || []), ...(meta.bcreditDataRows || [])];
     const cached = ws[XLSX.utils.encode_cell({ r: meta.totalSinInvesRow, c: saldoCol })]?.v ?? 0;
     if (deductRows.length) {
@@ -465,6 +472,119 @@ export function applyPigTesoreriaCuentaResultadosFormulas(ws, meta = {}) {
       const cachedTotal = ws[XLSX.utils.encode_cell({ r: imp.totalRow, c: aPagarCol })]?.v ?? 0;
       setFormulaCell(ws, imp.totalRow, aPagarCol, sumFormula(sumStart, aPagarCol, sumEnd, aPagarCol), cachedTotal);
     }
+  }
+
+  // PIG Normal: total estimat = tancament acumulat; la fila total suma els models amb compte.
+  const fiscal = meta.impuestosPrevision;
+  if (fiscal?.totalCol != null && fiscal.modelRows?.length) {
+    const totalCol = fiscal.totalCol;
+    for (const row of fiscal.modelRows) {
+      if (row.blank || row.lastAmountCol == null) continue;
+      setFormulaCell(
+        ws,
+        row.row,
+        totalCol,
+        cellRef(row.row, row.lastAmountCol),
+        row.totalCached ?? 0
+      );
+    }
+    const sumRows = fiscal.modelRows.filter((row) => !row.blank).map((row) => row.row);
+    if (fiscal.totalRow != null && sumRows.length) {
+      setFormulaCell(
+        ws,
+        fiscal.totalRow,
+        totalCol,
+        sumCellsFormula(sumRows, totalCol),
+        fiscal.totalCached ?? 0
+      );
+    }
+  }
+
+  const neta = meta.neta;
+  const obl = meta.obligacions;
+  if (neta && meta.disponibilitat && obl) {
+    const amount = neta.amountCol;
+    const dispCol = Number.isFinite(meta.disponibilitat.saldoCol) ? meta.disponibilitat.saldoCol : 1;
+    const oblCol = Number.isFinite(obl.amountCol) ? obl.amountCol : 1;
+    const readNum = (r, c) => {
+      const value = Number(ws[XLSX.utils.encode_cell({ r, c })]?.v);
+      return Number.isFinite(value) ? value : 0;
+    };
+    const n = (r, c) => `N(${cellRef(r, c)})`;
+
+    setFormulaCell(
+      ws,
+      neta.disponibleRow,
+      amount,
+      cellRef(meta.disponibilitat.totalRow, dispCol),
+      readNum(meta.disponibilitat.totalRow, dispCol)
+    );
+    setFormulaCell(ws, neta.nominasRow, amount, n(obl.nominasRow, oblCol), readNum(obl.nominasRow, oblCol));
+    setFormulaCell(ws, neta.ssRow, amount, n(obl.ssRow, oblCol), readNum(obl.ssRow, oblCol));
+    const proveidorsCached = readNum(obl.proveidorsRow, oblCol) + readNum(obl.altresPagamentsRow, oblCol);
+    setFormulaCell(
+      ws,
+      neta.proveidorsRow,
+      amount,
+      `${n(obl.proveidorsRow, oblCol)}+${n(obl.altresPagamentsRow, oblCol)}`,
+      proveidorsCached
+    );
+
+    let quotesCached = 0;
+    let quotesFormula = '0';
+    if (meta.credits?.quotaCol != null && meta.credits.dataEndRow >= meta.credits.dataStartRow) {
+      quotesFormula = sumFormula(meta.credits.dataStartRow, meta.credits.quotaCol, meta.credits.dataEndRow, meta.credits.quotaCol);
+      for (let r = meta.credits.dataStartRow; r <= meta.credits.dataEndRow; r += 1) {
+        quotesCached += readNum(r, meta.credits.quotaCol);
+      }
+    }
+    setFormulaCell(ws, neta.quotesRow, amount, quotesFormula, quotesCached);
+
+    const fiscalRows = meta.impuestosPrevision?.modelRows || [];
+    const fiscalCol = meta.impuestosPrevision?.totalCol;
+    const fiscalParts = [];
+    let fiscalCached = 0;
+    if (fiscalCol != null) {
+      const byKey = Object.fromEntries(fiscalRows.map((row) => [row.key, row]));
+      const iva = byKey['303'];
+      if (iva && !iva.blank) {
+        fiscalParts.push(`MAX(0,-${n(iva.row, fiscalCol)})`);
+        fiscalCached += Math.max(0, -readNum(iva.row, fiscalCol));
+      }
+      for (const key of ['111', '115', '202']) {
+        const row = byKey[key];
+        if (!row || row.blank) continue;
+        fiscalParts.push(n(row.row, fiscalCol));
+        fiscalCached += readNum(row.row, fiscalCol);
+      }
+    }
+    setFormulaCell(ws, neta.fiscalRow, amount, fiscalParts.join('+') || '0', fiscalCached);
+
+    setFormulaCell(
+      ws,
+      neta.altresRow,
+      amount,
+      n(obl.altresObligacionsRow, oblCol),
+      readNum(obl.altresObligacionsRow, oblCol)
+    );
+
+    const minusRows = [
+      neta.nominasRow,
+      neta.ssRow,
+      neta.proveidorsRow,
+      neta.quotesRow,
+      neta.fiscalRow,
+      neta.altresRow
+    ];
+    const netFormula = [cellRef(neta.disponibleRow, amount), ...minusRows.map((r) => cellRef(r, amount))].join('-');
+    const netCached = readNum(neta.disponibleRow, amount)
+      - readNum(neta.nominasRow, amount)
+      - readNum(neta.ssRow, amount)
+      - proveidorsCached
+      - quotesCached
+      - fiscalCached
+      - readNum(obl.altresObligacionsRow, oblCol);
+    setFormulaCell(ws, neta.totalRow, amount, netFormula, netCached);
   }
 }
 

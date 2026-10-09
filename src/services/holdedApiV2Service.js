@@ -216,6 +216,14 @@ class HoldedApiV2Service {
     }, company);
   }
 
+  /**
+   * Libro diario (asientos). Scope: accounting:daily-ledger.read.
+   * start_date y end_date (ISO) son obligatorios. account filtra por número exacto.
+   */
+  async getLedgerEntries(params = {}, company = 'solucions') {
+    return this.fetchAllPagesCached('/ledger-entries', { limit: 200, ...params }, company);
+  }
+
   /** Comptes de tresoreria (bancs, targetes, caixa, passarel·les). Scope: accounting:banks.read */
   async getTreasuryAccounts(params = {}, company = 'solucions') {
     const query = { archived: 'false', ...params };

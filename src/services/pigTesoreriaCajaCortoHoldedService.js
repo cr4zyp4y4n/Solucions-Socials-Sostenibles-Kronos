@@ -11,6 +11,7 @@
  *
  * Siempre el **mismo mes del año anterior** al calendario (sin mezclar temporada).
  */
+import holdedApi from './holdedApi';
 import holdedApiV2Service from './holdedApiV2Service';
 import {
   extractHoldedAccountNumber,
@@ -483,4 +484,159 @@ export async function suggestCajaCortoNominasSsFromHolded({
   };
 
   return { suggestion, error: null };
+}
+
+const MONTHS_CA = [
+  'gener', 'febrer', 'març', 'abril', 'maig', 'juny',
+  'juliol', 'agost', 'setembre', 'octubre', 'novembre', 'desembre'
+];
+
+function mesCaAmbDe(month1to12) {
+  const name = MONTHS_CA[month1to12 - 1] || String(month1to12);
+  const prep = /^[aeiouàèéíòóúh]/i.test(name) ? "d'" : 'de ';
+  return `${prep}${name}`;
+}
+
+/**
+ * Mes de nòmines (0-based).
+ * En l'any en curs és el mes d'avui, el dia que es genera el PIG.
+ * Un CSV mensual d'any sencer té imports fins a desembre i no serveix com a «mes actual».
+ * En un any ja tancat es fa servir l'últim mes amb dades del fitxer.
+ */
+export function obligacionsMonthIndexForPig({ year, lastDataMonthIndex, now = new Date() } = {}) {
+  const y = Number(year);
+  if (Number.isFinite(y) && y === now.getFullYear()) return now.getMonth();
+  const last = Number(lastDataMonthIndex);
+  if (Number.isFinite(last)) return Math.min(11, Math.max(0, last));
+  return now.getMonth();
+}
+
+/** Mes del PIG (0-based) y el anterior para la TGSS. */
+export function resolveObligacionsMonths(year, monthIndex) {
+  const y = Number(year);
+  const mIdx = Math.min(11, Math.max(0, Number(monthIndex) || 0));
+  const nominas = { year: y, month: mIdx + 1 };
+  const ss = mIdx === 0
+    ? { year: y - 1, month: 12 }
+    : { year: y, month: mIdx };
+  return {
+    nominas,
+    ss,
+    nominasLabel: mesCaAmbDe(nominas.month),
+    ssLabel: mesCaAmbDe(ss.month)
+  };
+}
+
+function purchasePendingAmount(doc) {
+  const raw = doc?.pending ?? doc?.paymentsPending ?? doc?.payments_pending ?? doc?.amountDue;
+  if (raw != null && raw !== '') {
+    const n = parseHoldedMoney(raw);
+    return Number.isFinite(n) ? n : 0;
+  }
+  return parseHoldedMoney(doc?.total);
+}
+
+function isMenjarDhortProvider(doc) {
+  const name = String(doc?.provider || doc?.contact?.name || doc?.contactName || '');
+  return /menjar/i.test(name) && /hort/i.test(name);
+}
+
+/** Factura de la furgoneta: no és un pagament de proveïdors del mes. */
+function isFurgonetaExclosa(doc) {
+  const provider = String(doc?.provider || doc?.contact?.name || doc?.contactName || '');
+  const number = String(doc?.invoice_number || doc?.internal_number || doc?.docNumber || '');
+  const text = [number, provider, doc?.description, doc?.notes].map((value) => String(value || '')).join(' ');
+  if (/VF3YDDEF2TG029755/i.test(text)) return true;
+  const auto9ty = /auto\s*9ty/i.test(provider) || /auto\s*9ty/i.test(text);
+  if (auto9ty && /(?:^|\D)401413(?:\D|$)/.test(number)) return true;
+  if (auto9ty && /furg[oó]n/i.test(text)) {
+    return Math.abs(purchasePendingAmount(doc) - 45738.47) < 1;
+  }
+  return false;
+}
+
+/**
+ * Obligacions del mes (PIG Normal):
+ * - Nòmines: mes del PIG (salary-records o haver 465)
+ * - TGSS: mes anterior (haber 47600000)
+ * - Proveïdors: mateix llistat que Anàlisi (compres obertes)
+ * - Menjar d'Hort: proveïdor dins d'aquest llistat
+ */
+export async function loadPigObligacionsMesFromHolded({
+  year,
+  monthIndex,
+  company = 'solucions'
+} = {}) {
+  const y = Number(year);
+  if (!Number.isFinite(y) || !Number.isFinite(Number(monthIndex))) {
+    return { obligacions: null, error: new Error('Mes del PIG no vàlid') };
+  }
+  const months = resolveObligacionsMonths(y, Number(monthIndex));
+
+  let nomAcc = null;
+  let ssAcc = null;
+  try {
+    [nomAcc, ssAcc] = await Promise.all([
+      loadAccountingCajaCortoForMonth({ company, year: months.nominas.year, month: months.nominas.month }),
+      loadAccountingCajaCortoForMonth({ company, year: months.ss.year, month: months.ss.month })
+    ]);
+  } catch (e) {
+    return { obligacions: null, error: e instanceof Error ? e : new Error(String(e)) };
+  }
+
+  let nominas = nomAcc.nominasFound ? nomAcc.nominasNeto : null;
+  let nominasObs = nomAcc.nominasFound ? 'Haver comptes 465' : '';
+  try {
+    const records = await holdedApiV2Service.getSalaryRecords({}, company);
+    const bucket = groupSalaryPayableByMonth(records).get(monthKey(months.nominas.year, months.nominas.month));
+    if (bucket && bucket.count > 0 && bucket.nominasNeto > 0.005) {
+      nominas = Math.round(bucket.nominasNeto * 100) / 100;
+      nominasObs = 'Net a pagar (nòmines Holded)';
+    }
+  } catch (_) {
+    /* la comptabilitat 465 ja cobreix el mes */
+  }
+
+  let proveidors = null;
+  let proveidorsObs = '';
+  let menjar = null;
+  let menjarObs = '';
+  try {
+    const docs = await holdedApi.getAllPendingAndOverduePurchases(company, null);
+    const list = Array.isArray(docs) ? docs : [];
+    const furgonetaDocs = list.filter(isFurgonetaExclosa);
+    const counted = list.filter((doc) => !isFurgonetaExclosa(doc));
+    const menjarDocs = counted.filter(isMenjarDhortProvider);
+    const furgonetaAmount = Math.round(
+      furgonetaDocs.reduce((sum, doc) => sum + purchasePendingAmount(doc), 0) * 100
+    ) / 100;
+    proveidors = Math.round(counted.reduce((sum, doc) => sum + purchasePendingAmount(doc), 0) * 100) / 100;
+    menjar = Math.round(menjarDocs.reduce((sum, doc) => sum + purchasePendingAmount(doc), 0) * 100) / 100;
+    const furgonetaNote = furgonetaDocs.length
+      ? ` Sense la furgoneta 401413 AUTO9TY-FIVE (${furgonetaAmount.toLocaleString('ca-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €).`
+      : '';
+    proveidorsObs = `Mateix criteri que Anàlisi (${counted.length} factures obertes).${furgonetaNote}`;
+    menjarObs = menjarDocs.length
+      ? `Inclòs a la fila de sobre · ${menjarDocs.length} factures`
+      : "Cap factura oberta d'aquest proveïdor";
+  } catch (e) {
+    proveidorsObs = "No s'han pogut llegir les compres de Holded";
+    menjarObs = proveidorsObs;
+  }
+
+  return {
+    obligacions: {
+      nominasLabel: `Nòmines del mes ${months.nominasLabel}`,
+      ssLabel: `TGSS meritada del mes ${months.ssLabel}`,
+      nominas,
+      nominasObs,
+      ss: ssAcc.ssFound ? Math.round(ssAcc.ss * 100) / 100 : null,
+      ssObs: ssAcc.ssFound ? 'Haver 47600000' : 'Sense moviment 47600000',
+      proveidors,
+      proveidorsObs,
+      menjar,
+      menjarObs
+    },
+    error: null
+  };
 }

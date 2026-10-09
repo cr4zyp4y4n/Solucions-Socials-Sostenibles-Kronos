@@ -4,13 +4,93 @@ import { cajaCortoToExcelBlock } from './pigTesoreriaCajaCortoService';
 import {
   IMPUESTOS_COL,
   IMPUESTOS_MOD_303_ACCOUNTS,
+  IMPUESTOS_PREVISION_ROWS,
   impuestosQuarterFromMonth,
-  loadPigImpuestosBalances
+  loadPigImpuestosBalances,
+  loadPigImpuestosPrevisionFromLedger
 } from './pigTesoreriaImpuestosService';
+import { creditRowsForPigMonth } from './pigTesoreriaCreditsService';
 
-export { loadPigImpuestosBalances };
+export { loadPigImpuestosBalances, loadPigImpuestosPrevisionFromLedger };
 
 const TYPE_ORDER = ['bank', 'card', 'gateway', 'cash'];
+
+/**
+ * Póliza Fiare: 50.000 € fijos que no están en el saldo de Holded.
+ * La fila «Compte general Fiare» muestra el saldo Holded tal cual.
+ * La póliza va en su propia fila y no entra en la tesorería disponible.
+ */
+export const PIG_FIARE_POLIZA_EUR = 50000;
+
+const CRITERI_LLIURE = 'Lliure disponibilitat';
+const CRITERI_NO_COMPUTA = 'No computar com a tresoreria real';
+
+/**
+ * Tabla 1 PIG Normal — Tresoreria bancària i disponibilitat.
+ * Saldos por IBAN (Holded), sin alterar el saldo de la cuenta general Fiare.
+ */
+const TESORERIA_DISPONIBILITAT_ROWS = [
+  {
+    id: 'caixa_generals',
+    label: '572.0 / 1 / 2 Comptes generals Caixa',
+    ibans: [
+      'ES3121000601220200501162',
+      'ES0821003452172200052489',
+      'ES7521003452192200059818'
+    ],
+    criteri: CRITERI_LLIURE,
+    disponible: true
+  },
+  {
+    id: 'bcredit',
+    label: '572.3 B-Crèdit (CAIXA)',
+    ibans: ['ES2721003452152200066892'],
+    criteri: CRITERI_NO_COMPUTA,
+    disponible: false
+  },
+  {
+    id: 'fiare',
+    label: '572.4 Compte general Fiare',
+    ibans: ['ES1615500001230014191720'],
+    criteri: CRITERI_LLIURE,
+    disponible: true
+  },
+  {
+    id: 'fiare_poliza',
+    label: '572.4 Fiare pòlissa',
+    fixed: PIG_FIARE_POLIZA_EUR,
+    criteri: CRITERI_NO_COMPUTA,
+    disponible: false
+  },
+  {
+    id: 'innvess',
+    label: '572.5 INNVESS',
+    ibans: ['ES6215500001290018321828'],
+    criteri: CRITERI_NO_COMPUTA,
+    disponible: false
+  },
+  {
+    id: 'singular',
+    label: '572.6 Singular / ACOL',
+    ibans: ['ES5815500001210018382820'],
+    criteri: CRITERI_LLIURE,
+    disponible: true
+  }
+];
+
+function normalizeIban(value) {
+  return String(value || '').replace(/\s/g, '').toUpperCase();
+}
+
+function treasuryBalanceByIban(accounts = []) {
+  const map = new Map();
+  for (const account of accounts) {
+    const iban = normalizeIban(account?.iban);
+    if (!iban) continue;
+    map.set(iban, (map.get(iban) || 0) + parseBalance(account.balance));
+  }
+  return map;
+}
 
 /** @deprecated Mantener export por compatibilidad; las tablas van debajo (cols A–C). */
 export const TESORERIA_RIGHT_COL = {
@@ -242,9 +322,10 @@ function appendCajaCortoBelow(aoa, meta, cajaCorto) {
   while (aoa.length < r) aoa.push(['', '', '']);
 
   const totalFinalRow = r;
+  const saldoCol = Number.isFinite(meta.saldoCol) ? meta.saldoCol : 2;
   const totalSinInvesCached =
     meta.totalSinInvesRow >= 0
-      ? Number(aoa[meta.totalSinInvesRow]?.[2]) || 0
+      ? Number(aoa[meta.totalSinInvesRow]?.[saldoCol]) || 0
       : 0;
   const totalFinalCached = totalSinInvesCached - block.totalPagos + block.totalIngresos;
   setAoaCell(aoa, r, 0, block.totalLabel);
@@ -273,8 +354,15 @@ function appendCajaCortoBelow(aoa, meta, cajaCorto) {
  * Tabla IMPUESTOS a la derecha (cols E–H), alineada arriba como en el Excel de Lizeth.
  * MOD 303: suma en G; si el resultado es negativo → A PAGAR (H) y entra en el total.
  */
-function appendImpuestosRight(aoa, meta, impuestos = null, { monthIndex } = {}) {
-  const col = IMPUESTOS_COL;
+function appendImpuestosRight(aoa, meta, impuestos = null, { monthIndex, startCode } = {}) {
+  const origin = Number.isFinite(startCode) ? startCode : IMPUESTOS_COL.code;
+  const delta = origin - IMPUESTOS_COL.code;
+  const col = {
+    code: IMPUESTOS_COL.code + delta,
+    desc: IMPUESTOS_COL.desc + delta,
+    saldo: IMPUESTOS_COL.saldo + delta,
+    aPagar: IMPUESTOS_COL.aPagar + delta
+  };
   const quarter = impuestosQuarterFromMonth(monthIndex);
   const mod303Rows = impuestos?.mod303?.length
     ? impuestos.mod303
@@ -383,7 +471,311 @@ function appendImpuestosRight(aoa, meta, impuestos = null, { monthIndex } = {}) 
 }
 
 /**
- * Layout Lizeth: Caixa + Fiare + TOTAL + TOTAL - INVES - BCREDIT
+ * PIG Normal: tabla «Tresoreria bancària i disponibilitat».
+ * Col B = saldo, col C = criteri. El total solo suma filas de lliure disponibilitat.
+ * Compte general Fiare = saldo Holded. La pòlissa (50.000 €) es una fila aparte y no suma.
+ */
+function appendDisponibilitatTable(aoa, meta, accounts = []) {
+  const byIban = treasuryBalanceByIban(accounts);
+  const saldoCol = 1;
+  const titleRow = aoa.length;
+  aoa.push(['Tresoreria bancària i disponibilitat', '', '']);
+  const headerRow = aoa.length;
+  aoa.push(['CTA BANCARI', 'SALDO', 'CRITERI']);
+
+  const lliureRows = [];
+  const noComputaRows = [];
+  const missing = [];
+  let disponible = 0;
+
+  for (const spec of TESORERIA_DISPONIBILITAT_ROWS) {
+    let amount = 0;
+    let criteri = spec.criteri;
+    if (spec.fixed != null) {
+      amount = spec.fixed;
+    } else {
+      const ibans = (spec.ibans || []).map(normalizeIban);
+      const found = ibans.filter((iban) => byIban.has(iban));
+      amount = found.reduce((acc, iban) => acc + byIban.get(iban), 0);
+      if (found.length < ibans.length) {
+        missing.push(spec.label);
+        criteri = found.length ? `${spec.criteri} (falta algun IBAN a Holded)` : 'No trobada a Holded';
+      }
+    }
+    const rowIdx = aoa.length;
+    aoa.push([spec.label, amount, criteri]);
+    if (spec.disponible) {
+      lliureRows.push(rowIdx);
+      disponible += amount;
+    } else {
+      noComputaRows.push(rowIdx);
+    }
+  }
+
+  const totalRow = aoa.length;
+  aoa.push(["Tresoreria disponible abans d'obligacions", disponible, '']);
+
+  meta.saldoCol = saldoCol;
+  meta.disponibilitat = {
+    titleRow,
+    headerRow,
+    lliureRows,
+    noComputaRows,
+    totalRow,
+    saldoCol,
+    missing
+  };
+  meta.totalSinInvesRow = totalRow;
+  meta.totalRows.push(totalRow);
+  meta.summaryStartRow = titleRow;
+  meta.summaryEndRow = totalRow;
+  meta.minCols = Math.max(meta.minCols || 3, 3);
+}
+
+/** PIG Normal: Crèdits i Finançament. Cada mes surt de la llista de quotes guardada. */
+function appendCreditsTable(aoa, meta, creditRows = []) {
+  const startCol = 4;
+  const titleRow = meta.disponibilitat?.titleRow ?? 2;
+  const headerRow = titleRow + 1;
+  const headers = ['Finançament', 'Capital pendent / límit', 'Quota pròxima', 'Venciment', 'Observacions'];
+  const rows = creditRows.length
+    ? creditRows
+    : [
+      { label: 'ICO Idoni / Fiare' },
+      { label: 'Furgoneta BBVA' },
+      { label: 'B-Crèdit' },
+      { label: 'Pòlissa Fiare' }
+    ];
+
+  setAoaCell(aoa, titleRow, startCol, 'Crèdits i Finançament');
+  headers.forEach((header, i) => setAoaCell(aoa, headerRow, startCol + i, header));
+  rows.forEach((row, i) => {
+    const r = headerRow + 1 + i;
+    setAoaCell(aoa, r, startCol, row.label || '');
+    setAoaCell(aoa, r, startCol + 1, row.capital == null || row.capital === '' ? '' : row.capital);
+    setAoaCell(aoa, r, startCol + 2, row.quota == null || row.quota === '' ? '' : row.quota);
+    setAoaCell(aoa, r, startCol + 3, row.venciment || '');
+    setAoaCell(aoa, r, startCol + 4, row.obs || '');
+  });
+
+  meta.credits = {
+    titleRow,
+    headerRow,
+    dataStartRow: headerRow + 1,
+    dataEndRow: headerRow + rows.length,
+    startCol,
+    endCol: startCol + headers.length - 1,
+    quotaCol: startCol + 2
+  };
+  meta.minCols = Math.max(meta.minCols || 3, startCol + headers.length);
+}
+
+/**
+ * PIG Normal: previsió fiscal, a la derecha de les obligacions i sota els crèdits.
+ * El 202 es deixa en blanc. Els imports són deu − haver acumulat del llibre diari.
+ */
+function appendImpuestosPrevisionTable(aoa, meta, prevision = null) {
+  const startCol = 4;
+  const creditsEnd = meta.credits?.dataEndRow;
+  const anchor = creditsEnd != null ? creditsEnd : (meta.disponibilitat?.totalRow ?? 2);
+  const titleRow = anchor + 2;
+  const headerRow = titleRow + 1;
+  const headers = [
+    'Impost / concepte',
+    'Període',
+    prevision?.monthHeaders?.[0] || 'Mes 1 acumulat',
+    prevision?.monthHeaders?.[1] || 'Mes 2 acumulat',
+    prevision?.monthHeaders?.[2] || 'Mes 3 / tancament',
+    'Total estimat',
+    'Data pagament',
+    'Criteri'
+  ];
+  const sourceRows = prevision?.rows?.length
+    ? prevision.rows
+    : IMPUESTOS_PREVISION_ROWS.map((row) => ({
+      key: row.key,
+      label: row.label,
+      criteri: row.criteri,
+      periode: '',
+      months: [null, null, null],
+      total: null,
+      blank: true
+    }));
+
+  setAoaCell(aoa, titleRow, startCol, 'Previsió fiscal');
+  headers.forEach((header, index) => setAoaCell(aoa, headerRow, startCol + index, header));
+
+  const monthCols = [startCol + 2, startCol + 3, startCol + 4];
+  const totalCol = startCol + 5;
+  const modelRows = [];
+  sourceRows.forEach((row, index) => {
+    const r = headerRow + 1 + index;
+    const filledMonths = (row.months || []).map((value, monthIndex) => (
+      value == null || value === '' ? null : Number(value) || 0
+    ));
+    let lastAmountCol = null;
+    filledMonths.forEach((value, monthIndex) => {
+      if (value == null) return;
+      lastAmountCol = monthCols[monthIndex];
+    });
+    setAoaCell(aoa, r, startCol, row.label || '');
+    setAoaCell(aoa, r, startCol + 1, row.periode || '');
+    filledMonths.forEach((value, monthIndex) => {
+      setAoaCell(aoa, r, monthCols[monthIndex], value == null ? '' : value);
+    });
+    setAoaCell(aoa, r, totalCol, row.blank ? '' : (row.total ?? ''));
+    setAoaCell(aoa, r, startCol + 6, '');
+    setAoaCell(aoa, r, startCol + 7, row.criteri || '');
+    modelRows.push({
+      row: r,
+      key: row.key,
+      blank: Boolean(row.blank),
+      lastAmountCol,
+      totalCached: row.blank ? null : (Number(row.total) || 0)
+    });
+  });
+
+  const totalRow = headerRow + 1 + sourceRows.length;
+  const totalCached = sourceRows.reduce((acc, row) => acc + (row.blank ? 0 : Number(row.total) || 0), 0);
+  setAoaCell(aoa, totalRow, startCol, 'Suma dels models');
+  setAoaCell(aoa, totalRow, totalCol, sourceRows.some((row) => !row.blank) ? totalCached : '');
+  setAoaCell(aoa, totalRow, startCol + 7, "Suma dels totals. No és l'import de la tresoreria neta: l'IVA a favor no es resta.");
+
+  meta.impuestosPrevision = {
+    titleRow,
+    headerRow,
+    startCol,
+    endCol: startCol + headers.length - 1,
+    totalCol,
+    monthCols,
+    modelRows,
+    totalRow,
+    totalCached: sourceRows.some((row) => !row.blank) ? totalCached : null
+  };
+  meta.minCols = Math.max(meta.minCols || 3, startCol + headers.length);
+}
+
+/**
+ * PIG Normal: Obligacions del mes i pagaments imminents (4 columnes).
+ * Les dues últimes files queden buides.
+ */
+function appendObligacionsTable(aoa, meta, obligacions = null) {
+  aoa.push(['', '', '', '']);
+  const titleRow = aoa.length;
+  aoa.push(['Obligacions del mes i pagaments imminents', '', '', '']);
+  const headerRow = aoa.length;
+  aoa.push(['Concepte', 'Import', 'Data prevista', 'Observacions / detall']);
+
+  const rows = [
+    {
+      concepte: obligacions?.nominasLabel || 'Nòmines del mes',
+      import: obligacions?.nominas ?? '',
+      data: '',
+      obs: obligacions?.nominasObs || ''
+    },
+    {
+      concepte: obligacions?.ssLabel || 'TGSS meritada del mes',
+      import: obligacions?.ss ?? '',
+      data: '',
+      obs: obligacions?.ssObs || ''
+    },
+    {
+      concepte: 'Proveïdors pendents',
+      import: obligacions?.proveidors ?? '',
+      data: '',
+      obs: obligacions?.proveidorsObs || ''
+    },
+    {
+      concepte: "Menjar d'Hort",
+      import: obligacions?.menjar ?? '',
+      data: '',
+      obs: obligacions?.menjarObs || ''
+    },
+    {
+      concepte: 'Previsió altres pagaments propers',
+      import: '',
+      data: '',
+      obs: ''
+    },
+    {
+      concepte: 'Altres obligacions immediates',
+      import: '',
+      data: '',
+      obs: ''
+    }
+  ];
+
+  const dataStartRow = aoa.length;
+  for (const row of rows) {
+    aoa.push([row.concepte, row.import, row.data, row.obs]);
+  }
+  const dataEndRow = aoa.length - 1;
+
+  meta.obligacions = {
+    titleRow,
+    headerRow,
+    dataStartRow,
+    dataEndRow,
+    amountCol: 1,
+    nominasRow: dataStartRow,
+    ssRow: dataStartRow + 1,
+    proveidorsRow: dataStartRow + 2,
+    altresPagamentsRow: dataStartRow + 4,
+    altresObligacionsRow: dataStartRow + 5
+  };
+  meta.minCols = Math.max(meta.minCols || 3, 4);
+}
+
+/**
+ * PIG Normal: tresoreria neta = disponible menys les obligacions ja calculades.
+ * Menjar d'Hort no es resta: ja és dins de proveïdors.
+ * L'IVA a favor (positiu) no es resta; només la part exigible.
+ */
+function appendNetaTable(aoa, meta) {
+  const disp = meta.disponibilitat;
+  const obl = meta.obligacions;
+  if (!disp || !obl) return;
+
+  aoa.push(['', '']);
+  aoa.push(['', '']);
+  const titleRow = aoa.length;
+  aoa.push(['Tresoreria neta real', '']);
+  const headerRow = aoa.length;
+  aoa.push(['Càlcul', 'Import']);
+
+  const labels = [
+    "Tresoreria disponible abans d'obligacions",
+    '(-) Nòmines pendents / no carregades',
+    '(-) TGSS meritada del mes analitzat',
+    '(-) Proveïdors i pagaments imminents',
+    '(-) Quotes de crèdit exigibles a curt termini',
+    '(-) Previsió fiscal acumulada / exigible',
+    '(-) Altres obligacions immediates'
+  ];
+  const dataStartRow = aoa.length;
+  for (const label of labels) aoa.push([label, '']);
+  const totalRow = aoa.length;
+  aoa.push(['TRESORERIA NETA REAL', '']);
+
+  meta.neta = {
+    titleRow,
+    headerRow,
+    disponibleRow: dataStartRow,
+    nominasRow: dataStartRow + 1,
+    ssRow: dataStartRow + 2,
+    proveidorsRow: dataStartRow + 3,
+    quotesRow: dataStartRow + 4,
+    fiscalRow: dataStartRow + 5,
+    altresRow: dataStartRow + 6,
+    totalRow,
+    labelCol: 0,
+    amountCol: 1
+  };
+}
+
+/**
+ * Layout Lizeth (CR): Caixa + Fiare + TOTAL + TOTAL - INVES - BCREDIT.
+ * PIG Normal: tabla de disponibilitat. Fiare general = saldo Holded; póliza = 50.000 € aparte.
  * + previsiones subv (solo CR) | caja a corto editable (solo PIG Normal)
  * + IMPUESTOS a la derecha (cols E–H).
  */
@@ -395,8 +787,16 @@ export function buildPigTesoreriaSheetAoa({
   previsiones = null,
   cajaCorto = null,
   impuestos = null,
-  monthIndex = null
+  impuestosPrevision = null,
+  monthIndex = null,
+  obligacions = null,
+  creditsYear = null,
+  creditsMonthIndex = null
 } = {}) {
+  const creditRows = creditRowsForPigMonth(
+    creditsYear ?? new Date().getFullYear(),
+    creditsMonthIndex ?? new Date().getMonth()
+  );
   const aoa = [];
   const meta = {
     titleRow: 0,
@@ -417,6 +817,7 @@ export function buildPigTesoreriaSheetAoa({
     rightTables: null,
     cajaCorto: null,
     impuestos: null,
+    impuestosPrevision: null,
     minCols: 3
   };
 
@@ -425,9 +826,35 @@ export function buildPigTesoreriaSheetAoa({
 
   if (errorMessage) {
     aoa.push([`Error API Holded: ${errorMessage}`, '', '']);
-    appendImpuestosRight(aoa, meta, impuestos, { monthIndex });
+    if (!cuentaResultados) {
+      appendDisponibilitatTable(aoa, meta, []);
+      appendCreditsTable(aoa, meta, creditRows);
+      appendObligacionsTable(aoa, meta, obligacions);
+      aoa.push(['', '', '']);
+      appendImpuestosPrevisionTable(aoa, meta, impuestosPrevision);
+    }
+    if (cuentaResultados) {
+      appendImpuestosRight(aoa, meta, impuestos, { monthIndex });
+    }
     if (cuentaResultados) appendPrevisionesBelow(aoa, meta, previsiones);
-    else appendCajaCortoBelow(aoa, meta, cajaCorto);
+    else appendNetaTable(aoa, meta);
+    return { aoa, meta };
+  }
+
+  if (!accounts.length && cuentaResultados) {
+    aoa.push(['(Cap compte bancari amb IBAN trobat a Holded)', '', '']);
+    appendImpuestosRight(aoa, meta, impuestos, { monthIndex });
+    appendPrevisionesBelow(aoa, meta, previsiones);
+    return { aoa, meta };
+  }
+
+  if (!cuentaResultados) {
+    appendDisponibilitatTable(aoa, meta, accounts);
+    appendCreditsTable(aoa, meta, creditRows);
+    appendObligacionsTable(aoa, meta, obligacions);
+    aoa.push(['', '', '']);
+    appendImpuestosPrevisionTable(aoa, meta, impuestosPrevision);
+    appendNetaTable(aoa, meta);
     return { aoa, meta };
   }
 

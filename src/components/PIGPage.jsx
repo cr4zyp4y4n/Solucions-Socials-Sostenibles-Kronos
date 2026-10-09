@@ -27,8 +27,16 @@ import {
 import {
   buildPigTesoreriaSheetAoa,
   loadPigTreasuryAccounts,
-  loadPigImpuestosBalances
+  loadPigImpuestosBalances,
+  loadPigImpuestosPrevisionFromLedger
 } from '../services/pigTesoreriaService';
+import {
+  impuestosPeriodeLabel,
+  impuestosQuarterMonths,
+  loadStoredImpuestosMesos,
+  PIG_IMPUESTOS_MONTHS_CA,
+  saveStoredImpuestosMesos
+} from '../services/pigTesoreriaImpuestosService';
 import {
   createEmptyItinerarioRow,
   loadPigItinerarioEi,
@@ -48,6 +56,8 @@ import {
 } from '../services/pigTesoreriaCajaCortoService';
 import {
   applyCajaCortoNominasSsSuggestion,
+  loadPigObligacionsMesFromHolded,
+  obligacionsMonthIndexForPig,
   suggestCajaCortoNominasSsFromHolded
 } from '../services/pigTesoreriaCajaCortoHoldedService';
 import {
@@ -783,6 +793,33 @@ function stylePigTesoreriaSheet({ ws, aoa, meta = {} }) {
     { wch: 16 },
     { wch: 14 }
   ];
+  if (meta.disponibilitat) {
+    ws['!cols'][1] = { wch: 16 };
+    ws['!cols'][2] = { wch: 42 };
+  }
+  if (meta.obligacions) {
+    ws['!cols'][3] = { wch: 42 };
+  }
+  if (meta.credits) {
+    const credits = meta.credits;
+    ws['!cols'][credits.startCol] = { wch: 24 };
+    ws['!cols'][credits.startCol + 1] = { wch: 24 };
+    ws['!cols'][credits.startCol + 2] = { wch: 16 };
+    ws['!cols'][credits.startCol + 3] = { wch: 16 };
+    ws['!cols'][credits.startCol + 4] = { wch: 42 };
+  }
+  if (imp && !meta.impuestosPrevision) {
+    ws['!cols'][imp.startCol] = { wch: 14 };
+    ws['!cols'][imp.startCol + 1] = { wch: 58 };
+    ws['!cols'][imp.startCol + 2] = { wch: 16 };
+    ws['!cols'][imp.startCol + 3] = { wch: 14 };
+  }
+  if (meta.impuestosPrevision) {
+    const widths = [36, 22, 18, 18, 18, 16, 16, 46];
+    widths.forEach((wch, index) => {
+      ws['!cols'][meta.impuestosPrevision.startCol + index] = { wch };
+    });
+  }
   ws['!rows'] = [];
   ws['!rows'][0] = { hpt: 18 };
   ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 2 } }];
@@ -790,6 +827,24 @@ function stylePigTesoreriaSheet({ ws, aoa, meta = {} }) {
     ws['!merges'].push({
       s: { r: imp.titleRow, c: imp.startCol },
       e: { r: imp.titleRow, c: imp.endCol }
+    });
+  }
+  if (meta.credits) {
+    ws['!merges'].push({
+      s: { r: meta.credits.titleRow, c: meta.credits.startCol },
+      e: { r: meta.credits.titleRow, c: meta.credits.endCol }
+    });
+  }
+  if (meta.impuestosPrevision) {
+    ws['!merges'].push({
+      s: { r: meta.impuestosPrevision.titleRow, c: meta.impuestosPrevision.startCol },
+      e: { r: meta.impuestosPrevision.titleRow, c: meta.impuestosPrevision.endCol }
+    });
+  }
+  if (meta.neta) {
+    ws['!merges'].push({
+      s: { r: meta.neta.titleRow, c: meta.neta.labelCol },
+      e: { r: meta.neta.titleRow, c: meta.neta.amountCol }
     });
   }
   if (caja?.merges?.length) {
@@ -821,6 +876,157 @@ function stylePigTesoreriaSheet({ ws, aoa, meta = {} }) {
   const blueObsHeader = makeFill('#9DC3E6');
 
   setRangeStyle(ws, 0, 0, 0, 2, titleStyle);
+
+  const disp = meta.disponibilitat;
+  if (disp) {
+    setRangeStyle(ws, disp.titleRow, 0, disp.titleRow, 2, {
+      font: { bold: true, name: 'Calibri', sz: 12 },
+      alignment: { horizontal: 'left', vertical: 'center' }
+    });
+    setRangeStyle(ws, disp.headerRow, 0, disp.headerRow, 2, headerStyle);
+    const paintRow = (r, fill) => {
+      setCellStyle(ws, r, 0, {
+        border: borderThin,
+        font: { name: 'Calibri' },
+        alignment: { vertical: 'center', wrapText: true },
+        ...(fill ? { fill } : {})
+      });
+      setCellStyle(ws, r, 1, {
+        border: borderThin,
+        ...moneyStyle,
+        font: { name: 'Calibri' },
+        ...(fill ? { fill } : {})
+      });
+      setCellStyle(ws, r, 2, {
+        border: borderThin,
+        font: { name: 'Calibri', italic: true, color: { rgb: '595959' } },
+        alignment: { vertical: 'center', wrapText: true },
+        ...(fill ? { fill } : {})
+      });
+    };
+    for (const r of disp.lliureRows || []) paintRow(r);
+    for (const r of disp.noComputaRows || []) paintRow(r, makeFill('#F2F2F2'));
+    setRangeStyle(ws, disp.totalRow, 0, disp.totalRow, 2, {
+      font: { bold: true, name: 'Calibri' },
+      fill: yellow,
+      border: borderThin
+    });
+    setCellStyle(ws, disp.totalRow, 1, {
+      ...moneyStyle,
+      font: { bold: true, name: 'Calibri' },
+      fill: yellow,
+      border: borderThin
+    });
+  }
+
+  const obl = meta.obligacions;
+  if (obl) {
+    setRangeStyle(ws, obl.titleRow, 0, obl.titleRow, 3, {
+      font: { bold: true, name: 'Calibri', sz: 12 },
+      alignment: { horizontal: 'left', vertical: 'center' }
+    });
+    setRangeStyle(ws, obl.headerRow, 0, obl.headerRow, 3, headerStyle);
+    if (obl.dataEndRow >= obl.dataStartRow) {
+      for (let r = obl.dataStartRow; r <= obl.dataEndRow; r++) {
+        setCellStyle(ws, r, 0, {
+          border: borderThin,
+          font: { name: 'Calibri' },
+          alignment: { vertical: 'center', wrapText: true }
+        });
+        setCellStyle(ws, r, 1, {
+          border: borderThin,
+          ...moneyStyle,
+          font: { name: 'Calibri' }
+        });
+        setCellStyle(ws, r, 2, {
+          border: borderThin,
+          font: { name: 'Calibri' },
+          alignment: { vertical: 'center', horizontal: 'center' }
+        });
+        setCellStyle(ws, r, 3, {
+          border: borderThin,
+          font: { name: 'Calibri', italic: true, color: { rgb: '595959' } },
+          alignment: { vertical: 'center', wrapText: true }
+        });
+      }
+    }
+  }
+
+  const credits = meta.credits;
+  if (credits) {
+    setRangeStyle(ws, credits.titleRow, credits.startCol, credits.titleRow, credits.endCol, {
+      font: { bold: true, name: 'Calibri', sz: 12 },
+      alignment: { horizontal: 'left', vertical: 'center' }
+    });
+    setRangeStyle(ws, credits.headerRow, credits.startCol, credits.headerRow, credits.endCol, headerStyle);
+    for (let r = credits.dataStartRow; r <= credits.dataEndRow; r += 1) {
+      for (let c = credits.startCol; c <= credits.endCol; c += 1) {
+        const isMoney = c === credits.startCol + 1 || c === credits.quotaCol;
+        setCellStyle(ws, r, c, {
+          border: borderThin,
+          font: { name: 'Calibri' },
+          alignment: { vertical: 'center', wrapText: true, horizontal: isMoney ? 'right' : 'left' },
+          ...(isMoney ? { numFmt: '#,##0.00' } : {})
+        });
+      }
+    }
+  }
+
+  const fiscal = meta.impuestosPrevision;
+  if (fiscal) {
+    ws['!rows'][fiscal.headerRow] = { hpt: 32 };
+    setRangeStyle(ws, fiscal.titleRow, fiscal.startCol, fiscal.titleRow, fiscal.endCol, {
+      font: { bold: true, name: 'Calibri', sz: 12 },
+      alignment: { horizontal: 'left', vertical: 'center' }
+    });
+    setRangeStyle(ws, fiscal.headerRow, fiscal.startCol, fiscal.headerRow, fiscal.endCol, headerStyle);
+    const paintFiscalRow = (r, { bold = false, fill = null, pending = false } = {}) => {
+      for (let c = fiscal.startCol; c <= fiscal.endCol; c += 1) {
+        const isMoney = fiscal.monthCols.includes(c) || c === fiscal.totalCol;
+        setCellStyle(ws, r, c, {
+          border: borderThin,
+          font: { name: 'Calibri', bold },
+          alignment: {
+            vertical: 'center',
+            wrapText: true,
+            horizontal: isMoney ? 'right' : 'left'
+          },
+          ...(isMoney ? { numFmt: '#,##0.00;[Red]-#,##0.00' } : {}),
+          ...(fill ? { fill } : {}),
+          ...(pending && isMoney ? { fill: makeFill('#F2F2F2') } : {})
+        });
+      }
+    };
+    for (const row of fiscal.modelRows || []) {
+      paintFiscalRow(row.row, { pending: row.blank });
+    }
+    paintFiscalRow(fiscal.totalRow, { bold: true, fill: yellow });
+  }
+
+  const neta = meta.neta;
+  if (neta) {
+    setRangeStyle(ws, neta.titleRow, neta.labelCol, neta.titleRow, neta.amountCol, {
+      font: { bold: true, name: 'Calibri', sz: 12 },
+      alignment: { horizontal: 'left', vertical: 'center' }
+    });
+    setRangeStyle(ws, neta.headerRow, neta.labelCol, neta.headerRow, neta.amountCol, headerStyle);
+    const paintNeta = (r, { bold = false, fill = null } = {}) => {
+      setCellStyle(ws, r, neta.labelCol, {
+        border: borderThin,
+        font: { name: 'Calibri', bold },
+        alignment: { vertical: 'center', wrapText: true },
+        ...(fill ? { fill } : {})
+      });
+      setCellStyle(ws, r, neta.amountCol, {
+        border: borderThin,
+        font: { name: 'Calibri', bold },
+        ...moneyStyle,
+        ...(fill ? { fill } : {})
+      });
+    };
+    for (let r = neta.disponibleRow; r < neta.totalRow; r += 1) paintNeta(r);
+    paintNeta(neta.totalRow, { bold: true, fill: greenTotal });
+  }
 
   for (const g of meta.bankGroups || []) {
     setRangeStyle(ws, g.headerRow, 0, g.headerRow, 2, headerStyle);
@@ -4333,6 +4539,7 @@ export default function PIGPage() {
   const [previsionTesoreriaStatus, setPrevisionTesoreriaStatus] = useState('');
   const [mainTab, setMainTab] = useState('generar'); // generar | datos | prevision
   const [datosSubTab, setDatosSubTab] = useState('estimados');
+  const [impuestosMesos, setImpuestosMesos] = useState(() => loadStoredImpuestosMesos(new Date().getFullYear()));
   const [estimadosLineaOpen, setEstimadosLineaOpen] = useState('CATERING');
 
   const isEisss = pigEmpresa !== 'MH';
@@ -4351,6 +4558,7 @@ export default function PIGPage() {
       { id: 'itinerario', label: 'Itinerario E.I', sheet: 'PIG / CR GENERAL EISSS' },
       { id: 'subv_anteriores', label: 'Subv. anteriores', sheet: 'CR GENERAL EISSS' },
       { id: 'caja_corto', label: 'Caja corto', sheet: 'TESORERÍA (PIG Normal)' },
+      { id: 'impuestos', label: 'Impuestos', sheet: 'TESORERÍA (PIG Normal)' },
       { id: 'previsiones', label: 'Previsiones CR', sheet: 'TESORERÍA (CR)' }
     ],
     []
@@ -4486,6 +4694,8 @@ export default function PIGPage() {
     loadPrevisionesForYear(estimadosYear);
     loadCajaCortoForYear(estimadosYear);
     loadCrSubvEjAnterioresForYear(estimadosYear);
+    const y = Number(estimadosYear);
+    if (Number.isFinite(y)) setImpuestosMesos(loadStoredImpuestosMesos(y));
   }, [
     estimadosYear,
     loadEstimadosForYear,
@@ -4593,6 +4803,12 @@ export default function PIGPage() {
     setCajaCortoStatus('Previsión de caja a corto guardada.');
     return true;
   }, [tesoreriaCajaCorto, estimadosYear]);
+
+  const updateImpuestosMesos = useCallback((next) => {
+    const y = Number(estimadosYear);
+    setImpuestosMesos(next);
+    if (Number.isFinite(y)) saveStoredImpuestosMesos(y, next);
+  }, [estimadosYear]);
 
   const saveCrSubvEjAnteriores = useCallback(async () => {
     const y = Number(estimadosYear);
@@ -5372,20 +5588,48 @@ export default function PIGPage() {
           const yyTes = yearGuess ? yearGuess.slice(2) : '';
           const titleTesoreria = `Cierre TESORERÍA  EI.SSS ${yyTes ? `01/01/${yyTes} A ${endOfMonthStr(lastIdx)}` : ''}`.trim();
           const yearForImpuestos = Number(yearGuess) || Number(estimadosYear) || new Date().getFullYear();
-          const [{ accounts: treasuryAccounts, error: treasuryError }, { impuestos, error: impuestosError }] =
+          const [{ accounts: treasuryAccounts, error: treasuryError }, impuestosResult, obligacionsResult] =
             await Promise.all([
               loadPigTreasuryAccounts({ company: 'solucions' }),
-              loadPigImpuestosBalances({
-                company: 'solucions',
-                year: yearForImpuestos,
-                monthIndex: lastIdx
-              })
+              omitSubvenciones
+                ? loadPigImpuestosBalances({
+                  company: 'solucions',
+                  year: yearForImpuestos,
+                  monthIndex: lastIdx
+                })
+                : loadPigImpuestosPrevisionFromLedger({
+                  company: 'solucions',
+                  year: yearForImpuestos,
+                  months: impuestosMesos?.months,
+                  mode: impuestosMesos?.mode
+                }),
+              omitSubvenciones
+                ? Promise.resolve({ obligacions: null, error: null })
+                : loadPigObligacionsMesFromHolded({
+                  company: 'solucions',
+                  year: yearForImpuestos,
+                  monthIndex: obligacionsMonthIndexForPig({
+                    year: yearForImpuestos,
+                    lastDataMonthIndex: lastIdx
+                  })
+                })
             ]);
+          const impuestos = omitSubvenciones ? impuestosResult?.impuestos : null;
+          const impuestosPrevision = omitSubvenciones ? null : impuestosResult?.impuestosPrevision;
+          const impuestosError = impuestosResult?.error;
           if (treasuryError) {
             console.warn('PIG TESORERÍA: no se pudieron cargar cuentas de Holded.', treasuryError);
           }
           if (impuestosError) {
-            console.warn('PIG TESORERÍA IMPUESTOS: no se pudieron cargar cuentas contables de Holded.', impuestosError);
+            console.warn(
+              omitSubvenciones
+                ? 'PIG TESORERÍA IMPUESTOS: no se pudieron cargar cuentas contables de Holded.'
+                : 'PIG TESORERÍA IMPUESTOS: no se pudo leer el libro diario de Holded.',
+              impuestosError
+            );
+          }
+          if (obligacionsResult?.error) {
+            console.warn('PIG TESORERÍA OBLIGACIONS: no se pudieron cargar nóminas/TGSS.', obligacionsResult.error);
           }
           const { aoa: aoaTesoreria, meta: tesoreriaMeta } = buildPigTesoreriaSheetAoa({
             title: titleTesoreria,
@@ -5395,7 +5639,14 @@ export default function PIGPage() {
             previsiones: omitSubvenciones ? previsionesForGenerate : null,
             cajaCorto: omitSubvenciones ? null : cajaCortoForGenerate,
             impuestos,
-            monthIndex: lastIdx
+            impuestosPrevision,
+            monthIndex: lastIdx,
+            obligacions: omitSubvenciones ? null : obligacionsResult?.obligacions,
+            creditsYear: yearForImpuestos,
+            creditsMonthIndex: obligacionsMonthIndexForPig({
+              year: yearForImpuestos,
+              lastDataMonthIndex: lastIdx
+            })
           });
           const wsTesoreria = XLSX.utils.aoa_to_sheet(aoaTesoreria);
           stylePigTesoreriaSheet({ ws: wsTesoreria, aoa: aoaTesoreria, meta: tesoreriaMeta });
@@ -5468,6 +5719,7 @@ export default function PIGPage() {
     itinerarioEi,
     tesoreriaPrevisiones,
     tesoreriaCajaCorto,
+    impuestosMesos,
     crSubvEjAnteriores,
     pigEmpresa,
     estimadosSubv,
@@ -6085,6 +6337,97 @@ export default function PIGPage() {
                   })()}
                 </div>
                 <PigStatusText>{cajaCortoStatus}</PigStatusText>
+              </PigCard>
+            ) : null}
+
+            {datosSubTab === 'impuestos' ? (
+              <PigCard>
+                <PigSheetBadge style={{ marginBottom: 8 }}>TESORERÍA (PIG Normal)</PigSheetBadge>
+                <PigSectionTitle hint="Elige un trimestre o hasta tres meses sueltos. Al generar el PIG Normal, la tabla de impuestos acumula el libro diario de esos meses. El modelo 202 se deja en blanco.">
+                  Meses de acumulación de impuestos
+                </PigSectionTitle>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
+                  <PigChip
+                    active={impuestosMesos.mode === 'trimestre'}
+                    onClick={() => updateImpuestosMesos({
+                      mode: 'trimestre',
+                      trimestre: impuestosMesos.trimestre || 1,
+                      months: impuestosQuarterMonths(impuestosMesos.trimestre || 1)
+                    })}
+                  >
+                    Trimestre
+                  </PigChip>
+                  <PigChip
+                    active={impuestosMesos.mode === 'suelto'}
+                    onClick={() => updateImpuestosMesos({
+                      ...impuestosMesos,
+                      mode: 'suelto'
+                    })}
+                  >
+                    Meses sueltos
+                  </PigChip>
+                </div>
+                {impuestosMesos.mode === 'trimestre' ? (
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
+                    {[1, 2, 3, 4].map((q) => (
+                      <PigChip
+                        key={`trim-${q}`}
+                        active={impuestosMesos.trimestre === q}
+                        onClick={() => updateImpuestosMesos({
+                          mode: 'trimestre',
+                          trimestre: q,
+                          months: impuestosQuarterMonths(q)
+                        })}
+                      >
+                        {`T${q}`}
+                      </PigChip>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
+                    {PIG_IMPUESTOS_MONTHS_CA.map((name, monthIndex) => {
+                      const order = (impuestosMesos.months || []).indexOf(monthIndex);
+                      const active = order >= 0;
+                      return (
+                        <PigChip
+                          key={name}
+                          active={active}
+                          onClick={() => {
+                            const current = impuestosMesos.months || [];
+                            if (active) {
+                              updateImpuestosMesos({
+                                ...impuestosMesos,
+                                mode: 'suelto',
+                                months: current.filter((m) => m !== monthIndex)
+                              });
+                              return;
+                            }
+                            if (current.length >= 3) return;
+                            updateImpuestosMesos({
+                              ...impuestosMesos,
+                              mode: 'suelto',
+                              months: [...current, monthIndex].sort((a, b) => a - b)
+                            });
+                          }}
+                        >
+                          {active ? `${order + 1}. ${name}` : name}
+                        </PigChip>
+                      );
+                    })}
+                  </div>
+                )}
+                <PigHint>
+                  {`Periodo: ${impuestosPeriodeLabel(estimadosYear, impuestosMesos.months, impuestosMesos.mode)}. `}
+                  {(impuestosMesos.months || []).map((month, index) => (
+                    `${index === 2 ? 'Tancament' : `Mes ${index + 1}`}: ${PIG_IMPUESTOS_MONTHS_CA[month]}`
+                  )).join(' · ')}
+                  {(impuestosMesos.mode === 'suelto' && (impuestosMesos.months || []).length >= 3)
+                    ? ' · Máximo 3 meses.'
+                    : ''}
+                </PigHint>
+                <PigHint style={{ marginTop: 8 }}>
+                  El IVA junta 472 (compras), 477 (ventas), 470 (a compensar) y 475. El 111 y el 115 son la retención del periodo, sin el pago del modelo anterior. Solo cuentan los meses marcados.
+                </PigHint>
               </PigCard>
             ) : null}
 

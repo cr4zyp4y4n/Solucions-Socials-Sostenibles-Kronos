@@ -1,3 +1,24 @@
+## v2.7.1
+
+### PIG Normal — Tesorería (hoja nueva)
+
+Solo el PIG Normal. La hoja de Cuenta de Resultados no cambia.
+
+- **Tresoreria bancària:** Caixa por IBAN, Fiare con el saldo de Holded, póliza de 50.000 € aparte (no cuenta como disponible). B-Crèdit e INNVESS no entran en el disponible.
+- **Obligacions del mes:** nóminas del mes en que se genera el PIG; TGSS del mes anterior. Proveedores = compras abiertas (mismo criterio que Análisis), sin la factura de la furgoneta AUTO9TY-FIVE 401413 (45.738,47 €).
+- **Crèdits i Finançament:** cuadros guardados. Cada mes rellena capital, cuota y vencimiento.
+  - Préstamo Fiare 303551: día 24 (agosto y septiembre 2026 pagados).
+  - Furgoneta BBVA: 641,67 € el día 28, lista hasta el 28/04/2029.
+  - B-Crèdit: día 8. Hasta el 08/07/2027 solo intereses (62,50 €); después 553,36 € hasta el 08/07/2031.
+  - Póliza Fiare: límite 50.000 €, sin cuota mensual.
+- **Previsió fiscal:** libro diario de Holded. En Kronos se elige un trimestre o hasta 3 meses. IVA = 472 + 477 + saldo anterior de 470/475. El 111 y el 115 no incluyen el pago del modelo anterior; el alquiler contabilizado en 47510000 cuenta como 115. El 202 queda en blanco. La fila amarilla es **Suma dels models**, no el importe que baja a tesorería.
+- **Tresoreria neta real:** disponible menos nóminas, TGSS, proveedores, cuotas de crédito y la parte fiscal a pagar. El IVA a favor no se resta. Menjar d'Hort no se resta otra vez.
+- El bloque **PREVISIÓN PAGOS** (caja a corto) ya no sale en el Excel.
+
+**Tras instalar:** cerrar Kronos del todo y volver a abrirlo. Generar de nuevo el PIG Normal.
+
+---
+
 ## v2.8.1
 
 ### Fichaje — retención 4 años + tipología + export inspección

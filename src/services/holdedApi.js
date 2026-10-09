@@ -2430,6 +2430,49 @@ class HoldedApiService {
       throw error;
     }
   }
+
+  /**
+   * Libro diario v1 (accounting/v1/dailyledger).
+   * La API v2 /ledger-entries responde 403 con la clave actual.
+   * Pagina de 250 en 250 hasta agotar el rango.
+   */
+  async getAccountingDailyLedger({ starttmp, endtmp } = {}, company = 'solucions') {
+    const apiKey = HOLDED_API_KEYS[company];
+    if (!apiKey) throw new Error(`API key no encontrada para la empresa: ${company}`);
+    if (!window.electronAPI?.makeHoldedRequest) {
+      throw new Error('API de Electron no disponible.');
+    }
+    const all = [];
+    const seen = new Set();
+    for (let page = 1; page <= 50; page += 1) {
+      const response = await window.electronAPI.makeHoldedRequest({
+        url: `https://api.holded.com/api/accounting/v1/dailyledger?starttmp=${starttmp}&endtmp=${endtmp}&page=${page}`,
+        options: {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            key: apiKey
+          }
+        }
+      });
+      if (!response?.ok) {
+        const detail = response?.data?.detail || response?.data?.message || response?.statusText || `HTTP ${response?.status}`;
+        throw new Error(`Holded llibre diari (${company}): ${detail}`);
+      }
+      const batch = Array.isArray(response.data) ? response.data : [];
+      if (!batch.length) break;
+      let fresh = 0;
+      for (const row of batch) {
+        const id = `${row.entryNumber}:${row.line}:${row.timestamp}`;
+        if (seen.has(id)) continue;
+        seen.add(id);
+        all.push(row);
+        fresh += 1;
+      }
+      if (!fresh || batch.length < 250) break;
+    }
+    return all;
+  }
 }
 
 export default new HoldedApiService();
