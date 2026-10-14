@@ -40,6 +40,21 @@ DECLARE
   v_lot_final obrador_lots%ROWTYPE;
   v_expedicio obrador_expedicions%ROWTYPE;
 BEGIN
+  IF NOT (
+    public.obrador_is_management_user()
+    OR public.obrador_is_portal_staff_user()
+  ) THEN
+    RAISE EXCEPTION 'No autoritzat per expedir lots.';
+  END IF;
+
+  IF NOT COALESCE(p_check_sortida, false) THEN
+    RAISE EXCEPTION 'Cal verificar el producte abans de sortir (check_sortida).';
+  END IF;
+
+  IF NULLIF(btrim(COALESCE(p_id_client, '')), '') IS NULL THEN
+    RAISE EXCEPTION 'El client és obligatori.';
+  END IF;
+
   SELECT *
   INTO v_lot
   FROM obrador_lots
@@ -73,7 +88,7 @@ BEGIN
     p_id_lot,
     NULLIF(btrim(COALESCE(p_id_client, '')), ''),
     NULLIF(btrim(COALESCE(p_comanda_holded, '')), ''),
-    COALESCE(p_check_sortida, false),
+    true,
     COALESCE(p_check_client, false),
     NULLIF(btrim(COALESCE(p_observacions, '')), '')
   )

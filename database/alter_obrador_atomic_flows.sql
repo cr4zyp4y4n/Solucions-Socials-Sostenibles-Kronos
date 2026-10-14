@@ -32,6 +32,10 @@ DECLARE
   v_data_caducitat date;
   v_codi_qr text;
 BEGIN
+  IF NOT public.obrador_is_management_user() THEN
+    RAISE EXCEPTION 'No autoritzat per crear lots.';
+  END IF;
+
   SELECT *
   INTO v_recepcio
   FROM obrador_recepcions
@@ -121,10 +125,26 @@ DECLARE
   v_lot_final obrador_lots%ROWTYPE;
   v_expedicio obrador_expedicions%ROWTYPE;
 BEGIN
+  IF NOT (
+    public.obrador_is_management_user()
+    OR public.obrador_is_portal_staff_user()
+  ) THEN
+    RAISE EXCEPTION 'No autoritzat per expedir lots.';
+  END IF;
+
+  IF NOT COALESCE(p_check_sortida, false) THEN
+    RAISE EXCEPTION 'Cal verificar el producte abans de sortir (check_sortida).';
+  END IF;
+
+  IF NULLIF(btrim(COALESCE(p_id_client, '')), '') IS NULL THEN
+    RAISE EXCEPTION 'El client és obligatori.';
+  END IF;
+
   SELECT *
   INTO v_lot
   FROM obrador_lots
-  WHERE id = p_id_lot;
+  WHERE id = p_id_lot
+  FOR UPDATE;
 
   IF NOT FOUND THEN
     RAISE EXCEPTION 'Lot no trobat';
@@ -135,6 +155,10 @@ BEGIN
       RAISE EXCEPTION 'Aquest lot ja ha estat expedit.';
     END IF;
     RAISE EXCEPTION 'Aquest lot està en estat "%" i no es pot expedir fins que estigui envasat.', COALESCE(v_lot.estat, 'desconegut');
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM obrador_expedicions WHERE id_lot = p_id_lot) THEN
+    RAISE EXCEPTION 'Aquest lot ja té una expedició registrada.';
   END IF;
 
   INSERT INTO obrador_expedicions (
@@ -149,7 +173,7 @@ BEGIN
     p_id_lot,
     NULLIF(btrim(COALESCE(p_id_client, '')), ''),
     NULLIF(btrim(COALESCE(p_comanda_holded, '')), ''),
-    COALESCE(p_check_sortida, false),
+    true,
     COALESCE(p_check_client, false),
     NULLIF(btrim(COALESCE(p_observacions, '')), '')
   )
