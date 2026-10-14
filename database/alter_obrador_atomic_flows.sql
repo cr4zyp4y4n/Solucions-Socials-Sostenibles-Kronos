@@ -32,6 +32,10 @@ DECLARE
   v_data_caducitat date;
   v_codi_qr text;
 BEGIN
+  IF NOT public.obrador_is_management_user() THEN
+    RAISE EXCEPTION 'No autoritzat per crear lots de producció';
+  END IF;
+
   SELECT *
   INTO v_recepcio
   FROM obrador_recepcions
