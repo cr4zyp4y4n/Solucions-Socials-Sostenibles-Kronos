@@ -25,7 +25,8 @@ import holdedApi from '../services/holdedApi';
 const HojaRutaViewModal = ({
   isOpen,
   onClose,
-  hojaRuta
+  hojaRuta,
+  canAccessInventory = false
 }) => {
   const { colors } = useTheme();
   const [productosIdoni, setProductosIdoni] = useState([]);
@@ -128,7 +129,7 @@ const HojaRutaViewModal = ({
   // Cargar inventario (productos + almacenes) para enlazar equipamiento
   useEffect(() => {
     const run = async () => {
-      if (!isOpen) return;
+      if (!isOpen || !canAccessInventory) return;
       setInvError('');
       setInvLoading(true);
       try {
@@ -146,11 +147,11 @@ const HojaRutaViewModal = ({
     };
     run();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, invCompany]);
+  }, [isOpen, invCompany, canAccessInventory]);
 
   // Seleccionar automáticamente el almacén objetivo (Font Honrada (Càtering))
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || !canAccessInventory) return;
     if (!Array.isArray(invWarehouses) || invWarehouses.length === 0) return;
     const target = invWarehouses.find((w) => normalizeText(w?.name) === TARGET_WAREHOUSE_NORM);
     if (!target?.id) {
@@ -160,12 +161,12 @@ const HojaRutaViewModal = ({
     setInvSelectedWarehouseId(String(target.id));
     setInvError('');
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, invWarehouses]);
+  }, [isOpen, invWarehouses, canAccessInventory]);
 
   // Cargar stock por almacén si aplica
   useEffect(() => {
     const run = async () => {
-      if (!isOpen) return;
+      if (!isOpen || !canAccessInventory) return;
       if (!invSelectedWarehouseId) {
         setInvWarehouseStock({});
         return;
@@ -192,11 +193,16 @@ const HojaRutaViewModal = ({
       }
     };
     run();
-  }, [isOpen, invCompany, invSelectedWarehouseId]);
+  }, [isOpen, invCompany, invSelectedWarehouseId, canAccessInventory]);
 
   // Auto-enlazar equipamiento cuando cambian datos
   useEffect(() => {
     if (!isOpen) return;
+    if (!canAccessInventory) {
+      setEquipmentLinks({});
+      setProductPicker({ normKey: null, query: '' });
+      return;
+    }
     const items = Array.isArray(hojaRuta?.equipamiento) ? hojaRuta.equipamiento : [];
     if (items.length === 0) return;
 
@@ -248,7 +254,7 @@ const HojaRutaViewModal = ({
 
     setEquipmentLinks(nextLinks);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, hojaRuta, invCompany, invSelectedWarehouseId, invProducts, allowedProductIds]);
+  }, [isOpen, hojaRuta, invCompany, invSelectedWarehouseId, invProducts, allowedProductIds, canAccessInventory]);
 
   // Función para obtener el estado de un producto por su nombre
   const getProductoEstado = (nombreProducto) => {
@@ -284,8 +290,6 @@ const HojaRutaViewModal = ({
     }
   };
 
-  if (!isOpen || !hojaRuta) return null;
-
   const formatFecha = (fecha) => {
     if (!fecha) return '';
     return new Date(fecha).toLocaleDateString('es-ES', {
@@ -308,13 +312,16 @@ const HojaRutaViewModal = ({
   }, [hojaRuta, equipSearch]);
 
   const allowedProducts = useMemo(() => {
+    if (!canAccessInventory) return [];
     if (!Array.isArray(invProducts) || invProducts.length === 0) return [];
     if (!allowedProductIds || allowedProductIds.size === 0) return [];
     return invProducts.filter((p) => {
       const pid = getProductIdCandidates(p)[0];
       return pid && allowedProductIds.has(pid);
     });
-  }, [invProducts, allowedProductIds]);
+  }, [invProducts, allowedProductIds, canAccessInventory]);
+
+  if (!isOpen || !hojaRuta) return null;
 
   return (
     <div style={{
@@ -741,35 +748,36 @@ const HojaRutaViewModal = ({
                     Equipamiento y Material
                   </h3>
 
-                  {/* Estado de vinculación (fijo: Solucions + Font Honrada (Càtering)) */}
-                  <div style={{
-                    display: 'flex',
-                    gap: '10px',
-                    flexWrap: 'wrap',
-                    alignItems: 'center',
-                    marginBottom: 14
-                  }}>
-                    <span style={{
-                      fontSize: 11,
-                      color: colors.textSecondary,
-                      padding: '6px 10px',
-                      borderRadius: 999,
-                      border: `1px solid ${colors.border}`,
-                      background: colors.surface
+                  {canAccessInventory && (
+                    <div style={{
+                      display: 'flex',
+                      gap: '10px',
+                      flexWrap: 'wrap',
+                      alignItems: 'center',
+                      marginBottom: 14
                     }}>
-                      Inventario: <b style={{ color: colors.text }}>Solucions</b> · Almacén: <b style={{ color: colors.text }}>Font Honrada (Càtering)</b>
-                    </span>
-
-                    {invLoading ? (
-                      <span style={{ fontSize: 11, color: colors.textSecondary }}>Cargando inventario…</span>
-                    ) : null}
-                    {invError ? (
-                      <span style={{ fontSize: 11, color: colors.error, display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <AlertCircle size={14} />
-                        {invError}
+                      <span style={{
+                        fontSize: 11,
+                        color: colors.textSecondary,
+                        padding: '6px 10px',
+                        borderRadius: 999,
+                        border: `1px solid ${colors.border}`,
+                        background: colors.surface
+                      }}>
+                        Inventario: <b style={{ color: colors.text }}>Solucions</b> · Almacén: <b style={{ color: colors.text }}>Font Honrada (Càtering)</b>
                       </span>
-                    ) : null}
-                  </div>
+
+                      {invLoading ? (
+                        <span style={{ fontSize: 11, color: colors.textSecondary }}>Cargando inventario…</span>
+                      ) : null}
+                      {invError ? (
+                        <span style={{ fontSize: 11, color: colors.error, display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <AlertCircle size={14} />
+                          {invError}
+                        </span>
+                      ) : null}
+                    </div>
+                  )}
 
                   {/* Buscar equipamiento */}
                   <div style={{
@@ -903,7 +911,7 @@ const HojaRutaViewModal = ({
                                   </p>
                                 )}
 
-                                {/* Enlace a inventario */}
+                                {canAccessInventory && (
                                 <div style={{ marginTop: 8 }}>
                                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                                     <span style={{
@@ -1103,6 +1111,7 @@ const HojaRutaViewModal = ({
                                     </div>
                                   ) : null}
                                 </div>
+                                )}
                               </div>
                             </div>
                           );
