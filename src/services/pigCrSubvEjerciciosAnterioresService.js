@@ -74,18 +74,29 @@ export async function upsertPigCrSubvEjerciciosAnteriores({ year, rows }) {
     }))
     .filter((r) => r.concepto || r.importe != null);
 
-  const { error: deleteError } = await supabase
+  const { data: existingRows, error: selectError } = await supabase
     .from('pig_cr_subv_ejercicios_anteriores')
-    .delete()
+    .select('id')
     .eq('year', y);
-  if (deleteError) return { error: deleteError };
+  if (selectError) return { error: selectError };
 
-  if (!payload.length) return { error: null };
+  const existingIds = (existingRows || []).map((row) => row.id).filter(Boolean);
 
-  const { error: insertError } = await supabase
-    .from('pig_cr_subv_ejercicios_anteriores')
-    .insert(payload);
-  if (insertError) return { error: insertError };
+  if (payload.length) {
+    const { error: insertError } = await supabase
+      .from('pig_cr_subv_ejercicios_anteriores')
+      .insert(payload);
+    if (insertError) return { error: insertError };
+  }
+
+  if (existingIds.length) {
+    const { error: deleteError } = await supabase
+      .from('pig_cr_subv_ejercicios_anteriores')
+      .delete()
+      .in('id', existingIds);
+    if (deleteError) return { error: deleteError };
+  }
+
   return { error: null };
 }
 
