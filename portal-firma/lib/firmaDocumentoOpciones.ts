@@ -11,6 +11,43 @@ function isMissingOpcionesColumn(message: string): boolean {
   return String(message || '').includes('opciones_aceptacion');
 }
 
+function normalizeAuditRespuesta(raw: unknown): 'si' | 'no' | null {
+  const value = String(raw || '').trim().toLowerCase();
+  if (value === 'si' || value === 'sí') return 'si';
+  if (value === 'no') return 'no';
+  return null;
+}
+
+async function loadRespuestaFromAuditoria(
+  documentoId: string
+): Promise<DocumentoOpcionesAceptacion | null> {
+  const { data } = await supabaseAdmin
+    .from('firma_auditorias')
+    .select('detalle')
+    .eq('documento_id', documentoId)
+    .eq('resultado', 'ok')
+    .order('created_at', { ascending: false })
+    .limit(10);
+
+  for (const row of data || []) {
+    const detalle = (row as { detalle?: Record<string, unknown> | null }).detalle;
+    if (detalle?.accion !== 'documento_lectura_confirmada') continue;
+
+    const respuesta = normalizeAuditRespuesta(detalle.respuesta);
+    if (!respuesta) continue;
+
+    return {
+      respuesta,
+      lectura_confirmada: respuesta === 'si',
+      confirmado_at:
+        typeof detalle.confirmado_at === 'string' ? detalle.confirmado_at : undefined,
+      formacion_acoso: detalle.formacion_acoso === true
+    };
+  }
+
+  return null;
+}
+
 export async function updateDocumentoLecturaConfirmada(
   documentoId: string,
   opciones: DocumentoOpcionesAceptacion,
@@ -49,9 +86,13 @@ export async function loadDocumentoOpciones(
     .maybeSingle();
 
   if (!error && data) {
+    const opciones =
+      ((data.opciones_aceptacion || null) as DocumentoOpcionesAceptacion | null) ||
+      (await loadRespuestaFromAuditoria(documentoId));
+
     return {
       tipoDocumento: data.tipo_documento,
-      opciones: (data.opciones_aceptacion || null) as DocumentoOpcionesAceptacion | null
+      opciones
     };
   }
 
@@ -61,7 +102,10 @@ export async function loadDocumentoOpciones(
       .select('tipo_documento')
       .eq('id', documentoId)
       .maybeSingle();
-    return { tipoDocumento: fallback?.tipo_documento, opciones: null };
+    return {
+      tipoDocumento: fallback?.tipo_documento,
+      opciones: await loadRespuestaFromAuditoria(documentoId)
+    };
   }
 
   return { tipoDocumento: undefined, opciones: null };
