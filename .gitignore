@@ -114,3 +114,9 @@ dist/
 
 # Supabase CLI (caché local: project-ref, versiones, pooler…)
 supabase/.temp/
+
+# Dades internes: mai al repositori
+*.xlsx
+*.xls
+*.csv
+*.patch
