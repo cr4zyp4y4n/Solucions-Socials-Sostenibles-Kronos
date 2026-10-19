@@ -136,31 +136,39 @@ export default function AyudaPage({ onBack }) {
           </div>
         </Section>
 
-        <Section title="Al servei / catering — entregar">
+        <Section title="El transport — marcar entregat">
           <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-            <Step num="1" title="Escaneja el mateix QR">
-              El transportista o qui rep al destí escaneja l&apos;etiqueta.
+            <Step num="1" title="Escaneja el QR">
+              El transportista escaneja l&apos;etiqueta en arribar.
             </Step>
             <Step num="2" title="Inicia sessió">
               Botó <em>Iniciar sessió per confirmar l&apos;entrega</em>.
             </Step>
-            <Step num="3" title="Confirmar entrega">
-              Revisa producte i client. Prem <em>Confirmar entrega al destí</em>.
+            <Step num="3" title="Marcar entregat">
+              Prem <em>Marcar com a entregat</em>. Això no és l&apos;OK del servei.
             </Step>
-            <Step num="4" title="Acceptació del client">
-              Tria <em>Client ha acceptat el producte</em> si el servei confirma la recepció,
-              o l&apos;opció sense confirmació explícita si cal.
+          </div>
+        </Section>
+
+        <Section title="El servei receptor — OK sense compte">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+            <Step num="1" title="Escaneja el mateix QR">
+              Qui rep el producte obre l&apos;etiqueta. No cal iniciar sessió.
             </Step>
-            <Step num="5" title="Resultat">
-              L&apos;expedició passa a <strong>entregat</strong> (visible també a Kronos).
+            <Step num="2" title="Confirmar la recepció">
+              Escriu el seu nom i, si vol, una observació. Prem <em>Confirmo que he rebut el producte</em>.
+            </Step>
+            <Step num="3" title="Resultat">
+              Queda l&apos;OK amb el nom i l&apos;hora. L&apos;entrega del transport és un pas a part.
             </Step>
           </div>
         </Section>
 
         <Section title="Consulta pública (sense login)">
           <p style={{ margin: 0, fontSize: 14, lineHeight: 1.55, color: colors.textSecondary }}>
-            Qualsevol persona pot escanejar el QR i veure la informació de traçabilitat sense iniciar sessió.
-            Només cal login per <strong>expedir</strong> o <strong>confirmar l&apos;entrega</strong>.
+            Qualsevol persona pot escanejar el QR i veure la traçabilitat sense iniciar sessió.
+            L&apos;OK de qui rep el producte tampoc demana compte.
+            El login només cal per <strong>expedir</strong> o perquè el transport marqui <strong>entregat</strong>.
           </p>
         </Section>
 

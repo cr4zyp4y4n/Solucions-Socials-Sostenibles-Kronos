@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useTheme } from '../ThemeContext';
+import { useAuth } from '../AuthContext';
 import { useObrador } from './ObradorContext';
 import {
   getIncidencies,
   getLotsPerIncidencia,
   crearIncidencia,
   tancarIncidencia,
-  marcarIncidenciaEnCurs
+  marcarIncidenciaEnCurs,
+  verificarIncidencia
 } from '../../services/obradorSupabaseService';
 
 const TIPUS_OPCIONS = [
@@ -72,7 +74,18 @@ function esActiva(inc) {
   return inc?.estat === 'oberta' || inc?.estat === 'en_curs';
 }
 
+function teAccioCorrectiva(inc) {
+  return inc != null && Object.prototype.hasOwnProperty.call(inc, 'tancada_per');
+}
+
+function nomResponsable(nom, id) {
+  if (nom) return nom;
+  if (id) return 'Usuari registrat';
+  return '—';
+}
+
 function titolIncidencia(inc) {
+  if (inc?.origen === 'torn') return 'Registre de torn';
   if (esSensor(inc)) {
     return inc.obrador_sensors?.nom || inc.obrador_sensors?.ubicacio || 'Sensor';
   }
@@ -108,9 +121,8 @@ function TancarModal({ inc, colors, onCancel, onConfirm, enviant }) {
       setLocalError('Cal respondre totes les preguntes (Sí / No).');
       return;
     }
-    const algunaNo = items.some((i) => answers[i.key] === false);
-    if (algunaNo && notes.trim().length < 5) {
-      setLocalError('Si marques No en alguna pregunta, indica el motiu a observacions (mín. 5 caràcters).');
+    if (notes.trim().length < 10) {
+      setLocalError('L\'acció correctiva ha de tenir almenys 10 caràcters.');
       return;
     }
     onConfirm({ checklist: { ...answers, origen: sensor ? 'sensor' : 'lot' }, notes: notes.trim() });
@@ -196,13 +208,13 @@ function TancarModal({ inc, colors, onCancel, onConfirm, enviant }) {
         </ul>
 
         <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 6, color: colors.textSecondary }}>
-          Observacions {items.some((i) => answers[i.key] === false) ? '*' : '(opcional)'}
+          Acció correctiva * (mín. 10 caràcters)
         </label>
         <textarea
           rows={3}
           value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          placeholder="Acció feta, causa, etc."
+          onChange={(e) => { setNotes(e.target.value); setLocalError(''); }}
+          placeholder="Què s'ha fet per corregir la incidència"
           style={{
             width: '100%',
             padding: '10px 12px',
@@ -265,7 +277,11 @@ function TancarModal({ inc, colors, onCancel, onConfirm, enviant }) {
 
 export default function ObradorIncidenciesPage() {
   const { colors } = useTheme();
+  const { user } = useAuth();
   const { navPayload, clearNavPayload } = useObrador();
+  const esGestio = ['admin', 'management', 'manager'].includes(
+    (user?.user_metadata?.role || '').toLowerCase()
+  );
   const success = colors.success || '#1D9E75';
   const danger = colors.error || '#c0392b';
   const warning = colors.warning || '#e67e22';
@@ -279,6 +295,8 @@ export default function ObradorIncidenciesPage() {
   const [enviant, setEnviant] = useState(false);
   const [tancantId, setTancantId] = useState(null);
   const [marcantId, setMarcantId] = useState(null);
+  const [verificantId, setVerificantId] = useState(null);
+  const [detallId, setDetallId] = useState(null);
   const [modalInc, setModalInc] = useState(null);
   const [highlightId, setHighlightId] = useState(null);
   const [error, setError] = useState('');
@@ -406,6 +424,22 @@ export default function ObradorIncidenciesPage() {
       setError(err.message || 'Error en marcar en revisió');
     } finally {
       setMarcantId(null);
+    }
+  }
+
+  async function handleVerificar(inc) {
+    setVerificantId(inc.id);
+    setError('');
+    try {
+      await verificarIncidencia(inc.id);
+      setSuccessMsg('Acció correctiva verificada');
+      setTimeout(() => setSuccessMsg(''), 4000);
+      setDetallId(inc.id);
+      await carregar();
+    } catch (err) {
+      setError(err.message || 'Error en verificar la incidència');
+    } finally {
+      setVerificantId(null);
     }
   }
 
@@ -553,13 +587,35 @@ export default function ObradorIncidenciesPage() {
                 <tbody>
                   {incidenciesFiltrades.map((inc) => {
                     const sensor = esSensor(inc);
+                    const origenTorn = inc.origen === 'torn';
                     const highlighted = highlightId === inc.id;
+                    const verificada = Boolean(inc.verificada_at);
+                    const pendentVerificar = inc.estat === 'tancada' && teAccioCorrectiva(inc) && !verificada;
+                    const estatColor = inc.estat === 'en_curs'
+                      ? colors.primary
+                      : inc.estat === 'oberta' || pendentVerificar
+                        ? warning
+                        : success;
+                    const estatLabel = verificada
+                      ? 'Verificada'
+                      : pendentVerificar
+                        ? 'Tancada · sense verificar'
+                        : labelEstat(inc.estat);
+                    const botoPetit = {
+                      padding: '6px 10px',
+                      fontSize: 12,
+                      fontWeight: 600,
+                      borderRadius: 6,
+                      border: `0.5px solid ${colors.border}`,
+                      background: colors.surface,
+                      color: colors.text
+                    };
                     return (
+                      <React.Fragment key={inc.id}>
                       <tr
-                        key={inc.id}
                         ref={(el) => { if (el) rowRefs.current[inc.id] = el; }}
                         style={{
-                          borderBottom: `1px solid ${colors.border}`,
+                          borderBottom: detallId === inc.id ? 'none' : `1px solid ${colors.border}`,
                           background: highlighted ? `${colors.primary}18` : 'transparent',
                           transition: 'background 0.3s'
                         }}
@@ -570,10 +626,10 @@ export default function ObradorIncidenciesPage() {
                             borderRadius: 6,
                             fontSize: 11,
                             fontWeight: 600,
-                            background: sensor ? `${colors.primary}22` : `${warning}22`,
-                            color: sensor ? colors.primary : warning
+                            background: origenTorn || sensor ? `${colors.primary}22` : `${warning}22`,
+                            color: origenTorn || sensor ? colors.primary : warning
                           }}>
-                            {sensor ? 'Sensor / temp.' : 'Lot'}
+                            {origenTorn ? 'Torn' : sensor ? 'Sensor / temp.' : 'Lot'}
                           </span>
                         </td>
                         <td style={{ padding: '12px 16px', fontWeight: 600 }}>
@@ -588,18 +644,10 @@ export default function ObradorIncidenciesPage() {
                             borderRadius: 6,
                             fontSize: 12,
                             fontWeight: 600,
-                            background: inc.estat === 'en_curs'
-                              ? `${colors.primary}22`
-                              : inc.estat === 'oberta'
-                                ? `${warning}22`
-                                : `${success}22`,
-                            color: inc.estat === 'en_curs'
-                              ? colors.primary
-                              : inc.estat === 'oberta'
-                                ? warning
-                                : success
+                            background: `${estatColor}22`,
+                            color: estatColor
                           }}>
-                            {labelEstat(inc.estat)}
+                            {estatLabel}
                           </span>
                         </td>
                         <td style={{ padding: '12px 16px' }}>
@@ -612,13 +660,8 @@ export default function ObradorIncidenciesPage() {
                                   onClick={() => handleEnRevisio(inc)}
                                   title="Reconèixer l'alerta sense tancar. Ideal si encara està fora de rang."
                                   style={{
-                                    padding: '6px 10px',
-                                    fontSize: 12,
-                                    fontWeight: 600,
-                                    borderRadius: 6,
-                                    border: `0.5px solid ${colors.border}`,
+                                    ...botoPetit,
                                     cursor: marcantId === inc.id ? 'not-allowed' : 'pointer',
-                                    background: colors.surface,
                                     color: colors.primary
                                   }}
                                 >
@@ -630,24 +673,79 @@ export default function ObradorIncidenciesPage() {
                                 disabled={tancantId === inc.id}
                                 onClick={() => setModalInc(inc)}
                                 style={{
-                                  padding: '6px 10px',
-                                  fontSize: 12,
-                                  fontWeight: 600,
-                                  borderRadius: 6,
-                                  border: `0.5px solid ${colors.border}`,
-                                  cursor: tancantId === inc.id ? 'not-allowed' : 'pointer',
-                                  background: colors.surface,
-                                  color: colors.text
+                                  ...botoPetit,
+                                  cursor: tancantId === inc.id ? 'not-allowed' : 'pointer'
                                 }}
                               >
                                 Tancar…
                               </button>
                             </div>
                           ) : (
-                            '—'
+                            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                              <button
+                                type="button"
+                                onClick={() => setDetallId((id) => (id === inc.id ? null : inc.id))}
+                                style={{ ...botoPetit, cursor: 'pointer' }}
+                              >
+                                {detallId === inc.id ? 'Amagar' : 'Detall'}
+                              </button>
+                              {esGestio && pendentVerificar && (
+                                <button
+                                  type="button"
+                                  disabled={verificantId === inc.id}
+                                  onClick={() => handleVerificar(inc)}
+                                  style={{
+                                    ...botoPetit,
+                                    cursor: verificantId === inc.id ? 'not-allowed' : 'pointer',
+                                    color: colors.primary
+                                  }}
+                                >
+                                  {verificantId === inc.id ? '…' : 'Verificar'}
+                                </button>
+                              )}
+                            </div>
                           )}
                         </td>
                       </tr>
+                      {detallId === inc.id && (
+                        <tr style={{ borderBottom: `1px solid ${colors.border}` }}>
+                          <td colSpan={7} style={{ padding: '4px 16px 16px' }}>
+                            <div style={{
+                              padding: 16,
+                              borderRadius: 8,
+                              background: colors.surface,
+                              border: `0.5px solid ${colors.border}`,
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: 8,
+                              fontSize: 14
+                            }}>
+                              <div>
+                                <strong>Acció correctiva.</strong>{' '}
+                                {inc.notes_tancament || '—'}
+                              </div>
+                              <div>
+                                <strong>Tancada per</strong>{' '}
+                                {nomResponsable(inc.tancada_per_nom, inc.tancada_per)}
+                                {' · '}
+                                {formatData(inc.tancada_at)}
+                              </div>
+                              {verificada ? (
+                                <div style={{ color: success, fontWeight: 600 }}>
+                                  Verificada per {nomResponsable(inc.verificada_per_nom, inc.verificada_per)}
+                                  {' · '}
+                                  {formatData(inc.verificada_at)}
+                                </div>
+                              ) : (
+                                <div style={{ color: warning, fontWeight: 600 }}>
+                                  Pendent de verificar que l&apos;acció correctiva ha estat efectiva.
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                      </React.Fragment>
                     );
                   })}
                 </tbody>

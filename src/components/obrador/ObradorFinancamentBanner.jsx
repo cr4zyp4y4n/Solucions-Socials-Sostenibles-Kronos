@@ -24,7 +24,8 @@ export default function ObradorFinancamentBanner() {
         justifyContent: 'center',
         gap: 14,
         padding: '14px 24px',
-        marginTop: 32,
+        marginTop: 'auto',
+        flexShrink: 0,
         borderTop: `1px solid ${colors.border}`,
         background: colors.surface
       }}

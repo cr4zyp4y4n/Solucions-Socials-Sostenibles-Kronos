@@ -1,3 +1,24 @@
+## v2.7.2
+
+### Obrador Ac3 — acción correctiva, turnos, exportación y OK del receptor
+
+- **Báner de financiación** al pie de Obrador (pegado al final de la ventana si hay poco contenido) y en el login de Kronos. Texto: «Promou i finança: la Generalitat de Catalunya – Departament d'Empresa i Treball».
+- **Incidencias:** no se cierra sin describir la acción correctiva (mínimo 10 caracteres). Queda quién la cerró y cuándo. Gestión puede verificarla; quien verifica puede ser otra persona. Una cerrada sin verificar se distingue de una verificada.
+- **Registres de torn:** checklist de inicio, producción y cierre. Se ve si los tres de hoy están hechos. Un registro por momento y día. Un ítem no conforme puede abrir una incidencia enlazada. El texto del checklist es un borrador técnico (`shared/obrador/checklistsTorn.js`); lo tiene que cerrar la responsable de calidad. No hay umbrales de temperatura.
+- **Exportación para inspección:** en Obrador, un periodo (este mes, el anterior o fechas libres) descarga un PDF para entregar y un CSV por tabla: recepciones, lotes con recepciones de origen, expediciones, incidencias con la acción correctiva, registros de turno y temperaturas. La cabecera lleva la entidad, el periodo, la fecha de generación y quién lo generó.
+- **OK del servicio receptor:** el transporte sigue marcando la expedición como entregada, con su cuenta. Quien recibe escanea el QR del producto, sin cuenta, y confirma con su nombre, la hora y una nota opcional. En Kronos se ve «OK · nombre» o «Pendent OK del servei».
+
+**SQL ya ejecutado en Supabase:**
+- `database/alter_obrador_incidencies_accio_correctiva.sql`
+- `database/create_obrador_registres_torn.sql`
+- `database/alter_obrador_expedicions_ok_client.sql`
+
+**Tras instalar Kronos:** cerrar la app del todo y volver a abrirla.
+
+**Portal obrador:** hay que volver a publicarlo para que el móvil vea el OK al escanear el QR.
+
+---
+
 ## v2.7.1
 
 ### PIG Normal — Tesorería (hoja nueva)

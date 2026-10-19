@@ -13,6 +13,7 @@ import {
 import { useAuth } from './AuthContext';
 import { useTheme } from './ThemeContext';
 import ConnectionTest from './ConnectionTest';
+import ObradorFinancamentBanner from './obrador/ObradorFinancamentBanner';
 import logo from '../assets/Logo Minimalist SSS Highest Opacity.PNG';
 import ReactDOM from 'react-dom';
 
@@ -105,6 +106,12 @@ const LoginPage = () => {
     <div style={{
       minHeight: '100vh',
       backgroundColor: colors.background,
+      display: 'flex',
+      flexDirection: 'column',
+      boxSizing: 'border-box'
+    }}>
+    <div style={{
+      flex: 1,
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
@@ -554,7 +561,7 @@ const LoginPage = () => {
       {/* Indicador de conexión en la esquina inferior derecha */}
       <div style={{
         position: 'fixed',
-        bottom: '20px',
+        bottom: '88px',
         right: '20px',
         zIndex: 1000
       }}>
@@ -569,6 +576,8 @@ const LoginPage = () => {
           }
         `}
       </style>
+    </div>
+    <ObradorFinancamentBanner />
     </div>
   );
 };

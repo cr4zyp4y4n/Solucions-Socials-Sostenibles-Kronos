@@ -8,6 +8,8 @@ import ObradorProductesPage from './ObradorProductesPage';
 import ObradorLotsPage from './ObradorLotsPage';
 import ObradorExpedicionsPage from './ObradorExpedicionsPage';
 import ObradorIncidenciesPage from './ObradorIncidenciesPage';
+import ObradorRegistresTornPage from './ObradorRegistresTornPage';
+import ObradorExportacioPage from './ObradorExportacioPage';
 import ObradorEscandallsPage from './ObradorEscandallsPage';
 import ObradorKpisMensualPage from './ObradorKpisMensualPage';
 import ObradorFinancamentBanner from './ObradorFinancamentBanner';
@@ -19,6 +21,8 @@ const TABS = [
   { id: 'lots', label: 'Lots' },
   { id: 'expedicions', label: 'Expedicions' },
   { id: 'incidencies', label: 'Incidències', roles: ['admin', 'management', 'manager'] },
+  { id: 'registres-torn', label: 'Registres de torn' },
+  { id: 'exportacio', label: 'Exportació' },
   { id: 'escandalls', label: 'Escandalls', roles: ['admin', 'management', 'manager'], provisional: true },
   { id: 'kpis-mensuals', label: 'KPIs mensuals', roles: ['admin', 'management', 'manager'], provisional: true }
 ];
@@ -52,6 +56,10 @@ function ObradorShell() {
         return <ObradorExpedicionsPage />;
       case 'incidencies':
         return <ObradorIncidenciesPage />;
+      case 'registres-torn':
+        return <ObradorRegistresTornPage />;
+      case 'exportacio':
+        return <ObradorExportacioPage />;
       case 'escandalls':
         return <ObradorEscandallsPage />;
       case 'kpis-mensuals':
@@ -62,7 +70,14 @@ function ObradorShell() {
   }
 
   return (
-    <div style={{ width: '100%', minHeight: '100%', background: colors.background }}>
+    <div style={{
+      width: '100%',
+      minHeight: 'calc(100vh - 60px)',
+      display: 'flex',
+      flexDirection: 'column',
+      background: colors.background,
+      boxSizing: 'border-box'
+    }}>
       <nav
         style={{
           display: 'flex',
@@ -71,7 +86,8 @@ function ObradorShell() {
           borderBottom: `1px solid ${colors.border}`,
           background: colors.surface,
           overflowX: 'auto',
-          flexWrap: 'nowrap'
+          flexWrap: 'nowrap',
+          flexShrink: 0
         }}
       >
         {tabsVisibles.map((tab) => {
@@ -101,7 +117,7 @@ function ObradorShell() {
           );
         })}
       </nav>
-      <div>{renderView()}</div>
+      <div style={{ flex: 1 }}>{renderView()}</div>
       <ObradorFinancamentBanner />
     </div>
   );

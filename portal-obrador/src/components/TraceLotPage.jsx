@@ -3,6 +3,7 @@ import { supabase } from '../config/supabase';
 import { colors } from '../theme';
 import ExpedirLotSection from './ExpedirLotSection';
 import ConfirmarEntregaSection from './ConfirmarEntregaSection';
+import OkClientSection from './OkClientSection';
 import LoginPage from './LoginPage';
 import { normalitzarCodiQR } from '../utils/obradorTraceCode.js';
 
@@ -227,6 +228,8 @@ export default function TraceLotPage({ traceCode, staffUser = null, onStaffLogin
             ) : null}
           </div>
         ) : null}
+
+        <OkClientSection traceCode={traceCode} />
 
         {staffUser ? (
           lotExpedit ? (

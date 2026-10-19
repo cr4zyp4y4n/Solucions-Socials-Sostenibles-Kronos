@@ -180,7 +180,7 @@ export default function ConfirmarEntregaSection({ traceCode, autoOpen = false })
             ) : null}
           </div>
           <p style={{ margin: 0, fontSize: 13, color: colors.textSecondary, lineHeight: 1.5 }}>
-            Verifica l&apos;estat del producte a l&apos;arribar. En confirmar, l&apos;expedició passarà a <strong>entregat</strong>.
+            El transport marca l&apos;arribada. L&apos;OK del servei el fa qui rep, escanejant el QR sense compte.
           </p>
           {error ? (
             <p style={{ margin: 0, color: colors.error || '#c0392b', fontSize: 13 }}>{error}</p>
@@ -188,7 +188,7 @@ export default function ConfirmarEntregaSection({ traceCode, autoOpen = false })
           <button
             type="button"
             disabled={enviant}
-            onClick={() => confirmar(true)}
+            onClick={() => confirmar(false)}
             style={{
               padding: '12px 16px',
               fontSize: 14,
@@ -201,24 +201,7 @@ export default function ConfirmarEntregaSection({ traceCode, autoOpen = false })
               color: '#fff'
             }}
           >
-            {enviant ? 'Registrant…' : 'Entregat — client ha acceptat el producte'}
-          </button>
-          <button
-            type="button"
-            disabled={enviant}
-            onClick={() => confirmar(false)}
-            style={{
-              padding: '12px 16px',
-              fontSize: 14,
-              fontWeight: 600,
-              borderRadius: 10,
-              cursor: enviant ? 'wait' : 'pointer',
-              background: colors.surface,
-              color: colors.text,
-              border: `1px solid ${colors.border}`
-            }}
-          >
-            Entregat (sense confirmació del client)
+            {enviant ? 'Registrant…' : 'Marcar com a entregat'}
           </button>
           <button
             type="button"

@@ -2,6 +2,7 @@ import { supabase } from '../config/supabase';
 import { formatInTimeZone, fromZonedTime } from 'date-fns-tz';
 import { subDays } from 'date-fns';
 import { normalitzarCodiQR as normalitzarCodiQRShared } from '../utils/obradorTraceCode';
+import { MOMENTS_TORN } from '../../shared/obrador/checklistsTorn';
 
 const TIMEZONE_MADRID = 'Europe/Madrid';
 
@@ -764,26 +765,37 @@ export async function getExpedicions(limitOrOpts = 50, maybeOpts) {
   const offset = opts.offset ?? 0;
   const cerca = String(opts.cerca || '').trim();
 
-  let q = supabase
-    .from('obrador_expedicions')
-    .select(`
-      id, id_client, data_sortida, comanda_holded, estat, check_client, check_sortida,
-      obrador_lots (
-        codi_lot,
-        obrador_productes ( nom )
-      )
-    `)
-    .order('data_sortida', { ascending: false })
-    .range(offset, offset + limit - 1);
-
-  if (cerca) {
-    q = q.or(`id_client.ilike.%${cerca}%,comanda_holded.ilike.%${cerca}%`);
+  function consulta(columnes) {
+    let q = supabase
+      .from('obrador_expedicions')
+      .select(columnes)
+      .order('data_sortida', { ascending: false })
+      .range(offset, offset + limit - 1);
+    if (cerca) {
+      q = q.or(`id_client.ilike.%${cerca}%,comanda_holded.ilike.%${cerca}%`);
+    }
+    if (opts.estat) q = q.eq('estat', opts.estat);
+    return q;
   }
-  if (opts.estat) q = q.eq('estat', opts.estat);
 
-  const { data, error } = await q;
-  if (error) throw error;
-  return data || [];
+  const ambOk = `
+      id, id_client, data_sortida, comanda_holded, estat, check_client, check_sortida,
+      confirmat_client_nom, confirmat_client_at, confirmat_client_nota,
+      obrador_lots ( codi_lot, obrador_productes ( nom ) )
+    `;
+  const senseOk = `
+      id, id_client, data_sortida, comanda_holded, estat, check_client, check_sortida,
+      obrador_lots ( codi_lot, obrador_productes ( nom ) )
+    `;
+
+  const primer = await consulta(ambOk);
+  if (primer.error && isMissingColumnError(primer.error)) {
+    const segon = await consulta(senseOk);
+    if (segon.error) throw segon.error;
+    return segon.data || [];
+  }
+  if (primer.error) throw primer.error;
+  return primer.data || [];
 }
 
 export async function crearExpedicio(dades) {
@@ -875,8 +887,47 @@ export async function upsertClient(nom, codi = null) {
 
 // ── INCIDÈNCIES ────────────────────────────────────────────────
 
+async function usuariAutenticatId() {
+  const { data, error } = await supabase.auth.getUser();
+  if (error) throw error;
+  const id = data?.user?.id;
+  if (!id) throw new Error('Cal iniciar sessió.');
+  return id;
+}
+
+async function nomsPerfilsObrador(ids) {
+  const unique = [...new Set((ids || []).filter(Boolean))];
+  if (!unique.length) return {};
+  const { data, error } = await supabase.rpc('obrador_noms_perfils', { p_ids: unique });
+  if (error) {
+    const msg = error.message || '';
+    if (error.code === '42883' || error.code === 'PGRST202' || /function .* does not exist|could not find the function/i.test(msg)) {
+      return {};
+    }
+    throw error;
+  }
+  const map = {};
+  for (const row of data || []) map[row.id] = row.nom;
+  return map;
+}
+
+function ambNomsResponsables(rows, noms) {
+  return (rows || []).map((row) => ({
+    ...row,
+    tancada_per_nom: row.tancada_per ? (noms[row.tancada_per] || null) : null,
+    verificada_per_nom: row.verificada_per ? (noms[row.verificada_per] || null) : null
+  }));
+}
+
 export async function getIncidencies(limit = 100, { estat, estats } = {}) {
   const selectFull = `
+      id, tipus, descripcio, data_incidencia, estat, origen, id_sensor, valor_extrem,
+      tancada_at, notes_tancament, checklist_tancament, inici_episodi_at,
+      tancada_per, verificada_per, verificada_at,
+      obrador_lots ( codi_lot ),
+      obrador_sensors ( nom, ubicacio )
+    `;
+  const selectNotes = `
       id, tipus, descripcio, data_incidencia, estat, origen, id_sensor, valor_extrem,
       tancada_at, notes_tancament, checklist_tancament, inici_episodi_at,
       obrador_lots ( codi_lot ),
@@ -900,16 +951,24 @@ export async function getIncidencies(limit = 100, { estat, estats } = {}) {
     return q;
   }
 
-  const { data, error } = await run(selectFull);
-  if (error) {
-    if (isMissingColumnError(error)) {
-      const res2 = await run(selectFallback);
-      if (res2.error) throw res2.error;
-      return res2.data || [];
+  let rows;
+  const full = await run(selectFull);
+  if (full.error) {
+    if (!isMissingColumnError(full.error)) throw full.error;
+    const notes = await run(selectNotes);
+    if (notes.error) {
+      if (!isMissingColumnError(notes.error)) throw notes.error;
+      const antic = await run(selectFallback);
+      if (antic.error) throw antic.error;
+      return antic.data || [];
     }
-    throw error;
+    rows = notes.data || [];
+  } else {
+    rows = full.data || [];
   }
-  return data || [];
+
+  const noms = await nomsPerfilsObrador(rows.flatMap((row) => [row.tancada_per, row.verificada_per]));
+  return ambNomsResponsables(rows, noms);
 }
 
 /** Compatibilitat dashboard: actives = oberta + en_curs. */
@@ -947,50 +1006,384 @@ export async function marcarIncidenciaEnCurs(id) {
   return data;
 }
 
+const ACCIO_CORRECTIVA_MIN = 10;
+
+function notesTancamentExigides(notes) {
+  const text = String(notes ?? '').trim();
+  if (text.length < ACCIO_CORRECTIVA_MIN) {
+    throw new Error('L\'acció correctiva ha de tenir almenys 10 caràcters.');
+  }
+  return text;
+}
+
 /**
  * Tancament amb checklist (lot o sensor).
+ * Exigeix descriure l'acció correctiva i deixa qui la tanca.
+ * Si les columnes noves encara no existeixen, tanca igual que abans.
  * @param {string} id
  * @param {{ checklist?: Record<string, boolean|string>, notes?: string }} [opts]
  */
 export async function tancarIncidencia(id, opts = {}) {
-  const payload = {
-    estat: 'tancada',
-    tancada_at: new Date().toISOString(),
-    updated_at: new Date().toISOString()
-  };
-  if (opts.checklist && typeof opts.checklist === 'object') {
-    payload.checklist_tancament = opts.checklist;
-  }
-  if (opts.notes != null) {
-    payload.notes_tancament = String(opts.notes).trim() || null;
+  const notes = notesTancamentExigides(opts.notes);
+  const ara = new Date().toISOString();
+  let tancadaPer = null;
+  try {
+    tancadaPer = await usuariAutenticatId();
+  } catch (_) {
+    tancadaPer = null;
   }
 
+  const base = {
+    estat: 'tancada',
+    tancada_at: ara,
+    updated_at: ara,
+    notes_tancament: notes
+  };
+  if (opts.checklist && typeof opts.checklist === 'object') {
+    base.checklist_tancament = opts.checklist;
+  }
+
+  const intents = [
+    { ...base, tancada_per: tancadaPer },
+    base,
+    {
+      estat: 'tancada',
+      tancada_at: ara,
+      updated_at: ara
+    }
+  ];
+
+  let ultimError = null;
+  for (const payload of intents) {
+    const { data, error } = await supabase
+      .from('obrador_incidencies')
+      .update(payload)
+      .eq('id', id)
+      .select()
+      .single();
+    if (!error) return data;
+    ultimError = error;
+    if (!isMissingColumnError(error)) throw error;
+  }
+  throw ultimError;
+}
+
+/**
+ * Gestió comprova que l'acció correctiva ha estat efectiva.
+ * Pot ser una persona distinta de qui ha tancat.
+ */
+export async function verificarIncidencia(id) {
+  const { data: esGestio, error: errorRol } = await supabase.rpc('obrador_is_management_user');
+  if (errorRol) throw errorRol;
+  if (!esGestio) {
+    throw new Error('Només el rol de gestió pot verificar una incidència.');
+  }
+
+  const uid = await usuariAutenticatId();
+  const { data: actual, error: errorLectura } = await supabase
+    .from('obrador_incidencies')
+    .select('id, estat, verificada_at')
+    .eq('id', id)
+    .single();
+
+  if (errorLectura) {
+    if (isMissingColumnError(errorLectura)) {
+      throw new Error('Falta aplicar la migració d\'acció correctiva a la base de dades.');
+    }
+    throw errorLectura;
+  }
+  if (actual?.estat !== 'tancada') {
+    throw new Error('Només es pot verificar una incidència tancada.');
+  }
+  if (actual?.verificada_at) {
+    throw new Error('Aquesta incidència ja està verificada.');
+  }
+
+  const ara = new Date().toISOString();
   const { data, error } = await supabase
     .from('obrador_incidencies')
-    .update(payload)
+    .update({
+      verificada_per: uid,
+      verificada_at: ara,
+      updated_at: ara
+    })
     .eq('id', id)
+    .eq('estat', 'tancada')
+    .is('verificada_at', null)
     .select()
     .single();
 
   if (error) {
-    // Fallback sense columnes noves
     if (isMissingColumnError(error)) {
-      const { data: d2, error: e2 } = await supabase
-        .from('obrador_incidencies')
-        .update({
-          estat: 'tancada',
-          tancada_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', id)
-        .select()
-        .single();
-      if (e2) throw e2;
-      return d2;
+      throw new Error('Falta aplicar la migració d\'acció correctiva a la base de dades.');
     }
     throw error;
   }
   return data;
+}
+
+// ── REGISTRES APPCC PER TORN ───────────────────────────────────
+
+const MOMENTS_TORN_VALIDS = new Set(MOMENTS_TORN.map((m) => m.id));
+
+function faltaTaulaRegistresTorn(error) {
+  const msg = error?.message || '';
+  return error?.code === '42P01'
+    || error?.code === 'PGRST205'
+    || (/obrador_registres_torn/i.test(msg) && /does not exist|schema cache|could not find/i.test(msg));
+}
+
+function errorRegistreTorn(error) {
+  if (!error) return;
+  if (error.code === '23505') {
+    throw new Error('Ja hi ha un registre d\'aquest moment per aquest dia.');
+  }
+  if (faltaTaulaRegistresTorn(error)) {
+    throw new Error('Falta aplicar database/create_obrador_registres_torn.sql a Supabase.');
+  }
+  throw error;
+}
+
+function normalitzarItemsTorn(items) {
+  if (!Array.isArray(items) || items.length === 0) {
+    throw new Error('El registre ha de tenir els ítems del checklist.');
+  }
+  return items.map((item) => {
+    if (typeof item?.ok !== 'boolean' || !String(item.clau || '').trim() || !String(item.etiqueta || '').trim()) {
+      throw new Error('Cada ítem ha de tenir clau, etiqueta i una resposta sí o no.');
+    }
+    const valor = String(item.valor ?? '').trim();
+    const nota = String(item.nota ?? '').trim();
+    return {
+      clau: String(item.clau).trim(),
+      etiqueta: String(item.etiqueta).trim(),
+      ok: item.ok,
+      valor: valor || null,
+      nota: nota || null
+    };
+  });
+}
+
+const SELECT_REGISTRE_TORN = `
+  id, data, moment, id_operari, registrat_per, items, incidencia_detectada,
+  id_incidencia, observacions, created_at, updated_at,
+  obrador_operaris ( nom )
+`;
+
+async function ambNomQuiRegistra(rows) {
+  const noms = await nomsPerfilsObrador((rows || []).map((row) => row.registrat_per));
+  return (rows || []).map((row) => ({
+    ...row,
+    registrat_per_nom: row.registrat_per ? (noms[row.registrat_per] || null) : null,
+    operari_nom: row.obrador_operaris?.nom || null
+  }));
+}
+
+export async function getRegistresTorn({ desde, fins } = {}) {
+  let q = supabase
+    .from('obrador_registres_torn')
+    .select(SELECT_REGISTRE_TORN)
+    .order('data', { ascending: false })
+    .order('created_at', { ascending: false });
+  if (desde) q = q.gte('data', desde);
+  if (fins) q = q.lte('data', fins);
+  const { data, error } = await q;
+  if (error) errorRegistreTorn(error);
+  return ambNomQuiRegistra(data || []);
+}
+
+export async function getRegistreTornDelDia(data, moment) {
+  if (!MOMENTS_TORN_VALIDS.has(moment)) {
+    throw new Error('Moment de torn no vàlid.');
+  }
+  const { data: row, error } = await supabase
+    .from('obrador_registres_torn')
+    .select(SELECT_REGISTRE_TORN)
+    .eq('data', data)
+    .eq('moment', moment)
+    .maybeSingle();
+  if (error) errorRegistreTorn(error);
+  if (!row) return null;
+  const [enriquit] = await ambNomQuiRegistra([row]);
+  return enriquit;
+}
+
+export async function crearRegistreTorn(dades) {
+  if (!MOMENTS_TORN_VALIDS.has(dades?.moment)) {
+    throw new Error('Moment de torn no vàlid.');
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(dades?.data || ''))) {
+    throw new Error('Data no vàlida.');
+  }
+  const items = normalitzarItemsTorn(dades.items);
+  let registratPer = null;
+  try {
+    registratPer = await usuariAutenticatId();
+  } catch (_) {
+    registratPer = null;
+  }
+
+  const { data, error } = await supabase
+    .from('obrador_registres_torn')
+    .insert({
+      data: dades.data,
+      moment: dades.moment,
+      id_operari: dades.id_operari || null,
+      registrat_per: registratPer,
+      items,
+      incidencia_detectada: items.some((item) => item.ok === false),
+      id_incidencia: dades.id_incidencia || null,
+      observacions: String(dades.observacions || '').trim() || null
+    })
+    .select(SELECT_REGISTRE_TORN)
+    .single();
+  if (error) errorRegistreTorn(error);
+  const [enriquit] = await ambNomQuiRegistra([data]);
+  return enriquit;
+}
+
+// ── EXPORTACIÓ PER A INSPECCIÓ ─────────────────────────────────
+
+const EXPORT_PAGE = 1000;
+const EXPORT_MAX = 20000;
+
+function iniciDiaMadridIso(dia) {
+  return fromZonedTime(`${dia}T00:00:00`, TIMEZONE_MADRID).toISOString();
+}
+
+function fiDiaMadridIso(dia) {
+  return fromZonedTime(`${dia}T23:59:59.999`, TIMEZONE_MADRID).toISOString();
+}
+
+async function llegirAmbSelect(taula, columna, inici, fi, select) {
+  const rows = [];
+  for (let offset = 0; offset < EXPORT_MAX; offset += EXPORT_PAGE) {
+    const { data, error } = await supabase
+      .from(taula)
+      .select(select)
+      .gte(columna, inici)
+      .lte(columna, fi)
+      .order(columna, { ascending: true })
+      .range(offset, offset + EXPORT_PAGE - 1);
+    if (error) throw error;
+    const batch = data || [];
+    rows.push(...batch);
+    if (batch.length < EXPORT_PAGE) return { rows, truncat: false };
+  }
+  return { rows, truncat: true };
+}
+
+async function llegirRang(taula, columna, inici, fi, selects) {
+  let ultimError = null;
+  for (const select of selects) {
+    try {
+      return await llegirAmbSelect(taula, columna, inici, fi, select);
+    } catch (error) {
+      ultimError = error;
+      const msg = error?.message || '';
+      const esEsquema = isMissingColumnError(error)
+        || error?.code === 'PGRST200'
+        || /obrador_lot_recepcions|obrador_sensors/i.test(msg);
+      if (!esEsquema) throw error;
+    }
+  }
+  throw ultimError;
+}
+
+async function nomDeQuiExporta() {
+  try {
+    const id = await usuariAutenticatId();
+    const noms = await nomsPerfilsObrador([id]);
+    return noms[id] || 'Usuari registrat';
+  } catch (_) {
+    return 'Usuari registrat';
+  }
+}
+
+export async function getExportacioInspeccio({ desde, fins }) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(desde || '')) || !/^\d{4}-\d{2}-\d{2}$/.test(String(fins || ''))) {
+    throw new Error('Cal indicar un rang de dates vàlid.');
+  }
+  if (desde > fins) {
+    throw new Error('La data d\'inici no pot ser posterior a la data final.');
+  }
+
+  const inici = iniciDiaMadridIso(desde);
+  const fi = fiDiaMadridIso(fins);
+
+  const [recepcions, lots, expedicions, incidenciesRaw, registres, temperatures, generatPer] = await Promise.all([
+    llegirRang('obrador_recepcions', 'data_recepcio', inici, fi, [`
+      id, data_recepcio, lot_proveidor, temperatura_arribada, estat, caducitat,
+      congelat, observacions, operari,
+      obrador_proveidors ( nom )
+    `]),
+    llegirRang('obrador_lots', 'data_produccio', inici, fi, [`
+      id, codi_lot, data_produccio, temp_final_coccio, estat, mostra_guardada,
+      quantitat_kg, observacions,
+      obrador_productes ( nom ),
+      obrador_operaris ( nom ),
+      obrador_lot_recepcions (
+        ordre,
+        obrador_recepcions (
+          lot_proveidor, data_recepcio,
+          obrador_proveidors ( nom )
+        )
+      )
+    `, `
+      id, codi_lot, data_produccio, temp_final_coccio, estat, mostra_guardada,
+      quantitat_kg, observacions,
+      obrador_productes ( nom ),
+      obrador_operaris ( nom )
+    `]),
+    llegirRang('obrador_expedicions', 'data_sortida', inici, fi, [`
+      id, id_client, data_sortida, comanda_holded, estat, check_client, check_sortida, observacions,
+      confirmat_client_nom, confirmat_client_at, confirmat_client_nota,
+      obrador_lots ( codi_lot, obrador_productes ( nom ) )
+    `, `
+      id, id_client, data_sortida, comanda_holded, estat, check_client, observacions,
+      obrador_lots ( codi_lot, obrador_productes ( nom ) )
+    `]),
+    llegirRang('obrador_incidencies', 'data_incidencia', inici, fi, [`
+      id, tipus, descripcio, data_incidencia, estat, origen,
+      tancada_at, notes_tancament, tancada_per, verificada_per, verificada_at,
+      obrador_lots ( codi_lot ),
+      obrador_sensors ( nom, ubicacio )
+    `, `
+      id, tipus, descripcio, data_incidencia, estat, origen,
+      tancada_at, notes_tancament,
+      obrador_lots ( codi_lot ),
+      obrador_sensors ( nom, ubicacio )
+    `, `
+      id, tipus, descripcio, data_incidencia, estat, origen, tancada_at,
+      obrador_lots ( codi_lot )
+    `]),
+    getRegistresTorn({ desde, fins }),
+    llegirRang('obrador_temperatures', 'mesura_at', inici, fi, [`
+      ubicacio, valor, tipus, mesura_at, humitat,
+      obrador_sensors ( nom )
+    `, `
+      ubicacio, valor, tipus, mesura_at, humitat
+    `]),
+    nomDeQuiExporta()
+  ]);
+
+  const noms = await nomsPerfilsObrador(
+    incidenciesRaw.rows.flatMap((row) => [row.tancada_per, row.verificada_per])
+  );
+
+  return {
+    desde,
+    fins,
+    generatEl: new Date().toISOString(),
+    generatPer,
+    recepcions: recepcions.rows,
+    lots: lots.rows.map((lot) => ({ ...lot, obrador_lot_recepcions: lot.obrador_lot_recepcions || [] })),
+    expedicions: expedicions.rows,
+    incidencies: ambNomsResponsables(incidenciesRaw.rows, noms),
+    registres,
+    temperatures: temperatures.rows,
+    temperaturesTruncades: temperatures.truncat
+  };
 }
 
 // ── KPIs DASHBOARD ─────────────────────────────────────────────

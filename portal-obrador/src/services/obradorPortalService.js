@@ -169,7 +169,25 @@ export async function getExpedicioPerLot(id_lot) {
   return data;
 }
 
-/** Marca l'expedició com a entregada al destí (catering / client). */
+/** Estat de l'OK del servei receptor. No cal sessió. */
+export async function getOkClientPublic(codi) {
+  const { data, error } = await supabase.rpc('obrador_ok_client_public', { p_codi: codi });
+  if (error) throw error;
+  return data;
+}
+
+/** El servei receptor confirma la recepció escanejant el QR. No marca l'entrega. */
+export async function confirmarOkClient(codi, nom, nota) {
+  const { data, error } = await supabase.rpc('obrador_confirmar_ok_client', {
+    p_codi: codi,
+    p_nom: nom,
+    p_nota: nota || null
+  });
+  if (error) throw error;
+  return data;
+}
+
+/** Marca l'expedició com a entregada al destí (transport / oficina). */
 export async function marcarExpedicioEntregada(id, { check_client = false } = {}) {
   const { data, error } = await supabase.rpc('obrador_marcar_expedicio_entregada', {
     p_id: id,

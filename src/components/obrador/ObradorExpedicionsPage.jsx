@@ -264,13 +264,13 @@ export default function ObradorExpedicionsPage() {
   const lotExpedible = lotEsExpedible(lotTrobat?.estat);
   const lotBloquejat = Boolean(lotTrobat) && !lotExpedible;
 
-  async function confirmarEntrega(checkClient) {
+  async function confirmarEntrega() {
     if (!entregaModal?.id) return;
     setEntregantId(entregaModal.id);
     setError('');
     try {
-      await marcarExpedicioEntregada(entregaModal.id, { check_client: checkClient });
-      setSuccessMsg(`Expedició entregada${checkClient ? ' (client ha acceptat)' : ''}.`);
+      await marcarExpedicioEntregada(entregaModal.id, { check_client: false });
+      setSuccessMsg('Expedició marcada com a entregada. L\'OK del servei el fa qui rep, amb el QR.');
       setTimeout(() => setSuccessMsg(''), 5000);
       setEntregaModal(null);
       await carregar();
@@ -438,10 +438,17 @@ export default function ObradorExpedicionsPage() {
                       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                       {exp.estat === 'entregat' ? (
                         <span style={{ fontSize: 12, color: colors.textSecondary }}>
-                          {exp.check_client ? 'Client OK' : '—'}
+                          {exp.check_client
+                            ? `OK${exp.confirmat_client_nom ? ` · ${exp.confirmat_client_nom}` : ''}`
+                            : 'Pendent OK del servei'}
                         </span>
                       ) : (
                         <>
+                        {exp.check_client ? (
+                          <span style={{ fontSize: 12, color: colors.textSecondary }}>
+                            {`OK${exp.confirmat_client_nom ? ` · ${exp.confirmat_client_nom}` : ''}`}
+                          </span>
+                        ) : null}
                         <button
                           type="button"
                           disabled={entregantId === exp.id}
@@ -765,7 +772,7 @@ export default function ObradorExpedicionsPage() {
             <p style={{ margin: '0 0 16px', fontSize: 14, color: colors.textSecondary, lineHeight: 1.5 }}>
               Lot <strong>{entregaModal.lot}</strong> → client <strong>{entregaModal.client}</strong>.
               {' '}
-              Marca com a entregat quan arribi al servei / catering.
+              Marca l&apos;arribada. L&apos;OK del servei el fa qui rep, escanejant el QR del producte.
             </p>
             {error ? (
               <p style={{ margin: '0 0 12px', color: danger, fontSize: 14 }}>{error}</p>
@@ -774,7 +781,7 @@ export default function ObradorExpedicionsPage() {
               <button
                 type="button"
                 disabled={Boolean(entregantId)}
-                onClick={() => confirmarEntrega(true)}
+                onClick={() => confirmarEntrega()}
                 style={{
                   padding: '12px 16px',
                   fontSize: 14,
@@ -786,24 +793,7 @@ export default function ObradorExpedicionsPage() {
                   color: '#fff'
                 }}
               >
-                Entregat — client ha acceptat el producte
-              </button>
-              <button
-                type="button"
-                disabled={Boolean(entregantId)}
-                onClick={() => confirmarEntrega(false)}
-                style={{
-                  padding: '12px 16px',
-                  fontSize: 14,
-                  fontWeight: 600,
-                  borderRadius: 8,
-                  cursor: 'pointer',
-                  background: colors.surface,
-                  color: colors.text,
-                  border: `0.5px solid ${colors.border}`
-                }}
-              >
-                Entregat (sense confirmació del client)
+                Marcar com a entregat
               </button>
               <button
                 type="button"
