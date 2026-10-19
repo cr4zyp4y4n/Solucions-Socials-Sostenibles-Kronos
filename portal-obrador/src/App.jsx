@@ -4,6 +4,7 @@ import LoginPage from './components/LoginPage';
 import RecepcioPage from './components/RecepcioPage';
 import TraceLotPage from './components/TraceLotPage';
 import AyudaPage from './components/AyudaPage';
+import FinancamentBanner from './components/FinancamentBanner';
 import { colors } from './theme';
 
 function getTraceCodeFromUrl() {
@@ -61,7 +62,7 @@ function ConfigMissing() {
   );
 }
 
-export default function App() {
+function AppContent() {
   const [user, setUser] = useState(null);
   const [traceCode] = useState(() => getTraceCodeFromUrl());
   const [checking, setChecking] = useState(true);
@@ -161,5 +162,19 @@ export default function App() {
         <RecepcioPage userEmail={user.email} />
       </main>
     </div>
+  );
+}
+
+/**
+ * El bàner de finançament ha de sortir a totes les pantalles del portal
+ * (ORDRE EMT/199/2023, base 15.l), també al login i a la traça pública,
+ * per això embolcalla el contingut en lloc d'anar dins de cada branca.
+ */
+export default function App() {
+  return (
+    <>
+      <AppContent />
+      <FinancamentBanner />
+    </>
   );
 }

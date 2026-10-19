@@ -10,6 +10,7 @@ import ObradorExpedicionsPage from './ObradorExpedicionsPage';
 import ObradorIncidenciesPage from './ObradorIncidenciesPage';
 import ObradorEscandallsPage from './ObradorEscandallsPage';
 import ObradorKpisMensualPage from './ObradorKpisMensualPage';
+import ObradorFinancamentBanner from './ObradorFinancamentBanner';
 
 const TABS = [
   { id: 'dashboard', label: 'Dashboard' },
@@ -101,6 +102,7 @@ function ObradorShell() {
         })}
       </nav>
       <div>{renderView()}</div>
+      <ObradorFinancamentBanner />
     </div>
   );
 }
