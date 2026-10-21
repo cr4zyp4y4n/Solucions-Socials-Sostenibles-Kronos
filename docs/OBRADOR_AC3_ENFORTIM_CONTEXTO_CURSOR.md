@@ -79,7 +79,7 @@ Hoy Kronos: el lote **no** lee el escandall (solo producto + recepciones). Enlaz
 |-------|---------|---------|
 | Dashboard | `ObradorDashboardPage.jsx` | KPIs **día**: lots, alertas temp, incidencias, expediciones, etiquetas, APPCC (recepciones incompletas), IoT Realtime, prod. semanal |
 | Recepcions | `ObradorRecepcionsPage.jsx` | Alta manual + OCR; filtros; editar; anul·lar→rebutjat; import Holded |
-| Productes | `ObradorProductesPage.jsx` | Vincular proveïdors/ingredients al producte (no CRUD productos completo) |
+| Productes | `ObradorProductesPage.jsx` | Fitxa (alta, edició, arxivar) i vincle proveïdors/ingredients. No esborra el producte. |
 | Lots | `ObradorLotsPage.jsx` | Crear lot multi-recepción + etiqueta; reimprimir etiqueta; filtros |
 | Expedicions | `ObradorExpedicionsPage.jsx` | QR (pegar o **cámara**), client autocomplete, check sortida **obligatorio**, entregar, anul·lar (en trànsit) |
 | Incidències | `ObradorIncidenciesPage.jsx` | Lot/sensor; en_curs; tancament checklist |

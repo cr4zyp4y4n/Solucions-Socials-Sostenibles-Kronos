@@ -1,3 +1,16 @@
+## v2.7.4
+
+### Obrador — ficha de producto y anulación que no borra si falta el SQL
+
+- **Ficha de producto.** En Productes se crea y se edita el nombre, los días de caducidad, los alérgenos (uno a uno), la temperatura de cocción, la de conservación, la ficha técnica y el estado. Arxivar lo deja inactivo: no sale al crear lotes nuevos y los lotes ya hechos lo siguen mostrando. No se borra. Los proveedores siguen en la misma pantalla. Si no hay temperatura de cocción, avisa de que ese producto no tendrá ese control. Las temperaturas se presentan como referencia técnica, no como criterio APPCC. Solo gestión puede guardar; el resto ve la ficha bloqueada.
+- **Anular sin el SQL nuevo ya no borra la expedición.** Si falta la función con rastro, Kronos muestra el error y no llama a la versión antigua. Cerrar una incidencia tampoco se guarda a medias si falta la columna de la acción correctiva.
+
+No hay SQL nuevo. El de la 2.7.3 sigue haciendo falta para poder anular.
+
+**Tras instalar Kronos:** cerrar la app del todo y volver a abrirla.
+
+---
+
 ## v2.7.3
 
 ### Obrador — anular deja rastro y listado de proveedores

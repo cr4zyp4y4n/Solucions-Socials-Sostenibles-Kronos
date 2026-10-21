@@ -287,33 +287,163 @@ export async function updateProveidorEstatUs(id, estatUs) {
 
 export const LOT_MULTI_RECEPCIO_SCHEMA_SQL = 'database/alter_obrador_lot_multi_recepcio.sql';
 
-export async function getProductes() {
-  const { data, error } = await supabase
-    .from('obrador_productes')
-    .select(`
-      id, nom, caducitat_dies, temp_coccio, temp_conservacio, allergens,
+export async function getProductes(opts = {}) {
+  const incloureInactius = Boolean(opts && opts.incloureInactius);
+
+  function consulta(columnes) {
+    let q = supabase.from('obrador_productes').select(columnes).order('nom');
+    if (!incloureInactius) q = q.eq('actiu', true);
+    return q;
+  }
+
+  const ambRelacio = `
+      id, nom, caducitat_dies, temp_coccio, temp_conservacio, allergens, fitxa_tecnica, actiu,
       obrador_producte_proveidors (
         id, id_proveidor, ingredient_nom,
         obrador_proveidors ( id, nom )
       )
-    `)
-    .eq('actiu', true)
-    .order('nom');
+    `;
+  const senseFitxa = `
+      id, nom, caducitat_dies, temp_coccio, temp_conservacio, allergens, actiu,
+      obrador_producte_proveidors (
+        id, id_proveidor, ingredient_nom,
+        obrador_proveidors ( id, nom )
+      )
+    `;
 
-  if (!error) return data || [];
+  let resultat = await consulta(ambRelacio);
+  if (resultat.error && isMissingColumnError(resultat.error)) {
+    resultat = await consulta(senseFitxa);
+  }
+  if (!resultat.error) return resultat.data || [];
 
-  // Schema antic sense taula producte↔proveïdor
+  const error = resultat.error;
+  // Schema antic sense taula producte↔proveïdor. Només llegeix.
   if (error?.code === 'PGRST200' || /obrador_producte_proveidors/i.test(error?.message || '')) {
-    const fallback = await supabase
-      .from('obrador_productes')
-      .select('id, nom, caducitat_dies, temp_coccio, temp_conservacio, allergens')
-      .eq('actiu', true)
-      .order('nom');
+    let fallback = await consulta(
+      'id, nom, caducitat_dies, temp_coccio, temp_conservacio, allergens, fitxa_tecnica, actiu'
+    );
+    if (fallback.error && isMissingColumnError(fallback.error)) {
+      fallback = await consulta('id, nom, caducitat_dies, temp_coccio, temp_conservacio, allergens');
+    }
     if (fallback.error) throw fallback.error;
     return (fallback.data || []).map((p) => ({ ...p, obrador_producte_proveidors: [] }));
   }
 
   throw error;
+}
+
+function netejaAllergens(llista) {
+  const nets = [];
+  const vistos = new Set();
+  for (const item of Array.isArray(llista) ? llista : []) {
+    const text = String(item || '').trim();
+    if (!text || text.includes(',')) continue;
+    const clau = text.toLowerCase();
+    if (vistos.has(clau)) continue;
+    vistos.add(clau);
+    nets.push(text);
+  }
+  return nets;
+}
+
+function numeroOpcional(valor, etiqueta) {
+  if (valor === '' || valor == null) return null;
+  const n = Number(String(valor).replace(',', '.'));
+  if (!Number.isFinite(n) || Math.abs(n) > 999.9) {
+    throw new Error(`${etiqueta} no és un número vàlid.`);
+  }
+  return Math.round(n * 10) / 10;
+}
+
+function caducitatObligatoria(valor) {
+  const n = Number(valor);
+  if (!Number.isInteger(n) || n <= 0) {
+    throw new Error('La caducitat en dies és obligatòria i ha de ser més gran que zero.');
+  }
+  return n;
+}
+
+async function exigirNomProducteUnic(nom, idExclos) {
+  const net = String(nom || '').trim();
+  if (!net) throw new Error('El nom del producte és obligatori.');
+  const { data, error } = await supabase
+    .from('obrador_productes')
+    .select('id, nom')
+    .eq('actiu', true);
+  if (error) throw error;
+  const clau = net.toLowerCase();
+  const ocupat = (data || []).some(
+    (p) => p.id !== idExclos && String(p.nom || '').trim().toLowerCase() === clau
+  );
+  if (ocupat) throw new Error('Ja hi ha un producte actiu amb aquest nom.');
+  return net;
+}
+
+function payloadProducte(dades, nom) {
+  const allergens = netejaAllergens(dades.allergens);
+  if ((dades.allergens || []).some((item) => String(item || '').includes(','))) {
+    throw new Error('Afegeix cada al·lergen per separat, sense comes.');
+  }
+  return {
+    nom,
+    caducitat_dies: caducitatObligatoria(dades.caducitat_dies),
+    allergens,
+    temp_coccio: numeroOpcional(dades.temp_coccio, 'La temperatura de cocció'),
+    temp_conservacio: numeroOpcional(dades.temp_conservacio, 'La temperatura de conservació'),
+    fitxa_tecnica: String(dades.fitxa_tecnica || '').trim() || null
+  };
+}
+
+const SELECT_PRODUCTE = 'id, nom, caducitat_dies, temp_coccio, temp_conservacio, allergens, fitxa_tecnica, actiu';
+
+export async function crearProducte(dades) {
+  const nom = await exigirNomProducteUnic(dades?.nom);
+  const { data, error } = await supabase
+    .from('obrador_productes')
+    .insert({ ...payloadProducte(dades, nom), actiu: true })
+    .select(SELECT_PRODUCTE)
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function actualitzarProducte(id, dades) {
+  if (!id) throw new Error('Falta el producte.');
+  const { data: actual, error: errorLectura } = await supabase
+    .from('obrador_productes')
+    .select('id, actiu')
+    .eq('id', id)
+    .single();
+  if (errorLectura) throw errorLectura;
+  let nom;
+  if (actual?.actiu === false) {
+    nom = String(dades?.nom || '').trim();
+    if (!nom) throw new Error('El nom del producte és obligatori.');
+  } else {
+    nom = await exigirNomProducteUnic(dades?.nom, id);
+  }
+  const { data, error } = await supabase
+    .from('obrador_productes')
+    .update({ ...payloadProducte(dades, nom), updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .select(SELECT_PRODUCTE)
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+/** Amaga el producte dels lots nous. No l'esborra: els lots històrics hi apunten. */
+export async function arxivarProducte(id) {
+  if (!id) throw new Error('Falta el producte.');
+  const { data, error } = await supabase
+    .from('obrador_productes')
+    .update({ actiu: false, updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .select(SELECT_PRODUCTE)
+    .single();
+  if (error) throw error;
+  return data;
 }
 
 /** Substitueix els proveïdors associats a un producte. */
@@ -866,18 +996,22 @@ export async function marcarExpedicioEntregada(id, { check_client = false } = {}
 /** Marca l'expedició en trànsit com a anulada (no l'esborra) i torna el lot a envasat. */
 export async function anularExpedicio(id, motiu) {
   const net = String(motiu || '').trim();
-  let resultat = await supabase.rpc('obrador_anular_expedicio', {
+  const { data, error } = await supabase.rpc('obrador_anular_expedicio', {
     p_id: id,
     p_motiu: net || null
   });
-  const msg = resultat.error?.message || '';
-  const senseMotiu = resultat.error?.code === 'PGRST202'
-    || /could not find the function|p_motiu/i.test(msg);
-  if (senseMotiu) {
-    resultat = await supabase.rpc('obrador_anular_expedicio', { p_id: id });
+  if (error) {
+    const msg = error.message || '';
+    if (error.code === 'PGRST202' || /could not find the function|p_motiu/i.test(msg)) {
+      throw new Error(
+        'Aquesta base de dades no té la versió d\'anul·lació amb rastre. ' +
+        'Cal aplicar database/alter_obrador_expedicions_anular_rastre.sql abans ' +
+        'de poder anul·lar expedicions.'
+      );
+    }
+    throw error;
   }
-  if (resultat.error) throw resultat.error;
-  return resultat.data;
+  return data;
 }
 
 // ── CLIENTS ────────────────────────────────────────────────────
@@ -1061,7 +1195,7 @@ function notesTancamentExigides(notes) {
 /**
  * Tancament amb checklist (lot o sensor).
  * Exigeix descriure l'acció correctiva i deixa qui la tanca.
- * Si les columnes noves encara no existeixen, tanca igual que abans.
+ * Si falta la columna del motiu, no tanca: abans el tercer intent desa el tancament sense acció.
  * @param {string} id
  * @param {{ checklist?: Record<string, boolean|string>, notes?: string }} [opts]
  */
@@ -1087,12 +1221,7 @@ export async function tancarIncidencia(id, opts = {}) {
 
   const intents = [
     { ...base, tancada_per: tancadaPer },
-    base,
-    {
-      estat: 'tancada',
-      tancada_at: ara,
-      updated_at: ara
-    }
+    base
   ];
 
   let ultimError = null;
@@ -1106,6 +1235,11 @@ export async function tancarIncidencia(id, opts = {}) {
     if (!error) return data;
     ultimError = error;
     if (!isMissingColumnError(error)) throw error;
+  }
+  if (isMissingColumnError(ultimError)) {
+    throw new Error(
+      'Falta aplicar database/alter_obrador_incidencies_accio_correctiva.sql abans de tancar incidències.'
+    );
   }
   throw ultimError;
 }
