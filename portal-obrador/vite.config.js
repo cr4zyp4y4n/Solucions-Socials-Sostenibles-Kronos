@@ -8,9 +8,13 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export default defineConfig({
   plugins: [react()],
   resolve: {
-    alias: {
-      '@shared-obrador': path.resolve(__dirname, '../shared/obrador')
-    }
+    alias: [
+      { find: '@shared-obrador', replacement: path.resolve(__dirname, '../shared/obrador') },
+      // shared/obrador queda fora de portal-obrador. En Netlify només hi ha
+      // node_modules aquí, i Rollup resol els imports des de la carpeta del fitxer.
+      { find: /^tesseract\.js$/, replacement: path.resolve(__dirname, 'node_modules/tesseract.js') },
+      { find: /^pdfjs-dist$/, replacement: path.resolve(__dirname, 'node_modules/pdfjs-dist') }
+    ]
   },
   server: {
     fs: {
