@@ -1,3 +1,20 @@
+## v2.7.3
+
+### Obrador — anular deja rastro y listado de proveedores
+
+- **Anular una expedición en tránsito ya no la borra.** Queda en estado anulada, con quién la anuló, cuándo y el motivo si se escribe. El lote vuelve a envasado y se puede expedir otra vez. En Expedicions se ve la etiqueta «Anul·lada»; el filtro «Anul·lada» la aísla. La del día no cuenta en el indicador de expediciones. La exportación de inspección incluye fecha, persona y motivo.
+- **Proveedores:** en Recepciones, el botón «Proveïdors» abre el listado (nombre, NIF, código, estado y contacto) sin entrar en una recepción nueva. Se puede buscar y mostrar los inactivos.
+
+**SQL a ejecutar en Supabase:** `database/alter_obrador_expedicions_anular_rastre.sql`
+
+Hasta que no esté aplicado, anular sigue borrando la fila.
+
+**Tras instalar Kronos:** cerrar la app del todo y volver a abrirla.
+
+**Portal obrador:** hay que volver a publicarlo para que el transporte no trate una salida anulada como la expedición vigente.
+
+---
+
 ## v2.7.2
 
 ### Obrador Ac3 — acción correctiva, turnos, exportación y OK del receptor
