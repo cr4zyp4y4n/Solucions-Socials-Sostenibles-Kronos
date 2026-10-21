@@ -162,6 +162,7 @@ export async function getExpedicioPerLot(id_lot) {
     .from('obrador_expedicions')
     .select('id, id_client, data_sortida, estat, check_client, comanda_holded')
     .eq('id_lot', id_lot)
+    .neq('estat', 'anulada')
     .order('data_sortida', { ascending: false })
     .limit(1)
     .maybeSingle();

@@ -90,6 +90,8 @@ export default function ObradorExpedicionsPage() {
   const [entregantId, setEntregantId] = useState(null);
   const [entregaModal, setEntregaModal] = useState(null);
   const [anulantId, setAnulantId] = useState(null);
+  const [anularModal, setAnularModal] = useState(null);
+  const [motiuAnulacio, setMotiuAnulacio] = useState('');
   const [clients, setClients] = useState([]);
   const [filtreCerca, setFiltreCerca] = useState('');
   const [filtreEstat, setFiltreEstat] = useState('');
@@ -281,18 +283,27 @@ export default function ObradorExpedicionsPage() {
     }
   }
 
-  async function handleAnular(exp) {
+  function obrirAnular(exp) {
     if (!exp?.id) return;
-    const ok = window.confirm(
-      `Anul·lar l'expedició del lot ${exp.obrador_lots?.codi_lot || ''}?\nEl lot tornarà a estat envasat.`
-    );
-    if (!ok) return;
-    setAnulantId(exp.id);
+    setError('');
+    setMotiuAnulacio('');
+    setAnularModal({
+      id: exp.id,
+      lot: exp.obrador_lots?.codi_lot,
+      client: exp.id_client
+    });
+  }
+
+  async function confirmarAnular() {
+    if (!anularModal?.id) return;
+    setAnulantId(anularModal.id);
     setError('');
     try {
-      await anularExpedicio(exp.id);
-      setSuccessMsg('Expedició anul·lada. Lot tornat a envasat.');
+      await anularExpedicio(anularModal.id, motiuAnulacio);
+      setSuccessMsg('Expedició anul·lada. Queda al llistat i el lot torna a envasat.');
       setTimeout(() => setSuccessMsg(''), 5000);
+      setAnularModal(null);
+      setMotiuAnulacio('');
       await carregar();
     } catch (err) {
       setError(err.message || 'Error en anul·lar l\'expedició');
@@ -364,7 +375,7 @@ export default function ObradorExpedicionsPage() {
         </div>
       )}
 
-      {error && mode === 'llistat' && !entregaModal && (
+      {error && mode === 'llistat' && !entregaModal && !anularModal && (
         <p style={{ color: danger, marginBottom: 16 }}>{error}</p>
       )}
 
@@ -386,6 +397,7 @@ export default function ObradorExpedicionsPage() {
               <option value="">Tots els estats</option>
               <option value="en trànsit">En trànsit</option>
               <option value="entregat">Entregat</option>
+              <option value="anulada">Anul·lada</option>
             </select>
           </div>
         {expedicions.length === 0 ? (
@@ -427,16 +439,32 @@ export default function ObradorExpedicionsPage() {
                         borderRadius: 6,
                         fontSize: 12,
                         fontWeight: 600,
-                        background: exp.estat === 'entregat' ? `${success}22` : `${warning}22`,
-                        color: exp.estat === 'entregat' ? success : warning
+                        background: exp.estat === 'entregat'
+                          ? `${success}22`
+                          : exp.estat === 'anulada'
+                            ? `${colors.textSecondary}22`
+                            : `${warning}22`,
+                        color: exp.estat === 'entregat'
+                          ? success
+                          : exp.estat === 'anulada'
+                            ? colors.textSecondary
+                            : warning
                       }}>
-                        {exp.estat === 'entregat' ? 'Entregat' : 'En trànsit'}
+                        {exp.estat === 'entregat' ? 'Entregat' : exp.estat === 'anulada' ? 'Anul·lada' : 'En trànsit'}
                       </span>
                     </td>
                     <td style={{ padding: '12px 16px' }}>{exp.comanda_holded || '—'}</td>
                     <td style={{ padding: '12px 16px' }}>
                       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                      {exp.estat === 'entregat' ? (
+                      {exp.estat === 'anulada' ? (
+                        <span style={{ fontSize: 12, color: colors.textSecondary, lineHeight: 1.4 }}>
+                          {exp.anulada_at ? formatData(exp.anulada_at) : 'Conservada'}
+                          {exp.anulada_per_nom ? ` · ${exp.anulada_per_nom}` : ''}
+                          {exp.anulada_motiu ? (
+                            <span style={{ display: 'block' }}>{exp.anulada_motiu}</span>
+                          ) : null}
+                        </span>
+                      ) : exp.estat === 'entregat' ? (
                         <span style={{ fontSize: 12, color: colors.textSecondary }}>
                           {exp.check_client
                             ? `OK${exp.confirmat_client_nom ? ` · ${exp.confirmat_client_nom}` : ''}`
@@ -477,7 +505,7 @@ export default function ObradorExpedicionsPage() {
                         <button
                           type="button"
                           disabled={anulantId === exp.id}
-                          onClick={() => handleAnular(exp)}
+                          onClick={() => obrirAnular(exp)}
                           style={{
                             padding: '6px 12px',
                             fontSize: 12,
@@ -736,6 +764,95 @@ export default function ObradorExpedicionsPage() {
           onClose={() => setScannerOpen(false)}
           onDetect={handleScanDetect}
         />
+      ) : null}
+
+      {anularModal ? (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            padding: 24
+          }}
+          onClick={() => {
+            if (!anulantId) {
+              setError('');
+              setAnularModal(null);
+            }
+          }}
+        >
+          <div
+            style={{
+              background: colors.card,
+              borderRadius: 12,
+              padding: 24,
+              maxWidth: 440,
+              width: '100%',
+              border: `0.5px solid ${colors.border}`
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 style={{ margin: '0 0 12px', fontSize: 18, fontWeight: 600 }}>Anul·lar expedició</h2>
+            <p style={{ margin: '0 0 16px', fontSize: 14, color: colors.textSecondary, lineHeight: 1.5 }}>
+              Lot <strong>{anularModal.lot || '—'}</strong>
+              {anularModal.client ? <> → client <strong>{anularModal.client}</strong></> : null}
+              .
+              {' '}
+              El lot torna a envasat. L&apos;expedició no s&apos;esborra: queda al llistat com a anul·lada.
+            </p>
+            <label style={labelStyle} htmlFor="motiu_anulacio">Motiu (opcional)</label>
+            <textarea
+              id="motiu_anulacio"
+              rows={3}
+              maxLength={500}
+              value={motiuAnulacio}
+              onChange={(e) => setMotiuAnulacio(e.target.value)}
+              style={{ ...inputStyle, resize: 'vertical', marginBottom: 16 }}
+            />
+            {error ? (
+              <p style={{ margin: '0 0 12px', color: danger, fontSize: 14 }}>{error}</p>
+            ) : null}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <button
+                type="button"
+                disabled={Boolean(anulantId)}
+                onClick={() => confirmarAnular()}
+                style={{
+                  padding: '12px 16px',
+                  fontSize: 14,
+                  fontWeight: 600,
+                  borderRadius: 8,
+                  border: 'none',
+                  cursor: 'pointer',
+                  background: danger,
+                  color: '#fff',
+                  opacity: anulantId ? 0.7 : 1
+                }}
+              >
+                {anulantId ? 'Anul·lant…' : 'Anul·lar i conservar el rastre'}
+              </button>
+              <button
+                type="button"
+                disabled={Boolean(anulantId)}
+                onClick={() => { setError(''); setAnularModal(null); }}
+                style={{
+                  padding: '8px',
+                  fontSize: 13,
+                  border: 'none',
+                  background: 'none',
+                  color: colors.textSecondary,
+                  cursor: 'pointer'
+                }}
+              >
+                Tornar
+              </button>
+            </div>
+          </div>
+        </div>
       ) : null}
 
       {entregaModal ? (

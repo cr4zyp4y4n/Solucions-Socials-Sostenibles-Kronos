@@ -93,9 +93,9 @@ Roles sidebar: admin / management / manager. Portal staff: cuenta con `obrador_p
 1. **Recepción** (Kronos o portal): foto/PDF → OCR (`shared/obrador`) → borrador → `obrador_recepcions`.
 2. **Productes** (opcional): vínculos en `obrador_producte_proveidors`.
 3. **Lot**: producto + N recepciones `bo|regular` + temp cocción ≥ mín + muestra → RPC `obrador_crear_lot_i_etiqueta` → lot `envasat` + etiqueta `QR-…`.
-4. **Expedición**: solo si lot `envasat`; exige `check_sortida`; RPC `obrador_crear_expedicio_i_marcar_lot` (UNIQUE 1 expedición/lot + `FOR UPDATE`); upsert client.
-5. **Entrega**: RPC `obrador_marcar_expedicio_entregada` (staff/management).
-6. **Anular expedición** (solo en trànsit, management): RPC `obrador_anular_expedicio` → lot vuelve a `envasat`.
+4. **Expedición**: solo si lot `envasat`; exige `check_sortida`; RPC `obrador_crear_expedicio_i_marcar_lot` (UNIQUE parcial: 1 expedición activa/lot; las anuladas no ocupan el hueco + `FOR UPDATE`); upsert client.
+5. **Entrega**: RPC `obrador_marcar_expedicio_entregada` (staff/management). No marca una anulada.
+6. **Anular expedición** (solo en trànsit, management): RPC `obrador_anular_expedicio` marca `estat = anulada` (no borra; guarda quién, cuándo y motivo) y el lot vuelve a `envasat`.
 7. **QR público**: `get_obrador_lot_public` (anon).
 
 ### 2.4 Tablas principales
@@ -112,7 +112,8 @@ Recientes (2026):
 
 - `alter_obrador_expedicions_unique_lot.sql` — anti-doble expedición
 - `alter_obrador_check_sortida_required.sql` — check_sortida obligatorio en RPC
-- `alter_obrador_anular_expedicio_i_clients.sql` — anular + `obrador_clients`
+- `alter_obrador_anular_expedicio_i_clients.sql` — anular (versión antigua, hacía DELETE) + `obrador_clients`
+- `alter_obrador_expedicions_anular_rastre.sql` — anular conserva la fila (`anulada`)
 
 IoT: `create_obrador_sensors_iot.sql`, webhook TTN, watchdog cron.
 

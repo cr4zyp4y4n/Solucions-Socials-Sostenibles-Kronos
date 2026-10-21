@@ -53,9 +53,11 @@ que permeti desar alguna cosa sense una d'aquestes tres coses és una regressió
 17. El **check de sortida és obligatori**, i està imposat també a la base de dades, no
     només a la pantalla. Qualsevol via alternativa d'expedició ha de respectar-ho.
 18. Una expedició **sense client** no es desa.
-19. **Un lot no es pot expedir dues vegades.** Ho garanteix un índex únic. No s'ha de
-    substituir per una comprovació a l'aplicació.
-20. Una expedició es pot **anul·lar**, i l'anul·lació **deixa rastre**. Mai s'esborra.
+19. **Un lot no pot tenir dues expedicions actives** (en trànsit o entregada). Ho
+    garanteix un índex únic parcial. Una d'anul·lada no ocupa aquest lloc: el lot
+    torna a envasat i es pot tornar a expedir.
+20. Una expedició es pot **anul·lar**, i l'anul·lació **deixa rastre** (estat
+    `anulada`, qui, quan i motiu). Mai s'esborra.
 
 ## Incidències
 

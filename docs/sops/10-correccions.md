@@ -6,5 +6,5 @@
 ## Passos (resum)
 
 1. **Recepció:** Editar camps o Anul·lar (estat rebutjat) amb observacions.
-2. **Expedició en trànsit:** Anul·lar → lot torna a `envasat` (només management).
+2. **Expedició en trànsit:** Anul·lar → estat `anulada` (qui, quan, motiu). La fila no s'esborra. El lot torna a `envasat` (només management).
 3. No anul·lar expedicions ja entregades.

@@ -163,20 +163,23 @@ export function taulesInspeccio(paquet) {
       id: 'expedicions',
       titol: 'Expedicions',
       nomFitxer: nomFitxer(paquet, 'expedicions.csv'),
-      capcaleres: ['Data sortida', 'Lot', 'Producte', 'Client', 'Estat', 'Check sortida', 'OK receptor', 'Nom receptor', 'Hora OK', 'Nota receptor', 'Comanda Holded', 'Observacions'],
+      capcaleres: ['Data sortida', 'Lot', 'Producte', 'Client', 'Estat', 'Check sortida', 'OK receptor', 'Nom receptor', 'Hora OK', 'Nota receptor', 'Comanda Holded', 'Observacions', 'Anul·lada el', 'Anul·lada per', 'Motiu anul·lació'],
       files: (paquet.expedicions || []).map((row) => [
         dataHora(row.data_sortida),
         row.obrador_lots?.codi_lot || '',
         row.obrador_lots?.obrador_productes?.nom || '',
         text(row.id_client),
-        text(row.estat),
+        row.estat === 'anulada' ? 'Anul·lada' : text(row.estat),
         siNo(row.check_sortida),
         siNo(row.check_client),
         text(row.confirmat_client_nom),
         dataHora(row.confirmat_client_at),
         text(row.confirmat_client_nota),
         text(row.comanda_holded),
-        text(row.observacions)
+        text(row.observacions),
+        dataHora(row.anulada_at),
+        text(row.anulada_per_nom),
+        text(row.anulada_motiu)
       ])
     },
     {

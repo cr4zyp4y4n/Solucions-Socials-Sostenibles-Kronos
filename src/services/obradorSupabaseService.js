@@ -136,6 +136,18 @@ async function countEnRang(table, column, daysAgo = 0) {
   return count || 0;
 }
 
+/** Expedicions del dia que han sortit de veritat. Les anul·lades queden a la taula, però no compten. */
+async function countExpedicionsActives(daysAgo = 0) {
+  const { count, error } = await supabase
+    .from('obrador_expedicions')
+    .select('*', { count: 'exact', head: true })
+    .gte('data_sortida', madridDayStartIso(daysAgo))
+    .lte('data_sortida', madridDayEndIso(daysAgo))
+    .neq('estat', 'anulada');
+  if (error) throw error;
+  return count || 0;
+}
+
 /** Recepcions d'avui incompletes per APPCC (sense temp. o sense lot proveïdor). */
 async function countRecepcionsAppccBuits(daysAgo = 0) {
   const { data, error } = await supabase
@@ -778,6 +790,12 @@ export async function getExpedicions(limitOrOpts = 50, maybeOpts) {
     return q;
   }
 
+  const ambAnulacio = `
+      id, id_client, data_sortida, comanda_holded, estat, check_client, check_sortida,
+      confirmat_client_nom, confirmat_client_at, confirmat_client_nota,
+      anulada_at, anulada_per, anulada_motiu,
+      obrador_lots ( codi_lot, obrador_productes ( nom ) )
+    `;
   const ambOk = `
       id, id_client, data_sortida, comanda_holded, estat, check_client, check_sortida,
       confirmat_client_nom, confirmat_client_at, confirmat_client_nota,
@@ -788,14 +806,28 @@ export async function getExpedicions(limitOrOpts = 50, maybeOpts) {
       obrador_lots ( codi_lot, obrador_productes ( nom ) )
     `;
 
-  const primer = await consulta(ambOk);
-  if (primer.error && isMissingColumnError(primer.error)) {
-    const segon = await consulta(senseOk);
-    if (segon.error) throw segon.error;
-    return segon.data || [];
+  let resultat = await consulta(ambAnulacio);
+  if (resultat.error && isMissingColumnError(resultat.error)) {
+    resultat = await consulta(ambOk);
   }
-  if (primer.error) throw primer.error;
-  return primer.data || [];
+  if (resultat.error && isMissingColumnError(resultat.error)) {
+    resultat = await consulta(senseOk);
+  }
+  if (resultat.error) throw resultat.error;
+  return ambNomAnulacio(resultat.data || []);
+}
+
+async function ambNomAnulacio(rows) {
+  const llista = rows || [];
+  if (!llista.some((row) => Object.prototype.hasOwnProperty.call(row, 'anulada_per'))) {
+    return llista;
+  }
+  const ids = llista.map((row) => row.anulada_per).filter(Boolean);
+  const noms = ids.length ? await nomsPerfilsObrador(ids) : {};
+  return llista.map((row) => ({
+    ...row,
+    anulada_per_nom: row.anulada_per ? (noms[row.anulada_per] || null) : null
+  }));
 }
 
 export async function crearExpedicio(dades) {
@@ -831,11 +863,21 @@ export async function marcarExpedicioEntregada(id, { check_client = false } = {}
   return data;
 }
 
-/** Anul·la una expedició en trànsit i torna el lot a envasat. */
-export async function anularExpedicio(id) {
-  const { data, error } = await supabase.rpc('obrador_anular_expedicio', { p_id: id });
-  if (error) throw error;
-  return data;
+/** Marca l'expedició en trànsit com a anulada (no l'esborra) i torna el lot a envasat. */
+export async function anularExpedicio(id, motiu) {
+  const net = String(motiu || '').trim();
+  let resultat = await supabase.rpc('obrador_anular_expedicio', {
+    p_id: id,
+    p_motiu: net || null
+  });
+  const msg = resultat.error?.message || '';
+  const senseMotiu = resultat.error?.code === 'PGRST202'
+    || /could not find the function|p_motiu/i.test(msg);
+  if (senseMotiu) {
+    resultat = await supabase.rpc('obrador_anular_expedicio', { p_id: id });
+  }
+  if (resultat.error) throw resultat.error;
+  return resultat.data;
 }
 
 // ── CLIENTS ────────────────────────────────────────────────────
@@ -1338,6 +1380,11 @@ export async function getExportacioInspeccio({ desde, fins }) {
     llegirRang('obrador_expedicions', 'data_sortida', inici, fi, [`
       id, id_client, data_sortida, comanda_holded, estat, check_client, check_sortida, observacions,
       confirmat_client_nom, confirmat_client_at, confirmat_client_nota,
+      anulada_at, anulada_per, anulada_motiu,
+      obrador_lots ( codi_lot, obrador_productes ( nom ) )
+    `, `
+      id, id_client, data_sortida, comanda_holded, estat, check_client, check_sortida, observacions,
+      confirmat_client_nom, confirmat_client_at, confirmat_client_nota,
       obrador_lots ( codi_lot, obrador_productes ( nom ) )
     `, `
       id, id_client, data_sortida, comanda_holded, estat, check_client, observacions,
@@ -1367,9 +1414,10 @@ export async function getExportacioInspeccio({ desde, fins }) {
     nomDeQuiExporta()
   ]);
 
-  const noms = await nomsPerfilsObrador(
-    incidenciesRaw.rows.flatMap((row) => [row.tancada_per, row.verificada_per])
-  );
+  const noms = await nomsPerfilsObrador([
+    ...incidenciesRaw.rows.flatMap((row) => [row.tancada_per, row.verificada_per]),
+    ...expedicions.rows.map((row) => row.anulada_per)
+  ]);
 
   return {
     desde,
@@ -1378,7 +1426,10 @@ export async function getExportacioInspeccio({ desde, fins }) {
     generatPer,
     recepcions: recepcions.rows,
     lots: lots.rows.map((lot) => ({ ...lot, obrador_lot_recepcions: lot.obrador_lot_recepcions || [] })),
-    expedicions: expedicions.rows,
+    expedicions: expedicions.rows.map((row) => ({
+      ...row,
+      anulada_per_nom: row.anulada_per ? (noms[row.anulada_per] || null) : null
+    })),
     incidencies: ambNomsResponsables(incidenciesRaw.rows, noms),
     registres,
     temperatures: temperatures.rows,
@@ -1422,7 +1473,7 @@ export async function getKpisDashboard() {
         if (error) throw error;
         return count || 0;
       }),
-    countEnRang('obrador_expedicions', 'data_sortida', 0),
+    countExpedicionsActives(0),
     countEnRang('obrador_etiquetes', 'data_envasat', 0),
     countEnRang('obrador_recepcions', 'data_recepcio', 0),
     countRecepcionsAppccBuits(0)

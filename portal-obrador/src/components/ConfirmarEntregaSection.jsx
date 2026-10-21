@@ -115,6 +115,25 @@ export default function ConfirmarEntregaSection({ traceCode, autoOpen = false })
     );
   }
 
+  if (expedicio.estat === 'anulada') {
+    return (
+      <div style={{
+        marginTop: 20,
+        padding: 16,
+        borderRadius: 12,
+        background: colors.surface,
+        border: `1px solid ${colors.border}`,
+        fontSize: 14,
+        color: colors.text
+      }}>
+        <div style={{ fontWeight: 700, marginBottom: 6 }}>Expedició anul·lada</div>
+        <div style={{ fontSize: 13, color: colors.textSecondary, lineHeight: 1.5 }}>
+          Aquesta sortida no es pot marcar com a entregada. El lot ha de tornar a sortir de l&apos;obrador.
+        </div>
+      </div>
+    );
+  }
+
   if (expedicio.estat === 'entregat') {
     return (
       <div style={{

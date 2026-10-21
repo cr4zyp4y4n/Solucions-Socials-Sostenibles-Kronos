@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useTheme } from '../ThemeContext';
-import { getProveidors, getRecepcions, crearRecepcio, updateRecepcio, PROVEIDORS_SCHEMA_SQL } from '../../services/obradorSupabaseService';
+import { getProveidors, getRecepcions, crearRecepcio, updateRecepcio, filterProveidorsForSelector, PROVEIDORS_SCHEMA_SQL } from '../../services/obradorSupabaseService';
 import { syncProveidorsFromHolded, HOLDED_COMPANIES } from '../../services/obradorHoldedSyncService';
 import {
   parseAlbaranText,
@@ -10,6 +10,13 @@ import { ocrTextFromAlbaranFile } from '../../utils/obradorOcrFromFile';
 import OcrDebugPanel, { buildOcrDebugReport } from './OcrDebugPanel';
 import ObradorProveidorSelect from './ObradorProveidorSelect';
 import { useAuth } from '../AuthContext';
+
+const LABEL_ESTAT_PROVEIDOR = {
+  habitual: 'Habitual',
+  ocasional: 'Ocasional',
+  revisar: 'Revisar',
+  inactiu: 'Inactiu'
+};
 
 const ESTATS = [
   { value: 'bo', label: 'Bo' },
@@ -69,6 +76,8 @@ export default function ObradorRecepcionsPage() {
   const [hasMore, setHasMore] = useState(false);
   const [carregantMes, setCarregantMes] = useState(false);
   const [editantId, setEditantId] = useState(null);
+  const [cercaProveidor, setCercaProveidor] = useState('');
+  const [mostrarInactiusProveidor, setMostrarInactiusProveidor] = useState(false);
 
   const PAGE_SIZE = 50;
 
@@ -363,6 +372,26 @@ export default function ObradorRecepcionsPage() {
             <button
               type="button"
               onClick={() => {
+                setMode('proveidors');
+                setError('');
+                setSuccessMsg('');
+              }}
+              style={{
+                padding: '10px 16px',
+                fontSize: 14,
+                fontWeight: 600,
+                borderRadius: 8,
+                cursor: 'pointer',
+                background: colors.surface,
+                color: colors.text,
+                border: `0.5px solid ${colors.border}`
+              }}
+            >
+              Proveïdors
+            </button>
+            <button
+              type="button"
+              onClick={() => {
                 setEditantId(null);
                 setForm(formInicial());
                 setMode('formulari');
@@ -643,6 +672,15 @@ export default function ObradorRecepcionsPage() {
           </button>
         ) : null}
         </>
+      ) : mode === 'proveidors' ? (
+        <LlistatProveidors
+          proveidors={proveidors}
+          cerca={cercaProveidor}
+          onCerca={setCercaProveidor}
+          mostrarInactius={mostrarInactiusProveidor}
+          onMostrarInactius={setMostrarInactiusProveidor}
+          colors={colors}
+        />
       ) : (
         <form
           onSubmit={handleSubmit}
@@ -855,6 +893,91 @@ export default function ObradorRecepcionsPage() {
             {enviant ? 'Desant...' : (editantId ? 'Desar canvis' : 'Registrar recepció')}
           </button>
         </form>
+      )}
+    </div>
+  );
+}
+
+function LlistatProveidors({
+  proveidors,
+  cerca,
+  onCerca,
+  mostrarInactius,
+  onMostrarInactius,
+  colors
+}) {
+  const visibles = filterProveidorsForSelector(proveidors, {
+    incloureInactius: mostrarInactius,
+    cerca
+  });
+  const th = {
+    padding: '12px 16px',
+    textAlign: 'left',
+    fontWeight: 600,
+    color: colors.textSecondary,
+    fontSize: 12,
+    textTransform: 'uppercase',
+    borderBottom: `1px solid ${colors.border}`
+  };
+  const td = { padding: '12px 16px' };
+
+  return (
+    <div>
+      <h2 style={{ margin: '0 0 8px', fontSize: 18, fontWeight: 700 }}>Proveïdors disponibles</h2>
+      <p style={{ margin: '0 0 16px', fontSize: 14, color: colors.textSecondary }}>
+        Els habituals i els ocasionals. Els inactius no surten fins que es demanin.
+      </p>
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center', marginBottom: 16 }}>
+        <input
+          type="search"
+          value={cerca}
+          onChange={(e) => onCerca(e.target.value)}
+          placeholder="Cercar per nom, NIF o codi…"
+          style={{
+            padding: '10px 12px',
+            fontSize: 14,
+            borderRadius: 8,
+            border: `0.5px solid ${colors.border}`,
+            background: colors.surface,
+            color: colors.text,
+            minWidth: 240
+          }}
+        />
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: colors.textSecondary, cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            checked={mostrarInactius}
+            onChange={(e) => onMostrarInactius(e.target.checked)}
+          />
+          Mostrar inactius
+        </label>
+        <span style={{ fontSize: 13, color: colors.textSecondary }}>{visibles.length} proveïdors</span>
+      </div>
+      {visibles.length === 0 ? (
+        <p style={{ color: colors.textSecondary }}>No hi ha proveïdors amb aquest filtre.</p>
+      ) : (
+        <div style={{ overflowX: 'auto', background: colors.card, border: `0.5px solid ${colors.border}`, borderRadius: 12 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+            <thead>
+              <tr>
+                {['Nom', 'NIF', 'Codi', 'Estat', 'Contacte'].map((col) => (
+                  <th key={col} style={th}>{col}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {visibles.map((p) => (
+                <tr key={p.id} style={{ borderBottom: `1px solid ${colors.border}` }}>
+                  <td style={{ ...td, fontWeight: 600 }}>{p.nom || '—'}</td>
+                  <td style={td}>{p.cif || '—'}</td>
+                  <td style={td}>{p.codi_intern || '—'}</td>
+                  <td style={td}>{LABEL_ESTAT_PROVEIDOR[p.estat_us] || 'Habitual'}</td>
+                  <td style={td}>{p.contacte || '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );

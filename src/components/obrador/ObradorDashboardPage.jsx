@@ -523,8 +523,8 @@ export default function ObradorDashboardPage() {
                     <td style={{ padding: '12px 16px' }}>{exp.obrador_lots?.codi_lot || '—'}</td>
                     <td style={{ padding: '12px 16px' }}>{exp.id_client || '—'}</td>
                     <td style={{ padding: '12px 16px' }}>
-                      <span style={{ padding: '4px 10px', borderRadius: 6, fontSize: 12, fontWeight: 600, background: exp.estat === 'entregat' ? `${success}22` : `${warning}22`, color: exp.estat === 'entregat' ? success : warning }}>
-                        {exp.estat === 'entregat' ? 'Entregat' : 'En trànsit'}
+                      <span style={{ padding: '4px 10px', borderRadius: 6, fontSize: 12, fontWeight: 600, background: exp.estat === 'entregat' ? `${success}22` : exp.estat === 'anulada' ? `${colors.textSecondary}22` : `${warning}22`, color: exp.estat === 'entregat' ? success : exp.estat === 'anulada' ? colors.textSecondary : warning }}>
+                        {exp.estat === 'entregat' ? 'Entregat' : exp.estat === 'anulada' ? 'Anul·lada' : 'En trànsit'}
                       </span>
                     </td>
                   </tr>
