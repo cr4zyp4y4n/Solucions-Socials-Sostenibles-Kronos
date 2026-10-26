@@ -446,18 +446,15 @@ export async function arxivarProducte(id) {
   return data;
 }
 
-/** Substitueix els proveïdors associats a un producte. */
+function producteProveidorKey(row) {
+  return `${row.id_proveidor}::${String(row.ingredient_nom || '').trim().toLowerCase()}`;
+}
+
+/** Substitueix els proveïdors associats a un producte sense buidar-los abans d'inserir. */
 export async function setProducteProveidors(idProducte, files) {
-  const list = Array.isArray(files) ? files : [];
-  const { error: delError } = await supabase
-    .from('obrador_producte_proveidors')
-    .delete()
-    .eq('id_producte', idProducte);
-  if (delError) throw delError;
+  if (!idProducte) throw new Error('Falta el producte.');
 
-  if (!list.length) return [];
-
-  const rows = list
+  const rows = (Array.isArray(files) ? files : [])
     .filter((f) => f?.id_proveidor)
     .map((f) => ({
       id_producte: idProducte,
@@ -465,15 +462,47 @@ export async function setProducteProveidors(idProducte, files) {
       ingredient_nom: String(f.ingredient_nom || '').trim()
     }));
 
-  if (!rows.length) return [];
+  const claus = rows.map(producteProveidorKey);
+  if (new Set(claus).size !== claus.length) {
+    throw new Error('Hi ha una fila duplicada (mateix proveïdor + ingredient).');
+  }
+
+  if (rows.length) {
+    const { error: upsertError } = await supabase
+      .from('obrador_producte_proveidors')
+      .upsert(rows, {
+        onConflict: 'id_producte,id_proveidor,ingredient_nom',
+        ignoreDuplicates: true
+      });
+    if (upsertError) throw upsertError;
+  }
+
+  const { data: actuals, error: readError } = await supabase
+    .from('obrador_producte_proveidors')
+    .select('id, id_proveidor, ingredient_nom')
+    .eq('id_producte', idProducte);
+  if (readError) throw readError;
+
+  const desitjades = new Set(claus);
+  const obsoletes = (actuals || [])
+    .filter((row) => !desitjades.has(producteProveidorKey(row)))
+    .map((row) => row.id);
+
+  if (obsoletes.length) {
+    const { error: delError } = await supabase
+      .from('obrador_producte_proveidors')
+      .delete()
+      .in('id', obsoletes);
+    if (delError) throw delError;
+  }
 
   const { data, error } = await supabase
     .from('obrador_producte_proveidors')
-    .insert(rows)
     .select(`
       id, id_proveidor, ingredient_nom,
       obrador_proveidors ( id, nom )
-    `);
+    `)
+    .eq('id_producte', idProducte);
   if (error) throw error;
   return data || [];
 }
