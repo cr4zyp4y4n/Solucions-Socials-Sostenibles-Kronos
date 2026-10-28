@@ -30,6 +30,18 @@ const CHECKLIST_LOT = [
   { key: 'registre_appcc', label: 'Queda registrat a APPCC / traçabilitat?' }
 ];
 
+const CHECKLIST_REGISTRE = [
+  { key: 'registre_revisat', label: 'S\'ha revisat el registre afectat?' },
+  { key: 'accio_correctiva', label: 'S\'ha aplicat l\'acció correctiva?' },
+  { key: 'registre_appcc', label: 'Queda registrat a APPCC / traçabilitat?' }
+];
+
+const CHECKLIST_RECEPCIO = [
+  { key: 'recepcio_revisada', label: 'S\'ha revisat la recepció afectada?' },
+  { key: 'accio_correctiva', label: 'S\'ha aplicat l\'acció correctiva?' },
+  { key: 'registre_appcc', label: 'Queda registrat a APPCC / traçabilitat?' }
+];
+
 const CHECKLIST_SENSOR = [
   { key: 'sensor_revisat', label: 'S\'ha revisat el sensor / equip de fred?' },
   { key: 'temp_comprovada', label: 'S\'ha comprovat que la temperatura torna a rang?' },
@@ -86,6 +98,21 @@ function nomResponsable(nom, id) {
 
 function titolIncidencia(inc) {
   if (inc?.origen === 'torn') return 'Registre de torn';
+  if (inc?.origen === 'recepcio') {
+    const recepcio = inc.obrador_recepcions || {};
+    const parts = [
+      recepcio.obrador_proveidors?.nom,
+      recepcio.obrador_productes?.nom,
+      recepcio.num_albara || recepcio.lot_proveidor
+    ].filter(Boolean);
+    return parts.join(' · ') || 'Recepció';
+  }
+  if (inc?.origen === 'registre') {
+    const registre = inc.registre_origen || inc.obrador_registres_torn;
+    return registre?.obrador_tipus_registre?.etiqueta
+      || registre?.tipus_codi
+      || 'Registre d\'higiene';
+  }
   if (esSensor(inc)) {
     return inc.obrador_sensors?.nom || inc.obrador_sensors?.ubicacio || 'Sensor';
   }
@@ -100,7 +127,13 @@ const formInicial = () => ({
 
 function TancarModal({ inc, colors, onCancel, onConfirm, enviant }) {
   const sensor = esSensor(inc);
-  const items = sensor ? CHECKLIST_SENSOR : CHECKLIST_LOT;
+  const items = sensor
+    ? CHECKLIST_SENSOR
+    : inc?.origen === 'recepcio'
+      ? CHECKLIST_RECEPCIO
+      : inc?.origen === 'registre'
+        ? CHECKLIST_REGISTRE
+        : CHECKLIST_LOT;
   const [answers, setAnswers] = useState(() =>
     Object.fromEntries(items.map((i) => [i.key, null]))
   );
@@ -588,6 +621,8 @@ export default function ObradorIncidenciesPage() {
                   {incidenciesFiltrades.map((inc) => {
                     const sensor = esSensor(inc);
                     const origenTorn = inc.origen === 'torn';
+                    const origenRecepcio = inc.origen === 'recepcio';
+                    const origenRegistre = inc.origen === 'registre';
                     const highlighted = highlightId === inc.id;
                     const verificada = Boolean(inc.verificada_at);
                     const pendentVerificar = inc.estat === 'tancada' && teAccioCorrectiva(inc) && !verificada;
@@ -626,10 +661,10 @@ export default function ObradorIncidenciesPage() {
                             borderRadius: 6,
                             fontSize: 11,
                             fontWeight: 600,
-                            background: origenTorn || sensor ? `${colors.primary}22` : `${warning}22`,
-                            color: origenTorn || sensor ? colors.primary : warning
+                            background: origenTorn || origenRecepcio || origenRegistre || sensor ? `${colors.primary}22` : `${warning}22`,
+                            color: origenTorn || origenRecepcio || origenRegistre || sensor ? colors.primary : warning
                           }}>
-                            {origenTorn ? 'Torn' : sensor ? 'Sensor / temp.' : 'Lot'}
+                            {origenTorn ? 'Torn' : origenRecepcio ? 'Recepció' : origenRegistre ? 'Registre' : sensor ? 'Sensor / temp.' : 'Lot'}
                           </span>
                         </td>
                         <td style={{ padding: '12px 16px', fontWeight: 600 }}>

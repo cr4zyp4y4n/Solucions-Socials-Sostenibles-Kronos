@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useTheme } from '../ThemeContext';
-import { getProveidors, getRecepcions, getResumProveidor, crearRecepcio, updateRecepcio, filterProveidorsForSelector, PROVEIDORS_SCHEMA_SQL } from '../../services/obradorSupabaseService';
+import { getProveidors, getProductes, getRecepcions, getResumProveidor, crearRecepcio, updateRecepcio, crearIncidencia, filterProveidorsForSelector, PROVEIDORS_SCHEMA_SQL } from '../../services/obradorSupabaseService';
 import { syncProveidorsFromHolded, HOLDED_COMPANIES } from '../../services/obradorHoldedSyncService';
 import {
   parseAlbaranText,
@@ -20,9 +20,48 @@ const LABEL_ESTAT_PROVEIDOR = {
 
 const ESTATS = [
   { value: 'bo', label: 'Bo' },
-  { value: 'regular', label: 'Regular' },
   { value: 'rebutjat', label: 'Rebutjat' }
 ];
+
+const TIPUS_RECEPCIO = [
+  { value: 'fred', label: 'Fred' },
+  { value: 'sec', label: 'Sec' },
+  { value: 'congelat', label: 'Congelat' }
+];
+
+const UNITATS = [
+  { value: 'kg', label: 'Quilos' },
+  { value: 'unitat', label: 'Unitats' }
+];
+
+const TIPUS_INCIDENCIA = [
+  { value: 'temperatura', label: 'Temperatura' },
+  { value: 'qualitat', label: 'Qualitat' },
+  { value: 'contaminacio', label: 'Contaminació' },
+  { value: 'etiquetatge', label: 'Etiquetatge' },
+  { value: 'altres', label: 'Altres' }
+];
+
+function labelTipus(tipus, congelat) {
+  const trobat = TIPUS_RECEPCIO.find((t) => t.value === tipus);
+  if (trobat) return trobat.label;
+  if (congelat) return 'Congelat';
+  return '—';
+}
+
+function textQuantitat(recepcio) {
+  if (recepcio?.quantitat == null || recepcio.quantitat === '') return '—';
+  const unitat = recepcio.unitat === 'unitat' ? 'unitats' : recepcio.unitat === 'kg' ? 'kg' : '';
+  return [recepcio.quantitat, unitat].filter(Boolean).join(' ');
+}
+
+function notaEstatAnterior(recepcio) {
+  const base = recepcio?.observacions || '';
+  if (recepcio?.estat !== 'regular') return base;
+  const nota = '[Estat anterior: regular. Passat a bo.]';
+  if (base.includes(nota)) return base;
+  return [base, nota].filter((part) => String(part).trim()).join('\n');
+}
 
 function formatData(iso) {
   if (!iso) return '—';
@@ -37,11 +76,15 @@ function formatData(iso) {
 
 const formInicial = () => ({
   id_proveidor: '',
+  id_producte: '',
   lot_proveidor: '',
+  num_albara: '',
+  quantitat: '',
+  unitat: 'kg',
   temperatura_arribada: '',
   estat: 'bo',
   caducitat: '',
-  congelat: false,
+  tipus: 'fred',
   observacions: '',
   operari: ''
 });
@@ -58,6 +101,7 @@ export default function ObradorRecepcionsPage() {
   const [mode, setMode] = useState('llistat');
   const [recepcions, setRecepcions] = useState([]);
   const [proveidors, setProveidors] = useState([]);
+  const [productes, setProductes] = useState([]);
   const [form, setForm] = useState(formInicial);
   const [loading, setLoading] = useState(true);
   const [enviant, setEnviant] = useState(false);
@@ -79,6 +123,9 @@ export default function ObradorRecepcionsPage() {
   const [cercaProveidor, setCercaProveidor] = useState('');
   const [mostrarInactiusProveidor, setMostrarInactiusProveidor] = useState(false);
   const [proveidorFitxa, setProveidorFitxa] = useState(null);
+  const [incidenciaDe, setIncidenciaDe] = useState(null);
+  const [incidenciaForm, setIncidenciaForm] = useState({ tipus: 'qualitat', descripcio: '' });
+  const [enviantIncidencia, setEnviantIncidencia] = useState(false);
 
   const PAGE_SIZE = 50;
 
@@ -105,18 +152,20 @@ export default function ObradorRecepcionsPage() {
     if (!append) setLoading(true);
     else setCarregantMes(true);
     try {
-      const [rec, provResult] = await Promise.all([
+      const [rec, provResult, productesActius] = await Promise.all([
         getRecepcions({
           limit: PAGE_SIZE,
           offset,
           cerca: filtreCerca,
           estat: filtreEstat || undefined
         }),
-        getProveidors()
+        getProveidors(),
+        getProductes()
       ]);
       setRecepcions((prev) => (append ? [...prev, ...rec] : rec));
       setHasMore((rec || []).length >= PAGE_SIZE);
       setProveidors(provResult.proveidors);
+      setProductes(productesActius || []);
       setSchemaIncomplete(provResult.schemaIncomplete);
     } catch (err) {
       console.error(err);
@@ -136,7 +185,6 @@ export default function ObradorRecepcionsPage() {
 
   function estatColor(estat) {
     if (estat === 'bo') return success;
-    if (estat === 'regular') return warning;
     return danger;
   }
 
@@ -220,6 +268,7 @@ export default function ObradorRecepcionsPage() {
         ...formInicial(),
         id_proveidor: draft.id_proveidor || '',
         lot_proveidor: draft.lot_proveidor || '',
+        num_albara: draft.num_albara || '',
         caducitat: draft.caducitat || '',
         observacions: draft.observacions || '',
         operari: prev.operari
@@ -246,6 +295,27 @@ export default function ObradorRecepcionsPage() {
       setError('Selecciona un proveïdor.');
       return;
     }
+    if (!editantId && !form.id_producte) {
+      setError('Selecciona el producte.');
+      return;
+    }
+    const quantitatNum = form.quantitat === '' ? null : Number(form.quantitat);
+    if (!editantId && (quantitatNum == null || Number.isNaN(quantitatNum) || quantitatNum <= 0)) {
+      setError('Indica la quantitat.');
+      return;
+    }
+    if (form.quantitat !== '' && (quantitatNum == null || Number.isNaN(quantitatNum) || quantitatNum <= 0)) {
+      setError('La quantitat ha de ser més gran que zero.');
+      return;
+    }
+    if (!UNITATS.some((u) => u.value === form.unitat)) {
+      setError('La unitat ha de ser quilos o unitats.');
+      return;
+    }
+    if (!TIPUS_RECEPCIO.some((t) => t.value === form.tipus)) {
+      setError('El tipus ha de ser fred, sec o congelat.');
+      return;
+    }
     if (form.estat === 'rebutjat' && !form.observacions.trim()) {
       setError('Les observacions són obligatòries si l\'estat és Rebutjat.');
       return;
@@ -255,11 +325,16 @@ export default function ObradorRecepcionsPage() {
     try {
       const payload = {
         id_proveidor: form.id_proveidor,
+        id_producte: form.id_producte || null,
         lot_proveidor: form.lot_proveidor || null,
+        num_albara: form.num_albara.trim() || null,
+        quantitat: quantitatNum,
+        unitat: form.unitat,
         temperatura_arribada: tempNum,
         estat: form.estat,
         caducitat: form.caducitat || null,
-        congelat: form.congelat,
+        tipus: form.tipus,
+        congelat: form.tipus === 'congelat',
         observacions: form.observacions || null,
         operari: form.operari || null
       };
@@ -286,12 +361,16 @@ export default function ObradorRecepcionsPage() {
     setEditantId(r.id);
     setForm({
       id_proveidor: r.id_proveidor || '',
+      id_producte: r.id_producte || r.obrador_productes?.id || '',
       lot_proveidor: r.lot_proveidor || '',
+      num_albara: r.num_albara || '',
+      quantitat: r.quantitat != null ? String(r.quantitat) : '',
+      unitat: r.unitat || 'kg',
       temperatura_arribada: r.temperatura_arribada != null ? String(r.temperatura_arribada) : '',
-      estat: r.estat || 'bo',
+      estat: r.estat === 'rebutjat' ? 'rebutjat' : 'bo',
       caducitat: r.caducitat || '',
-      congelat: Boolean(r.congelat),
-      observacions: r.observacions || '',
+      tipus: TIPUS_RECEPCIO.some((t) => t.value === r.tipus) ? r.tipus : (r.congelat ? 'congelat' : 'fred'),
+      observacions: notaEstatAnterior(r),
       operari: r.operari || ''
     });
     setError('');
@@ -315,6 +394,34 @@ export default function ObradorRecepcionsPage() {
       await carregar();
     } catch (err) {
       setError(err.message || 'Error en anul·lar');
+    }
+  }
+
+  async function desarIncidencia(e) {
+    e.preventDefault();
+    if (!incidenciaDe?.id) return;
+    const descripcio = incidenciaForm.descripcio.trim();
+    if (descripcio.length < 10) {
+      setError('La descripció ha de tenir almenys 10 caràcters.');
+      return;
+    }
+    setEnviantIncidencia(true);
+    setError('');
+    try {
+      await crearIncidencia({
+        origen: 'recepcio',
+        id_recepcio: incidenciaDe.id,
+        tipus: incidenciaForm.tipus,
+        descripcio
+      });
+      setSuccessMsg('Incidència oberta i lligada a la recepció');
+      setTimeout(() => setSuccessMsg(''), 4000);
+      setIncidenciaDe(null);
+      setIncidenciaForm({ tipus: 'qualitat', descripcio: '' });
+    } catch (err) {
+      setError(err.message || 'No s\'ha pogut obrir la incidència');
+    } finally {
+      setEnviantIncidencia(false);
     }
   }
 
@@ -499,10 +606,13 @@ export default function ObradorRecepcionsPage() {
             <div>Proveïdor detectat: {ocrDraft._parsed.proveidorNom}</div>
           )}
           {ocrDraft._parsed.lotProveidor ? (
-            <div>Lot / albarà: {ocrDraft._parsed.lotProveidor}</div>
+            <div>Lot detectat: {ocrDraft._parsed.lotProveidor}</div>
           ) : (
             <div style={{ color: danger }}>Lot / albarà: no detectat — obre el log OCR</div>
           )}
+          {ocrDraft.num_albara ? (
+            <div>Núm. d&apos;albarà proposat: {ocrDraft.num_albara}</div>
+          ) : null}
           <div style={{ marginTop: 6, color: colors.textSecondary }}>
             Parser: {ocrDraft._parsed.parserId} · confiança {ocrDraft._parsed.confiança}
             {ocrDraft._parsed.linies?.length ? ` · ${ocrDraft._parsed.linies.length} línies` : ''}
@@ -553,7 +663,7 @@ export default function ObradorRecepcionsPage() {
               type="search"
               value={filtreCerca}
               onChange={(e) => setFiltreCerca(e.target.value)}
-              placeholder="Cercar lot / observacions / operari…"
+              placeholder="Cercar lot, albarà, observacions o operari…"
               style={{ ...inputStyle, maxWidth: 300 }}
             />
             <select
@@ -567,6 +677,80 @@ export default function ObradorRecepcionsPage() {
               ))}
             </select>
           </div>
+          {incidenciaDe ? (
+            <form
+              onSubmit={desarIncidencia}
+              style={{
+                marginBottom: 16,
+                padding: 16,
+                borderRadius: 12,
+                background: colors.card,
+                border: `0.5px solid ${colors.border}`,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 12
+              }}
+            >
+              <strong>
+                Incidència de la recepció
+                {incidenciaDe.obrador_productes?.nom ? ` · ${incidenciaDe.obrador_productes.nom}` : ''}
+                {incidenciaDe.obrador_proveidors?.nom ? ` · ${incidenciaDe.obrador_proveidors.nom}` : ''}
+              </strong>
+              <div>
+                <label style={labelStyle} htmlFor="incidencia_tipus">Tipus</label>
+                <select
+                  id="incidencia_tipus"
+                  value={incidenciaForm.tipus}
+                  onChange={(e) => setIncidenciaForm((prev) => ({ ...prev, tipus: e.target.value }))}
+                  style={inputStyle}
+                >
+                  {TIPUS_INCIDENCIA.map((t) => (
+                    <option key={t.value} value={t.value}>{t.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label style={labelStyle} htmlFor="incidencia_descripcio">Descripció (mínim 10 caràcters)</label>
+                <textarea
+                  id="incidencia_descripcio"
+                  rows={3}
+                  value={incidenciaForm.descripcio}
+                  onChange={(e) => setIncidenciaForm((prev) => ({ ...prev, descripcio: e.target.value }))}
+                  style={{ ...inputStyle, resize: 'vertical' }}
+                />
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  type="submit"
+                  disabled={enviantIncidencia}
+                  style={{
+                    padding: '8px 14px',
+                    borderRadius: 8,
+                    border: 'none',
+                    background: colors.primary,
+                    color: '#fff',
+                    fontWeight: 600,
+                    cursor: 'pointer'
+                  }}
+                >
+                  {enviantIncidencia ? 'Desant…' : 'Obrir incidència'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIncidenciaDe(null)}
+                  style={{
+                    padding: '8px 14px',
+                    borderRadius: 8,
+                    border: `0.5px solid ${colors.border}`,
+                    background: colors.surface,
+                    cursor: 'pointer'
+                  }}
+                >
+                  Cancel·lar
+                </button>
+              </div>
+            </form>
+          ) : null}
         {recepcions.length === 0 ? (
           <p style={{ color: colors.textSecondary }}>Encara no hi ha recepcions registrades.</p>
         ) : (
@@ -574,7 +758,7 @@ export default function ObradorRecepcionsPage() {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
               <thead>
                 <tr>
-                  {['Data', 'Proveïdor', 'Lot proveïdor', 'Temp.', 'Estat', 'Congelat', 'Acció'].map((col) => (
+                  {['Data', 'Producte', 'Proveïdor', 'Albarà', 'Quantitat', 'Lot', 'Temp.', 'Estat', 'Tipus', 'Acció'].map((col) => (
                     <th
                       key={col}
                       style={{
@@ -596,7 +780,10 @@ export default function ObradorRecepcionsPage() {
                 {recepcions.map((r) => (
                   <tr key={r.id} style={{ borderBottom: `1px solid ${colors.border}` }}>
                     <td style={{ padding: '12px 16px' }}>{formatData(r.data_recepcio)}</td>
+                    <td style={{ padding: '12px 16px' }}>{r.obrador_productes?.nom || '—'}</td>
                     <td style={{ padding: '12px 16px' }}>{r.obrador_proveidors?.nom || '—'}</td>
+                    <td style={{ padding: '12px 16px' }}>{r.num_albara || '—'}</td>
+                    <td style={{ padding: '12px 16px' }}>{textQuantitat(r)}</td>
                     <td style={{ padding: '12px 16px' }}>{r.lot_proveidor || '—'}</td>
                     <td style={{ padding: '12px 16px' }}>
                       {r.temperatura_arribada != null ? `${r.temperatura_arribada} °C` : '—'}
@@ -613,7 +800,7 @@ export default function ObradorRecepcionsPage() {
                         {estatLabel(r.estat)}
                       </span>
                     </td>
-                    <td style={{ padding: '12px 16px' }}>{r.congelat ? 'Sí' : 'No'}</td>
+                    <td style={{ padding: '12px 16px' }}>{labelTipus(r.tipus, r.congelat)}</td>
                     <td style={{ padding: '12px 16px' }}>
                       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                         <button
@@ -631,6 +818,26 @@ export default function ObradorRecepcionsPage() {
                           }}
                         >
                           Editar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIncidenciaDe(r);
+                            setIncidenciaForm({ tipus: 'qualitat', descripcio: '' });
+                            setError('');
+                          }}
+                          style={{
+                            padding: '6px 12px',
+                            fontSize: 12,
+                            fontWeight: 600,
+                            borderRadius: 6,
+                            border: `0.5px solid ${colors.border}`,
+                            cursor: 'pointer',
+                            background: colors.surface,
+                            color: colors.text
+                          }}
+                        >
+                          Incidència
                         </button>
                         {r.estat !== 'rebutjat' ? (
                           <button
@@ -796,6 +1003,65 @@ export default function ObradorRecepcionsPage() {
           </div>
 
           <div>
+            <label style={labelStyle} htmlFor="id_producte">Producte{editantId ? '' : ' *'}</label>
+            <select
+              id="id_producte"
+              value={form.id_producte}
+              onChange={(e) => actualitzar('id_producte', e.target.value)}
+              style={inputStyle}
+              required={!editantId}
+            >
+              <option value="">{editantId ? 'Sense producte (recepció antiga)' : 'Selecciona producte...'}</option>
+              {productes.map((p) => (
+                <option key={p.id} value={p.id}>{p.nom}</option>
+              ))}
+              {form.id_producte && !productes.some((p) => p.id === form.id_producte) ? (
+                <option value={form.id_producte}>Producte arxivat</option>
+              ) : null}
+            </select>
+          </div>
+
+          <div>
+            <label style={labelStyle} htmlFor="num_albara">Núm. d&apos;albarà (recomanat)</label>
+            <input
+              id="num_albara"
+              type="text"
+              value={form.num_albara}
+              onChange={(e) => actualitzar('num_albara', e.target.value)}
+              style={inputStyle}
+            />
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 180px', gap: 12 }}>
+            <div>
+              <label style={labelStyle} htmlFor="quantitat">Quantitat{editantId ? '' : ' *'}</label>
+              <input
+                id="quantitat"
+                type="number"
+                min="0"
+                step="0.001"
+                value={form.quantitat}
+                onChange={(e) => actualitzar('quantitat', e.target.value)}
+                style={inputStyle}
+                required={!editantId}
+              />
+            </div>
+            <div>
+              <label style={labelStyle} htmlFor="unitat">Unitat</label>
+              <select
+                id="unitat"
+                value={form.unitat}
+                onChange={(e) => actualitzar('unitat', e.target.value)}
+                style={inputStyle}
+              >
+                {UNITATS.map((u) => (
+                  <option key={u.value} value={u.value}>{u.label}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div>
             <label style={labelStyle} htmlFor="lot_proveidor">Lot del proveïdor</label>
             <input
               id="lot_proveidor"
@@ -853,15 +1119,22 @@ export default function ObradorRecepcionsPage() {
           </div>
 
           <div>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 14 }}>
-              <input
-                type="checkbox"
-                checked={form.congelat}
-                onChange={(e) => actualitzar('congelat', e.target.checked)}
-              />
-              Producte congelat
-            </label>
-            {form.congelat && (
+            <span style={labelStyle}>Tipus</span>
+            <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+              {TIPUS_RECEPCIO.map((opt) => (
+                <label key={opt.value} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 14 }}>
+                  <input
+                    type="radio"
+                    name="tipus"
+                    value={opt.value}
+                    checked={form.tipus === opt.value}
+                    onChange={(e) => actualitzar('tipus', e.target.value)}
+                  />
+                  {opt.label}
+                </label>
+              ))}
+            </div>
+            {form.tipus === 'congelat' && (
               <p style={{ margin: '8px 0 0', fontSize: 13, color: colors.primary }}>
                 Es registrarà flux de descongelat.
               </p>
@@ -1039,7 +1312,6 @@ function origenProveidor(p) {
 
 function FitxaProveidor({ proveidor, colors, onTornar }) {
   const success = colors.success || '#1D9E75';
-  const warning = colors.warning || '#e67e22';
   const danger = colors.error || '#c0392b';
   const [resum, setResum] = useState(null);
   const [historial, setHistorial] = useState([]);
@@ -1076,7 +1348,6 @@ function FitxaProveidor({ proveidor, colors, onTornar }) {
 
   function colorEstat(estat) {
     if (estat === 'bo') return success;
-    if (estat === 'regular') return warning;
     return danger;
   }
 
@@ -1140,7 +1411,6 @@ function FitxaProveidor({ proveidor, colors, onTornar }) {
           <ResumPill label="Recepcions" valor={resum.total} colors={colors} />
           <ResumPill label="Última" valor={resum.ultimaRecepcio ? formatData(resum.ultimaRecepcio) : '—'} colors={colors} />
           <ResumPill label="Bo" valor={resum.perEstat.bo} colors={colors} />
-          <ResumPill label="Regular" valor={resum.perEstat.regular} colors={colors} />
           <ResumPill label="Rebutjat" valor={resum.perEstat.rebutjat} colors={colors} />
         </div>
       ) : null}
@@ -1157,7 +1427,7 @@ function FitxaProveidor({ proveidor, colors, onTornar }) {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
               <thead>
                 <tr>
-                  {['Data', 'Lot proveïdor', 'Temp.', 'Estat', 'Congelat', 'Operari'].map((col) => (
+                  {['Data', 'Producte', 'Albarà', 'Quantitat', 'Lot proveïdor', 'Temp.', 'Estat', 'Tipus', 'Operari'].map((col) => (
                     <th key={col} style={th}>{col}</th>
                   ))}
                 </tr>
@@ -1166,6 +1436,9 @@ function FitxaProveidor({ proveidor, colors, onTornar }) {
                 {historial.map((r) => (
                   <tr key={r.id} style={{ borderBottom: `1px solid ${colors.border}` }}>
                     <td style={td}>{formatData(r.data_recepcio)}</td>
+                    <td style={td}>{r.obrador_productes?.nom || '—'}</td>
+                    <td style={td}>{r.num_albara || '—'}</td>
+                    <td style={td}>{textQuantitat(r)}</td>
                     <td style={td}>{r.lot_proveidor || '—'}</td>
                     <td style={td}>{r.temperatura_arribada != null ? `${r.temperatura_arribada} °C` : '—'}</td>
                     <td style={td}>
@@ -1180,7 +1453,7 @@ function FitxaProveidor({ proveidor, colors, onTornar }) {
                         {ESTATS.find((e) => e.value === r.estat)?.label || r.estat || '—'}
                       </span>
                     </td>
-                    <td style={td}>{r.congelat ? 'Sí' : 'No'}</td>
+                    <td style={td}>{labelTipus(r.tipus, r.congelat)}</td>
                     <td style={td}>{r.operari || '—'}</td>
                   </tr>
                 ))}

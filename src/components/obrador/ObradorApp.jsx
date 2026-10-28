@@ -9,6 +9,7 @@ import ObradorLotsPage from './ObradorLotsPage';
 import ObradorExpedicionsPage from './ObradorExpedicionsPage';
 import ObradorIncidenciesPage from './ObradorIncidenciesPage';
 import ObradorRegistresTornPage from './ObradorRegistresTornPage';
+import ObradorPlansHigienePage from './ObradorPlansHigienePage';
 import ObradorExportacioPage from './ObradorExportacioPage';
 import ObradorEscandallsPage from './ObradorEscandallsPage';
 import ObradorKpisMensualPage from './ObradorKpisMensualPage';
@@ -22,6 +23,7 @@ const TABS = [
   { id: 'expedicions', label: 'Expedicions' },
   { id: 'incidencies', label: 'Incidències', roles: ['admin', 'management', 'manager'] },
   { id: 'registres-torn', label: 'Registres de torn' },
+  { id: 'plans-higiene', label: 'Plans d\'higiene' },
   { id: 'exportacio', label: 'Exportació' },
   { id: 'escandalls', label: 'Escandalls', roles: ['admin', 'management', 'manager'], provisional: true },
   { id: 'kpis-mensuals', label: 'KPIs mensuals', roles: ['admin', 'management', 'manager'], provisional: true }
@@ -58,6 +60,8 @@ function ObradorShell() {
         return <ObradorIncidenciesPage />;
       case 'registres-torn':
         return <ObradorRegistresTornPage />;
+      case 'plans-higiene':
+        return <ObradorPlansHigienePage />;
       case 'exportacio':
         return <ObradorExportacioPage />;
       case 'escandalls':

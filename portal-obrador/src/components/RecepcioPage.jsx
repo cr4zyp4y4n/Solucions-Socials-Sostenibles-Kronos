@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Camera } from 'lucide-react';
 import { colors } from '../theme';
-import { getProveidors, crearRecepcio } from '../services/obradorPortalService';
+import { getProveidors, getProductesActius, crearRecepcio } from '../services/obradorPortalService';
 import {
   parseAlbaranText,
   buildRecepcioDraftFromParsed
@@ -15,23 +15,38 @@ import OcrDebugPanel, { buildOcrDebugReport } from './OcrDebugPanel';
 
 const ESTATS = [
   { value: 'bo', label: 'Bo' },
-  { value: 'regular', label: 'Regular' },
   { value: 'rebutjat', label: 'Rebutjat' }
+];
+
+const TIPUS_RECEPCIO = [
+  { value: 'fred', label: 'Fred' },
+  { value: 'sec', label: 'Sec' },
+  { value: 'congelat', label: 'Congelat' }
+];
+
+const UNITATS = [
+  { value: 'kg', label: 'Quilos' },
+  { value: 'unitat', label: 'Unitats' }
 ];
 
 const formInicial = () => ({
   id_proveidor: '',
+  id_producte: '',
   lot_proveidor: '',
+  num_albara: '',
+  quantitat: '',
+  unitat: 'kg',
   temperatura_arribada: '',
   estat: 'bo',
   caducitat: '',
-  congelat: false,
+  tipus: 'fred',
   observacions: '',
   operari: ''
 });
 
 export default function RecepcioPage({ userEmail }) {
   const [proveidors, setProveidors] = useState([]);
+  const [productes, setProductes] = useState([]);
   const [form, setForm] = useState(formInicial);
   const [ocrDraft, setOcrDraft] = useState(null);
   const [ocrDebug, setOcrDebug] = useState(null);
@@ -54,8 +69,12 @@ export default function RecepcioPage({ userEmail }) {
 
   const carregar = useCallback(async () => {
     try {
-      const provResult = await getProveidors();
+      const [provResult, productesActius] = await Promise.all([
+        getProveidors(),
+        getProductesActius()
+      ]);
       setProveidors(provResult.proveidors);
+      setProductes(productesActius);
     } catch (err) {
       setError(err.message || 'Error carregant proveïdors');
     }
@@ -120,6 +139,7 @@ export default function RecepcioPage({ userEmail }) {
         ...formInicial(),
         id_proveidor: draft.id_proveidor || '',
         lot_proveidor: draft.lot_proveidor || '',
+        num_albara: draft.num_albara || '',
         caducitat: draft.caducitat || '',
         observacions: draft.observacions || '',
         operari: userEmail?.split('@')[0] || ''
@@ -144,6 +164,15 @@ export default function RecepcioPage({ userEmail }) {
       setError('Selecciona un proveïdor.');
       return;
     }
+    if (!form.id_producte) {
+      setError('Selecciona el producte.');
+      return;
+    }
+    const quantitatNum = form.quantitat === '' ? null : Number(form.quantitat);
+    if (quantitatNum == null || Number.isNaN(quantitatNum) || quantitatNum <= 0) {
+      setError('Indica la quantitat.');
+      return;
+    }
     if (form.estat === 'rebutjat' && !form.observacions.trim()) {
       setError('Observacions obligatòries si és rebutjat.');
       return;
@@ -155,11 +184,16 @@ export default function RecepcioPage({ userEmail }) {
     try {
       await crearRecepcio({
         id_proveidor: form.id_proveidor,
+        id_producte: form.id_producte,
         lot_proveidor: form.lot_proveidor || null,
+        num_albara: form.num_albara.trim() || null,
+        quantitat: quantitatNum,
+        unitat: form.unitat,
         temperatura_arribada: tempNum,
         estat: form.estat,
         caducitat: form.caducitat || null,
-        congelat: form.congelat,
+        tipus: form.tipus,
+        congelat: form.tipus === 'congelat',
         observacions: form.observacions || null,
         operari: form.operari || null
       });
@@ -236,6 +270,9 @@ export default function RecepcioPage({ userEmail }) {
         }}>
           <strong>Borrador OCR</strong> — confirma o corregeix.
           <div>Parser: {ocrDraft._parsed.parserId} · {ocrDraft._parsed.confiança}</div>
+          {ocrDraft.num_albara ? (
+            <div>Núm. d&apos;albarà proposat: {ocrDraft.num_albara}</div>
+          ) : null}
           {ocrDraft._parsed.lotProveidor ? (
             <div>Lot / albarà: {ocrDraft._parsed.lotProveidor}</div>
           ) : (
@@ -269,7 +306,59 @@ export default function RecepcioPage({ userEmail }) {
         </label>
 
         <label style={{ fontSize: 13, fontWeight: 600 }}>
-          Lot proveïdor / nº albarà
+          Producte *
+          <select
+            value={form.id_producte}
+            onChange={(e) => actualitzar('id_producte', e.target.value)}
+            style={{ ...inputStyle, marginTop: 6 }}
+            required
+          >
+            <option value="">Selecciona...</option>
+            {productes.map((p) => (
+              <option key={p.id} value={p.id}>{p.nom}</option>
+            ))}
+          </select>
+        </label>
+
+        <label style={{ fontSize: 13, fontWeight: 600 }}>
+          Núm. d&apos;albarà (recomanat)
+          <input
+            type="text"
+            value={form.num_albara}
+            onChange={(e) => actualitzar('num_albara', e.target.value)}
+            style={{ ...inputStyle, marginTop: 6 }}
+          />
+        </label>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 140px', gap: 10 }}>
+          <label style={{ fontSize: 13, fontWeight: 600 }}>
+            Quantitat *
+            <input
+              type="number"
+              min="0"
+              step="0.001"
+              value={form.quantitat}
+              onChange={(e) => actualitzar('quantitat', e.target.value)}
+              style={{ ...inputStyle, marginTop: 6 }}
+              required
+            />
+          </label>
+          <label style={{ fontSize: 13, fontWeight: 600 }}>
+            Unitat
+            <select
+              value={form.unitat}
+              onChange={(e) => actualitzar('unitat', e.target.value)}
+              style={{ ...inputStyle, marginTop: 6 }}
+            >
+              {UNITATS.map((u) => (
+                <option key={u.value} value={u.value}>{u.label}</option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        <label style={{ fontSize: 13, fontWeight: 600 }}>
+          Lot proveïdor
           <input
             type="text"
             value={form.lot_proveidor}
@@ -315,14 +404,21 @@ export default function RecepcioPage({ userEmail }) {
           />
         </label>
 
-        <label style={{ fontSize: 15 }}>
-          <input
-            type="checkbox"
-            checked={form.congelat}
-            onChange={(e) => actualitzar('congelat', e.target.checked)}
-          />
-          {' '}Producte congelat
-        </label>
+        <fieldset style={{ border: 'none', margin: 0, padding: 0 }}>
+          <legend style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>Tipus</legend>
+          {TIPUS_RECEPCIO.map((opt) => (
+            <label key={opt.value} style={{ display: 'block', marginBottom: 6, fontSize: 15 }}>
+              <input
+                type="radio"
+                name="tipus"
+                value={opt.value}
+                checked={form.tipus === opt.value}
+                onChange={(e) => actualitzar('tipus', e.target.value)}
+              />
+              {' '}{opt.label}
+            </label>
+          ))}
+        </fieldset>
 
         <label style={{ fontSize: 13, fontWeight: 600 }}>
           Observacions

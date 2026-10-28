@@ -47,6 +47,24 @@ export async function getProveidors() {
   throw error;
 }
 
+export async function getProductesActius() {
+  const { data, error } = await supabase
+    .from('obrador_productes')
+    .select('id, nom')
+    .eq('actiu', true)
+    .order('nom');
+  if (!error) return data || [];
+  if (isMissingColumnError(error)) {
+    const fallback = await supabase
+      .from('obrador_productes')
+      .select('id, nom')
+      .order('nom');
+    if (fallback.error) throw fallback.error;
+    return fallback.data || [];
+  }
+  throw error;
+}
+
 export async function crearRecepcio(dades) {
   const { data, error } = await supabase
     .from('obrador_recepcions')
@@ -185,6 +203,123 @@ export async function confirmarOkClient(codi, nom, nota) {
     p_nota: nota || null
   });
   if (error) throw error;
+  return data;
+}
+
+const SQL_REGISTRES_PORTAL = 'database/alter_obrador_registres_portal.sql';
+
+function errorRegistrePortal(error) {
+  const msg = error?.message || '';
+  if (/row-level security|permission denied/i.test(msg)) {
+    throw new Error(`El compte del portal encara no pot desar aquest registre. Cal executar ${SQL_REGISTRES_PORTAL}.`);
+  }
+  if (/Ja hi ha un registre|màxim de registres/i.test(msg)) {
+    throw new Error('Aquest període ja està complet.');
+  }
+  if (/número de fitxatge|fitxatge no correspon/i.test(msg)) {
+    throw new Error(msg);
+  }
+  if (/codi_fichatge|nom_operari|obrador_nom_per_codi_fichatge/i.test(msg)) {
+    throw new Error('Falta aplicar database/alter_obrador_registres_fichatge.sql a Supabase.');
+  }
+  throw error;
+}
+
+export async function nomPerCodiFichatge(codi) {
+  const { data, error } = await supabase.rpc('obrador_nom_per_codi_fichatge', {
+    p_codi: String(codi || '').trim()
+  });
+  if (error) errorRegistrePortal(error);
+  const nom = String(data || '').trim();
+  return nom || null;
+}
+
+export async function getTipusRegistre() {
+  let { data, error } = await supabase
+    .from('obrador_tipus_registre')
+    .select('codi, etiqueta, frequencia, unic_per_periode, es_checklist, actiu, maxim_per_periode')
+    .eq('actiu', true);
+  if (error && isMissingColumnError(error)) {
+    ({ data, error } = await supabase
+      .from('obrador_tipus_registre')
+      .select('codi, etiqueta, frequencia, unic_per_periode, es_checklist, actiu')
+      .eq('actiu', true));
+    data = (data || []).map((row) => ({ ...row, maxim_per_periode: null }));
+  }
+  if (error) {
+    if (error.code === 'PGRST205' || error.code === '42P01') {
+      throw new Error('Falta aplicar database/alter_obrador_registres_higiene.sql a Supabase.');
+    }
+    throw error;
+  }
+  return data || [];
+}
+
+export async function getRegistresHigieneDesDe(desde) {
+  const columnes = 'id, data, periode_inici, tipus_codi, items, detall, observacions, created_at, codi_fichatge, nom_operari';
+  let { data, error } = await supabase
+    .from('obrador_registres_torn')
+    .select(columnes)
+    .gte('data', desde)
+    .order('data', { ascending: false })
+    .limit(300);
+  if (error && isMissingColumnError(error)) {
+    ({ data, error } = await supabase
+      .from('obrador_registres_torn')
+      .select('id, data, periode_inici, tipus_codi, items, detall, observacions, created_at')
+      .gte('data', desde)
+      .order('data', { ascending: false })
+      .limit(300));
+    data = (data || []).map((row) => ({ ...row, codi_fichatge: null, nom_operari: null }));
+  }
+  if (error) errorRegistrePortal(error);
+  return data || [];
+}
+
+export async function crearRegistreHigiene(dades) {
+  const items = Array.isArray(dades.items) ? dades.items : [];
+  const { data, error } = await supabase
+    .from('obrador_registres_torn')
+    .insert({
+      data: dades.data,
+      tipus_codi: dades.tipus_codi,
+      items,
+      detall: dades.detall || null,
+      incidencia_detectada: Boolean(dades.incidencia_detectada) || items.some((item) => item.ok === false),
+      observacions: String(dades.observacions || '').trim() || null,
+      origen_extern: false,
+      document_adjunt_path: null,
+      codi_fichatge: String(dades.codi_fichatge || '').trim() || null
+    })
+    .select('id, data, tipus_codi, items, detall, codi_fichatge, nom_operari')
+    .single();
+  if (error) errorRegistrePortal(error);
+  return data;
+}
+
+export async function obrirIncidenciaDeRegistre(idRegistre, descripcio) {
+  const text = String(descripcio || '').trim();
+  if (text.length < 10) {
+    throw new Error('La descripció ha de tenir almenys 10 caràcters.');
+  }
+  const { data, error } = await supabase
+    .from('obrador_incidencies')
+    .insert({
+      origen: 'registre',
+      id_registre: idRegistre,
+      tipus: 'qualitat',
+      descripcio: text,
+      estat: 'oberta'
+    })
+    .select('id')
+    .single();
+  if (error) errorRegistrePortal(error);
+
+  const lligam = await supabase
+    .from('obrador_registres_torn')
+    .update({ id_incidencia: data.id })
+    .eq('id', idRegistre);
+  if (lligam.error) errorRegistrePortal(lligam.error);
   return data;
 }
 

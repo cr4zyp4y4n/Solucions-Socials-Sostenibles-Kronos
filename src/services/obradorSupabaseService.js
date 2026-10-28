@@ -14,7 +14,7 @@ const TEMP_RANGS = {
 };
 
 const DIES_SETMANA = ['Dilluns', 'Dimarts', 'Dimecres', 'Dijous', 'Divendres', 'Dissabte', 'Diumenge'];
-export const ESTATS_RECEPCIO_PRODUCCIO = ['bo', 'regular'];
+export const ESTATS_RECEPCIO_PRODUCCIO = ['bo'];
 export const ESTATS_LOT_EXPEDIBLE = ['envasat'];
 
 function madridDayStartIso(daysAgo = 0) {
@@ -621,27 +621,42 @@ export async function getRecepcions(limitOrOpts = 50, maybeOpts) {
   const offset = opts.offset ?? 0;
   const cerca = String(opts.cerca || '').trim();
 
-  let q = supabase
-    .from('obrador_recepcions')
-    .select(`
+  const ambRecepcio = `
+      id, id_proveidor, id_producte, data_recepcio, lot_proveidor, num_albara,
+      quantitat, unitat, temperatura_arribada, estat, caducitat, congelat, tipus,
+      observacions, operari, id_operari,
+      obrador_proveidors ( id, nom ),
+      obrador_productes ( id, nom )
+    `;
+  const senseRecepcioNova = `
       id, id_proveidor, data_recepcio, lot_proveidor, temperatura_arribada,
       estat, caducitat, congelat, observacions, operari, id_operari,
       obrador_proveidors ( id, nom )
-    `)
-    .order('data_recepcio', { ascending: false })
-    .range(offset, offset + limit - 1);
+    `;
 
-  if (cerca) {
-    q = q.or(
-      `lot_proveidor.ilike.%${cerca}%,observacions.ilike.%${cerca}%,operari.ilike.%${cerca}%`
-    );
+  function consulta(columnes, ambAlbara) {
+    let q = supabase
+      .from('obrador_recepcions')
+      .select(columnes)
+      .order('data_recepcio', { ascending: false })
+      .range(offset, offset + limit - 1);
+    if (cerca) {
+      const filtre = ambAlbara
+        ? `lot_proveidor.ilike.%${cerca}%,observacions.ilike.%${cerca}%,operari.ilike.%${cerca}%,num_albara.ilike.%${cerca}%`
+        : `lot_proveidor.ilike.%${cerca}%,observacions.ilike.%${cerca}%,operari.ilike.%${cerca}%`;
+      q = q.or(filtre);
+    }
+    if (opts.estat) q = q.eq('estat', opts.estat);
+    if (opts.idProveidor) q = q.eq('id_proveidor', opts.idProveidor);
+    return q;
   }
-  if (opts.estat) q = q.eq('estat', opts.estat);
-  if (opts.idProveidor) q = q.eq('id_proveidor', opts.idProveidor);
 
-  const { data, error } = await q;
-  if (error) throw error;
-  return data || [];
+  let resultat = await consulta(ambRecepcio, true);
+  if (resultat.error && (isMissingColumnError(resultat.error) || resultat.error.code === 'PGRST200' || resultat.error.code === 'PGRST204')) {
+    resultat = await consulta(senseRecepcioNova, false);
+  }
+  if (resultat.error) throw resultat.error;
+  return resultat.data || [];
 }
 
 /** Capçalera de la fitxa: totals sense descarregar l'historial. */
@@ -659,10 +674,9 @@ export async function getResumProveidor(idProveidor) {
     return count || 0;
   }
 
-  const [total, bo, regular, rebutjat, ultima] = await Promise.all([
+  const [total, bo, rebutjat, ultima] = await Promise.all([
     comptar(),
     comptar('bo'),
-    comptar('regular'),
     comptar('rebutjat'),
     supabase
       .from('obrador_recepcions')
@@ -678,7 +692,7 @@ export async function getResumProveidor(idProveidor) {
   return {
     total,
     ultimaRecepcio: ultima.data?.data_recepcio || null,
-    perEstat: { bo, regular, rebutjat }
+    perEstat: { bo, rebutjat }
   };
 }
 
@@ -696,26 +710,48 @@ export async function crearRecepcio(dades) {
 export async function updateRecepcio(id, camps) {
   const payload = { updated_at: new Date().toISOString() };
   const allowed = [
-    'id_proveidor', 'lot_proveidor', 'temperatura_arribada', 'estat',
-    'caducitat', 'congelat', 'observacions', 'operari', 'id_operari'
+    'id_proveidor', 'id_producte', 'lot_proveidor', 'num_albara', 'quantitat', 'unitat',
+    'temperatura_arribada', 'estat', 'caducitat', 'congelat', 'tipus',
+    'observacions', 'operari', 'id_operari'
   ];
   for (const key of allowed) {
     if (Object.prototype.hasOwnProperty.call(camps, key)) {
       payload[key] = camps[key];
     }
   }
-  const { data, error } = await supabase
-    .from('obrador_recepcions')
-    .update(payload)
-    .eq('id', id)
-    .select(`
+  const ambRecepcio = `
+      id, id_proveidor, id_producte, data_recepcio, lot_proveidor, num_albara,
+      quantitat, unitat, temperatura_arribada, estat, caducitat, congelat, tipus,
+      observacions, operari, id_operari,
+      obrador_proveidors ( id, nom ),
+      obrador_productes ( id, nom )
+    `;
+  const senseRecepcioNova = `
       id, id_proveidor, data_recepcio, lot_proveidor, temperatura_arribada,
       estat, caducitat, congelat, observacions, operari, id_operari,
       obrador_proveidors ( id, nom )
-    `)
+    `;
+
+  let resultat = await supabase
+    .from('obrador_recepcions')
+    .update(payload)
+    .eq('id', id)
+    .select(ambRecepcio)
     .single();
-  if (error) throw error;
-  return data;
+  if (resultat.error && (isMissingColumnError(resultat.error) || resultat.error.code === 'PGRST200' || resultat.error.code === 'PGRST204')) {
+    const reduit = { updated_at: payload.updated_at };
+    for (const key of ['id_proveidor', 'lot_proveidor', 'temperatura_arribada', 'estat', 'caducitat', 'congelat', 'observacions', 'operari', 'id_operari']) {
+      if (Object.prototype.hasOwnProperty.call(payload, key)) reduit[key] = payload[key];
+    }
+    resultat = await supabase
+      .from('obrador_recepcions')
+      .update(reduit)
+      .eq('id', id)
+      .select(senseRecepcioNova)
+      .single();
+  }
+  if (resultat.error) throw resultat.error;
+  return resultat.data;
 }
 
 // ── LOTS ───────────────────────────────────────────────────────
@@ -1148,11 +1184,13 @@ function ambNomsResponsables(rows, noms) {
 
 export async function getIncidencies(limit = 100, { estat, estats } = {}) {
   const selectFull = `
-      id, tipus, descripcio, data_incidencia, estat, origen, id_sensor, valor_extrem,
+      id, tipus, descripcio, data_incidencia, estat, origen, id_sensor, id_recepcio, id_registre, valor_extrem,
       tancada_at, notes_tancament, checklist_tancament, inici_episodi_at,
       tancada_per, verificada_per, verificada_at,
       obrador_lots ( codi_lot ),
-      obrador_sensors ( nom, ubicacio )
+      obrador_sensors ( nom, ubicacio ),
+      obrador_recepcions ( lot_proveidor, num_albara, obrador_proveidors ( nom ), obrador_productes ( nom ) ),
+      registre_origen:obrador_registres_torn!id_registre ( data, tipus_codi, obrador_tipus_registre ( etiqueta ) )
     `;
   const selectNotes = `
       id, tipus, descripcio, data_incidencia, estat, origen, id_sensor, valor_extrem,
@@ -1181,7 +1219,8 @@ export async function getIncidencies(limit = 100, { estat, estats } = {}) {
   let rows;
   const full = await run(selectFull);
   if (full.error) {
-    if (!isMissingColumnError(full.error)) throw full.error;
+    const esAntic = isMissingColumnError(full.error) || full.error.code === 'PGRST200' || full.error.code === 'PGRST204';
+    if (!esAntic) throw full.error;
     const notes = await run(selectNotes);
     if (notes.error) {
       if (!isMissingColumnError(notes.error)) throw notes.error;
@@ -1397,6 +1436,23 @@ const SELECT_REGISTRE_TORN = `
   obrador_operaris ( nom )
 `;
 
+const SELECT_REGISTRE_HIGIENE = `
+  id, data, moment, tipus_codi, periode_inici, id_operari, registrat_per, items, detall,
+  incidencia_detectada, id_incidencia, observacions, origen_extern, document_adjunt_path,
+  codi_fichatge, nom_operari,
+  created_at, updated_at,
+  obrador_operaris ( nom ),
+  obrador_tipus_registre ( etiqueta, frequencia, codis_pla, es_checklist )
+`;
+
+const SELECT_REGISTRE_HIGIENE_SENSE_FITXATGE = `
+  id, data, moment, tipus_codi, periode_inici, id_operari, registrat_per, items, detall,
+  incidencia_detectada, id_incidencia, observacions, origen_extern, document_adjunt_path,
+  created_at, updated_at,
+  obrador_operaris ( nom ),
+  obrador_tipus_registre ( etiqueta, frequencia, codis_pla, es_checklist )
+`;
+
 async function ambNomQuiRegistra(rows) {
   const noms = await nomsPerfilsObrador((rows || []).map((row) => row.registrat_per));
   return (rows || []).map((row) => ({
@@ -1406,17 +1462,107 @@ async function ambNomQuiRegistra(rows) {
   }));
 }
 
-export async function getRegistresTorn({ desde, fins } = {}) {
-  let q = supabase
+export async function getRegistresTorn({ desde, fins, tipusCodi } = {}) {
+  async function consulta(columnes) {
+    let q = supabase
+      .from('obrador_registres_torn')
+      .select(columnes)
+      .order('data', { ascending: false })
+      .order('created_at', { ascending: false });
+    if (desde) q = q.gte('data', desde);
+    if (fins) q = q.lte('data', fins);
+    if (tipusCodi) q = q.eq('tipus_codi', tipusCodi);
+    return q;
+  }
+
+  let resultat = await consulta(SELECT_REGISTRE_HIGIENE);
+  if (resultat.error && isMissingColumnError(resultat.error)) {
+    resultat = await consulta(SELECT_REGISTRE_HIGIENE_SENSE_FITXATGE);
+    if (!resultat.error) {
+      resultat.data = (resultat.data || []).map((row) => ({ ...row, codi_fichatge: null, nom_operari: null }));
+    }
+  }
+  if (resultat.error && (isMissingColumnError(resultat.error) || resultat.error.code === 'PGRST200' || resultat.error.code === 'PGRST204')) {
+    if (tipusCodi) {
+      throw new Error('Falta aplicar database/alter_obrador_registres_higiene.sql a Supabase.');
+    }
+    resultat = await consulta(SELECT_REGISTRE_TORN);
+  }
+  if (resultat.error) errorRegistreTorn(resultat.error);
+  return ambNomQuiRegistra(resultat.data || []);
+}
+
+export async function getTipusRegistre() {
+  const base = 'codi, etiqueta, codis_pla, frequencia, unic_per_periode, es_checklist, actiu, llindar';
+  let { data, error } = await supabase
+    .from('obrador_tipus_registre')
+    .select(`${base}, maxim_per_periode`)
+    .eq('actiu', true)
+    .order('etiqueta');
+  if (error && isMissingColumnError(error)) {
+    ({ data, error } = await supabase
+      .from('obrador_tipus_registre')
+      .select(base)
+      .eq('actiu', true)
+      .order('etiqueta'));
+    data = (data || []).map((row) => ({ ...row, maxim_per_periode: null }));
+  }
+  if (error) {
+    if (faltaTaulaRegistresTorn(error) || isMissingColumnError(error) || error.code === 'PGRST205' || error.code === '42P01') {
+      throw new Error('Falta aplicar database/alter_obrador_registres_higiene.sql a Supabase.');
+    }
+    throw error;
+  }
+  return data || [];
+}
+
+export async function crearRegistreHigiene(dades) {
+  if (!dades?.tipus_codi) throw new Error('Cal un tipus de registre.');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(dades?.data || ''))) {
+    throw new Error('Data no vàlida.');
+  }
+  const items = Array.isArray(dades.items) && dades.items.length
+    ? normalitzarItemsTorn(dades.items).map((item) => ({ ...item, llindar: null }))
+    : [];
+  let registratPer = null;
+  try {
+    registratPer = await usuariAutenticatId();
+  } catch (_) {
+    registratPer = null;
+  }
+
+  const { data, error } = await supabase
     .from('obrador_registres_torn')
-    .select(SELECT_REGISTRE_TORN)
-    .order('data', { ascending: false })
-    .order('created_at', { ascending: false });
-  if (desde) q = q.gte('data', desde);
-  if (fins) q = q.lte('data', fins);
-  const { data, error } = await q;
+    .insert({
+      data: dades.data,
+      tipus_codi: dades.tipus_codi,
+      id_operari: dades.id_operari || null,
+      registrat_per: registratPer,
+      items,
+      detall: dades.detall || null,
+      incidencia_detectada: Boolean(dades.incidencia_detectada) || items.some((item) => item.ok === false),
+      observacions: String(dades.observacions || '').trim() || null,
+      origen_extern: false,
+      document_adjunt_path: null
+    })
+    .select(SELECT_REGISTRE_HIGIENE)
+    .single();
+  if (error) {
+    if (isMissingColumnError(error) || error.code === 'PGRST204' || error.code === 'PGRST205') {
+      throw new Error('Falta aplicar database/alter_obrador_registres_higiene.sql a Supabase.');
+    }
+    errorRegistreTorn(error);
+  }
+  const [enriquit] = await ambNomQuiRegistra([data]);
+  return enriquit;
+}
+
+export async function lligarIncidenciaRegistre(idRegistre, idIncidencia) {
+  const { error } = await supabase
+    .from('obrador_registres_torn')
+    .update({ id_incidencia: idIncidencia })
+    .eq('id', idRegistre);
   if (error) errorRegistreTorn(error);
-  return ambNomQuiRegistra(data || []);
 }
 
 export async function getRegistreTornDelDia(data, moment) {
@@ -1540,6 +1686,11 @@ export async function getExportacioInspeccio({ desde, fins }) {
 
   const [recepcions, lots, expedicions, incidenciesRaw, registres, temperatures, generatPer] = await Promise.all([
     llegirRang('obrador_recepcions', 'data_recepcio', inici, fi, [`
+      id, data_recepcio, lot_proveidor, num_albara, quantitat, unitat,
+      temperatura_arribada, estat, caducitat, congelat, tipus, observacions, operari,
+      obrador_proveidors ( nom ),
+      obrador_productes ( nom )
+    `, `
       id, data_recepcio, lot_proveidor, temperatura_arribada, estat, caducitat,
       congelat, observacions, operari,
       obrador_proveidors ( nom )
@@ -1576,6 +1727,13 @@ export async function getExportacioInspeccio({ desde, fins }) {
       obrador_lots ( codi_lot, obrador_productes ( nom ) )
     `]),
     llegirRang('obrador_incidencies', 'data_incidencia', inici, fi, [`
+      id, tipus, descripcio, data_incidencia, estat, origen,
+      tancada_at, notes_tancament, tancada_per, verificada_per, verificada_at,
+      obrador_lots ( codi_lot ),
+      obrador_sensors ( nom, ubicacio ),
+      obrador_recepcions ( lot_proveidor, num_albara, obrador_proveidors ( nom ), obrador_productes ( nom ) ),
+      registre_origen:obrador_registres_torn!id_registre ( data, tipus_codi, obrador_tipus_registre ( etiqueta ) )
+    `, `
       id, tipus, descripcio, data_incidencia, estat, origen,
       tancada_at, notes_tancament, tancada_per, verificada_per, verificada_at,
       obrador_lots ( codi_lot ),

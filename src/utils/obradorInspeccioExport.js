@@ -44,6 +44,13 @@ function text(value) {
   return String(value);
 }
 
+function textOperari(row) {
+  const codi = text(row.codi_fichatge);
+  const nom = text(row.nom_operari) || text(row.operari_nom);
+  if (codi && nom) return `${codi} · ${nom}`;
+  return nom || codi;
+}
+
 function siNo(value) {
   if (value == null || value === '') return '';
   return value ? 'Sí' : 'No';
@@ -86,7 +93,41 @@ function dataHora(iso) {
 function referenciaIncidencia(inc) {
   if (inc.origen === 'torn') return 'Registre de torn';
   if (inc.origen === 'sensor') return inc.obrador_sensors?.nom || inc.obrador_sensors?.ubicacio || 'Sensor';
+  if (inc.origen === 'recepcio') {
+    const recepcio = inc.obrador_recepcions || {};
+    const parts = [
+      recepcio.obrador_proveidors?.nom,
+      recepcio.obrador_productes?.nom,
+      recepcio.num_albara || recepcio.lot_proveidor
+    ].filter(Boolean);
+    return parts.join(' · ') || 'Recepció';
+  }
+  if (inc.origen === 'registre') {
+    const registre = inc.registre_origen || inc.obrador_registres_torn || {};
+    return registre.obrador_tipus_registre?.etiqueta || registre.tipus_codi || 'Registre d\'higiene';
+  }
   return inc.obrador_lots?.codi_lot || '';
+}
+
+function labelOrigenIncidencia(row) {
+  if (row.origen === 'sensor') return 'Sensor';
+  if (row.origen === 'torn') return 'Torn';
+  if (row.origen === 'recepcio') return 'Recepció';
+  if (row.origen === 'registre') return 'Registre';
+  return 'Lot';
+}
+
+function labelTipusRecepcio(row) {
+  if (row.tipus === 'sec') return 'Sec';
+  if (row.tipus === 'congelat') return 'Congelat';
+  if (row.tipus === 'fred') return 'Fred';
+  return row.congelat ? 'Congelat' : '';
+}
+
+function quantitatRecepcio(row) {
+  if (row.quantitat == null || row.quantitat === '') return '';
+  const unitat = row.unitat === 'unitat' ? 'unitats' : row.unitat === 'kg' ? 'kg' : '';
+  return [num(row.quantitat), unitat].filter(Boolean).join(' ');
 }
 
 function recepcionsOrigen(lot) {
@@ -100,6 +141,17 @@ function recepcionsOrigen(lot) {
     ].filter(Boolean);
     return parts.join(' · ');
   }).join(' | ');
+}
+
+function resumDetallRegistre(row) {
+  const detall = row.detall;
+  if (!detall || typeof detall !== 'object') return '';
+  if (Array.isArray(detall.assistents)) {
+    return [detall.titol, detall.imparteix, `${detall.assistents.length} assistents`].filter(Boolean).join(' · ');
+  }
+  return [detall.punt_mostreig, detall.nivell != null && detall.nivell !== '' ? `${detall.nivell} mg/L` : '', detall.tipus_residu, detall.quantitat, detall.desti, detall.equip, detall.incidencia, detall.mesura]
+    .filter(Boolean)
+    .join(' · ');
 }
 
 function itemsTorn(registre) {
@@ -128,15 +180,18 @@ export function taulesInspeccio(paquet) {
       id: 'recepcions',
       titol: 'Recepcions',
       nomFitxer: nomFitxer(paquet, 'recepcions.csv'),
-      capcaleres: ['Data', 'Proveïdor', 'Lot proveïdor', 'Temperatura °C', 'Estat', 'Caducitat', 'Congelat', 'Operari', 'Observacions'],
+      capcaleres: ['Data', 'Proveïdor', 'Producte', 'Núm. albarà', 'Quantitat', 'Lot proveïdor', 'Temperatura °C', 'Estat', 'Caducitat', 'Tipus', 'Operari', 'Observacions'],
       files: (paquet.recepcions || []).map((row) => [
         dataHora(row.data_recepcio),
         row.obrador_proveidors?.nom || '',
+        row.obrador_productes?.nom || '',
+        text(row.num_albara),
+        quantitatRecepcio(row),
         text(row.lot_proveidor),
         num(row.temperatura_arribada),
         text(row.estat),
         dataCurta(row.caducitat),
-        siNo(row.congelat),
+        labelTipusRecepcio(row),
         text(row.operari),
         text(row.observacions)
       ])
@@ -189,7 +244,7 @@ export function taulesInspeccio(paquet) {
       capcaleres: ['Data', 'Origen', 'Referència', 'Tipus', 'Descripció', 'Estat', 'Acció correctiva', 'Tancada per', 'Tancada el', 'Verificada per', 'Verificada el'],
       files: (paquet.incidencies || []).map((row) => [
         dataHora(row.data_incidencia),
-        row.origen === 'sensor' ? 'Sensor' : row.origen === 'torn' ? 'Torn' : 'Lot',
+        labelOrigenIncidencia(row),
         referenciaIncidencia(row),
         TIPUS_INC[row.tipus] || text(row.tipus),
         text(row.descripcio),
@@ -203,16 +258,19 @@ export function taulesInspeccio(paquet) {
     },
     {
       id: 'registres',
-      titol: 'Registres de torn',
+      titol: 'Registres d\'higiene i de torn',
       nomFitxer: nomFitxer(paquet, 'registres-torn.csv'),
-      capcaleres: ['Dia', 'Moment', 'Operari', 'Registrat per', 'Quan', 'Ítems', 'No conformitat', 'Observacions'],
+      capcaleres: ['Dia', 'Tipus', 'Període', 'Moment', 'Operari', 'Registrat per', 'Quan', 'Ítems', 'Detall', 'No conformitat', 'Observacions'],
       files: registres.map((row) => [
         dataCurta(row.data),
+        row.obrador_tipus_registre?.etiqueta || text(row.tipus_codi),
+        dataCurta(row.periode_inici),
         MOMENT[row.moment] || text(row.moment),
-        text(row.operari_nom),
+        textOperari(row),
         text(row.registrat_per_nom),
         dataHora(row.created_at),
         itemsTorn(row),
+        resumDetallRegistre(row),
         row.incidencia_detectada ? 'Sí' : 'No',
         text(row.observacions)
       ])

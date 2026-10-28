@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase, isSupabaseConfigured } from './config/supabase';
 import LoginPage from './components/LoginPage';
 import RecepcioPage from './components/RecepcioPage';
+import PlansHigienePage from './components/PlansHigienePage';
 import TraceLotPage from './components/TraceLotPage';
 import AyudaPage from './components/AyudaPage';
 import FinancamentBanner from './components/FinancamentBanner';
@@ -66,6 +67,7 @@ function AppContent() {
   const [user, setUser] = useState(null);
   const [traceCode] = useState(() => getTraceCodeFromUrl());
   const [checking, setChecking] = useState(true);
+  const [seccio, setSeccio] = useState('recepcio');
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -158,10 +160,48 @@ function AppContent() {
         </button>
         </div>
       </header>
+      <nav style={{
+        display: 'flex',
+        gap: 8,
+        padding: '12px 16px 0',
+        maxWidth: 720,
+        margin: '0 auto'
+      }}>
+        <BotoSeccio actiu={seccio === 'recepcio'} onClick={() => setSeccio('recepcio')}>
+          Recepció
+        </BotoSeccio>
+        <BotoSeccio actiu={seccio === 'higiene'} onClick={() => setSeccio('higiene')}>
+          Higiene
+        </BotoSeccio>
+      </nav>
       <main>
-        <RecepcioPage userEmail={user.email} />
+        {seccio === 'higiene'
+          ? <PlansHigienePage />
+          : <RecepcioPage userEmail={user.email} />}
       </main>
     </div>
+  );
+}
+
+function BotoSeccio({ actiu, onClick, children }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        flex: 1,
+        minHeight: 48,
+        borderRadius: 12,
+        border: `2px solid ${actiu ? colors.primary : colors.border}`,
+        background: actiu ? colors.primary : colors.card,
+        color: actiu ? '#fff' : colors.text,
+        fontSize: 16,
+        fontWeight: 800,
+        cursor: 'pointer'
+      }}
+    >
+      {children}
+    </button>
   );
 }
 

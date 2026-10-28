@@ -168,8 +168,25 @@ export default function AyudaPage({ onBack }) {
           <p style={{ margin: 0, fontSize: 14, lineHeight: 1.55, color: colors.textSecondary }}>
             Qualsevol persona pot escanejar el QR i veure la traçabilitat sense iniciar sessió.
             L&apos;OK de qui rep el producte tampoc demana compte.
-            El login només cal per <strong>expedir</strong> o perquè el transport marqui <strong>entregat</strong>.
+            El login cal per <strong>expedir</strong>, registrar una <strong>recepció</strong> o un <strong>pla d&apos;higiene</strong>,
+            o perquè el transport marqui <strong>entregat</strong>.
           </p>
+        </Section>
+
+        <Section title="A l'obrador — plans d'higiene">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+            <Step num="1" title="Entra amb el compte de l'equip">
+              A la pantalla d&apos;inici, prem <em>Higiene</em>. Recepció segueix a l&apos;altra pestanya.
+            </Step>
+            <Step num="2" title="Omple el que toca avui">
+              Cada dia: inici de torn, clor de l&apos;aigua, producció, residus i tancament.
+              El que ja està fet surt en verd. Neteja i equips de fred encara no tenen llista.
+            </Step>
+            <Step num="3" title="Formació i manteniment, quan passin">
+              Una sessió es desa amb qui ha vingut. Un avís de manteniment obre una incidència;
+              es tanca després des de Kronos.
+            </Step>
+          </div>
         </Section>
 
         <Section title="Si hi ha un problema">

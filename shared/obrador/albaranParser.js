@@ -3240,6 +3240,11 @@ export function buildRecepcioDraftFromParsed(parsed, proveidors = []) {
 
     lot_proveidor: parsed.lotProveidor || '',
 
+    num_albara: parsed.numAlbara
+      || (['jotri', 'alvilardan', 'candelas', 'trosdordal', 'begudes'].includes(parsed?.parserId)
+        ? (parsed.lotProveidor || '')
+        : ''),
+
     caducitat: '',
 
     observacions,
