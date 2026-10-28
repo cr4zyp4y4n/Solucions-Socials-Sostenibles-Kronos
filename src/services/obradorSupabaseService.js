@@ -637,10 +637,49 @@ export async function getRecepcions(limitOrOpts = 50, maybeOpts) {
     );
   }
   if (opts.estat) q = q.eq('estat', opts.estat);
+  if (opts.idProveidor) q = q.eq('id_proveidor', opts.idProveidor);
 
   const { data, error } = await q;
   if (error) throw error;
   return data || [];
+}
+
+/** Capçalera de la fitxa: totals sense descarregar l'historial. */
+export async function getResumProveidor(idProveidor) {
+  if (!idProveidor) throw new Error('Falta el proveïdor.');
+
+  async function comptar(estat) {
+    let q = supabase
+      .from('obrador_recepcions')
+      .select('id', { count: 'exact', head: true })
+      .eq('id_proveidor', idProveidor);
+    if (estat) q = q.eq('estat', estat);
+    const { count, error } = await q;
+    if (error) throw error;
+    return count || 0;
+  }
+
+  const [total, bo, regular, rebutjat, ultima] = await Promise.all([
+    comptar(),
+    comptar('bo'),
+    comptar('regular'),
+    comptar('rebutjat'),
+    supabase
+      .from('obrador_recepcions')
+      .select('data_recepcio')
+      .eq('id_proveidor', idProveidor)
+      .order('data_recepcio', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+  ]);
+
+  if (ultima.error) throw ultima.error;
+
+  return {
+    total,
+    ultimaRecepcio: ultima.data?.data_recepcio || null,
+    perEstat: { bo, regular, rebutjat }
+  };
 }
 
 export async function crearRecepcio(dades) {
@@ -920,6 +959,12 @@ export async function getExpedicions(limitOrOpts = 50, maybeOpts) {
     return q;
   }
 
+  const ambQui = `
+      id, id_client, data_sortida, comanda_holded, estat, check_client, check_sortida,
+      confirmat_client_nom, confirmat_client_at, confirmat_client_nota,
+      anulada_at, anulada_per, anulada_motiu, expedida_per,
+      obrador_lots ( codi_lot, obrador_productes ( nom ) )
+    `;
   const ambAnulacio = `
       id, id_client, data_sortida, comanda_holded, estat, check_client, check_sortida,
       confirmat_client_nom, confirmat_client_at, confirmat_client_nota,
@@ -936,7 +981,10 @@ export async function getExpedicions(limitOrOpts = 50, maybeOpts) {
       obrador_lots ( codi_lot, obrador_productes ( nom ) )
     `;
 
-  let resultat = await consulta(ambAnulacio);
+  let resultat = await consulta(ambQui);
+  if (resultat.error && isMissingColumnError(resultat.error)) {
+    resultat = await consulta(ambAnulacio);
+  }
   if (resultat.error && isMissingColumnError(resultat.error)) {
     resultat = await consulta(ambOk);
   }
@@ -949,14 +997,17 @@ export async function getExpedicions(limitOrOpts = 50, maybeOpts) {
 
 async function ambNomAnulacio(rows) {
   const llista = rows || [];
-  if (!llista.some((row) => Object.prototype.hasOwnProperty.call(row, 'anulada_per'))) {
-    return llista;
-  }
-  const ids = llista.map((row) => row.anulada_per).filter(Boolean);
+  const teQui = llista.some((row) => (
+    Object.prototype.hasOwnProperty.call(row, 'anulada_per')
+    || Object.prototype.hasOwnProperty.call(row, 'expedida_per')
+  ));
+  if (!teQui) return llista;
+  const ids = llista.flatMap((row) => [row.anulada_per, row.expedida_per]).filter(Boolean);
   const noms = ids.length ? await nomsPerfilsObrador(ids) : {};
   return llista.map((row) => ({
     ...row,
-    anulada_per_nom: row.anulada_per ? (noms[row.anulada_per] || null) : null
+    anulada_per_nom: row.anulada_per ? (noms[row.anulada_per] || null) : null,
+    expedida_per_nom: row.expedida_per ? (noms[row.expedida_per] || null) : null
   }));
 }
 

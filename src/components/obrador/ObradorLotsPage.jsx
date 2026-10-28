@@ -253,7 +253,9 @@ export default function ObradorLotsPage() {
 
   const tempNum = form.temp_final_coccio === '' ? null : Number(form.temp_final_coccio);
   const tempMin = producteSeleccionat?.temp_coccio != null ? Number(producteSeleccionat.temp_coccio) : null;
-  const tempInsuficient = tempMin != null && tempNum != null && !Number.isNaN(tempNum) && tempNum < tempMin;
+  const tempPendent = tempMin != null && (tempNum == null || Number.isNaN(tempNum));
+  const tempBaixa = tempMin != null && tempNum != null && !Number.isNaN(tempNum) && tempNum < tempMin;
+  const tempInsuficient = tempPendent || tempBaixa;
 
   const carregar = useCallback(async ({ append = false, offset = 0 } = {}) => {
     if (!append) setLoading(true);
@@ -340,8 +342,12 @@ export default function ObradorLotsPage() {
       setError('Has de confirmar la mostra guardada.');
       return;
     }
-    if (tempInsuficient) {
-      setError(`Temperatura insuficient. Mínim requerit: ${tempMin}°C.`);
+    if (tempPendent || tempBaixa) {
+      setError(
+        tempPendent
+          ? `Cal indicar la temperatura. Mínim de la fitxa: ${tempMin}°C. El lot no es desa.`
+          : `Temperatura insuficient. Mínim de la fitxa: ${tempMin}°C. El lot no es desa.`
+      );
       return;
     }
 
@@ -739,9 +745,14 @@ export default function ObradorLotsPage() {
                   onChange={(e) => actualitzar('temp_final_coccio', e.target.value)}
                   style={inputStyle}
                 />
-                {tempInsuficient && (
+                {tempPendent && (
                   <p style={{ margin: '8px 0 0', fontSize: 13, color: danger, fontWeight: 600 }}>
-                    Temperatura insuficient. Mínim requerit: {tempMin}°C. No es pot guardar.
+                    Cal indicar la temperatura. Mínim de la fitxa: {tempMin}°C. El lot no es desa.
+                  </p>
+                )}
+                {tempBaixa && (
+                  <p style={{ margin: '8px 0 0', fontSize: 13, color: danger, fontWeight: 600 }}>
+                    Temperatura insuficient. Mínim de la fitxa: {tempMin}°C. El lot no es desa.
                   </p>
                 )}
               </div>

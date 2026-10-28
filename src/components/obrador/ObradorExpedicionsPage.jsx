@@ -432,7 +432,14 @@ export default function ObradorExpedicionsPage() {
                     <td style={{ padding: '12px 16px' }}>{exp.obrador_lots?.codi_lot || '—'}</td>
                     <td style={{ padding: '12px 16px' }}>{exp.obrador_lots?.obrador_productes?.nom || '—'}</td>
                     <td style={{ padding: '12px 16px' }}>{exp.id_client || '—'}</td>
-                    <td style={{ padding: '12px 16px' }}>{formatData(exp.data_sortida)}</td>
+                    <td style={{ padding: '12px 16px' }}>
+                      {formatData(exp.data_sortida)}
+                      {exp.expedida_per_nom ? (
+                        <div style={{ fontSize: 12, color: colors.textSecondary, marginTop: 4 }}>
+                          Feta per {exp.expedida_per_nom}
+                        </div>
+                      ) : null}
+                    </td>
                     <td style={{ padding: '12px 16px' }}>
                       <span style={{
                         padding: '4px 10px',

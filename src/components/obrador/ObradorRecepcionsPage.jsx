@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useTheme } from '../ThemeContext';
-import { getProveidors, getRecepcions, crearRecepcio, updateRecepcio, filterProveidorsForSelector, PROVEIDORS_SCHEMA_SQL } from '../../services/obradorSupabaseService';
+import { getProveidors, getRecepcions, getResumProveidor, crearRecepcio, updateRecepcio, filterProveidorsForSelector, PROVEIDORS_SCHEMA_SQL } from '../../services/obradorSupabaseService';
 import { syncProveidorsFromHolded, HOLDED_COMPANIES } from '../../services/obradorHoldedSyncService';
 import {
   parseAlbaranText,
@@ -78,6 +78,7 @@ export default function ObradorRecepcionsPage() {
   const [editantId, setEditantId] = useState(null);
   const [cercaProveidor, setCercaProveidor] = useState('');
   const [mostrarInactiusProveidor, setMostrarInactiusProveidor] = useState(false);
+  const [proveidorFitxa, setProveidorFitxa] = useState(null);
 
   const PAGE_SIZE = 50;
 
@@ -435,8 +436,12 @@ export default function ObradorRecepcionsPage() {
           <button
             type="button"
             onClick={() => {
-              setMode('llistat');
               setError('');
+              if (mode === 'fitxa-proveidor') {
+                setMode('proveidors');
+                return;
+              }
+              setMode('llistat');
               setForm(formInicial());
               setEditantId(null);
               setOcrDraft(null);
@@ -452,7 +457,7 @@ export default function ObradorRecepcionsPage() {
               border: `0.5px solid ${colors.border}`
             }}
           >
-            Tornar al llistat
+            {mode === 'fitxa-proveidor' ? 'Tornar als proveïdors' : 'Tornar al llistat'}
           </button>
         )}
         </div>
@@ -680,6 +685,21 @@ export default function ObradorRecepcionsPage() {
           mostrarInactius={mostrarInactiusProveidor}
           onMostrarInactius={setMostrarInactiusProveidor}
           colors={colors}
+          onObrir={(p) => {
+            setProveidorFitxa(p);
+            setMode('fitxa-proveidor');
+            setError('');
+            setSuccessMsg('');
+          }}
+        />
+      ) : mode === 'fitxa-proveidor' && proveidorFitxa ? (
+        <FitxaProveidor
+          proveidor={proveidorFitxa}
+          colors={colors}
+          onTornar={() => {
+            setMode('proveidors');
+            setError('');
+          }}
         />
       ) : (
         <form
@@ -904,7 +924,8 @@ function LlistatProveidors({
   onCerca,
   mostrarInactius,
   onMostrarInactius,
-  colors
+  colors,
+  onObrir
 }) {
   const visibles = filterProveidorsForSelector(proveidors, {
     incloureInactius: mostrarInactius,
@@ -967,8 +988,32 @@ function LlistatProveidors({
             </thead>
             <tbody>
               {visibles.map((p) => (
-                <tr key={p.id} style={{ borderBottom: `1px solid ${colors.border}` }}>
-                  <td style={{ ...td, fontWeight: 600 }}>{p.nom || '—'}</td>
+                <tr
+                  key={p.id}
+                  tabIndex={0}
+                  role="button"
+                  aria-label={`Obrir la fitxa de ${p.nom || 'proveïdor'}`}
+                  title="Obrir la fitxa"
+                  onClick={() => onObrir?.(p)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      onObrir?.(p);
+                    }
+                  }}
+                  style={{
+                    borderBottom: `1px solid ${colors.border}`,
+                    cursor: 'pointer'
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = colors.surface; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                  onFocus={(e) => { e.currentTarget.style.outline = `2px solid ${colors.primary}`; }}
+                  onBlur={(e) => { e.currentTarget.style.outline = 'none'; }}
+                >
+                  <td style={{ ...td, fontWeight: 600 }}>
+                    {p.nom || '—'}
+                    <span style={{ marginLeft: 8, color: colors.primary, fontWeight: 600 }}>›</span>
+                  </td>
                   <td style={td}>{p.cif || '—'}</td>
                   <td style={td}>{p.codi_intern || '—'}</td>
                   <td style={td}>{LABEL_ESTAT_PROVEIDOR[p.estat_us] || 'Habitual'}</td>
@@ -979,6 +1024,204 @@ function LlistatProveidors({
           </table>
         </div>
       )}
+    </div>
+  );
+}
+
+const HISTORIAL_PAGE = 50;
+
+function origenProveidor(p) {
+  if (p?.holded_contact_id) {
+    return p.holded_empresa ? `Holded · ${p.holded_empresa}` : 'Holded';
+  }
+  return 'Alta manual';
+}
+
+function FitxaProveidor({ proveidor, colors, onTornar }) {
+  const success = colors.success || '#1D9E75';
+  const warning = colors.warning || '#e67e22';
+  const danger = colors.error || '#c0392b';
+  const [resum, setResum] = useState(null);
+  const [historial, setHistorial] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [carregantMes, setCarregantMes] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  const [error, setError] = useState('');
+
+  const carregar = useCallback(async ({ append = false, offset = 0 } = {}) => {
+    if (!proveidor?.id) return;
+    if (append) setCarregantMes(true);
+    else setLoading(true);
+    setError('');
+    try {
+      const peticions = [
+        getRecepcions({ idProveidor: proveidor.id, limit: HISTORIAL_PAGE, offset })
+      ];
+      if (!append) peticions.push(getResumProveidor(proveidor.id));
+      const [files, resumNou] = await Promise.all(peticions);
+      setHistorial((prev) => (append ? [...prev, ...(files || [])] : (files || [])));
+      setHasMore((files || []).length >= HISTORIAL_PAGE);
+      if (!append) setResum(resumNou);
+    } catch (err) {
+      setError(err.message || 'No s\'ha pogut carregar la fitxa.');
+    } finally {
+      setLoading(false);
+      setCarregantMes(false);
+    }
+  }, [proveidor?.id]);
+
+  useEffect(() => {
+    carregar();
+  }, [carregar]);
+
+  function colorEstat(estat) {
+    if (estat === 'bo') return success;
+    if (estat === 'regular') return warning;
+    return danger;
+  }
+
+  const th = {
+    padding: '12px 16px',
+    textAlign: 'left',
+    fontWeight: 600,
+    color: colors.textSecondary,
+    fontSize: 12,
+    textTransform: 'uppercase',
+    borderBottom: `1px solid ${colors.border}`
+  };
+  const td = { padding: '12px 16px' };
+  const buit = !loading && !error && resum && resum.total === 0;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      <div>
+        <button
+          type="button"
+          onClick={onTornar}
+          style={{
+            padding: 0,
+            border: 'none',
+            background: 'none',
+            color: colors.primary,
+            fontSize: 13,
+            fontWeight: 600,
+            cursor: 'pointer'
+          }}
+        >
+          ← Tornar als proveïdors
+        </button>
+        <h2 style={{ margin: '10px 0 0', fontSize: 22, fontWeight: 700 }}>{proveidor.nom || '—'}</h2>
+      </div>
+
+      <div style={{
+        background: colors.card,
+        border: `0.5px solid ${colors.border}`,
+        borderRadius: 12,
+        padding: 20,
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+        gap: 14,
+        fontSize: 14
+      }}>
+        <div><strong>NIF</strong><div>{proveidor.cif || '—'}</div></div>
+        <div><strong>Codi</strong><div>{proveidor.codi_intern || '—'}</div></div>
+        <div><strong>Estat</strong><div>{LABEL_ESTAT_PROVEIDOR[proveidor.estat_us] || 'Habitual'}</div></div>
+        <div><strong>Contacte</strong><div>{proveidor.contacte || '—'}</div></div>
+        <div><strong>Origen</strong><div>{origenProveidor(proveidor)}</div></div>
+      </div>
+
+      {loading ? (
+        <p style={{ color: colors.textSecondary }}>Carregant la fitxa…</p>
+      ) : null}
+      {error ? <p style={{ color: danger, margin: 0 }}>{error}</p> : null}
+
+      {resum && !error ? (
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+          <ResumPill label="Recepcions" valor={resum.total} colors={colors} />
+          <ResumPill label="Última" valor={resum.ultimaRecepcio ? formatData(resum.ultimaRecepcio) : '—'} colors={colors} />
+          <ResumPill label="Bo" valor={resum.perEstat.bo} colors={colors} />
+          <ResumPill label="Regular" valor={resum.perEstat.regular} colors={colors} />
+          <ResumPill label="Rebutjat" valor={resum.perEstat.rebutjat} colors={colors} />
+        </div>
+      ) : null}
+
+      {buit ? (
+        <p style={{ margin: 0, color: colors.textSecondary }}>
+          Aquest proveïdor encara no té cap recepció registrada.
+        </p>
+      ) : null}
+
+      {!buit && historial.length > 0 ? (
+        <>
+          <div style={{ overflowX: 'auto', background: colors.card, border: `0.5px solid ${colors.border}`, borderRadius: 12 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+              <thead>
+                <tr>
+                  {['Data', 'Lot proveïdor', 'Temp.', 'Estat', 'Congelat', 'Operari'].map((col) => (
+                    <th key={col} style={th}>{col}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {historial.map((r) => (
+                  <tr key={r.id} style={{ borderBottom: `1px solid ${colors.border}` }}>
+                    <td style={td}>{formatData(r.data_recepcio)}</td>
+                    <td style={td}>{r.lot_proveidor || '—'}</td>
+                    <td style={td}>{r.temperatura_arribada != null ? `${r.temperatura_arribada} °C` : '—'}</td>
+                    <td style={td}>
+                      <span style={{
+                        padding: '4px 10px',
+                        borderRadius: 6,
+                        fontSize: 12,
+                        fontWeight: 600,
+                        background: `${colorEstat(r.estat)}22`,
+                        color: colorEstat(r.estat)
+                      }}>
+                        {ESTATS.find((e) => e.value === r.estat)?.label || r.estat || '—'}
+                      </span>
+                    </td>
+                    <td style={td}>{r.congelat ? 'Sí' : 'No'}</td>
+                    <td style={td}>{r.operari || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {hasMore ? (
+            <button
+              type="button"
+              disabled={carregantMes}
+              onClick={() => carregar({ append: true, offset: historial.length })}
+              style={{
+                alignSelf: 'flex-start',
+                padding: '10px 16px',
+                borderRadius: 8,
+                border: `0.5px solid ${colors.border}`,
+                background: colors.surface,
+                cursor: 'pointer',
+                fontWeight: 600
+              }}
+            >
+              {carregantMes ? 'Carregant…' : 'Carregar més'}
+            </button>
+          ) : null}
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+function ResumPill({ label, valor, colors }) {
+  return (
+    <div style={{
+      padding: '10px 14px',
+      borderRadius: 10,
+      background: colors.card,
+      border: `0.5px solid ${colors.border}`,
+      minWidth: 110
+    }}>
+      <div style={{ fontSize: 12, color: colors.textSecondary, fontWeight: 600 }}>{label}</div>
+      <div style={{ fontSize: 16, fontWeight: 700, marginTop: 2 }}>{valor}</div>
     </div>
   );
 }
