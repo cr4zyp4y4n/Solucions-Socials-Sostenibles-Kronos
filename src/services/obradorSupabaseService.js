@@ -446,17 +446,17 @@ export async function arxivarProducte(id) {
   return data;
 }
 
-/** Substitueix els proveïdors associats a un producte. */
+function clauProducteProveidor(row) {
+  return [
+    row.id_producte,
+    row.id_proveidor,
+    String(row.ingredient_nom || '').trim()
+  ].join('::');
+}
+
+/** Substitueix els proveïdors associats a un producte sense deixar-lo buit si falla la inserció. */
 export async function setProducteProveidors(idProducte, files) {
   const list = Array.isArray(files) ? files : [];
-  const { error: delError } = await supabase
-    .from('obrador_producte_proveidors')
-    .delete()
-    .eq('id_producte', idProducte);
-  if (delError) throw delError;
-
-  if (!list.length) return [];
-
   const rows = list
     .filter((f) => f?.id_proveidor)
     .map((f) => ({
@@ -465,16 +465,47 @@ export async function setProducteProveidors(idProducte, files) {
       ingredient_nom: String(f.ingredient_nom || '').trim()
     }));
 
-  if (!rows.length) return [];
+  const { data: existents, error: readError } = await supabase
+    .from('obrador_producte_proveidors')
+    .select('id, id_producte, id_proveidor, ingredient_nom')
+    .eq('id_producte', idProducte);
+  if (readError) throw readError;
+
+  if (!rows.length) {
+    const idsExistents = (existents || []).map((row) => row.id).filter(Boolean);
+    if (idsExistents.length) {
+      const { error: delError } = await supabase
+        .from('obrador_producte_proveidors')
+        .delete()
+        .in('id', idsExistents);
+      if (delError) throw delError;
+    }
+    return [];
+  }
+
+  const clausNoves = new Set(rows.map(clauProducteProveidor));
 
   const { data, error } = await supabase
     .from('obrador_producte_proveidors')
-    .insert(rows)
+    .upsert(rows, { onConflict: 'id_producte,id_proveidor,ingredient_nom' })
     .select(`
       id, id_proveidor, ingredient_nom,
       obrador_proveidors ( id, nom )
     `);
   if (error) throw error;
+
+  const idsObsolets = (existents || [])
+    .filter((row) => !clausNoves.has(clauProducteProveidor(row)))
+    .map((row) => row.id)
+    .filter(Boolean);
+  if (idsObsolets.length) {
+    const { error: delError } = await supabase
+      .from('obrador_producte_proveidors')
+      .delete()
+      .in('id', idsObsolets);
+    if (delError) throw delError;
+  }
+
   return data || [];
 }
 
