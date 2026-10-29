@@ -85,6 +85,10 @@ DECLARE
   v_proveidors_producte uuid[];
   v_prov_count integer;
 BEGIN
+  IF NOT COALESCE(public.obrador_is_management_user(), false) THEN
+    RAISE EXCEPTION 'Sense permís per crear lots.';
+  END IF;
+
   IF p_id_producte IS NULL THEN
     RAISE EXCEPTION 'Producte obligatori';
   END IF;
@@ -223,6 +227,13 @@ DECLARE
 BEGIN
   IF auth.uid() IS NULL THEN
     RAISE EXCEPTION 'Cal una sessió per registrar qui fa l''expedició.';
+  END IF;
+
+  IF NOT (
+    COALESCE(public.obrador_is_management_user(), false)
+    OR COALESCE(public.obrador_is_portal_staff_user(), false)
+  ) THEN
+    RAISE EXCEPTION 'Sense permís per expedir lots.';
   END IF;
 
   IF NOT COALESCE(p_check_sortida, false) THEN

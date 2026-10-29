@@ -448,32 +448,55 @@ export async function arxivarProducte(id) {
 
 /** Substitueix els proveïdors associats a un producte. */
 export async function setProducteProveidors(idProducte, files) {
+  if (!idProducte) throw new Error('Falta el producte.');
   const list = Array.isArray(files) ? files : [];
-  const { error: delError } = await supabase
-    .from('obrador_producte_proveidors')
-    .delete()
-    .eq('id_producte', idProducte);
-  if (delError) throw delError;
-
-  if (!list.length) return [];
-
-  const rows = list
-    .filter((f) => f?.id_proveidor)
-    .map((f) => ({
+  const rowsByKey = new Map();
+  for (const f of list) {
+    if (!f?.id_proveidor) continue;
+    const row = {
       id_producte: idProducte,
       id_proveidor: f.id_proveidor,
       ingredient_nom: String(f.ingredient_nom || '').trim()
-    }));
+    };
+    rowsByKey.set(`${row.id_proveidor}::${row.ingredient_nom}`, row);
+  }
+  const rows = [...rowsByKey.values()];
 
-  if (!rows.length) return [];
+  const { data: actuals, error: selectError } = await supabase
+    .from('obrador_producte_proveidors')
+    .select('id, id_proveidor, ingredient_nom')
+    .eq('id_producte', idProducte);
+  if (selectError) throw selectError;
+
+  if (rows.length) {
+    const { error: upsertError } = await supabase
+      .from('obrador_producte_proveidors')
+      .upsert(rows, { onConflict: 'id_producte,id_proveidor,ingredient_nom' });
+    if (upsertError) throw upsertError;
+  }
+
+  const wantedKeys = new Set(rows.map((row) => `${row.id_proveidor}::${row.ingredient_nom}`));
+  const idsObsolets = (actuals || [])
+    .filter((row) => !wantedKeys.has(`${row.id_proveidor}::${row.ingredient_nom || ''}`))
+    .map((row) => row.id)
+    .filter(Boolean);
+
+  if (idsObsolets.length) {
+    const { error: delError } = await supabase
+      .from('obrador_producte_proveidors')
+      .delete()
+      .in('id', idsObsolets);
+    if (delError) throw delError;
+  }
 
   const { data, error } = await supabase
     .from('obrador_producte_proveidors')
-    .insert(rows)
     .select(`
       id, id_proveidor, ingredient_nom,
       obrador_proveidors ( id, nom )
-    `);
+    `)
+    .eq('id_producte', idProducte)
+    .order('ingredient_nom', { ascending: true });
   if (error) throw error;
   return data || [];
 }
