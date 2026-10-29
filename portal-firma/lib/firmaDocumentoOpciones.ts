@@ -11,6 +11,40 @@ function isMissingOpcionesColumn(message: string): boolean {
   return String(message || '').includes('opciones_aceptacion');
 }
 
+function opcionesFromAuditoriaDetalle(detalle: unknown): DocumentoOpcionesAceptacion | null {
+  if (!detalle || typeof detalle !== 'object') return null;
+  const value = detalle as Record<string, unknown>;
+  let respuesta: 'si' | 'no' | null = null;
+  if (value.respuesta === 'si' || value.respuesta === 'no') {
+    respuesta = value.respuesta;
+  } else if (typeof value.lectura_confirmada === 'boolean') {
+    respuesta = value.lectura_confirmada ? 'si' : 'no';
+  }
+  if (!respuesta) return null;
+
+  return {
+    respuesta,
+    lectura_confirmada:
+      typeof value.lectura_confirmada === 'boolean' ? value.lectura_confirmada : respuesta === 'si',
+    confirmado_at: typeof value.confirmado_at === 'string' ? value.confirmado_at : undefined,
+    formacion_acoso: typeof value.formacion_acoso === 'boolean' ? value.formacion_acoso : undefined
+  };
+}
+
+async function loadOpcionesFromAuditoria(documentoId: string): Promise<DocumentoOpcionesAceptacion | null> {
+  const { data, error } = await supabaseAdmin
+    .from('firma_auditorias')
+    .select('detalle, created_at')
+    .eq('documento_id', documentoId)
+    .eq('resultado', 'ok')
+    .eq('detalle->>accion', 'documento_lectura_confirmada')
+    .order('created_at', { ascending: false })
+    .limit(1);
+
+  if (error) return null;
+  return opcionesFromAuditoriaDetalle(data?.[0]?.detalle);
+}
+
 export async function updateDocumentoLecturaConfirmada(
   documentoId: string,
   opciones: DocumentoOpcionesAceptacion,
@@ -51,7 +85,9 @@ export async function loadDocumentoOpciones(
   if (!error && data) {
     return {
       tipoDocumento: data.tipo_documento,
-      opciones: (data.opciones_aceptacion || null) as DocumentoOpcionesAceptacion | null
+      opciones:
+        ((data.opciones_aceptacion || null) as DocumentoOpcionesAceptacion | null) ||
+        (await loadOpcionesFromAuditoria(documentoId))
     };
   }
 
@@ -61,7 +97,10 @@ export async function loadDocumentoOpciones(
       .select('tipo_documento')
       .eq('id', documentoId)
       .maybeSingle();
-    return { tipoDocumento: fallback?.tipo_documento, opciones: null };
+    return {
+      tipoDocumento: fallback?.tipo_documento,
+      opciones: await loadOpcionesFromAuditoria(documentoId)
+    };
   }
 
   return { tipoDocumento: undefined, opciones: null };
