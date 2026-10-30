@@ -1,5 +1,6 @@
 // Servicio para la API de Holded
 import { HOLDED_API_KEYS } from './holdedHttpClient';
+import { resolveHoldedCompanyKeys } from './pigHoldedCompany';
 const HOLDED_BASE_URL = 'https://api.holded.com/api/invoicing/v1';
 
 /** TTL caché contactos (1 h) — evita re-paginar /contacts en cada refresh de compras. */
@@ -19,7 +20,8 @@ class HoldedApiService {
   async makeRequest(endpoint, options = {}, company = 'solucions') {
     
     try {
-      const apiKey = HOLDED_API_KEYS[company];
+      const { v1Key } = resolveHoldedCompanyKeys(company);
+      const apiKey = HOLDED_API_KEYS[v1Key] || HOLDED_API_KEYS[company];
       if (!apiKey) {
         throw new Error(`API key no encontrada para la empresa: ${company}`);
       }
@@ -2437,7 +2439,8 @@ class HoldedApiService {
    * Pagina de 250 en 250 hasta agotar el rango.
    */
   async getAccountingDailyLedger({ starttmp, endtmp } = {}, company = 'solucions') {
-    const apiKey = HOLDED_API_KEYS[company];
+    const { v1Key } = resolveHoldedCompanyKeys(company);
+    const apiKey = HOLDED_API_KEYS[v1Key] || HOLDED_API_KEYS[company];
     if (!apiKey) throw new Error(`API key no encontrada para la empresa: ${company}`);
     if (!window.electronAPI?.makeHoldedRequest) {
       throw new Error('API de Electron no disponible.');

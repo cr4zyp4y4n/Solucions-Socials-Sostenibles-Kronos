@@ -28,8 +28,13 @@ import {
   buildPigTesoreriaSheetAoa,
   loadPigTreasuryAccounts,
   loadPigImpuestosBalances,
-  loadPigImpuestosPrevisionFromLedger
+  loadPigImpuestosPrevisionFromLedger,
+  resolveImpuestosMonthIndex
 } from '../services/pigTesoreriaService';
+import {
+  pigEmpresaToHoldedCompany,
+  pigTesoreriaProfile
+} from '../services/pigHoldedCompany';
 import {
   impuestosPeriodeLabel,
   impuestosQuarterMonths,
@@ -525,7 +530,10 @@ function parseHoldedMensual(csvText) {
       const vals = row.slice(1, 1 + monthCount).map(parseEuroNumber);
       for (let i = 0; i < vals.length; i++) {
         const idx = colMonthIndices[i] ?? i;
-        if (idx >= 0 && idx < 12) months[idx] = vals[i];
+        if (idx >= 0 && idx < 12) {
+          const v = Number(vals[i]);
+          months[idx] = Number.isFinite(v) ? v : 0;
+        }
       }
       cuentas.push({
         code: m?.[1] || label.split(/\s+/)[0],
@@ -4544,29 +4552,41 @@ export default function PIGPage() {
 
   const isEisss = pigEmpresa !== 'MH';
   const mainTabs = useMemo(
-    () => [
-      { id: 'generar', label: 'Generar PIG' },
-      { id: 'datos', label: 'Datos del año' },
-      { id: 'prevision', label: 'Previsión 18 meses' }
-    ],
-    []
+    () => (isEisss
+      ? [
+        { id: 'generar', label: 'Generar PIG' },
+        { id: 'datos', label: 'Datos del año' },
+        { id: 'prevision', label: 'Previsión 18 meses' }
+      ]
+      : [
+        { id: 'generar', label: 'Generar PIG' },
+        { id: 'datos', label: 'Datos (impuestos)' }
+      ]),
+    [isEisss]
   );
   const datosTabs = useMemo(
-    () => [
-      { id: 'estimados', label: 'Estimados', sheet: 'PIG LINEA / SUBV 740' },
-      { id: 'objetivos', label: 'Objetivos', sheet: 'COMPARATIVA ANUAL' },
-      { id: 'itinerario', label: 'Itinerario E.I', sheet: 'PIG / CR GENERAL EISSS' },
-      { id: 'subv_anteriores', label: 'Subv. anteriores', sheet: 'CR GENERAL EISSS' },
-      { id: 'caja_corto', label: 'Caja corto', sheet: 'TESORERÍA (PIG Normal)' },
-      { id: 'impuestos', label: 'Impuestos', sheet: 'TESORERÍA (PIG Normal)' },
-      { id: 'previsiones', label: 'Previsiones CR', sheet: 'TESORERÍA (CR)' }
-    ],
-    []
+    () => (isEisss
+      ? [
+        { id: 'estimados', label: 'Estimados', sheet: 'PIG LINEA / SUBV 740' },
+        { id: 'objetivos', label: 'Objetivos', sheet: 'COMPARATIVA ANUAL' },
+        { id: 'itinerario', label: 'Itinerario E.I', sheet: 'PIG / CR GENERAL EISSS' },
+        { id: 'subv_anteriores', label: 'Subv. anteriores', sheet: 'CR GENERAL EISSS' },
+        { id: 'caja_corto', label: 'Caja corto', sheet: 'TESORERÍA (PIG Normal)' },
+        { id: 'impuestos', label: 'Impuestos', sheet: 'TESORERÍA (PIG Normal)' },
+        { id: 'previsiones', label: 'Previsiones CR', sheet: 'TESORERÍA (CR)' }
+      ]
+      : [
+        { id: 'impuestos', label: 'Impuestos', sheet: 'TESORERÍA (PIG MH)' }
+      ]),
+    [isEisss]
   );
 
   useEffect(() => {
-    if (!isEisss && mainTab !== 'generar') setMainTab('generar');
-  }, [isEisss, mainTab]);
+    if (!isEisss) {
+      if (mainTab === 'prevision') setMainTab('generar');
+      if (datosSubTab !== 'impuestos') setDatosSubTab('impuestos');
+    }
+  }, [isEisss, mainTab, datosSubTab]);
 
   const loadEstimadosForYear = useCallback(async (year) => {
     const y = Number(year);
@@ -5045,7 +5065,7 @@ export default function PIGPage() {
         return Math.max(0, Math.min(11, last));
       };
 
-      const lastIdx = getLastNonZeroMonthIndex(); // último mes con datos
+      const lastIdx = getLastNonZeroMonthIndex(); // último mes con datos (hojas PIG: sin cambios)
       const prevIdx = Math.max(0, lastIdx - 1); // mes anterior
       const monthLimitFull = lastIdx + 1;
       const monthLimitPrev = prevIdx + 1;
@@ -5377,6 +5397,7 @@ export default function PIGPage() {
         }
       }
 
+      // LINEA CATERING/IDONI/KOIKI + COMPARATIVA: solo EISSS
       if (empresaMode !== 'MH') {
         // ===== PIG LINEA CATERING / IDONI / KOIKI + COMPARATIVA (solo EISSS) =====
         try {
@@ -5583,22 +5604,33 @@ export default function PIGPage() {
         } catch (e) {
           console.error('Error generando hoja COMPARATIVA ANUAL:', e);
         }
+      }
 
-        try {
+      // TESORERÍA: EISSS (Normal + CR) y MH (Normal)
+      try {
+          const holdedCompany = pigEmpresaToHoldedCompany(empresaMode);
+          const tesoreriaProfile = pigTesoreriaProfile(empresaMode);
           const yyTes = yearGuess ? yearGuess.slice(2) : '';
-          const titleTesoreria = `Cierre TESORERÍA  EI.SSS ${yyTes ? `01/01/${yyTes} A ${endOfMonthStr(lastIdx)}` : ''}`.trim();
+          const empresaLabelTes = empresaMode === 'MH' ? 'MH' : 'EI.SSS';
+          const titleTesoreria = `Cierre TESORERÍA  ${empresaLabelTes} ${yyTes ? `01/01/${yyTes} A ${endOfMonthStr(lastIdx)}` : ''}`.trim();
           const yearForImpuestos = Number(yearGuess) || Number(estimadosYear) || new Date().getFullYear();
+          // Solo afecta a IMPUESTOS del CR (no cambia lastIdx ni el resto de hojas).
+          const impuestosMonthIdx = resolveImpuestosMonthIndex({
+            cuentas: cuentasMensualesRaw,
+            year: yearForImpuestos,
+            fallbackMonthIndex: lastIdx
+          });
           const [{ accounts: treasuryAccounts, error: treasuryError }, impuestosResult, obligacionsResult] =
             await Promise.all([
-              loadPigTreasuryAccounts({ company: 'solucions' }),
+              loadPigTreasuryAccounts({ company: holdedCompany }),
               omitSubvenciones
                 ? loadPigImpuestosBalances({
-                  company: 'solucions',
+                  company: holdedCompany,
                   year: yearForImpuestos,
-                  monthIndex: lastIdx
+                  monthIndex: impuestosMonthIdx
                 })
                 : loadPigImpuestosPrevisionFromLedger({
-                  company: 'solucions',
+                  company: holdedCompany,
                   year: yearForImpuestos,
                   months: impuestosMesos?.months,
                   mode: impuestosMesos?.mode
@@ -5606,24 +5638,25 @@ export default function PIGPage() {
               omitSubvenciones
                 ? Promise.resolve({ obligacions: null, error: null })
                 : loadPigObligacionsMesFromHolded({
-                  company: 'solucions',
+                  company: holdedCompany,
                   year: yearForImpuestos,
                   monthIndex: obligacionsMonthIndexForPig({
                     year: yearForImpuestos,
                     lastDataMonthIndex: lastIdx
-                  })
+                  }),
+                  includeMenjarRow: tesoreriaProfile === 'eisss'
                 })
             ]);
           const impuestos = omitSubvenciones ? impuestosResult?.impuestos : null;
           const impuestosPrevision = omitSubvenciones ? null : impuestosResult?.impuestosPrevision;
           const impuestosError = impuestosResult?.error;
           if (treasuryError) {
-            console.warn('PIG TESORERÍA: no se pudieron cargar cuentas de Holded.', treasuryError);
+            console.warn(`PIG TESORERÍA (${empresaMode}): no se pudieron cargar cuentas de Holded.`, treasuryError);
           }
           if (impuestosError) {
             console.warn(
               omitSubvenciones
-                ? 'PIG TESORERÍA IMPUESTOS: no se pudieron cargar cuentas contables de Holded.'
+                ? 'PIG TESORERÍA IMPUESTOS: no se pudieron cargar saldos del libro mayor de Holded.'
                 : 'PIG TESORERÍA IMPUESTOS: no se pudo leer el libro diario de Holded.',
               impuestosError
             );
@@ -5637,25 +5670,28 @@ export default function PIGPage() {
             errorMessage: treasuryError?.message || '',
             cuentaResultados: omitSubvenciones,
             previsiones: omitSubvenciones ? previsionesForGenerate : null,
-            cajaCorto: omitSubvenciones ? null : cajaCortoForGenerate,
+            cajaCorto: omitSubvenciones || empresaMode === 'MH' ? null : cajaCortoForGenerate,
             impuestos,
             impuestosPrevision,
-            monthIndex: lastIdx,
+            monthIndex: omitSubvenciones ? impuestosMonthIdx : lastIdx,
             obligacions: omitSubvenciones ? null : obligacionsResult?.obligacions,
             creditsYear: yearForImpuestos,
             creditsMonthIndex: obligacionsMonthIndexForPig({
               year: yearForImpuestos,
               lastDataMonthIndex: lastIdx
-            })
+            }),
+            tesoreriaProfile
           });
           const wsTesoreria = XLSX.utils.aoa_to_sheet(aoaTesoreria);
           stylePigTesoreriaSheet({ ws: wsTesoreria, aoa: aoaTesoreria, meta: tesoreriaMeta });
           applyPigTesoreriaCuentaResultadosFormulas(wsTesoreria, tesoreriaMeta);
           XLSX.utils.book_append_sheet(wb, wsTesoreria, 'TESORERÍA');
-        } catch (e) {
-          console.error('Error generando hoja TESORERÍA:', e);
-        }
+      } catch (e) {
+        console.error('Error generando hoja TESORERÍA:', e);
+      }
 
+      // PRESUPUESTOS + FACTURACIÓN: solo EISSS
+      if (empresaMode !== 'MH') {
         try {
           const yearPres = Number(yearGuess) || new Date().getFullYear();
           const { rows: presupuestosRows, error: presupuestosError } = await loadPigPresupuestosPendientes({
@@ -5753,11 +5789,9 @@ export default function PIGPage() {
       ) : null}
 
       <div style={{ maxWidth: 1100, display: 'grid', gap: 16 }}>
-        {isEisss ? (
-          <PigTabs tabs={mainTabs} active={mainTab} onChange={setMainTab} />
-        ) : null}
+        <PigTabs tabs={mainTabs} active={mainTab} onChange={setMainTab} />
 
-        {mainTab === 'generar' || !isEisss ? (
+        {mainTab === 'generar' ? (
           <PigTabPanel>
             <PigCard>
               <PigSectionTitle hint="Selecciona la empresa para generar el Excel con las hojas correspondientes (no se mezclan EISSS y MH).">
@@ -5804,7 +5838,10 @@ export default function PIGPage() {
                 boxShadow: `0 8px 24px ${colors.border}88`
               }}
             >
-              <PigSectionTitle hint={isEisss ? 'Genera el PIG con los CSV y los datos del año ya guardados (o se guardan al generar si el año coincide).' : null}>
+              <PigSectionTitle hint={isEisss
+                ? 'Genera el PIG con los CSV y los datos del año ya guardados (o se guardan al generar si el año coincide).'
+                : 'MH incluye hoja TESORERÍA (disponibilidad Holded, obligaciones, previsión fiscal y neta). Los créditos MH se configuran después.'}
+              >
                 Generar
               </PigSectionTitle>
               <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
@@ -5830,18 +5867,26 @@ export default function PIGPage() {
                   Incluye también la hoja <b>PRESUPUESTOS</b> y <b>FACTURACIÓN PENDIENTE</b>
                   (misma lógica que Informe Sergi: pendientes/parciales y cobros pendientes por línea).
                 </PigHint>
-              ) : null}
+              ) : (
+                <PigHint style={{ marginTop: 12 }}>
+                  El PIG MH genera GENERAL, OBRADOR y <b>TESORERÍA</b> desde Holded Menjar d&apos;Hort
+                  (bancos, nóminas/TGSS/proveedores y previsión fiscal del periodo elegido en Datos).
+                </PigHint>
+              )}
             </PigCard>
           </PigTabPanel>
         ) : null}
 
-        {isEisss && mainTab === 'datos' ? (
+        {mainTab === 'datos' ? (
           <PigTabPanel>
             <PigCard>
               <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'end', justifyContent: 'space-between' }}>
                 <div>
-                  <PigSectionTitle hint="Todos los bloques de esta pestaña usan el mismo año. Los cambios no se guardan solos: usa Guardar en cada bloque o genera el Excel del mismo año.">
-                    Datos del año
+                  <PigSectionTitle hint={isEisss
+                    ? 'Todos los bloques de esta pestaña usan el mismo año. Los cambios no se guardan solos: usa Guardar en cada bloque o genera el Excel del mismo año.'
+                    : 'En MH solo se configura el periodo de la previsión fiscal (misma lógica que el PIG Normal EISSS).'}
+                  >
+                    {isEisss ? 'Datos del año' : 'Datos MH'}
                   </PigSectionTitle>
                 </div>
                 <label style={{ display: 'grid', gap: 6, minWidth: 120 }}>
@@ -6342,8 +6387,10 @@ export default function PIGPage() {
 
             {datosSubTab === 'impuestos' ? (
               <PigCard>
-                <PigSheetBadge style={{ marginBottom: 8 }}>TESORERÍA (PIG Normal)</PigSheetBadge>
-                <PigSectionTitle hint="Elige un trimestre o hasta tres meses sueltos. Al generar el PIG Normal, la tabla de impuestos acumula el libro diario de esos meses. El modelo 202 se deja en blanco.">
+                <PigSheetBadge style={{ marginBottom: 8 }}>
+                  {isEisss ? 'TESORERÍA (PIG Normal EISSS)' : 'TESORERÍA (PIG MH)'}
+                </PigSheetBadge>
+                <PigSectionTitle hint="Elige un trimestre o hasta tres meses sueltos. Al generar el PIG Normal, la tabla de impuestos acumula el libro diario de esos meses (Holded de la empresa seleccionada). El modelo 202 se deja en blanco.">
                   Meses de acumulación de impuestos
                 </PigSectionTitle>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>

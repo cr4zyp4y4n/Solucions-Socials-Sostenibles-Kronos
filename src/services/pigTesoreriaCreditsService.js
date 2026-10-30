@@ -64,11 +64,27 @@ function resolveSchedule(line, year, month) {
 /**
  * Files de Crèdits i Finançament per al mes del PIG (monthIndex 0-based).
  * El capital és el que queda abans de la quota d'aquell mes.
+ * @param {number} year
+ * @param {number} monthIndex
+ * @param {{ profile?: 'eisss' | 'mh' }} [opts]
  */
-export function creditRowsForPigMonth(year, monthIndex) {
+export function creditRowsForPigMonth(year, monthIndex, opts = {}) {
   const y = Number(year);
   const month = Number(monthIndex) + 1;
   if (!Number.isFinite(y) || month < 1 || month > 12) return [];
+
+  // Menjar d'Hort: sin cuadros hardcodeados aún (datos EISSS no aplican).
+  if (opts.profile === 'mh') {
+    return [
+      {
+        label: '(Crèdits MH pendents de configurar)',
+        capital: '',
+        quota: '',
+        venciment: '',
+        obs: "Es ompliran quan es confirmin els finançaments de Menjar d'Hort."
+      }
+    ];
+  }
 
   return PIG_CREDIT_LINES.map((line) => {
     if (line.static) {

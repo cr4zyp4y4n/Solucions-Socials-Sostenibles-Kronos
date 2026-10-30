@@ -4,6 +4,7 @@
  * @see https://www.holded.com/developers/api-reference/invoices/list-invoices
  */
 import { HOLDED_API_KEYS } from './holdedHttpClient';
+import { resolveHoldedCompanyKeys } from './pigHoldedCompany';
 
 const HOLDED_V2_BASE = 'https://api.holded.com/api/v2';
 /** TTL caché en memoria (sesión Kronos). 0 coste API. */
@@ -78,12 +79,13 @@ class HoldedApiV2Service {
   }
 
   async makeRequest(endpoint, options = {}, company = 'solucions') {
+    const { v2Key, v1Key } = resolveHoldedCompanyKeys(company);
     const envKeyByCompany = {
       solucions: String(process.env.HOLDED_V2_API_KEY_SOLUCIONS || '').trim(),
       menjar_dhort: String(process.env.HOLDED_V2_API_KEY_MENJAR_DHORT || '').trim()
     };
-    const envKey = envKeyByCompany[company] || '';
-    const apiKey = envKey || HOLDED_API_KEYS[company];
+    const envKey = envKeyByCompany[v2Key] || '';
+    const apiKey = envKey || HOLDED_API_KEYS[v1Key] || HOLDED_API_KEYS[v2Key];
     if (!apiKey) throw new Error(`API key no encontrada para: ${company}`);
 
     const path = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
@@ -216,18 +218,28 @@ class HoldedApiV2Service {
     }, company);
   }
 
-  /**
-   * Libro diario (asientos). Scope: accounting:daily-ledger.read.
-   * start_date y end_date (ISO) son obligatorios. account filtra por número exacto.
-   */
-  async getLedgerEntries(params = {}, company = 'solucions') {
-    return this.fetchAllPagesCached('/ledger-entries', { limit: 200, ...params }, company);
-  }
-
   /** Comptes de tresoreria (bancs, targetes, caixa, passarel·les). Scope: accounting:banks.read */
   async getTreasuryAccounts(params = {}, company = 'solucions') {
     const query = { archived: 'false', ...params };
     return this.fetchAllPagesCached('/treasury/accounts', query, company);
+  }
+
+  /**
+   * Libro mayor / asientos (líneas). Cuadra con la UI de Holded (saldo por cuenta).
+   * Requiere start_date + end_date (YYYY-MM-DD). Scope: accounting:daily-ledger.read.
+   * Cada ítem: { account, debit, credit, date, type, ... }
+   */
+  async getLedgerEntries(params = {}, company = 'solucions') {
+    const start_date = params.start_date || params.startDate;
+    const end_date = params.end_date || params.endDate;
+    if (!start_date || !end_date) {
+      throw new Error('getLedgerEntries requiere start_date y end_date');
+    }
+    return this.fetchAllPagesCached(
+      '/ledger-entries',
+      { limit: 200, ...params, start_date, end_date },
+      company
+    );
   }
 }
 

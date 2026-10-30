@@ -140,13 +140,82 @@ export function impuestosQuarterFromMonth(monthIndex) {
   return Math.floor(Math.min(Math.max(m, 0), 11) / 3) + 1;
 }
 
+/**
+ * Mes de cierre SOLO para saldos fiscales Holded (IMPUESTOS).
+ * No altera lastIdx del resto del PIG.
+ *
+ * - Busca el último mes con actividad relevante en el mensual.
+ * - En el año en curso, no pide saldos de meses futuros.
+ */
+export function resolveImpuestosMonthIndex({
+  cuentas = [],
+  year,
+  fallbackMonthIndex
+} = {}) {
+  const monthAbs = new Array(12).fill(0);
+  const monthHits = new Array(12).fill(0);
+
+  for (const c of cuentas || []) {
+    const m = c?.months || [];
+    for (let i = 0; i < Math.min(12, m.length); i++) {
+      const v = Number(m[i]);
+      if (!Number.isFinite(v) || Math.abs(v) <= 0.0005) continue;
+      monthAbs[i] += Math.abs(v);
+      monthHits[i] += 1;
+    }
+  }
+
+  const peakAbs = Math.max(0, ...monthAbs);
+  const peakHits = Math.max(0, ...monthHits);
+  const absFloor = Math.max(1, peakAbs * 0.05);
+  const hitsFloor = Math.max(3, Math.ceil(peakHits * 0.1));
+
+  let last = -1;
+  for (let i = 0; i < 12; i++) {
+    if (
+      monthAbs[i] >= absFloor
+      || (monthHits[i] >= hitsFloor && monthAbs[i] > 0.0005)
+    ) {
+      last = i;
+    }
+  }
+  if (last < 0) {
+    for (let i = 0; i < 12; i++) {
+      if (monthHits[i] > 0) last = i;
+    }
+  }
+
+  const fallback = Number.isFinite(fallbackMonthIndex)
+    ? Math.max(0, Math.min(11, fallbackMonthIndex))
+    : 11;
+  let monthIndex = last >= 0 ? last : fallback;
+
+  const y = Number(year);
+  const now = new Date();
+  if (Number.isFinite(y) && y === now.getFullYear() && monthIndex > now.getMonth()) {
+    monthIndex = now.getMonth();
+  }
+
+  console.log('[PIG TESORERÍA IMPUESTOS] Mes de cierre (solo impuestos):', {
+    monthIndex,
+    monthLabel: ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'][monthIndex],
+    year: y,
+    fallback,
+    monthAbs: monthAbs.map((n) => Math.round(n * 100) / 100),
+    monthHits
+  });
+
+  return monthIndex;
+}
+
 function pad2(n) {
   return String(n).padStart(2, '0');
 }
 
 /**
- * Rango ISO para el plan contable Holded (ambos obligatorios y distintos).
+ * Rango ISO para impuestos Holded (ambos obligatorios y distintos).
  * Por defecto: 01/01/{year} → último día del mes del PIG.
+ * Si el mes es el actual del año en curso, corta en hoy (como el filtro de Holded).
  */
 export function buildImpuestosDateRange({ year, monthIndex } = {}) {
   const y = Number(year);
@@ -154,17 +223,61 @@ export function buildImpuestosDateRange({ year, monthIndex } = {}) {
   const yearSafe = Number.isFinite(y) && y >= 2000 && y <= 2100 ? y : new Date().getFullYear();
   const endDay = new Date(yearSafe, m + 1, 0).getDate();
   const start_date = `${yearSafe}-01-01`;
-  const end_date = `${yearSafe}-${pad2(m + 1)}-${pad2(endDay)}`;
+  let end_date = `${yearSafe}-${pad2(m + 1)}-${pad2(endDay)}`;
+
+  const now = new Date();
+  if (yearSafe === now.getFullYear() && m === now.getMonth()) {
+    end_date = `${yearSafe}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`;
+  }
+
   if (start_date === end_date) {
-    // Holded exige fechas distintas: usar al menos 2 días
     return { start_date, end_date: `${yearSafe}-01-02` };
   }
   return { start_date, end_date };
 }
 
 /**
- * Carga saldos de cuentas fiscales desde Holded (accounting-accounts)
- * para el periodo del PIG (ene → último mes con datos).
+ * Suma Debe/Haber del libro mayor (ledger-entries) solo para las cuentas fiscales del PIG.
+ * Este endpoint cuadra con la pantalla de Holded; accounting-accounts NO.
+ */
+async function buildImpuestosBalanceMapFromLedger({
+  company,
+  start_date,
+  end_date
+}) {
+  const want = new Set([
+    ...IMPUESTOS_MOD_303_ACCOUNTS.map((r) => normalizeAccountCode(r.code)),
+    ...IMPUESTOS_A_PAGAR_ACCOUNTS.map((r) => normalizeAccountCode(r.code))
+  ]);
+  const totals = new Map(); // code -> { debit, credit, lines }
+  for (const code of want) {
+    totals.set(code, { debit: 0, credit: 0, lines: 0 });
+  }
+
+  const lines = await holdedApiV2Service.getLedgerEntries(
+    { start_date, end_date },
+    company
+  );
+
+  for (const line of lines || []) {
+    const code = normalizeAccountCode(line?.account);
+    if (!code || !want.has(code)) continue;
+    const row = totals.get(code);
+    row.debit += parseBalance(line.debit);
+    row.credit += parseBalance(line.credit);
+    row.lines += 1;
+  }
+
+  const map = new Map();
+  for (const [code, t] of totals.entries()) {
+    map.set(code, t.debit - t.credit);
+  }
+  return { map, linesTotal: (lines || []).length, totals };
+}
+
+/**
+ * Carga saldos fiscales desde el libro mayor Holded (ledger-entries),
+ * que es lo que muestra la UI (p. ej. 472 = 10.685,51).
  */
 export async function loadPigImpuestosBalances({
   company = 'solucions',
@@ -173,12 +286,12 @@ export async function loadPigImpuestosBalances({
 } = {}) {
   try {
     const { start_date, end_date } = buildImpuestosDateRange({ year, monthIndex });
-    const raw = await holdedApiV2Service.getAccountingAccounts(company, {
+    const { map, linesTotal, totals } = await buildImpuestosBalanceMapFromLedger({
+      company,
       start_date,
-      end_date,
-      include_empty: true
+      end_date
     });
-    const map = buildBalanceMap(raw || []);
+
     const mod303 = IMPUESTOS_MOD_303_ACCOUNTS.map((row) => ({
       ...row,
       balance: balanceForCode(map, row.code)
@@ -195,13 +308,29 @@ export async function loadPigImpuestosBalances({
     });
     const mod303Sum = mod303.reduce((acc, r) => acc + (Number(r.balance) || 0), 0);
 
-    console.log('[PIG TESORERÍA IMPUESTOS] Saldos Holded', {
+    console.log('[PIG TESORERÍA IMPUESTOS] Saldos Holded (ledger-entries)', {
       start_date,
       end_date,
+      source: 'ledger-entries',
+      linesTotal,
+      detail: Object.fromEntries(
+        [...totals.entries()].map(([code, t]) => [
+          code,
+          {
+            debit: Math.round(t.debit * 100) / 100,
+            credit: Math.round(t.credit * 100) / 100,
+            balance: Math.round((t.debit - t.credit) * 100) / 100,
+            lines: t.lines
+          }
+        ])
+      ),
       mod303: mod303.map((r) => ({ code: r.code, balance: r.balance })),
-      aPagar: aPagar.map((r) => ({ code: r.code, balance: r.balance, aPagar: r.aPagar })),
-      mod303Sum,
-      accountsLoaded: (raw || []).length
+      aPagar: aPagar.map((r) => ({
+        code: r.code,
+        balance: r.balance,
+        aPagar: r.aPagar
+      })),
+      mod303Sum
     });
 
     return {

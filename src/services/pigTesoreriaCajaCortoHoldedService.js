@@ -560,13 +560,17 @@ function isFurgonetaExclosa(doc) {
  * - Nòmines: mes del PIG (salary-records o haver 465)
  * - TGSS: mes anterior (haber 47600000)
  * - Proveïdors: mateix llistat que Anàlisi (compres obertes)
- * - Menjar d'Hort: proveïdor dins d'aquest llistat
+ * - Menjar d'Hort: proveïdor dins d'aquest llistat (només EISSS / Solucions)
  */
 export async function loadPigObligacionsMesFromHolded({
   year,
   monthIndex,
-  company = 'solucions'
+  company = 'solucions',
+  includeMenjarRow = null
 } = {}) {
+  const showMenjarRow = includeMenjarRow == null
+    ? !/menjar/i.test(String(company || ''))
+    : Boolean(includeMenjarRow);
   const y = Number(year);
   if (!Number.isFinite(y) || !Number.isFinite(Number(monthIndex))) {
     return { obligacions: null, error: new Error('Mes del PIG no vàlid') };
@@ -604,24 +608,31 @@ export async function loadPigObligacionsMesFromHolded({
   try {
     const docs = await holdedApi.getAllPendingAndOverduePurchases(company, null);
     const list = Array.isArray(docs) ? docs : [];
-    const furgonetaDocs = list.filter(isFurgonetaExclosa);
-    const counted = list.filter((doc) => !isFurgonetaExclosa(doc));
-    const menjarDocs = counted.filter(isMenjarDhortProvider);
+    // Exclusió furgoneta només a EISSS (factura Solucions).
+    const furgonetaDocs = showMenjarRow ? list.filter(isFurgonetaExclosa) : [];
+    const counted = showMenjarRow
+      ? list.filter((doc) => !isFurgonetaExclosa(doc))
+      : list;
+    const menjarDocs = showMenjarRow ? counted.filter(isMenjarDhortProvider) : [];
     const furgonetaAmount = Math.round(
       furgonetaDocs.reduce((sum, doc) => sum + purchasePendingAmount(doc), 0) * 100
     ) / 100;
     proveidors = Math.round(counted.reduce((sum, doc) => sum + purchasePendingAmount(doc), 0) * 100) / 100;
-    menjar = Math.round(menjarDocs.reduce((sum, doc) => sum + purchasePendingAmount(doc), 0) * 100) / 100;
+    menjar = showMenjarRow
+      ? Math.round(menjarDocs.reduce((sum, doc) => sum + purchasePendingAmount(doc), 0) * 100) / 100
+      : null;
     const furgonetaNote = furgonetaDocs.length
       ? ` Sense la furgoneta 401413 AUTO9TY-FIVE (${furgonetaAmount.toLocaleString('ca-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €).`
       : '';
     proveidorsObs = `Mateix criteri que Anàlisi (${counted.length} factures obertes).${furgonetaNote}`;
-    menjarObs = menjarDocs.length
-      ? `Inclòs a la fila de sobre · ${menjarDocs.length} factures`
-      : "Cap factura oberta d'aquest proveïdor";
+    menjarObs = !showMenjarRow
+      ? ''
+      : (menjarDocs.length
+        ? `Inclòs a la fila de sobre · ${menjarDocs.length} factures`
+        : "Cap factura oberta d'aquest proveïdor");
   } catch (e) {
     proveidorsObs = "No s'han pogut llegir les compres de Holded";
-    menjarObs = proveidorsObs;
+    menjarObs = showMenjarRow ? proveidorsObs : '';
   }
 
   return {
@@ -635,7 +646,8 @@ export async function loadPigObligacionsMesFromHolded({
       proveidors,
       proveidorsObs,
       menjar,
-      menjarObs
+      menjarObs,
+      includeMenjarRow: showMenjarRow
     },
     error: null
   };
