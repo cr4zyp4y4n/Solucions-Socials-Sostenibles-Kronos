@@ -56,31 +56,37 @@ export const LICITACIONS_LEYENDA_CONTRACTACIO = [
   }
 ];
 
-/** Seguimiento comercial interno de SSS (columna Estado JC). */
+/** Circuit comercial (estat_circuit). */
 export const LICITACIONS_LEYENDA_JC = [
   {
-    value: 'Pendent',
-    label: 'Pendent',
+    value: 'Detectada',
+    label: 'Detectada',
     color: '#6B7280',
-    description: 'Aún no revisada por el equipo. Es el estado por defecto al detectar una licitación nueva.'
+    description: 'Nova oportunitat detectada pel sync. Pendent de traslladar a l\'àrea.'
   },
   {
-    value: 'Interessant',
-    label: 'Interessant',
-    color: '#10B981',
-    description: 'Oportunidad de interés. Se conserva en base de datos aunque caduque el plazo público.'
+    value: 'Traslladada',
+    label: 'Traslladada',
+    color: '#F59E0B',
+    description: 'Traslladada al responsable d\'àrea (Càtering / Tech).'
+  },
+  {
+    value: 'Valorada',
+    label: 'Valorada',
+    color: '#8B5CF6',
+    description: 'Valorada per l\'àrea (cal text de valoració).'
   },
   {
     value: 'Descartada',
     label: 'Descartada',
     color: '#EF4444',
-    description: 'No nos interesa. Suele ocultarse al filtrar solo activas.'
+    description: 'Descartada amb motiu obligatori. Es conserva per als acumulats.'
   },
   {
-    value: 'Contactat',
-    label: 'Contactat',
-    color: '#3B82F6',
-    description: 'Ya se ha contactado con el órgano o se está gestionando. También se conserva si caduca.'
+    value: 'Activada',
+    label: 'Activada',
+    color: '#10B981',
+    description: 'Oportunitat activada / en gestió comercial.'
   }
 ];
 

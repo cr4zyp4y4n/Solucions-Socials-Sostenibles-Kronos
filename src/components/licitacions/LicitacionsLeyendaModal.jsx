@@ -123,7 +123,7 @@ export default function LicitacionsLeyendaModal({ open, onClose }) {
         </section>
 
         <section>
-          <SectionTitle colors={colors}>Estado JC (seguimiento interno SSS)</SectionTitle>
+          <SectionTitle colors={colors}>Circuit comercial (estat_circuit)</SectionTitle>
           <p style={{ margin: '0 0 12px', fontSize: 12, color: colors.textSecondary, lineHeight: 1.5 }}>
             Lo gestionáis vosotros en la columna de estado. No lo publica la administración.
             {' '}

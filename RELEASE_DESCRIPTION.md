@@ -1,3 +1,23 @@
+## v2.8.2
+
+### Licitaciones — circuito v2 (Sergi / detección de oportunidades)
+
+Lo que pedía Sergi: estado de la herramienta, resultados por área (Càtering / Tech), incidencias y un report cada viernes aunque no haya novedades.
+
+- **Filtros:** CPV jerárquicos (sin bares/cantinas por defecto), keywords, importe máximo, contratos reservados DA 4ª. Se editan en Kronos (`admin` / `management`) sin sacar release.
+- **Fuentes:** PSCP Catalunya (prefijos + páginas), PLACSP (sigue el feed y menores), TED opcional (apagado por defecto).
+- **Circuit:** Detectada → Traslladada → Valorada → Descartada | Activada. Descartar obliga a motivo. Historial por cambio de estado. Las caducadas se archivan; no se borran.
+- **Cada sync queda registrado** (también si trae 0). Banner de última sync en rojo si lleva más de 2 días o falló.
+- **Report setmanal** en catalán: copiar o descargar `.md` (estado de la herramienta, resultados semana/acumulado, filtraje, incidencias, reservadas, próximas acciones).
+- **Sync en servidor:** Edge `licitacions-sync` cada día ~07:15 (Madrid). Avisa si falla o entra una reservada. El cron del lunes en la app queda de respaldo hasta que el Edge lleve una semana estable.
+
+**SQL a ejecutar en Supabase:** `database/alter_licitacions_circuit_v2.sql`  
+**Edge + cron:** desplegar `licitacions-sync` y ejecutar `database/cron_licitacions_sync.sql` (hace falta Vault `project_url` + `service_role_key`, igual que obrador/fichaje).
+
+**Tras instalar Kronos:** cerrar la app del todo y volver a abrirla.
+
+---
+
 ## v2.7.4
 
 ### Obrador — ficha de producto y anulación que no borra si falta el SQL

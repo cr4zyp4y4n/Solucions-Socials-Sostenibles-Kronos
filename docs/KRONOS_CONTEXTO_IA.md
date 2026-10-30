@@ -34,7 +34,7 @@ Aplicación de **escritorio Windows** (Electron) para gestión interna: finanzas
 | Backend datos | **Supabase** (PostgreSQL + Auth + Storage + Realtime + RLS) |
 | ERP / facturación | **Holded API v1** y **v2** |
 | Actualizaciones | **electron-updater** (feed GitHub) |
-| Cron (main) | **node-cron** (sync licitaciones en background) |
+| Cron | **pg_cron** → Edge `licitacions-sync` (diario); **node-cron** en main como fallback semanal |
 | QR | **qrcode.react** (trazabilidad obrador) |
 
 **Arquitectura Electron:**
@@ -173,14 +173,52 @@ Módulo financiero grande. Genera Excel multi-hoja desde CSV Holded (anual + men
 - Convierte export Innuva (RRHH) a formatos internos
 - Catálogo trabajadores, horas FD (`innuva/`)
 
-### 4.16 Licitaciones (`LicitacionsPage`)
-- Agregador licitaciones públicas CPV filtrados
-- **Fuentes HTTP (main process, no CSP renderer):**
-  - **TED** `api.ted.europa.eu/v3/notices/search`
-  - **PSCP Catalunya** Socrata `analisi.transparenciacatalunya.cat`
-  - **PLACSP** Atom feeds `contrataciondelestado.es`
-- **Supabase:** tabla `licitacions`
-- **Cron background** en main: sync periódico + notificación renderer
+### 4.16 Licitaciones (`LicitacionsPage`) — circuit v2 (Enfortim / Sergi)
+
+Agregador d’oportunitats públiques amb circuit comercial, històric i report setmanal.
+
+**Fuentes HTTP** (main Electron via `licitacions-http-request`, o `fetch` a l’Edge Function):
+- **TED** `api.ted.europa.eu/v3/notices/search` — desactivat per defecte (`fonts_actives.TED = false`; llindar UE)
+- **PSCP Catalunya** Socrata `analisi.transparenciacatalunya.cat/resource/ybgg-dgi6.json` — `starts_with(codi_cpv, prefix)` + paginació `$offset`
+- **PLACSP** Atom `contrataciondelestado.es` (`sindicacion_643`) — segueix `rel=next` fins a tall temporal / `placsp_max_pages`
+- **PLACSP menors** `sindicacion_1143` — `contracte_menor = true`; pot exigir certificat (incidència al log si falla)
+
+**Filtres (compartits Electron + Edge):**
+- Mòdul pur `supabase/functions/_shared/licitacions/filtres.mjs` (`cpvPrefix`, `evaluateLicitacio`)
+- Fonts/normalització: `_shared/licitacions/fonts.mjs`
+- Config editable a `licitacions_config` (sense release): CPV per àrea, exclusió, keywords, `import_max`, `fonts_actives`
+- Fallback seed = migració `database/alter_licitacions_circuit_v2.sql`
+
+**Circuit comercial (`estat_circuit`):** Detectada → Traslladada → Valorada → Descartada | Activada  
+(`estat_jc` deprecat; es manté per compatibilitat)
+
+**Regles de negoci (obligatòries):**
+1. **Mai s’esborra** una licitació: caducades → `arxivada = true` (acumulats).
+2. Canvi d’estat → fila a `licitacions_events` (trigger SECURITY DEFINER; el client no hi escriu).
+3. Descartada **exigeix** `motiu_descart` (CHECK BBDD + UI).
+4. Cada sync → `licitacions_sync_log` (també 0 noves / errors). Origen: `manual` | `cron_app` | `edge`.
+5. Àrees separades: **Catering** / **Tech** / Altres (`area`).
+6. El filtre automàtic no desa exclosos, però els **compta** (`exclosos`: cpv / keyword / import).
+7. Contractes **reservats** (DA 4ª LCSP) es marquen amb `reservada` (keywords) i tenen prioritat a la UI / notify.
+
+**Supabase:**
+- `licitacions` (+ `area`, `estat_circuit`, `reservada`, `contracte_menor`, `arxivada`, `last_seen_at`, dates circuit, `motiu_descart`, `valoracio`, `responsable_area_id`)
+- `licitacions_events`, `licitacions_sync_log`, `licitacions_config`
+- Vista `licitacions_report_setmanal`
+
+**UI:**
+- Filtres per àrea / circuit, badge Reservada DA 4ª, toggle arxivades
+- Banner última sync (vermell si >2 dies o `ok = false`)
+- Modal circuit + historial; config filtres (`admin` / `management`)
+- **Report setmanal** (català): copiar / `.md` per a Sergi
+
+**Sync servidor:**
+- Edge Function `supabase/functions/licitacions-sync` (`origen = 'edge'`)
+- Cron: `database/cron_licitacions_sync.sql` — ~07:15 Europe/Madrid (`15 5,6 * * *` UTC + guard anti-doble)
+- Notify (`_shared/notify.ts`) si el sync falla o entren licitacions **reservades**
+- Fallback app: `node-cron` dilluns 08:00 (main); treure’l quan l’Edge porti ≥1 setmana estable
+
+**Docs operatius:** `docs/LICITACIONS_TASQUES_CURSOR_2026-10-30.md`
 
 ### 4.17 Contactos (`ProvidersContacts`)
 - Proveedores Holded
@@ -225,7 +263,7 @@ Módulo financiero grande. Genera Excel multi-hoja desde CSV Holded (anual + men
 | Subvenciones | `subvenciones_*`, empleados |
 | Firma | `firma_*` + bucket storage |
 | Obrador | `obrador_*` |
-| Licitaciones | `licitacions` |
+| Licitaciones | `licitacions`, `licitacions_events`, `licitacions_sync_log`, `licitacions_config` (+ vista `licitacions_report_setmanal`) |
 | PIG | `pig_estimados_subvencion`, `pig_objetivos_comparativa`, `pig_bases_historicas`, `pig_tesoreria_previsiones`, `pig_itinerario_ei` |
 | Brecha | `brecha_empleados_categoria` |
 | Socios | `socios` |
@@ -253,9 +291,10 @@ Módulo financiero grande. Genera Excel multi-hoja desde CSV Holded (anual + men
 - `FIRMA_PORTAL_BASE_URL` — portal web donde el trabajador firma
 - Config leída en **main process**, expuesta al renderer vía `getFirmaSmsConfig`
 
-### 5.4 Licitaciones (APIs públicas)
-- TED, Transparencia Catalunya, PLACSP (ver §4.16)
-- HTTP solo desde main: `licitacions-http-request`
+### 5.4 Licitaciones (APIs públicas + Edge)
+- TED, PSCP (Socrata Catalunya), PLACSP Atom (+ menors) — ver §4.16
+- HTTP desde main: `licitacions-http-request` (allowlist hosts)
+- Sync diario: Edge `licitacions-sync` + `pg_cron` (`database/cron_licitacions_sync.sql`)
 
 ### 5.5 Tipo de cambio
 - IPC `get-exchange-rates` (main) — para `CurrencyContext`

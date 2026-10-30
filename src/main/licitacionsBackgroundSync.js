@@ -28,7 +28,8 @@ async function runBackgroundLicitacionsSync(options = {}) {
   const result = await svc.fetchAll({
     limit: 100,
     tedMaxPages: 3,
-    purgeCaducadas: true,
+    archiveCaducadas: true,
+    origen: 'cron_app',
     ...options
   });
 

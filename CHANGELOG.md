@@ -12,6 +12,23 @@ Resumen de cambios por versión.
 
 ---
 
+## v2.8.2
+
+### Licitaciones — circuito comercial v2 (detección + gestión + report)
+
+- **Filtros jerárquicos CPV** compartidos (`filtres.mjs`): exclusión cantina/bar, keywords, tope de importe por área, contratos reservados DA 4ª. Config en `licitacions_config` (editable sin release por admin/management).
+- **Fuentes:** PSCP con prefijos + paginación; PLACSP con `rel=next` y feed de menores; TED respetando `fonts_actives` (off por defecto).
+- **Nunca se borra:** caducadas → `arxivada`. Sync log en `licitacions_sync_log`. Circuit `Detectada → Activada` con historial (`licitacions_events`).
+- **UI:** área Càtering/Tech, badge reservada, banner última sync, report setmanal en catalán (copiar / `.md`).
+- **Servidor:** Edge Function `licitacions-sync` + `database/cron_licitacions_sync.sql` (~07:15 Madrid). Notify si falla o hay reservadas nuevas.
+
+**SQL (obligatorio):** `database/alter_licitacions_circuit_v2.sql`  
+**Despliegue Edge + cron:** `supabase functions deploy licitacions-sync` y ejecutar `database/cron_licitacions_sync.sql`.
+
+**Tras instalar Kronos:** cerrar la app del todo y volver a abrirla.
+
+---
+
 ## v2.3.0
 
 ### Fichajes – Ubicación al guardar

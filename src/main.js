@@ -736,19 +736,22 @@ const createWindow = () => {
 app.whenReady().then(() => {
   createWindow();
 
+  // T7: sync diari en servidor (Edge + pg_cron). El cron setmanal d'Electron es manté
+  // com a fallback fins que licitacions-sync porti ≥1 setmana estable en producció;
+  // després es pot treure aquest bloc (deixar només el botó manual origen=manual).
   try {
     const cron = require('node-cron');
     cron.schedule(
       '0 8 * * 1',
       async () => {
-        console.log('[licitacions] Cron semanal: iniciando sync en main process…');
+        console.log('[licitacions] Cron semanal (fallback app): iniciando sync en main process…');
         try {
           const result = await runBackgroundLicitacionsSync();
           console.log('[licitacions] Cron sync OK:', {
             ted: result?.fetched?.ted,
             pscp: result?.fetched?.pscp,
             placsp: result?.fetched?.placsp,
-            purged: result?.purge?.deleted
+            arxivades: result?.arxivades ?? result?.purge?.arxivades
           });
           if (mainWindow && !mainWindow.isDestroyed()) {
             mainWindow.webContents.send('licitacions-cron-sync-done', result);
@@ -762,7 +765,7 @@ app.whenReady().then(() => {
       },
       { timezone: 'Europe/Madrid' }
     );
-    console.log('[licitacions] Cron semanal programado (lunes 08:00 Europe/Madrid, main process)');
+    console.log('[licitacions] Cron semanal fallback (lunes 08:00 Europe/Madrid). Preferir Edge licitacions-sync.');
   } catch (err) {
     console.warn('[licitacions] No se pudo programar cron:', err?.message || err);
   }

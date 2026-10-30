@@ -6,17 +6,68 @@ const LICITACIONS_HTTP_HOSTS = new Set([
   'api.ted.europa.eu',
   'opendata.aoc.cat',
   'analisi.transparenciacatalunya.cat',
-  'contrataciondelestado.es'
+  'contrataciondelestado.es',
+  'www.contrataciondelestado.es'
 ]);
 
-function licitacionsHttpRequest({ url, method = 'GET', headers = {}, body = null }) {
+/** Sin timeout el sync se cuelga. PLACSP Completo3 ~4MB necesita más de 25s. */
+const DEFAULT_TIMEOUT_MS = 25000;
+const PLACSP_TIMEOUT_MS = 90000;
+
+function timeoutForUrl(url, explicit) {
+  if (Number(explicit) > 0) return Number(explicit);
+  try {
+    const host = new URL(url).hostname;
+    if (host === 'contrataciondelestado.es' || host === 'www.contrataciondelestado.es') {
+      return PLACSP_TIMEOUT_MS;
+    }
+  } catch (_) {
+    // ignore
+  }
+  return DEFAULT_TIMEOUT_MS;
+}
+
+function licitacionsHttpRequest({ url, method = 'GET', headers = {}, body = null, timeoutMs = null }) {
   return new Promise((resolve, reject) => {
     const MAX_REDIRECTS = 5;
+    const limitMs = timeoutForUrl(url, timeoutMs);
+    let settled = false;
+    let activeReq = null;
+    let timer = null;
+
+    const fail = (err) => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      try {
+        activeReq?.destroy?.();
+      } catch (_) {
+        // ignore
+      }
+      reject(err instanceof Error ? err : new Error(String(err)));
+    };
+
+    const succeed = (payload) => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      resolve(payload);
+    };
+
+    timer = setTimeout(() => {
+      fail(new Error(`Timeout licitacions HTTP (${limitMs}ms): ${url}`));
+    }, limitMs);
 
     const doRequest = (currentUrl, redirectsLeft) => {
-      const urlObj = new URL(currentUrl);
+      let urlObj;
+      try {
+        urlObj = new URL(currentUrl);
+      } catch (e) {
+        fail(e);
+        return;
+      }
       if (!LICITACIONS_HTTP_HOSTS.has(urlObj.hostname)) {
-        reject(new Error(`Host no permès per a licitacions: ${urlObj.hostname}`));
+        fail(new Error(`Host no permès per a licitacions: ${urlObj.hostname}`));
         return;
       }
 
@@ -34,7 +85,8 @@ function licitacionsHttpRequest({ url, method = 'GET', headers = {}, body = null
         port: urlObj.port || (urlObj.protocol === 'https:' ? 443 : 80),
         path: urlObj.pathname + urlObj.search,
         method: method || 'GET',
-        headers: baseHeaders
+        headers: baseHeaders,
+        timeout: limitMs
       };
 
       const req = lib.request(requestOptions, (res) => {
@@ -43,7 +95,7 @@ function licitacionsHttpRequest({ url, method = 'GET', headers = {}, body = null
         if (isRedirect) {
           if (redirectsLeft <= 0) {
             res.resume();
-            reject(new Error('Demasiadas redirecciones en licitacions-http-request'));
+            fail(new Error('Demasiadas redirecciones en licitacions-http-request'));
             return;
           }
           const nextUrl = res.headers.location.startsWith('http')
@@ -62,7 +114,7 @@ function licitacionsHttpRequest({ url, method = 'GET', headers = {}, body = null
         res.on('end', () => {
           const buffer = Buffer.concat(chunks);
 
-          const finish = (buf) => resolve({
+          const finish = (buf) => succeed({
             ok: sc >= 200 && sc < 300,
             status: sc,
             statusText: res.statusMessage,
@@ -99,8 +151,14 @@ function licitacionsHttpRequest({ url, method = 'GET', headers = {}, body = null
         });
       });
 
+      activeReq = req;
+
+      req.on('timeout', () => {
+        fail(new Error(`Timeout licitacions HTTP (${limitMs}ms): ${currentUrl}`));
+      });
+
       req.on('error', (error) => {
-        reject(new Error(`Request failed: ${error.message}`));
+        fail(new Error(`Request failed: ${error.message}`));
       });
 
       if (body != null && body !== '') {
