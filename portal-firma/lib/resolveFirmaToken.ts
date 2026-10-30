@@ -55,6 +55,56 @@ export type FirmaEnvioResolved = {
   entity_key?: string | null;
 };
 
+type FirmaTrabajadorRaw = {
+  id: string;
+  nombre: string;
+  dni?: string | null;
+  telefono: string;
+};
+
+type FirmaDocumentoRaw = {
+  id: string;
+  tipo_documento: string;
+  estado: string;
+  storage_path?: string | null;
+  storage_path_firmado?: string | null;
+  file_name?: string | null;
+  hash_pdf?: string | null;
+  orden?: number | null;
+  revisado_at?: string | null;
+  firmado_at?: string | null;
+  opciones_aceptacion?: FirmaDocumentoResolved['opciones_aceptacion'];
+  sello_posicion?: FirmaDocumentoResolved['sello_posicion'];
+};
+
+type FirmaDocumentoRawWithTrabajador = FirmaDocumentoRaw & {
+  trabajador?: FirmaTrabajadorRaw | FirmaTrabajadorRaw[] | null;
+};
+
+type FirmaEnvioRaw = {
+  id: string;
+  nombre?: string | null;
+  estado: string;
+  fecha_inicio?: string | null;
+  fecha_fin?: string | null;
+  firmado_at?: string | null;
+  entity_key?: string | null;
+  trabajador?: FirmaTrabajadorRaw | FirmaTrabajadorRaw[] | null;
+  documentos?: FirmaDocumentoRaw[] | FirmaDocumentoRaw | null;
+};
+
+type FirmaTokenRaw = {
+  id: string;
+  token: string;
+  expires_at: string;
+  used_at?: string | null;
+  revoked_at?: string | null;
+  envio_id?: string | null;
+  documento_id?: string | null;
+  envio?: FirmaEnvioRaw | FirmaEnvioRaw[] | null;
+  documento?: FirmaDocumentoRawWithTrabajador | FirmaDocumentoRawWithTrabajador[] | null;
+};
+
 export type ResolvedFirmaContext = {
   tokenRow: FirmaTokenResolved;
   isExpired: boolean;
@@ -68,14 +118,32 @@ export type ResolvedFirmaContext = {
   documentoPrincipal: FirmaDocumentoResolved | null;
 };
 
-export async function resolveFirmaToken(token: string): Promise<ResolvedFirmaContext | null> {
-  const trimmed = String(token || '').trim();
-  if (!trimmed) return null;
+function isMissingOpcionesColumn(message: string): boolean {
+  return String(message || '').includes('opciones_aceptacion');
+}
 
-  const { data: tokenRow, error } = await supabaseAdmin
-    .from('firma_tokens')
-    .select(
-      `
+function documentosSelect(includeOpciones: boolean): string {
+  return [
+    'id',
+    'tipo_documento',
+    'estado',
+    'storage_path',
+    'storage_path_firmado',
+    'file_name',
+    'hash_pdf',
+    'orden',
+    'revisado_at',
+    'firmado_at',
+    includeOpciones ? 'opciones_aceptacion' : '',
+    'sello_posicion'
+  ]
+    .filter(Boolean)
+    .join(', ');
+}
+
+function tokenSelect(includeOpciones: boolean): string {
+  const docCols = documentosSelect(includeOpciones);
+  return `
       id,
       token,
       expires_at,
@@ -98,33 +166,11 @@ export async function resolveFirmaToken(token: string): Promise<ResolvedFirmaCon
           telefono
         ),
         documentos:firma_documentos (
-          id,
-          tipo_documento,
-          estado,
-          storage_path,
-          storage_path_firmado,
-          file_name,
-          hash_pdf,
-          orden,
-          revisado_at,
-          firmado_at,
-          opciones_aceptacion,
-          sello_posicion
+          ${docCols}
         )
       ),
       documento:firma_documentos!firma_tokens_documento_id_fkey (
-        id,
-        tipo_documento,
-        estado,
-        storage_path,
-        storage_path_firmado,
-        file_name,
-        hash_pdf,
-        orden,
-        revisado_at,
-        firmado_at,
-        opciones_aceptacion,
-        sello_posicion,
+        ${docCols},
         trabajador:firma_trabajadores (
           id,
           nombre,
@@ -132,11 +178,31 @@ export async function resolveFirmaToken(token: string): Promise<ResolvedFirmaCon
           telefono
         )
       )
-    `
-    )
+    `;
+}
+
+export async function resolveFirmaToken(token: string): Promise<ResolvedFirmaContext | null> {
+  const trimmed = String(token || '').trim();
+  if (!trimmed) return null;
+
+  let includeOpcionesColumn = true;
+  let tokenResult = await supabaseAdmin
+    .from('firma_tokens')
+    .select(tokenSelect(true))
     .eq('token', trimmed)
     .maybeSingle();
 
+  if (tokenResult.error && isMissingOpcionesColumn(tokenResult.error.message)) {
+    includeOpcionesColumn = false;
+    tokenResult = await supabaseAdmin
+      .from('firma_tokens')
+      .select(tokenSelect(false))
+      .eq('token', trimmed)
+      .maybeSingle();
+  }
+
+  const error = tokenResult.error;
+  const tokenRow = tokenResult.data as unknown as FirmaTokenRaw | null;
   if (error) throw new Error(error.message);
   if (!tokenRow) return null;
 
@@ -152,20 +218,7 @@ export async function resolveFirmaToken(token: string): Promise<ResolvedFirmaCon
   let trabajador: FirmaTrabajadorResolved | null = null;
   let envio: FirmaEnvioResolved | null = null;
 
-  const mapDocRow = (d: {
-    id: string;
-    tipo_documento: string;
-    estado: string;
-    storage_path?: string | null;
-    storage_path_firmado?: string | null;
-    file_name?: string | null;
-    hash_pdf?: string | null;
-    orden?: number | null;
-    revisado_at?: string | null;
-    firmado_at?: string | null;
-    opciones_aceptacion?: FirmaDocumentoResolved['opciones_aceptacion'];
-    sello_posicion?: FirmaDocumentoResolved['sello_posicion'];
-  }): FirmaDocumentoResolved => ({
+  const mapDocRow = (d: FirmaDocumentoRaw): FirmaDocumentoResolved => ({
     id: d.id,
     tipo_documento: d.tipo_documento,
     estado: d.estado,
@@ -190,13 +243,21 @@ export async function resolveFirmaToken(token: string): Promise<ResolvedFirmaCon
       firmado_at: envioRaw.firmado_at ?? null,
       entity_key: (envioRaw as { entity_key?: string | null }).entity_key ?? null
     };
-    const { data: docsByEnvio, error: docsErr } = await supabaseAdmin
+    let docsResult = await supabaseAdmin
       .from('firma_documentos')
-      .select(
-        'id, tipo_documento, estado, storage_path, storage_path_firmado, file_name, hash_pdf, orden, revisado_at, firmado_at, opciones_aceptacion, sello_posicion'
-      )
+      .select(documentosSelect(includeOpcionesColumn))
       .eq('envio_id', envioRaw.id)
       .order('orden', { ascending: true });
+    if (docsResult.error && isMissingOpcionesColumn(docsResult.error.message)) {
+      includeOpcionesColumn = false;
+      docsResult = await supabaseAdmin
+        .from('firma_documentos')
+        .select(documentosSelect(false))
+        .eq('envio_id', envioRaw.id)
+        .order('orden', { ascending: true });
+    }
+    const docsErr = docsResult.error;
+    const docsByEnvio = docsResult.data as unknown as FirmaDocumentoRaw[] | null;
     if (!docsErr && docsByEnvio?.length) {
       documentos = docsByEnvio.map(mapDocRow);
     }
@@ -232,13 +293,21 @@ export async function resolveFirmaToken(token: string): Promise<ResolvedFirmaCon
         firmado_at: envioRow.firmado_at ?? null,
         entity_key: (envioRow as { entity_key?: string | null }).entity_key ?? null
       };
-      const { data: docsByEnvio, error: docsErr } = await supabaseAdmin
+      let docsResult = await supabaseAdmin
         .from('firma_documentos')
-        .select(
-          'id, tipo_documento, estado, storage_path, storage_path_firmado, file_name, hash_pdf, orden, revisado_at, firmado_at, opciones_aceptacion, sello_posicion'
-        )
+        .select(documentosSelect(includeOpcionesColumn))
         .eq('envio_id', envioRow.id)
         .order('orden', { ascending: true });
+      if (docsResult.error && isMissingOpcionesColumn(docsResult.error.message)) {
+        includeOpcionesColumn = false;
+        docsResult = await supabaseAdmin
+          .from('firma_documentos')
+          .select(documentosSelect(false))
+          .eq('envio_id', envioRow.id)
+          .order('orden', { ascending: true });
+      }
+      const docsErr = docsResult.error;
+      const docsByEnvio = docsResult.data as unknown as FirmaDocumentoRaw[] | null;
       if (!docsErr && docsByEnvio?.length) {
         documentos = docsByEnvio.map(mapDocRow);
       }
@@ -265,8 +334,8 @@ export async function resolveFirmaToken(token: string): Promise<ResolvedFirmaCon
       id: tokenRow.id,
       token: tokenRow.token,
       expires_at: tokenRow.expires_at,
-      used_at: tokenRow.used_at,
-      revoked_at: tokenRow.revoked_at,
+      used_at: tokenRow.used_at ?? null,
+      revoked_at: tokenRow.revoked_at ?? null,
       envio_id: envioId,
       documento_id: tokenRow.documento_id ?? null
     },
