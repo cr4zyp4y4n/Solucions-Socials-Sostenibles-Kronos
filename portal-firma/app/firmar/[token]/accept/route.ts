@@ -1,4 +1,9 @@
-import { buildAceptacionRespuestaLine, getFirmaDocMeta, normalizeRespuestaAceptacion } from '@/lib/firmaDocumentosMeta';
+import {
+  buildAceptacionRespuestaLine,
+  getFirmaDocMeta,
+  getReadStatementNo,
+  normalizeRespuestaAceptacion
+} from '@/lib/firmaDocumentosMeta';
 import { getOtpScopeIds, resolveFirmaToken } from '@/lib/resolveFirmaToken';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getRequestInfo } from '@/lib/requestInfo';
@@ -10,6 +15,27 @@ import { loadDocumentoOpciones } from '@/lib/firmaDocumentoOpciones';
 
 /** Obligatorio: @signpdf / node-forge no corren en Edge. */
 export const runtime = 'nodejs';
+
+async function buildDeclaracionesAceptadas(documentos: Array<{ id: string; tipo_documento: string }>) {
+  return Promise.all(
+    documentos.map(async (d) => {
+      const { opciones } = await loadDocumentoOpciones(d.id);
+      const respuesta = normalizeRespuestaAceptacion(opciones);
+      if (!respuesta) {
+        throw new Error(`Falta respuesta verificable Sí/No para el documento ${d.id}`);
+      }
+
+      return {
+        documento_id: d.id,
+        tipo_documento: d.tipo_documento,
+        respuesta,
+        lectura_confirmada: respuesta === 'si',
+        declaracion: respuesta === 'no' ? getReadStatementNo(d.tipo_documento) : getFirmaDocMeta(d.tipo_documento).readStatement,
+        aceptacion_linea: buildAceptacionRespuestaLine(d.tipo_documento, respuesta)
+      };
+    })
+  );
+}
 
 async function stampAndUploadDocument({
   documento,
@@ -243,6 +269,14 @@ export async function POST(_req: Request, ctx: { params: Promise<{ token: string
   const smsVerificadoAt = consumed[0]?.consumed_at || null;
   const entityKey = resolved.envio?.entity_key || null;
 
+  let declaracionesAceptadas;
+  try {
+    declaracionesAceptadas = await buildDeclaracionesAceptadas(resolved.documentos);
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : 'Falta respuesta verificable Sí/No';
+    return Response.json({ ok: false, error: msg }, { status: 400 });
+  }
+
   const signedPaths: string[] = [];
   let anyPades = false;
   try {
@@ -300,20 +334,7 @@ export async function POST(_req: Request, ctx: { params: Promise<{ token: string
       storage_paths_firmados: signedPaths,
       sellado: anyPades ? 'pades_evidencias' : 'evidencias_sin_pades',
       pades_aplicado: anyPades,
-      declaraciones_aceptadas: await Promise.all(
-        resolved.documentos.map(async (d) => {
-          const { opciones } = await loadDocumentoOpciones(d.id);
-          const respuesta = normalizeRespuestaAceptacion(opciones) || 'si';
-          return {
-            documento_id: d.id,
-            tipo_documento: d.tipo_documento,
-            respuesta,
-            lectura_confirmada: respuesta === 'si',
-            declaracion: getFirmaDocMeta(d.tipo_documento).readStatement,
-            aceptacion_linea: buildAceptacionRespuestaLine(d.tipo_documento, respuesta)
-          };
-        })
-      )
+      declaraciones_aceptadas: declaracionesAceptadas
     }
   });
 

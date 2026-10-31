@@ -11,6 +11,53 @@ function isMissingOpcionesColumn(message: string): boolean {
   return String(message || '').includes('opciones_aceptacion');
 }
 
+function normalizeAuditOpciones(detalle: unknown): DocumentoOpcionesAceptacion | null {
+  const det = detalle as {
+    accion?: unknown;
+    respuesta?: unknown;
+    lectura_confirmada?: unknown;
+    confirmado_at?: unknown;
+    formacion_acoso?: unknown;
+  } | null;
+  if (!det || det.accion !== 'documento_lectura_confirmada') return null;
+
+  let respuesta: 'si' | 'no' | null = null;
+  if (det.respuesta === 'si' || det.respuesta === 'no') {
+    respuesta = det.respuesta;
+  } else if (det.lectura_confirmada === true) {
+    respuesta = 'si';
+  } else if (det.lectura_confirmada === false) {
+    respuesta = 'no';
+  }
+  if (!respuesta) return null;
+
+  return {
+    respuesta,
+    lectura_confirmada: respuesta === 'si',
+    ...(typeof det.confirmado_at === 'string' ? { confirmado_at: det.confirmado_at } : {}),
+    ...(det.formacion_acoso === true ? { formacion_acoso: true } : {})
+  };
+}
+
+async function loadDocumentoOpcionesFromAudit(documentoId: string): Promise<DocumentoOpcionesAceptacion | null> {
+  const { data, error } = await supabaseAdmin
+    .from('firma_auditorias')
+    .select('detalle, created_at')
+    .eq('documento_id', documentoId)
+    .eq('resultado', 'ok')
+    .order('created_at', { ascending: false })
+    .limit(20);
+
+  if (error) return null;
+
+  for (const row of data || []) {
+    const opciones = normalizeAuditOpciones((row as { detalle?: unknown }).detalle);
+    if (opciones) return opciones;
+  }
+
+  return null;
+}
+
 export async function updateDocumentoLecturaConfirmada(
   documentoId: string,
   opciones: DocumentoOpcionesAceptacion,
@@ -49,9 +96,10 @@ export async function loadDocumentoOpciones(
     .maybeSingle();
 
   if (!error && data) {
+    const opciones = (data.opciones_aceptacion || null) as DocumentoOpcionesAceptacion | null;
     return {
       tipoDocumento: data.tipo_documento,
-      opciones: (data.opciones_aceptacion || null) as DocumentoOpcionesAceptacion | null
+      opciones: opciones || (await loadDocumentoOpcionesFromAudit(documentoId))
     };
   }
 
@@ -61,8 +109,14 @@ export async function loadDocumentoOpciones(
       .select('tipo_documento')
       .eq('id', documentoId)
       .maybeSingle();
-    return { tipoDocumento: fallback?.tipo_documento, opciones: null };
+    return {
+      tipoDocumento: fallback?.tipo_documento,
+      opciones: await loadDocumentoOpcionesFromAudit(documentoId)
+    };
   }
 
-  return { tipoDocumento: undefined, opciones: null };
+  return {
+    tipoDocumento: undefined,
+    opciones: await loadDocumentoOpcionesFromAudit(documentoId)
+  };
 }
